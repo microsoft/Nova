@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use super::commitments::Scalar;
 use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use super::errors::NovaError;
@@ -50,21 +51,19 @@ impl R1CSShape {
     num_cons: usize,
     num_vars: usize,
     num_inputs: usize,
-    A: &Vec<(usize, usize, Scalar)>,
-    B: &Vec<(usize, usize, Scalar)>,
-    C: &Vec<(usize, usize, Scalar)>,
+    A: &[(usize, usize, Scalar)],
+    B: &[(usize, usize, Scalar)],
+    C: &[(usize, usize, Scalar)],
   ) -> Result<R1CSShape, NovaError> {
     let is_valid = |num_cons: usize,
                     num_vars: usize,
                     num_io: usize,
-                    M: &Vec<(usize, usize, Scalar)>|
+                    M: &[(usize, usize, Scalar)]|
      -> Result<(), NovaError> {
       let res = (0..num_cons)
         .map(|i| {
           let (row, col, _val) = M[i];
-          if row >= num_cons {
-            Err(NovaError::InvalidIndex)
-          } else if col >= num_io + num_vars + 1 {
+          if row >= num_cons || col > num_io + num_vars {
             Err(NovaError::InvalidIndex)
           } else {
             Ok(())
@@ -79,9 +78,9 @@ impl R1CSShape {
       }
     };
 
-    let res_A = is_valid(num_cons, num_vars, num_inputs, &A);
-    let res_B = is_valid(num_cons, num_vars, num_inputs, &B);
-    let res_C = is_valid(num_cons, num_vars, num_inputs, &C);
+    let res_A = is_valid(num_cons, num_vars, num_inputs, A);
+    let res_B = is_valid(num_cons, num_vars, num_inputs, B);
+    let res_C = is_valid(num_cons, num_vars, num_inputs, C);
 
     if res_A.is_err() || res_B.is_err() || res_C.is_err() {
       return Err(NovaError::InvalidIndex);
@@ -91,9 +90,9 @@ impl R1CSShape {
       num_cons,
       num_vars,
       num_inputs,
-      A: A.clone(),
-      B: B.clone(),
-      C: C.clone(),
+      A: A.to_owned(),
+      B: B.to_owned(),
+      C: C.to_owned(),
     };
 
     Ok(shape)
@@ -226,13 +225,13 @@ impl R1CSShape {
 }
 
 impl R1CSWitness {
-  pub fn new(S: &R1CSShape, W: &Vec<Scalar>, E: &Vec<Scalar>) -> Result<R1CSWitness, NovaError> {
+  pub fn new(S: &R1CSShape, W: &[Scalar], E: &[Scalar]) -> Result<R1CSWitness, NovaError> {
     if S.num_vars != W.len() || S.num_cons != E.len() {
       Err(NovaError::InvalidWitnessLength)
     } else {
       Ok(R1CSWitness {
-        W: W.clone(),
-        E: E.clone(),
+        W: W.to_owned(),
+        E: E.to_owned(),
       })
     }
   }
@@ -241,12 +240,7 @@ impl R1CSWitness {
     (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
   }
 
-  pub fn fold(
-    &self,
-    W2: &R1CSWitness,
-    T: &Vec<Scalar>,
-    r: &Scalar,
-  ) -> Result<R1CSWitness, NovaError> {
+  pub fn fold(&self, W2: &R1CSWitness, T: &[Scalar], r: &Scalar) -> Result<R1CSWitness, NovaError> {
     let (W1, E1) = (&self.W, &self.E);
     let (W2, E2) = (&W2.W, &W2.E);
 
@@ -274,7 +268,7 @@ impl R1CSInstance {
     S: &R1CSShape,
     comm_W: &Commitment,
     comm_E: &Commitment,
-    X: &Vec<Scalar>,
+    X: &[Scalar],
     u: &Scalar,
   ) -> Result<R1CSInstance, NovaError> {
     if S.num_inputs != X.len() {
@@ -283,7 +277,7 @@ impl R1CSInstance {
       Ok(R1CSInstance {
         comm_W: comm_W.clone(),
         comm_E: comm_E.clone(),
-        X: X.clone(),
+        X: X.to_owned(),
         u: *u,
       })
     }

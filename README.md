@@ -5,7 +5,7 @@ Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system
 This repository provides `libnova,` a Rust library library implementation of Nova. The current release implements the core building blocks in Nova, and future releases will use cycles of elliptic curves to support recursive composition of proofs.
 
 To run tests, run:
-```rust
+```text
 cargo test
 ```
 

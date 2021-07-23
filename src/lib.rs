@@ -65,7 +65,7 @@ impl StepSNARK {
     let W = W1.fold(W2, &T, &r)?;
 
     // return the folded instance and witness
-    return Ok((StepSNARK { comm_T }, (U, W)));
+    Ok((StepSNARK { comm_T }, (U, W)))
   }
 
   /// Takes as input two relaxed R1CS instances `U1` and `U2`
@@ -92,7 +92,7 @@ impl StepSNARK {
     let U = U1.fold(U2, &self.comm_T, &r)?;
 
     // return the folded instance and witness
-    return Ok(U);
+    Ok(U)
   }
 }
 
