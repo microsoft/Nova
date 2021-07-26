@@ -218,9 +218,9 @@ impl R1CSShape {
       .map(|(((a, b), c), d)| a + b - c - d)
       .collect::<Vec<Scalar>>();
 
-    let T_commit = T.commit(&gens.gens_E).compress();
+    let comm_T = T.commit(&gens.gens_E).compress();
 
-    Ok((T, T_commit))
+    Ok((T, comm_T))
   }
 }
 

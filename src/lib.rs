@@ -91,7 +91,7 @@ impl StepSNARK {
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &self.comm_T, &r)?;
 
-    // return the folded instance and witness
+    // return the folded instance
     Ok(U)
   }
 }
