@@ -11,7 +11,7 @@ cargo test
 
 ## References
 [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370) \
-Abhiram Kothapalli, Srinath Setty, Ioanna Tzialla \
+Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
 Cryptology ePrint Archive: Report 2021/370
 
 ## Acknowledgements
