@@ -160,8 +160,6 @@ impl R1CSShape {
       res == 0
     };
 
-    assert!(res_eq, true);
-
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
       let comm_W = W.W.commit(&gens.gens_W);
@@ -169,8 +167,6 @@ impl R1CSShape {
 
       U.comm_W == comm_W && U.comm_E == comm_E
     };
-
-    assert!(res_comm, true);
 
     if res_eq && res_comm {
       Ok(())
