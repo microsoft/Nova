@@ -1,33 +1,25 @@
+//! This library implements core components of Nova.
 #![allow(non_snake_case)]
 #![feature(test)]
 #![deny(missing_docs)]
-#![feature(external_doc)]
-#![doc(include = "../README.md")]
-
-extern crate core;
-extern crate curve25519_dalek;
-extern crate digest;
-extern crate merlin;
-extern crate rand;
-extern crate rayon;
-extern crate sha3;
-extern crate test;
 
 mod commitments;
 mod errors;
 mod r1cs;
+mod traits;
 
-use commitments::{AppendToTranscriptTrait, CompressedCommitment, ProofTranscriptTrait};
+use commitments::{AppendToTranscriptTrait, Commitment};
 use errors::NovaError;
 use merlin::Transcript;
 use r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness};
+use traits::{ChallengeTrait, Group};
 
 /// A SNARK that holds the proof of a step of an incremental computation
-pub struct StepSNARK {
-  comm_T: CompressedCommitment,
+pub struct StepSNARK<G: Group> {
+  comm_T: Commitment<G>,
 }
 
-impl StepSNARK {
+impl<G: Group> StepSNARK<G> {
   fn protocol_name() -> &'static [u8] {
     b"NovaStepSNARK"
   }
@@ -38,16 +30,17 @@ impl StepSNARK {
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
-    gens: &R1CSGens,
-    S: &R1CSShape,
-    U1: &R1CSInstance,
-    W1: &R1CSWitness,
-    U2: &R1CSInstance,
-    W2: &R1CSWitness,
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U1: &R1CSInstance<G>,
+    W1: &R1CSWitness<G>,
+    U2: &R1CSInstance<G>,
+    W2: &R1CSWitness<G>,
     transcript: &mut Transcript,
-  ) -> Result<(StepSNARK, (R1CSInstance, R1CSWitness)), NovaError> {
+  ) -> Result<(StepSNARK<G>, (R1CSInstance<G>, R1CSWitness<G>)), NovaError> {
     // append the protocol name to the transcript
-    transcript.append_protocol_name(StepSNARK::protocol_name());
+    //transcript.append_protocol_name(StepSNARK::protocol_name());
+    transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
 
     // compute a commitment to the cross-term
     let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
@@ -56,10 +49,10 @@ impl StepSNARK {
     comm_T.append_to_transcript(b"comm_T", transcript);
 
     // compute a challenge from the transcript
-    let r = transcript.challenge_scalar(b"r");
+    let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
     let W = W1.fold(W2, &T, &r)?;
@@ -75,21 +68,21 @@ impl StepSNARK {
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
-    U1: &R1CSInstance,
-    U2: &R1CSInstance,
+    U1: &R1CSInstance<G>,
+    U2: &R1CSInstance<G>,
     transcript: &mut Transcript,
-  ) -> Result<R1CSInstance, NovaError> {
+  ) -> Result<R1CSInstance<G>, NovaError> {
     // append the protocol name to the transcript
-    transcript.append_protocol_name(StepSNARK::protocol_name());
+    transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
 
     // append `comm_T` to the transcript and obtain a challenge
     self.comm_T.append_to_transcript(b"comm_T", transcript);
 
     // compute a challenge from the transcript
-    let r = transcript.challenge_scalar(b"r");
+    let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r)?;
+    let U = U1.fold(U2, &self.comm_T, &r);
 
     // return the folded instance
     Ok(U)
@@ -97,18 +90,23 @@ impl StepSNARK {
 }
 
 /// A SNARK that holds the proof of the final step of an incremental computation
-pub struct FinalSNARK {
-  W: R1CSWitness,
+pub struct FinalSNARK<G: Group> {
+  W: R1CSWitness<G>,
 }
 
-impl FinalSNARK {
+impl<G: Group> FinalSNARK<G> {
   /// Produces a proof of a instance given its satisfying witness `W`.
-  pub fn prove(W: &R1CSWitness) -> Result<FinalSNARK, NovaError> {
+  pub fn prove(W: &R1CSWitness<G>) -> Result<FinalSNARK<G>, NovaError> {
     Ok(FinalSNARK { W: W.clone() })
   }
 
   /// Verifies the proof of a folded instance `U` given its shape `S` public parameters `gens`
-  pub fn verify(&self, gens: &R1CSGens, S: &R1CSShape, U: &R1CSInstance) -> Result<(), NovaError> {
+  pub fn verify(
+    &self,
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &R1CSInstance<G>,
+  ) -> Result<(), NovaError> {
     // check that the witness is a valid witness to the folded instance `U`
     S.is_sat(gens, U, &self.W)
   }
@@ -116,13 +114,93 @@ impl FinalSNARK {
 
 #[cfg(test)]
 mod tests {
-  use super::commitments::Scalar;
   use super::*;
-  use rand::rngs::OsRng;
+  use crate::traits::{CompressedGroup, Group, PrimeField};
+  use core::borrow::Borrow;
+  use curve25519_dalek::traits::MultiscalarMul;
+  use rand::{rngs::OsRng, CryptoRng, RngCore};
+
+  type S = curve25519_dalek::scalar::Scalar;
+  type G = curve25519_dalek::ristretto::RistrettoPoint;
+  type C = curve25519_dalek::ristretto::CompressedRistretto;
+
+  impl Group for G {
+    type Scalar = S;
+    type CompressedGroupElement = C;
+
+    fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
+    where
+      I: IntoIterator,
+      I::Item: Borrow<Self::Scalar>,
+      J: IntoIterator,
+      J::Item: Borrow<Self>,
+      Self: Clone,
+    {
+      Self::multiscalar_mul(scalars, points)
+    }
+
+    fn compress(&self) -> Self::CompressedGroupElement {
+      self.compress()
+    }
+
+    fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
+      if bytes.len() != 64 {
+        None
+      } else {
+        let mut arr = [0; 64];
+        arr.copy_from_slice(&bytes[0..64]);
+        Some(Self::from_uniform_bytes(&arr))
+      }
+    }
+  }
+
+  impl PrimeField for S {
+    fn zero() -> Self {
+      S::zero()
+    }
+
+    fn one() -> Self {
+      S::one()
+    }
+
+    fn from_bytes_mod_order_wide(bytes: &[u8]) -> Option<Self> {
+      if bytes.len() != 64 {
+        None
+      } else {
+        let mut arr = [0; 64];
+        arr.copy_from_slice(&bytes[0..64]);
+        Some(Self::from_bytes_mod_order_wide(&arr))
+      }
+    }
+
+    fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
+      S::random(rng)
+    }
+  }
+
+  impl CompressedGroup for C {
+    type GroupElement = G;
+
+    fn decompress(&self) -> Option<Self::GroupElement> {
+      self.decompress()
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+      self.as_bytes()
+    }
+  }
+
+  impl ChallengeTrait for S {
+    fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
+      let mut buf = [0u8; 64];
+      transcript.challenge_bytes(label, &mut buf);
+      S::from_bytes_mod_order_wide(&buf)
+    }
+  }
 
   #[test]
   fn test_tiny_r1cs() {
-    let one = Scalar::one();
+    let one = S::one();
     let (num_cons, num_vars, num_inputs, A, B, C) = {
       let num_cons = 4;
       let num_vars = 4;
@@ -138,9 +216,9 @@ mod tests {
       // constraint and a column for every entry in z = (vars, u, inputs)
       // An R1CS instance is satisfiable iff:
       // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
-      let mut A: Vec<(usize, usize, Scalar)> = Vec::new();
-      let mut B: Vec<(usize, usize, Scalar)> = Vec::new();
-      let mut C: Vec<(usize, usize, Scalar)> = Vec::new();
+      let mut A: Vec<(usize, usize, S)> = Vec::new();
+      let mut B: Vec<(usize, usize, S)> = Vec::new();
+      let mut C: Vec<(usize, usize, S)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       A.push((0, 0, one));
@@ -177,11 +255,11 @@ mod tests {
     // generate generators
     let gens = R1CSGens::new(num_cons, num_vars);
 
-    let rand_inst_witness_generator = |gens: &R1CSGens| -> (R1CSInstance, R1CSWitness) {
+    let rand_inst_witness_generator = |gens: &R1CSGens<G>| -> (R1CSInstance<G>, R1CSWitness<G>) {
       // compute a satisfying (vars, X) tuple
       let (vars, X) = {
         let mut csprng: OsRng = OsRng;
-        let z0 = Scalar::random(&mut csprng);
+        let z0 = S::random(&mut csprng);
         let z1 = z0 * z0; // constraint 0
         let z2 = z1 * z0; // constraint 1
         let z3 = z2 + z0; // constraint 2
@@ -193,14 +271,14 @@ mod tests {
       };
 
       let W = {
-        let E = vec![Scalar::zero(); num_cons]; // default E
+        let E = vec![S::zero(); num_cons]; // default E
         let res = R1CSWitness::new(&S, &vars, &E);
         assert!(res.is_ok());
         res.unwrap()
       };
       let U = {
         let (comm_W, comm_E) = W.commit(&gens);
-        let u = Scalar::one(); //default u
+        let u = S::one(); //default u
         let res = R1CSInstance::new(&S, &comm_W, &comm_E, &X, &u);
         assert!(res.is_ok());
         res.unwrap()
