@@ -1,56 +1,53 @@
 use super::errors::NovaError;
+use super::traits::{CompressedGroup, Group};
+use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, MulAssign};
-use curve25519_dalek::traits::VartimeMultiscalarMul;
 use digest::{ExtendableOutput, Input};
 use merlin::Transcript;
 use sha3::Shake256;
 use std::io::Read;
 
-pub type Scalar = curve25519_dalek::scalar::Scalar;
-type GroupElement = curve25519_dalek::ristretto::RistrettoPoint;
-type CompressedGroup = curve25519_dalek::ristretto::CompressedRistretto;
-
 #[derive(Debug)]
-pub struct CommitGens {
-  gens: Vec<GroupElement>,
+pub struct CommitGens<G: Group> {
+  gens: Vec<G>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Commitment<G: Group> {
+  comm: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Commitment {
-  comm: GroupElement,
+pub struct CompressedCommitment<C: CompressedGroup> {
+  comm: C,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CompressedCommitment {
-  comm: CompressedGroup,
-}
-
-impl CommitGens {
+impl<G: Group> CommitGens<G> {
   pub fn new(label: &[u8], n: usize) -> Self {
     let mut shake = Shake256::default();
     shake.input(label);
     let mut reader = shake.xof_result();
-    let mut gens: Vec<GroupElement> = Vec::new();
+    let mut gens: Vec<G> = Vec::new();
     let mut uniform_bytes = [0u8; 64];
     for _ in 0..n {
       reader.read_exact(&mut uniform_bytes).unwrap();
-      gens.push(GroupElement::from_uniform_bytes(&uniform_bytes));
+      gens.push(G::from_uniform_bytes(&uniform_bytes).unwrap());
     }
 
     CommitGens { gens }
   }
 }
 
-impl Commitment {
-  pub fn compress(&self) -> CompressedCommitment {
+impl<G: Group> Commitment<G> {
+  pub fn compress(&self) -> CompressedCommitment<G::CompressedGroupElement> {
     CompressedCommitment {
       comm: self.comm.compress(),
     }
   }
 }
 
-impl CompressedCommitment {
-  pub fn decompress(&self) -> Result<Commitment, NovaError> {
+impl<C: CompressedGroup> CompressedCommitment<C> {
+  pub fn decompress(&self) -> Result<Commitment<C::GroupElement>, NovaError> {
     let comm = self.comm.decompress();
     if comm.is_none() {
       return Err(NovaError::DecompressionError);
@@ -61,33 +58,16 @@ impl CompressedCommitment {
   }
 }
 
-pub trait CommitTrait {
-  fn commit(&self, gens: &CommitGens) -> Commitment;
+pub trait CommitTrait<G: Group> {
+  fn commit(&self, gens: &CommitGens<G>) -> Commitment<G>;
 }
 
-impl CommitTrait for [Scalar] {
-  fn commit(&self, gens: &CommitGens) -> Commitment {
+impl<G: Group> CommitTrait<G> for [G::Scalar] {
+  fn commit(&self, gens: &CommitGens<G>) -> Commitment<G> {
     assert_eq!(gens.gens.len(), self.len());
     Commitment {
-      comm: GroupElement::vartime_multiscalar_mul(self, &gens.gens),
+      comm: G::vartime_multiscalar_mul(self, &gens.gens),
     }
-  }
-}
-
-pub trait ProofTranscriptTrait {
-  fn append_protocol_name(&mut self, protocol_name: &'static [u8]);
-  fn challenge_scalar(&mut self, label: &'static [u8]) -> Scalar;
-}
-
-impl ProofTranscriptTrait for Transcript {
-  fn append_protocol_name(&mut self, protocol_name: &'static [u8]) {
-    self.append_message(b"protocol-name", protocol_name);
-  }
-
-  fn challenge_scalar(&mut self, label: &'static [u8]) -> Scalar {
-    let mut buf = [0u8; 64];
-    self.challenge_bytes(label, &mut buf);
-    Scalar::from_bytes_mod_order_wide(&buf)
   }
 }
 
@@ -95,127 +75,73 @@ pub trait AppendToTranscriptTrait {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
 }
 
-impl AppendToTranscriptTrait for CompressedCommitment {
+impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    transcript.append_message(label, self.comm.compress().as_bytes());
+  }
+}
+
+impl<C: CompressedGroup> AppendToTranscriptTrait for CompressedCommitment<C> {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
     transcript.append_message(label, self.comm.as_bytes());
   }
 }
 
-impl<'b> MulAssign<&'b Scalar> for Commitment {
-  fn mul_assign(&mut self, scalar: &'b Scalar) {
-    let result = (self as &Commitment).comm * scalar;
+impl<'b, G: Group> MulAssign<&'b G::Scalar> for Commitment<G> {
+  fn mul_assign(&mut self, scalar: &'b G::Scalar) {
+    let result = (self as &Commitment<G>).comm * scalar;
     *self = Commitment { comm: result };
   }
 }
 
-impl<'a, 'b> Mul<&'b Scalar> for &'a Commitment {
-  type Output = Commitment;
-  fn mul(self, scalar: &'b Scalar) -> Commitment {
+impl<G: Group> Mul<G::Scalar> for Commitment<G> {
+  type Output = Commitment<G>;
+  fn mul(self, scalar: G::Scalar) -> Commitment<G> {
     Commitment {
       comm: self.comm * scalar,
     }
   }
 }
 
-impl<'a, 'b> Mul<&'b Commitment> for &'a Scalar {
-  type Output = Commitment;
-
-  fn mul(self, comm: &'b Commitment) -> Commitment {
-    Commitment {
-      comm: self * comm.comm,
-    }
-  }
-}
-
-macro_rules! define_mul_variants {
-  (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
-    impl<'b> Mul<&'b $rhs> for $lhs {
-      type Output = $out;
-      fn mul(self, rhs: &'b $rhs) -> $out {
-        &self * rhs
-      }
-    }
-
-    impl<'a> Mul<$rhs> for &'a $lhs {
-      type Output = $out;
-      fn mul(self, rhs: $rhs) -> $out {
-        self * &rhs
-      }
-    }
-
-    impl Mul<$rhs> for $lhs {
-      type Output = $out;
-      fn mul(self, rhs: $rhs) -> $out {
-        &self * &rhs
-      }
-    }
-  };
-}
-
-macro_rules! define_mul_assign_variants {
-  (LHS = $lhs:ty, RHS = $rhs:ty) => {
-    impl MulAssign<$rhs> for $lhs {
-      fn mul_assign(&mut self, rhs: $rhs) {
-        *self *= &rhs;
-      }
-    }
-  };
-}
-
-define_mul_assign_variants!(LHS = Commitment, RHS = Scalar);
-define_mul_variants!(LHS = Commitment, RHS = Scalar, Output = Commitment);
-define_mul_variants!(LHS = Scalar, RHS = Commitment, Output = Commitment);
-
-impl<'b> AddAssign<&'b Commitment> for Commitment {
-  fn add_assign(&mut self, other: &'b Commitment) {
-    let result = (self as &Commitment).comm + other.comm;
+impl<'b, G: Group> AddAssign<&'b Commitment<G>> for Commitment<G> {
+  fn add_assign(&mut self, other: &'b Commitment<G>) {
+    let result = (self as &Commitment<G>).comm + other.comm;
     *self = Commitment { comm: result };
   }
 }
 
-impl<'a, 'b> Add<&'b Commitment> for &'a Commitment {
-  type Output = Commitment;
-  fn add(self, other: &'b Commitment) -> Commitment {
+impl<'a, 'b, G: Group> Add<&'b Commitment<G>> for &'a Commitment<G> {
+  type Output = Commitment<G>;
+  fn add(self, other: &'b Commitment<G>) -> Commitment<G> {
     Commitment {
       comm: self.comm + other.comm,
     }
   }
 }
 
-macro_rules! define_add_variants {
-  (LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
-    impl<'b> Add<&'b $rhs> for $lhs {
-      type Output = $out;
-      fn add(self, rhs: &'b $rhs) -> $out {
-        &self + rhs
-      }
-    }
-
-    impl<'a> Add<$rhs> for &'a $lhs {
-      type Output = $out;
-      fn add(self, rhs: $rhs) -> $out {
-        self + &rhs
-      }
-    }
-
-    impl Add<$rhs> for $lhs {
-      type Output = $out;
-      fn add(self, rhs: $rhs) -> $out {
-        &self + &rhs
-      }
-    }
-  };
+impl<G: Group> AddAssign<Commitment<G>> for Commitment<G> {
+  fn add_assign(&mut self, rhs: Commitment<G>) {
+    *self += &rhs;
+  }
 }
 
-macro_rules! define_add_assign_variants {
-  (LHS = $lhs:ty, RHS = $rhs:ty) => {
-    impl AddAssign<$rhs> for $lhs {
-      fn add_assign(&mut self, rhs: $rhs) {
-        *self += &rhs;
-      }
-    }
-  };
+impl<'b, G: Group> Add<&'b Commitment<G>> for Commitment<G> {
+  type Output = Commitment<G>;
+  fn add(self, rhs: &'b Commitment<G>) -> Commitment<G> {
+    &self + rhs
+  }
 }
 
-define_add_assign_variants!(LHS = Commitment, RHS = Commitment);
-define_add_variants!(LHS = Commitment, RHS = Commitment, Output = Commitment);
+impl<'a, G: Group> Add<Commitment<G>> for &'a Commitment<G> {
+  type Output = Commitment<G>;
+  fn add(self, rhs: Commitment<G>) -> Commitment<G> {
+    self + &rhs
+  }
+}
+
+impl<G: Group> Add<Commitment<G>> for Commitment<G> {
+  type Output = Commitment<G>;
+  fn add(self, rhs: Commitment<G>) -> Commitment<G> {
+    &self + &rhs
+  }
+}
