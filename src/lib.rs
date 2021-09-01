@@ -8,7 +8,9 @@ mod errors;
 mod r1cs;
 mod traits;
 
-use commitments::{AppendToTranscriptTrait, Commitment};
+use std::marker::PhantomData;
+
+use commitments::{AppendToTranscriptTrait, CompressedCommitment};
 use errors::NovaError;
 use merlin::Transcript;
 use r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness};
@@ -16,7 +18,8 @@ use traits::{ChallengeTrait, Group};
 
 /// A SNARK that holds the proof of a step of an incremental computation
 pub struct StepSNARK<G: Group> {
-  comm_T: Commitment<G>,
+  comm_T: CompressedCommitment<G::CompressedGroupElement>,
+  _p: PhantomData<G>,
 }
 
 impl<G: Group> StepSNARK<G> {
@@ -52,13 +55,19 @@ impl<G: Group> StepSNARK<G> {
     let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r);
+    let U = U1.fold(U2, &comm_T, &r)?;
 
     // fold the witness using `r` and `T`
     let W = W1.fold(W2, &T, &r)?;
 
     // return the folded instance and witness
-    Ok((StepSNARK { comm_T }, (U, W)))
+    Ok((
+      StepSNARK {
+        comm_T,
+        _p: Default::default(),
+      },
+      (U, W),
+    ))
   }
 
   /// Takes as input two relaxed R1CS instances `U1` and `U2`
@@ -82,7 +91,7 @@ impl<G: Group> StepSNARK<G> {
     let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r);
+    let U = U1.fold(U2, &self.comm_T, &r)?;
 
     // return the folded instance
     Ok(U)
