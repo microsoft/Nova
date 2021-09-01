@@ -48,17 +48,13 @@ pub trait Group:
   + Debug
   + Eq
   + Sized
-  + Mul<<Self as Group>::Scalar, Output = Self>
-  + MulAssign<<Self as Group>::Scalar>
-  + for<'a> MulAssign<&'a <Self as Group>::Scalar>
-  + for<'a> Mul<&'a <Self as Group>::Scalar, Output = Self>
-  + Add<Self, Output = Self>
-  + AddAssign<Self>
-  + for<'a> AddAssign<&'a Self>
-  + for<'a> Add<&'a Self, Output = Self>
+  + GroupOps
+  + GroupOpsOwned
+  + ScalarMul<<Self as Group>::Scalar>
+  + ScalarMulOwned<<Self as Group>::Scalar>
 {
   type Scalar: PrimeField + ChallengeTrait;
-  type CompressedGroupElement: CompressedGroup;
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
@@ -86,3 +82,28 @@ pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + 'st
 pub trait ChallengeTrait {
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self;
 }
+
+/// A helper trait for types with a group operation.
+pub trait GroupOps<Rhs = Self, Output = Self>:
+  Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+impl<T, Rhs, Output> GroupOps<Rhs, Output> for T where
+  T: Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+/// A helper trait for references with a group operation.
+pub trait GroupOpsOwned<Rhs = Self, Output = Self>: for<'r> GroupOps<&'r Rhs, Output> {}
+impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<&'r Rhs, Output> {}
+
+/// A helper trait for types implementing group scalar multiplication.
+pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
+
+impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
+{}
+
+/// A helper trait for references implementing group scalar multiplication.
+pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
+impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
