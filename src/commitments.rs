@@ -94,8 +94,18 @@ impl<'b, G: Group> MulAssign<&'b G::Scalar> for Commitment<G> {
   }
 }
 
+impl<'a, 'b, G: Group> Mul<&'b G::Scalar> for &'a Commitment<G> {
+  type Output = Commitment<G>;
+  fn mul(self, scalar: &'b G::Scalar) -> Commitment<G> {
+    Commitment {
+      comm: self.comm * scalar,
+    }
+  }
+}
+
 impl<G: Group> Mul<G::Scalar> for Commitment<G> {
   type Output = Commitment<G>;
+
   fn mul(self, scalar: G::Scalar) -> Commitment<G> {
     Commitment {
       comm: self.comm * scalar,
@@ -119,29 +129,40 @@ impl<'a, 'b, G: Group> Add<&'b Commitment<G>> for &'a Commitment<G> {
   }
 }
 
-impl<G: Group> AddAssign<Commitment<G>> for Commitment<G> {
-  fn add_assign(&mut self, rhs: Commitment<G>) {
-    *self += &rhs;
-  }
+macro_rules! define_add_variants {
+  (G = $g:path, LHS = $lhs:ty, RHS = $rhs:ty, Output = $out:ty) => {
+    impl<'b, G: $g> Add<&'b $rhs> for $lhs {
+      type Output = $out;
+      fn add(self, rhs: &'b $rhs) -> $out {
+        &self + rhs
+      }
+    }
+
+    impl<'a, G: $g> Add<$rhs> for &'a $lhs {
+      type Output = $out;
+      fn add(self, rhs: $rhs) -> $out {
+        self + &rhs
+      }
+    }
+
+    impl<G: $g> Add<$rhs> for $lhs {
+      type Output = $out;
+      fn add(self, rhs: $rhs) -> $out {
+        &self + &rhs
+      }
+    }
+  };
 }
 
-impl<'b, G: Group> Add<&'b Commitment<G>> for Commitment<G> {
-  type Output = Commitment<G>;
-  fn add(self, rhs: &'b Commitment<G>) -> Commitment<G> {
-    &self + rhs
-  }
+macro_rules! define_add_assign_variants {
+  (G = $g:path, LHS = $lhs:ty, RHS = $rhs:ty) => {
+    impl<G: $g> AddAssign<$rhs> for $lhs {
+      fn add_assign(&mut self, rhs: $rhs) {
+        *self += &rhs;
+      }
+    }
+  };
 }
 
-impl<'a, G: Group> Add<Commitment<G>> for &'a Commitment<G> {
-  type Output = Commitment<G>;
-  fn add(self, rhs: Commitment<G>) -> Commitment<G> {
-    self + &rhs
-  }
-}
-
-impl<G: Group> Add<Commitment<G>> for Commitment<G> {
-  type Output = Commitment<G>;
-  fn add(self, rhs: Commitment<G>) -> Commitment<G> {
-    &self + &rhs
-  }
-}
+define_add_assign_variants!(G = Group, LHS = Commitment<G>, RHS = Commitment<G>);
+define_add_variants!(G = Group, LHS = Commitment<G>, RHS = Commitment<G>, Output = Commitment<G>);
