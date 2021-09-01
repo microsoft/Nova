@@ -15,7 +15,7 @@ Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
 Cryptology ePrint Archive: Report 2021/370
 
 ## Acknowledgements
-v0.1.0 includes code written by: Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla.
+v0.1.0 includes code written by: Abhiram Kothapalli, Srinath Setty, Ioanna Tzialla, and Friedel Ziegelmayer.
 
 ## Contributing
 
