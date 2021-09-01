@@ -1,7 +1,5 @@
 #![allow(clippy::type_complexity)]
-use crate::commitments::CompressedCommitment;
-
-use super::commitments::{CommitGens, CommitTrait, Commitment};
+use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use super::errors::NovaError;
 use super::traits::{Group, PrimeField};
 use itertools::concat;
