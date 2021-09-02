@@ -122,9 +122,9 @@ impl<G: Group> R1CSShape<G> {
           })
       };
 
-    let Az = sparse_matrix_vec_product(&self.A, self.num_cons, &z);
-    let Bz = sparse_matrix_vec_product(&self.B, self.num_cons, &z);
-    let Cz = sparse_matrix_vec_product(&self.C, self.num_cons, &z);
+    let Az = sparse_matrix_vec_product(&self.A, self.num_cons, z);
+    let Bz = sparse_matrix_vec_product(&self.B, self.num_cons, z);
+    let Cz = sparse_matrix_vec_product(&self.C, self.num_cons, z);
 
     Ok((Az, Bz, Cz))
   }
@@ -286,8 +286,8 @@ impl<G: Group> R1CSInstance<G> {
       Err(NovaError::InvalidInputLength)
     } else {
       Ok(R1CSInstance {
-        comm_W: comm_W.clone(),
-        comm_E: comm_E.clone(),
+        comm_W: *comm_W,
+        comm_E: *comm_E,
         X: X.to_owned(),
         u: *u,
       })
