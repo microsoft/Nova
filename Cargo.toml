@@ -8,7 +8,7 @@ documentation = "https://docs.rs/nova-snark/"
 readme = "README.md"
 repository = "https://github.com/Microsoft/Nova"
 license-file = "LICENSE"
-keywords = ["Recursive zkSNARKs", "cryptography", "proofs"]
+keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
 merlin = "2.0.0"
