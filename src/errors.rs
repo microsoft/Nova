@@ -1,5 +1,7 @@
+//! This module defines errors returned by the library.
 use core::fmt::Debug;
 
+/// Errors returned by Nova
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range

@@ -1,3 +1,4 @@
+//! This module defines R1CS related types and a folding scheme for (relaxed) R1CS
 #![allow(clippy::type_complexity)]
 use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use super::errors::NovaError;
@@ -5,11 +6,13 @@ use super::traits::{Group, PrimeField};
 use itertools::concat;
 use rayon::prelude::*;
 
+/// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
   gens_W: CommitGens<G>,
   gens_E: CommitGens<G>,
 }
 
+/// A type that holds the shape of the R1CS matrices
 #[derive(Debug)]
 pub struct R1CSShape<G: Group> {
   num_cons: usize,
@@ -20,12 +23,14 @@ pub struct R1CSShape<G: Group> {
   C: Vec<(usize, usize, G::Scalar)>,
 }
 
+/// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug)]
 pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
   E: Vec<G::Scalar>,
 }
 
+/// A type that holds an R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSInstance<G: Group> {
   comm_W: Commitment<G>,
@@ -35,6 +40,7 @@ pub struct R1CSInstance<G: Group> {
 }
 
 impl<G: Group> R1CSGens<G> {
+  /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
     // generators to commit to witness vector `W`
     let gens_W = CommitGens::new(b"gens_W", num_vars);
@@ -47,6 +53,7 @@ impl<G: Group> R1CSGens<G> {
 }
 
 impl<G: Group> R1CSShape<G> {
+  /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
     num_cons: usize,
     num_vars: usize,
@@ -129,6 +136,7 @@ impl<G: Group> R1CSShape<G> {
     Ok((Az, Bz, Cz))
   }
 
+  /// Checks if the R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat(
     &self,
     gens: &R1CSGens<G>,
@@ -175,6 +183,7 @@ impl<G: Group> R1CSShape<G> {
     }
   }
 
+  /// A method to compute a commitment to the cross-term `T` given two R1CS instance-witness pairs
   pub fn commit_T(
     &self,
     gens: &R1CSGens<G>,
@@ -227,6 +236,7 @@ impl<G: Group> R1CSShape<G> {
 }
 
 impl<G: Group> R1CSWitness<G> {
+  /// A method to create a witness object using a vector of scalars
   pub fn new(
     S: &R1CSShape<G>,
     W: &[G::Scalar],
@@ -242,10 +252,12 @@ impl<G: Group> R1CSWitness<G> {
     }
   }
 
+  /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
     (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
   }
 
+  /// Folds an incoming R1CSWitness into the current one
   pub fn fold(
     &self,
     W2: &R1CSWitness<G>,
@@ -275,6 +287,7 @@ impl<G: Group> R1CSWitness<G> {
 }
 
 impl<G: Group> R1CSInstance<G> {
+  /// A method to create an instance object using consitituent elements
   pub fn new(
     S: &R1CSShape<G>,
     comm_W: &Commitment<G>,
@@ -294,6 +307,7 @@ impl<G: Group> R1CSInstance<G> {
     }
   }
 
+  /// Folds an incoming R1CSInstance into the current one
   pub fn fold(
     &self,
     U2: &R1CSInstance<G>,

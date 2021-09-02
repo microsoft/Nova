@@ -1,3 +1,4 @@
+//! This module defines various traits required by the users of the library to implement.
 use core::borrow::Borrow;
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -53,9 +54,13 @@ pub trait Group:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
+  /// A type representing an element of the scalar field of the group
   type Scalar: PrimeField + ChallengeTrait;
+
+  /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
+  /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
     I: IntoIterator,
@@ -64,22 +69,29 @@ pub trait Group:
     J::Item: Borrow<Self>,
     Self: Clone;
 
+  /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
+  /// Attempts to create a group element from a sequence of bytes, 
+  /// failing with a `None` if the supplied bytes do not encode the group element
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
 }
 
 /// Represents a compressed version of a group element
 pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + 'static {
+  /// A type that holds the decompressed version of the compressed group element
   type GroupElement: Group;
 
+  /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
 
+  /// Returns a byte array representing the compressed group element
   fn as_bytes(&self) -> &[u8];
 }
 
 /// A helper trait to generate challenges using a transcript object
 pub trait ChallengeTrait {
+  /// Returns a Scalar representing the challenge using the transcript
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self;
 }
 

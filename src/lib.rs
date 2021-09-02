@@ -5,9 +5,9 @@
 #![deny(missing_docs)]
 
 mod commitments;
-mod errors;
-mod r1cs;
-mod traits;
+pub mod errors;
+pub mod r1cs;
+pub mod traits;
 
 use std::marker::PhantomData;
 
