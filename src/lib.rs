@@ -1,12 +1,12 @@
 //! This library implements core components of Nova.
 #![allow(non_snake_case)]
 #![feature(test)]
-#![deny(missing_docs)]
+//#![deny(missing_docs)]
 
 mod commitments;
 mod errors;
-mod r1cs;
-mod traits;
+pub mod r1cs;
+pub mod traits;
 
 use std::marker::PhantomData;
 
