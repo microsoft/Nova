@@ -2,7 +2,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![feature(test)]
-//#![deny(missing_docs)]
+#![deny(missing_docs)]
 
 mod commitments;
 pub mod errors;
@@ -102,7 +102,7 @@ impl<G: Group> StepSNARK<G> {
 
 /// A SNARK that holds the proof of the final step of an incremental computation
 pub struct FinalSNARK<G: Group> {
-  pub W: R1CSWitness<G>,
+  W: R1CSWitness<G>,
 }
 
 impl<G: Group> FinalSNARK<G> {
@@ -126,12 +126,11 @@ impl<G: Group> FinalSNARK<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::pasta::{PallasPoint, PallasScalar};
   use crate::traits::PrimeField;
   use rand::rngs::OsRng;
 
-  type S = PallasScalar;
-  type G = PallasPoint;
+  type S = pasta_curves::pallas::Scalar;
+  type G = pasta_curves::pallas::Point;
 
   #[test]
   fn test_tiny_r1cs() {
