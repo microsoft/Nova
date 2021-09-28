@@ -6,6 +6,7 @@
 
 mod commitments;
 pub mod errors;
+pub mod pasta;
 pub mod r1cs;
 pub mod traits;
 
@@ -125,88 +126,11 @@ impl<G: Group> FinalSNARK<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::traits::{CompressedGroup, Group, PrimeField};
-  use core::borrow::Borrow;
-  use curve25519_dalek::traits::MultiscalarMul;
-  use rand::{rngs::OsRng, CryptoRng, RngCore};
+  use crate::traits::PrimeField;
+  use rand::rngs::OsRng;
 
-  type S = curve25519_dalek::scalar::Scalar;
-  type G = curve25519_dalek::ristretto::RistrettoPoint;
-  type C = curve25519_dalek::ristretto::CompressedRistretto;
-
-  impl Group for G {
-    type Scalar = S;
-    type CompressedGroupElement = C;
-
-    fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-    where
-      I: IntoIterator,
-      I::Item: Borrow<Self::Scalar>,
-      J: IntoIterator,
-      J::Item: Borrow<Self>,
-      Self: Clone,
-    {
-      Self::multiscalar_mul(scalars, points)
-    }
-
-    fn compress(&self) -> Self::CompressedGroupElement {
-      self.compress()
-    }
-
-    fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
-      if bytes.len() != 64 {
-        None
-      } else {
-        let mut arr = [0; 64];
-        arr.copy_from_slice(&bytes[0..64]);
-        Some(Self::from_uniform_bytes(&arr))
-      }
-    }
-  }
-
-  impl PrimeField for S {
-    fn zero() -> Self {
-      S::zero()
-    }
-
-    fn one() -> Self {
-      S::one()
-    }
-
-    fn from_bytes_mod_order_wide(bytes: &[u8]) -> Option<Self> {
-      if bytes.len() != 64 {
-        None
-      } else {
-        let mut arr = [0; 64];
-        arr.copy_from_slice(&bytes[0..64]);
-        Some(Self::from_bytes_mod_order_wide(&arr))
-      }
-    }
-
-    fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
-      S::random(rng)
-    }
-  }
-
-  impl CompressedGroup for C {
-    type GroupElement = G;
-
-    fn decompress(&self) -> Option<Self::GroupElement> {
-      self.decompress()
-    }
-
-    fn as_bytes(&self) -> &[u8] {
-      self.as_bytes()
-    }
-  }
-
-  impl ChallengeTrait for S {
-    fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
-      let mut buf = [0u8; 64];
-      transcript.challenge_bytes(label, &mut buf);
-      S::from_bytes_mod_order_wide(&buf)
-    }
-  }
+  type S = pasta_curves::pallas::Scalar;
+  type G = pasta_curves::pallas::Point;
 
   #[test]
   fn test_tiny_r1cs() {
