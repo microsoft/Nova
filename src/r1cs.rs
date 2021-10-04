@@ -1,4 +1,4 @@
-//! This module defines R1CS related types and a folding scheme for (relaxed) R1CS
+//! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
 use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use super::errors::NovaError;
@@ -17,7 +17,7 @@ pub struct R1CSGens<G: Group> {
 pub struct R1CSShape<G: Group> {
   num_cons: usize,
   num_vars: usize,
-  num_inputs: usize,
+  num_io: usize,
   A: Vec<(usize, usize, G::Scalar)>,
   B: Vec<(usize, usize, G::Scalar)>,
   C: Vec<(usize, usize, G::Scalar)>,
@@ -27,16 +27,31 @@ pub struct R1CSShape<G: Group> {
 #[derive(Clone, Debug)]
 pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
-  E: Vec<G::Scalar>,
 }
 
 /// A type that holds an R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSInstance<G: Group> {
   comm_W: Commitment<G>,
+  X: Vec<G::Scalar>,
+}
+
+/// A type that holds a witness for a given Relaxed R1CS instance
+#[derive(Clone, Debug)]
+pub struct RelaxedR1CSWitness<G: Group> {
+  W: Vec<G::Scalar>,
+  E: Vec<G::Scalar>,
+}
+
+/// A type that holds a Relaxed R1CS instance
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RelaxedR1CSInstance<G: Group> {
+  comm_W: Commitment<G>,
   comm_E: Commitment<G>,
   X: Vec<G::Scalar>,
   u: G::Scalar,
+  Y_last: Vec<G::Scalar>, // output of the last instance that was folded
+  counter: usize,         // the number of folds thus far
 }
 
 impl<G: Group> R1CSGens<G> {
@@ -57,7 +72,7 @@ impl<G: Group> R1CSShape<G> {
   pub fn new(
     num_cons: usize,
     num_vars: usize,
-    num_inputs: usize,
+    num_io: usize,
     A: &[(usize, usize, G::Scalar)],
     B: &[(usize, usize, G::Scalar)],
     C: &[(usize, usize, G::Scalar)],
@@ -85,18 +100,23 @@ impl<G: Group> R1CSShape<G> {
       }
     };
 
-    let res_A = is_valid(num_cons, num_vars, num_inputs, A);
-    let res_B = is_valid(num_cons, num_vars, num_inputs, B);
-    let res_C = is_valid(num_cons, num_vars, num_inputs, C);
+    let res_A = is_valid(num_cons, num_vars, num_io, A);
+    let res_B = is_valid(num_cons, num_vars, num_io, B);
+    let res_C = is_valid(num_cons, num_vars, num_io, C);
 
     if res_A.is_err() || res_B.is_err() || res_C.is_err() {
       return Err(NovaError::InvalidIndex);
     }
 
+    // We require the number of public inputs/outputs to be even
+    if num_io % 2 != 0 {
+      return Err(NovaError::OddInputLength);
+    }
+
     let shape = R1CSShape {
       num_cons,
       num_vars,
-      num_inputs,
+      num_io,
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
@@ -109,7 +129,7 @@ impl<G: Group> R1CSShape<G> {
     &self,
     z: &[G::Scalar],
   ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
-    if z.len() != self.num_inputs + self.num_vars + 1 {
+    if z.len() != self.num_io + self.num_vars + 1 {
       return Err(NovaError::InvalidWitnessLength);
     }
 
@@ -136,16 +156,16 @@ impl<G: Group> R1CSShape<G> {
     Ok((Az, Bz, Cz))
   }
 
-  /// Checks if the R1CS instance is satisfiable given a witness and its shape
-  pub fn is_sat(
+  /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
+  pub fn is_sat_relaxed(
     &self,
     gens: &R1CSGens<G>,
-    U: &R1CSInstance<G>,
-    W: &R1CSWitness<G>,
+    U: &RelaxedR1CSInstance<G>,
+    W: &RelaxedR1CSWitness<G>,
   ) -> Result<(), NovaError> {
     assert_eq!(W.W.len(), self.num_vars);
     assert_eq!(W.E.len(), self.num_cons);
-    assert_eq!(U.X.len(), self.num_inputs);
+    assert_eq!(U.X.len(), self.num_io);
 
     // verify if Az * Bz = u*Cz + E
     let res_eq: bool = {
@@ -183,12 +203,48 @@ impl<G: Group> R1CSShape<G> {
     }
   }
 
-  /// A method to compute a commitment to the cross-term `T` given two R1CS instance-witness pairs
+  /// Checks if the R1CS instance is satisfiable given a witness and its shape
+  pub fn is_sat(
+    &self,
+    gens: &R1CSGens<G>,
+    U: &R1CSInstance<G>,
+    W: &R1CSWitness<G>,
+  ) -> Result<(), NovaError> {
+    assert_eq!(W.W.len(), self.num_vars);
+    assert_eq!(U.X.len(), self.num_io);
+
+    // verify if Az * Bz = u*Cz
+    let res_eq: bool = {
+      let z = concat(vec![W.W.clone(), vec![G::Scalar::one()], U.X.clone()]);
+      let (Az, Bz, Cz) = self.multiply_vec(&z)?;
+      assert_eq!(Az.len(), self.num_cons);
+      assert_eq!(Bz.len(), self.num_cons);
+      assert_eq!(Cz.len(), self.num_cons);
+
+      let res: usize = (0..self.num_cons)
+        .map(|i| if Az[i] * Bz[i] == Cz[i] { 0 } else { 1 })
+        .sum();
+
+      res == 0
+    };
+
+    // verify if comm_W is a commitment to W
+    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens_W);
+
+    if res_eq && res_comm {
+      Ok(())
+    } else {
+      Err(NovaError::UnSat)
+    }
+  }
+
+  /// A method to compute a commitment to the cross-term `T` given a
+  /// Relaxed R1CS instance-witness pair and an R1CS instance-witness pair
   pub fn commit_T(
     &self,
     gens: &R1CSGens<G>,
-    U1: &R1CSInstance<G>,
-    W1: &R1CSWitness<G>,
+    U1: &RelaxedR1CSInstance<G>,
+    W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
   ) -> Result<
@@ -204,7 +260,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     let (AZ_2, BZ_2, CZ_2) = {
-      let Z2 = concat(vec![W2.W.clone(), vec![U2.u], U2.X.clone()]);
+      let Z2 = concat(vec![W2.W.clone(), vec![G::Scalar::one()], U2.X.clone()]);
       self.multiply_vec(&Z2)?
     };
 
@@ -217,9 +273,7 @@ impl<G: Group> R1CSShape<G> {
     let u_1_cdot_CZ_2 = (0..CZ_2.len())
       .map(|i| U1.u * CZ_2[i])
       .collect::<Vec<G::Scalar>>();
-    let u_2_cdot_CZ_1 = (0..CZ_1.len())
-      .map(|i| U2.u * CZ_1[i])
-      .collect::<Vec<G::Scalar>>();
+    let u_2_cdot_CZ_1 = (0..CZ_1.len()).map(|i| CZ_1[i]).collect::<Vec<G::Scalar>>();
 
     let T = AZ_1_circ_BZ_2
       .par_iter()
@@ -237,18 +291,44 @@ impl<G: Group> R1CSShape<G> {
 
 impl<G: Group> R1CSWitness<G> {
   /// A method to create a witness object using a vector of scalars
-  pub fn new(
-    S: &R1CSShape<G>,
-    W: &[G::Scalar],
-    E: &[G::Scalar],
-  ) -> Result<R1CSWitness<G>, NovaError> {
-    if S.num_vars != W.len() || S.num_cons != E.len() {
+  pub fn new(S: &R1CSShape<G>, W: &[G::Scalar]) -> Result<R1CSWitness<G>, NovaError> {
+    if S.num_vars != W.len() {
       Err(NovaError::InvalidWitnessLength)
     } else {
-      Ok(R1CSWitness {
-        W: W.to_owned(),
-        E: E.to_owned(),
+      Ok(R1CSWitness { W: W.to_owned() })
+    }
+  }
+
+  /// Commits to the witness using the supplied generators
+  pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
+    self.W.commit(&gens.gens_W)
+  }
+}
+
+impl<G: Group> R1CSInstance<G> {
+  /// A method to create an instance object using consitituent elements
+  pub fn new(
+    S: &R1CSShape<G>,
+    comm_W: &Commitment<G>,
+    X: &[G::Scalar],
+  ) -> Result<R1CSInstance<G>, NovaError> {
+    if S.num_io != X.len() {
+      Err(NovaError::InvalidInputLength)
+    } else {
+      Ok(R1CSInstance {
+        comm_W: *comm_W,
+        X: X.to_owned(),
       })
+    }
+  }
+}
+
+impl<G: Group> RelaxedR1CSWitness<G> {
+  /// Produces a default RelaxedR1CSWitness given an R1CSShape
+  pub fn default(S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
+    RelaxedR1CSWitness {
+      W: vec![G::Scalar::zero(); S.num_vars],
+      E: vec![G::Scalar::zero(); S.num_cons],
     }
   }
 
@@ -263,9 +343,9 @@ impl<G: Group> R1CSWitness<G> {
     W2: &R1CSWitness<G>,
     T: &[G::Scalar],
     r: &G::Scalar,
-  ) -> Result<R1CSWitness<G>, NovaError> {
+  ) -> Result<RelaxedR1CSWitness<G>, NovaError> {
     let (W1, E1) = (&self.W, &self.E);
-    let (W2, E2) = (&W2.W, &W2.E);
+    let W2 = &W2.W;
 
     if W1.len() != W2.len() {
       return Err(NovaError::InvalidWitnessLength);
@@ -279,61 +359,68 @@ impl<G: Group> R1CSWitness<G> {
     let E = E1
       .par_iter()
       .zip(T)
-      .zip(E2)
-      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
+      .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
-    Ok(R1CSWitness { W, E })
+    Ok(RelaxedR1CSWitness { W, E })
   }
 }
 
-impl<G: Group> R1CSInstance<G> {
-  /// A method to create an instance object using consitituent elements
-  pub fn new(
-    S: &R1CSShape<G>,
-    comm_W: &Commitment<G>,
-    comm_E: &Commitment<G>,
-    X: &[G::Scalar],
-    u: &G::Scalar,
-  ) -> Result<R1CSInstance<G>, NovaError> {
-    if S.num_inputs != X.len() {
-      Err(NovaError::InvalidInputLength)
-    } else {
-      Ok(R1CSInstance {
-        comm_W: *comm_W,
-        comm_E: *comm_E,
-        X: X.to_owned(),
-        u: *u,
-      })
+impl<G: Group> RelaxedR1CSInstance<G> {
+  /// Produces a default RelaxedR1CSInstance given R1CSGens and R1CSShape
+  pub fn default(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
+    let (comm_W, comm_E) = RelaxedR1CSWitness::default(S).commit(gens);
+    RelaxedR1CSInstance {
+      comm_W,
+      comm_E,
+      u: G::Scalar::zero(),
+      X: vec![G::Scalar::zero(); S.num_io],
+      Y_last: vec![G::Scalar::zero(); S.num_io / 2],
+      counter: 0,
     }
   }
 
-  /// Folds an incoming R1CSInstance into the current one
+  /// Folds an incoming RelaxedR1CSInstance into the current one
   pub fn fold(
     &self,
     U2: &R1CSInstance<G>,
     comm_T: &CompressedCommitment<G::CompressedGroupElement>,
     r: &G::Scalar,
-  ) -> Result<R1CSInstance<G>, NovaError> {
+  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     let comm_T_unwrapped = comm_T.decompress()?;
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
-    let (X2, u2, comm_W_2, comm_E_2) = (&U2.X, &U2.u, &U2.comm_W, &U2.comm_E);
+    let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
 
-    // weighted sum of X
+    // check if the input of the incoming instance matches the output
+    // of the incremental computation thus far if counter > 0
+    if self.counter > 0 {
+      if self.Y_last.len() != U2.X.len() / 2 {
+        return Err(NovaError::InvalidInputLength);
+      }
+      for i in 0..self.Y_last.len() {
+        if self.Y_last[i] != U2.X[i] {
+          return Err(NovaError::InvalidInputLength);
+        }
+      }
+    }
+
+    // weighted sum of X, comm_W, comm_E, and u
     let X = X1
       .par_iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
     let comm_W = comm_W_1 + comm_W_2 * r;
-    let comm_E = *comm_E_1 + comm_T_unwrapped * *r + comm_E_2 * r * *r;
-    let u = *u1 + *r * *u2;
+    let comm_E = *comm_E_1 + comm_T_unwrapped * *r;
+    let u = *u1 + *r;
 
-    Ok(R1CSInstance {
+    Ok(RelaxedR1CSInstance {
       comm_W,
       comm_E,
       X,
       u,
+      Y_last: U2.X[U2.X.len() / 2..].to_owned(),
+      counter: self.counter + 1,
     })
   }
 }

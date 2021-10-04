@@ -6,6 +6,8 @@ use core::fmt::Debug;
 pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range
   InvalidIndex,
+  /// returned if the supplied input is not even-sized
+  OddInputLength,
   /// returned if the supplied input is not of the right length
   InvalidInputLength,
   /// returned if the supplied witness is not of the right length
