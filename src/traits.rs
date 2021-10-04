@@ -72,7 +72,7 @@ pub trait Group:
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
-  /// Attempts to create a group element from a sequence of bytes, 
+  /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
 }

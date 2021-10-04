@@ -15,7 +15,9 @@ use std::marker::PhantomData;
 use commitments::{AppendToTranscriptTrait, CompressedCommitment};
 use errors::NovaError;
 use merlin::Transcript;
-use r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness};
+use r1cs::{
+  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
+};
 use traits::{ChallengeTrait, Group};
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -29,20 +31,27 @@ impl<G: Group> StepSNARK<G> {
     b"NovaStepSNARK"
   }
 
-  /// Takes as input two relaxed R1CS instance-witness tuples `(U1, W1)` and `(U2, W2)`
-  /// with the same structure `shape` and defined with respect to the same `gens`,
-  /// and outputs a folded instance-witness tuple `(U, W)` of the same shape `shape`,
+  /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
+  /// an R1CS instance-witness tuple `(U2, W2)` with the same structure `shape`
+  /// and defined with respect to the same `gens`, and outputs
+  /// a folded Relaxed R1CS instance-witness tuple `(U, W)` of the same shape `shape`,
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
     gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
-    U1: &R1CSInstance<G>,
-    W1: &R1CSWitness<G>,
+    U1: &RelaxedR1CSInstance<G>,
+    W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
     transcript: &mut Transcript,
-  ) -> Result<(StepSNARK<G>, (R1CSInstance<G>, R1CSWitness<G>)), NovaError> {
+  ) -> Result<
+    (
+      StepSNARK<G>,
+      (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>),
+    ),
+    NovaError,
+  > {
     // append the protocol name to the transcript
     //transcript.append_protocol_name(StepSNARK::protocol_name());
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
@@ -72,17 +81,17 @@ impl<G: Group> StepSNARK<G> {
     ))
   }
 
-  /// Takes as input two relaxed R1CS instances `U1` and `U2`
+  /// Takes as input a relaxed R1CS instance `U1` and and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,
   /// and outputs a folded instance `U` with the same shape,
   /// with the guarantee that the folded instance `U`
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
-    U1: &R1CSInstance<G>,
+    U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
     transcript: &mut Transcript,
-  ) -> Result<R1CSInstance<G>, NovaError> {
+  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
 
@@ -102,12 +111,12 @@ impl<G: Group> StepSNARK<G> {
 
 /// A SNARK that holds the proof of the final step of an incremental computation
 pub struct FinalSNARK<G: Group> {
-  W: R1CSWitness<G>,
+  W: RelaxedR1CSWitness<G>,
 }
 
 impl<G: Group> FinalSNARK<G> {
   /// Produces a proof of a instance given its satisfying witness `W`.
-  pub fn prove(W: &R1CSWitness<G>) -> Result<FinalSNARK<G>, NovaError> {
+  pub fn prove(W: &RelaxedR1CSWitness<G>) -> Result<FinalSNARK<G>, NovaError> {
     Ok(FinalSNARK { W: W.clone() })
   }
 
@@ -116,10 +125,10 @@ impl<G: Group> FinalSNARK<G> {
     &self,
     gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
-    U: &R1CSInstance<G>,
+    U: &RelaxedR1CSInstance<G>,
   ) -> Result<(), NovaError> {
     // check that the witness is a valid witness to the folded instance `U`
-    S.is_sat(gens, U, &self.W)
+    S.is_sat_relaxed(gens, U, &self.W)
   }
 }
 
@@ -135,16 +144,17 @@ mod tests {
   #[test]
   fn test_tiny_r1cs() {
     let one = S::one();
-    let (num_cons, num_vars, num_inputs, A, B, C) = {
+    let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
       let num_vars = 4;
-      let num_inputs = 1;
+      let num_io = 2;
 
+      // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       // The R1CS for this problem consists of the following constraints:
-      // `Z0 * Z0 - Z1 = 0`
-      // `Z1 * Z0 - Z2 = 0`
-      // `(Z2 + Z0) * 1 - Z3 = 0`
-      // `(Z3 + 5) * 1 - I0 = 0`
+      // `I0 * I0 - Z0 = 0`
+      // `Z0 * I0 - Z1 = 0`
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      // `(Z2 + 5) * 1 - I1 = 0`
 
       // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
       // constraint and a column for every entry in z = (vars, u, inputs)
@@ -155,33 +165,37 @@ mod tests {
       let mut C: Vec<(usize, usize, S)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
-      A.push((0, 0, one));
-      B.push((0, 0, one));
-      C.push((0, 1, one));
+      // `I0 * I0 - Z0 = 0`
+      A.push((0, num_vars + 1, one));
+      B.push((0, num_vars + 1, one));
+      C.push((0, 0, one));
 
       // constraint 1 entries in (A,B,C)
-      A.push((1, 1, one));
-      B.push((1, 0, one));
-      C.push((1, 2, one));
+      // `Z0 * I0 - Z1 = 0`
+      A.push((1, 0, one));
+      B.push((1, num_vars + 1, one));
+      C.push((1, 1, one));
 
       // constraint 2 entries in (A,B,C)
-      A.push((2, 2, one));
-      A.push((2, 0, one));
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      A.push((2, 1, one));
+      A.push((2, num_vars + 1, one));
       B.push((2, num_vars, one));
-      C.push((2, 3, one));
+      C.push((2, 2, one));
 
       // constraint 3 entries in (A,B,C)
-      A.push((3, 3, one));
+      // `(Z2 + 5) * 1 - I1 = 0`
+      A.push((3, 2, one));
       A.push((3, num_vars, one + one + one + one + one));
       B.push((3, num_vars, one));
-      C.push((3, num_vars + 1, one));
+      C.push((3, num_vars + 2, one));
 
-      (num_cons, num_vars, num_inputs, A, B, C)
+      (num_cons, num_vars, num_io, A, B, C)
     };
 
     // create a shape object
     let S = {
-      let res = R1CSShape::new(num_cons, num_vars, num_inputs, &A, &B, &C);
+      let res = R1CSShape::new(num_cons, num_vars, num_io, &A, &B, &C);
       assert!(res.is_ok());
       res.unwrap()
     };
@@ -189,64 +203,90 @@ mod tests {
     // generate generators
     let gens = R1CSGens::new(num_cons, num_vars);
 
-    let rand_inst_witness_generator = |gens: &R1CSGens<G>| -> (R1CSInstance<G>, R1CSWitness<G>) {
-      // compute a satisfying (vars, X) tuple
-      let (vars, X) = {
-        let mut csprng: OsRng = OsRng;
-        let z0 = S::random(&mut csprng);
-        let z1 = z0 * z0; // constraint 0
-        let z2 = z1 * z0; // constraint 1
-        let z3 = z2 + z0; // constraint 2
-        let i0 = z3 + one + one + one + one + one; // constraint 3
+    let rand_inst_witness_generator =
+      |gens: &R1CSGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
+        let i0 = I.clone();
 
-        let vars = vec![z0, z1, z2, z3];
-        let X = vec![i0];
-        (vars, X)
+        // compute a satisfying (vars, X) tuple
+        let (O, vars, X) = {
+          let z0 = i0 * i0; // constraint 0
+          let z1 = i0 * z0; // constraint 1
+          let z2 = z1 + i0; // constraint 2
+          let i1 = z2 + one + one + one + one + one; // constraint 3
+
+          // store the witness and IO for the instance
+          let W = vec![z0, z1, z2, S::zero()];
+          let X = vec![i0, i1];
+          (i1, W, X)
+        };
+
+        let W = {
+          let res = R1CSWitness::new(&S, &vars);
+          assert!(res.is_ok());
+          res.unwrap()
+        };
+        let U = {
+          let comm_W = W.commit(&gens);
+          let res = R1CSInstance::new(&S, &comm_W, &X);
+          assert!(res.is_ok());
+          res.unwrap()
+        };
+
+        // check that generated instance is satisfiable
+        assert!(S.is_sat(&gens, &U, &W).is_ok());
+
+        (O, U, W)
       };
 
-      let W = {
-        let E = vec![S::zero(); num_cons]; // default E
-        let res = R1CSWitness::new(&S, &vars, &E);
-        assert!(res.is_ok());
-        res.unwrap()
-      };
-      let U = {
-        let (comm_W, comm_E) = W.commit(&gens);
-        let u = S::one(); //default u
-        let res = R1CSInstance::new(&S, &comm_W, &comm_E, &X, &u);
-        assert!(res.is_ok());
-        res.unwrap()
-      };
+    let mut csprng: OsRng = OsRng;
+    let I = S::random(&mut csprng); // the first input is picked randomly for the first instance
+    let (O, U1, W1) = rand_inst_witness_generator(&gens, &I);
+    let (_O, U2, W2) = rand_inst_witness_generator(&gens, &O);
 
-      // check that generated instance is satisfiable
-      let is_sat = S.is_sat(&gens, &U, &W);
-      assert!(is_sat.is_ok());
-      (U, W)
-    };
+    // produce a default running instance
+    let mut r_W = RelaxedR1CSWitness::default(&S);
+    let mut r_U = RelaxedR1CSInstance::default(&gens, &S);
 
-    let (U1, W1) = rand_inst_witness_generator(&gens);
-    let (U2, W2) = rand_inst_witness_generator(&gens);
-
-    // produce a step SNARK
+    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let mut prover_transcript = Transcript::new(b"StepSNARKExample");
-    let res = StepSNARK::prove(&gens, &S, &U1, &W1, &U2, &W2, &mut prover_transcript);
+    let res = StepSNARK::prove(&gens, &S, &r_U, &r_W, &U1, &W1, &mut prover_transcript);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
-    // verify the step SNARK
+    // verify the step SNARK with U1 as the first incoming instance
     let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
-    let res = step_snark.verify(&U1, &U2, &mut verifier_transcript);
+    let res = step_snark.verify(&r_U, &U1, &mut verifier_transcript);
     assert!(res.is_ok());
     let U = res.unwrap();
 
     assert_eq!(U, _U);
 
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
+    // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
+    let res = StepSNARK::prove(&gens, &S, &r_U, &r_W, &U2, &W2, &mut prover_transcript);
+    assert!(res.is_ok());
+    let (step_snark, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let res = step_snark.verify(&r_U, &U2, &mut verifier_transcript);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
     // produce a final SNARK
-    let res = FinalSNARK::prove(&W);
+    let res = FinalSNARK::prove(&r_W);
     assert!(res.is_ok());
     let final_snark = res.unwrap();
     // verify the final SNARK
-    let res = final_snark.verify(&gens, &S, &U);
+    let res = final_snark.verify(&gens, &S, &r_U);
     assert!(res.is_ok());
   }
 }
