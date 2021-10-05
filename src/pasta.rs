@@ -78,7 +78,7 @@ impl ChallengeTrait for pallas::Scalar {
 impl CompressedGroup for <pallas::Point as GroupEncoding>::Repr {
   type GroupElement = pallas::Point;
   fn decompress(&self) -> Option<<Self as CompressedGroup>::GroupElement> {
-    Some(Ep::from_bytes(&self).unwrap())
+    Some(Ep::from_bytes(self).unwrap())
   }
   fn as_bytes(&self) -> &[u8] {
     self

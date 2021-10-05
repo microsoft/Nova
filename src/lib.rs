@@ -205,7 +205,7 @@ mod tests {
 
     let rand_inst_witness_generator =
       |gens: &R1CSGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
-        let i0 = I.clone();
+        let i0 = *I;
 
         // compute a satisfying (vars, X) tuple
         let (O, vars, X) = {
@@ -226,14 +226,14 @@ mod tests {
           res.unwrap()
         };
         let U = {
-          let comm_W = W.commit(&gens);
+          let comm_W = W.commit(gens);
           let res = R1CSInstance::new(&S, &comm_W, &X);
           assert!(res.is_ok());
           res.unwrap()
         };
 
         // check that generated instance is satisfiable
-        assert!(S.is_sat(&gens, &U, &W).is_ok());
+        assert!(S.is_sat(gens, &U, &W).is_ok());
 
         (O, U, W)
       };
