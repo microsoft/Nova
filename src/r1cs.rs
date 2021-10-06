@@ -399,7 +399,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       }
       for i in 0..self.Y_last.len() {
         if self.Y_last[i] != U2.X[i] {
-          return Err(NovaError::InvalidInputLength);
+          return Err(NovaError::InputOutputMismatch);
         }
       }
     }
