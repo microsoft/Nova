@@ -7,13 +7,14 @@ use itertools::concat;
 use rayon::prelude::*;
 
 /// Public parameters for a given R1CS
+#[derive(Debug)]
 pub struct R1CSGens<G: Group> {
   gens_W: CommitGens<G>,
   gens_E: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSShape<G: Group> {
   num_cons: usize,
   num_vars: usize,
@@ -24,7 +25,7 @@ pub struct R1CSShape<G: Group> {
 }
 
 /// A type that holds a witness for a given R1CS instance
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
@@ -37,7 +38,7 @@ pub struct R1CSInstance<G: Group> {
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
   E: Vec<G::Scalar>,
