@@ -5,6 +5,8 @@
 #![deny(missing_docs)]
 
 mod commitments;
+
+pub mod bellperson;
 pub mod errors;
 pub mod pasta;
 pub mod r1cs;
