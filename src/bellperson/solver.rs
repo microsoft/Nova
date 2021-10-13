@@ -8,7 +8,7 @@ use bellperson::{
 };
 
 /// A `ConstraintSystem` which calculates witness values for a concrete instance of an R1CS circuit.
-pub struct ProvingAssignment<G: Group>
+pub struct SatisfyingAssignment<G: Group>
 where
   G::Scalar: PrimeField,
 {
@@ -28,13 +28,13 @@ where
 }
 use std::fmt;
 
-impl<G: Group> fmt::Debug for ProvingAssignment<G>
+impl<G: Group> fmt::Debug for SatisfyingAssignment<G>
 where
   G::Scalar: PrimeField,
 {
   fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     fmt
-      .debug_struct("ProvingAssignment")
+      .debug_struct("SatisfyingAssignment")
       .field("a_aux_density", &self.a_aux_density)
       .field("b_input_density", &self.b_input_density)
       .field("b_aux_density", &self.b_aux_density)
@@ -68,11 +68,11 @@ where
   }
 }
 
-impl<G: Group> PartialEq for ProvingAssignment<G>
+impl<G: Group> PartialEq for SatisfyingAssignment<G>
 where
   G::Scalar: PrimeField,
 {
-  fn eq(&self, other: &ProvingAssignment<G>) -> bool {
+  fn eq(&self, other: &SatisfyingAssignment<G>) -> bool {
     self.a_aux_density == other.a_aux_density
       && self.b_input_density == other.b_input_density
       && self.b_aux_density == other.b_aux_density
@@ -84,7 +84,7 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for ProvingAssignment<G>
+impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G>
 where
   G::Scalar: PrimeField,
 {
