@@ -2,8 +2,8 @@
 
 #![allow(non_snake_case)]
 
-use super::prover::ProvingAssignment;
 use super::shape_cs::ShapeCS;
+use super::solver::SatisfyingAssignment;
 use bellperson::{Index, LinearCombination};
 
 use ff::PrimeField;
@@ -16,7 +16,7 @@ use crate::{
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<G: Group> {
-    /// Return an instance and witness, given a shape and gens.
+  /// Return an instance and witness, given a shape and gens.
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<G>,
@@ -26,13 +26,13 @@ pub trait NovaWitness<G: Group> {
 
 /// `NovaShape` provides methods for acquiring `R1CSShape` and `R1CSGens` from implementers.
 pub trait NovaShape<G: Group> {
-    /// Return an appropriate `R1CSShape` struct.
+  /// Return an appropriate `R1CSShape` struct.
   fn r1cs_shape(&self) -> R1CSShape<G>;
-    /// Return an appropriate `R1CSGens` struct.
+  /// Return an appropriate `R1CSGens` struct.
   fn r1cs_gens(&self) -> R1CSGens<G>;
 }
 
-impl<G: Group> NovaWitness<G> for ProvingAssignment<G>
+impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G>
 where
   G::Scalar: PrimeField,
 {
