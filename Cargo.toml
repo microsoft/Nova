@@ -11,7 +11,7 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson =  { git = "https://github.com/filecoin-project/bellperson", branch = "nova-minimal" }
+bellperson =  { git = "https://github.com/filecoin-project/bellperson" }
 ff = "0.11.0"
 merlin = "2.0.0"
 rand = "0.8.4"
