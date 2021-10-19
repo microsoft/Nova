@@ -45,7 +45,7 @@ impl Ord for OrderedVariable {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-/// TODO: document
+/// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
 pub struct ShapeCS<G: Group>
 where
   G::Scalar: PrimeField + Field,
@@ -53,7 +53,7 @@ where
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
   #[allow(clippy::type_complexity)]
-  /// TODO: document
+  /// All constraints added to the `ShapeCS`.
   pub constraints: Vec<(
     LinearCombination<G::Scalar>,
     LinearCombination<G::Scalar>,
@@ -94,38 +94,27 @@ impl<G: Group> ShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
-  /// TODO: document
+  /// Create a new, default `ShapeCS`,
   pub fn new() -> Self {
     ShapeCS::default()
   }
 
-  // pub fn constraints(
-  //     &self,
-  // ) -> Vec<(
-  //     LinearCombination<G::Scalar>,
-  //     LinearCombination<G::Scalar>,
-  //     LinearCombination<G::Scalar>,
-  //     String,
-  // )> {
-  //     self.constraints.clone()
-  // }
-
-  /// TODO: document
+  /// Returns the number of constraints defined for this `ShapeCS`.
   pub fn num_constraints(&self) -> usize {
     self.constraints.len()
   }
 
-  /// TODO: document
+  /// Returns the number of inputs defined for this `ShapeCS`.
   pub fn num_inputs(&self) -> usize {
     self.inputs.len()
   }
 
-  /// TODO: document
+  /// Returns the number of aux inputs defined for this `ShapeCS`.
   pub fn num_aux(&self) -> usize {
     self.aux.len()
   }
 
-  /// TODO: document
+  /// Print all public inputs, aux inputs, and constraint names.
   pub fn pretty_print_list(&self) -> Vec<String> {
     let mut result = Vec::new();
 
@@ -143,7 +132,7 @@ where
     result
   }
 
-  /// TODO: document
+  /// Print all iputs and a detailed representation of each constraint.
   pub fn pretty_print(&self) -> String {
     let mut s = String::new();
 
@@ -211,7 +200,8 @@ where
     s
   }
 
-  /// TODO: document
+  /// Associate `NamedObject` with `path`.
+  /// `path` must not already have an associated object.
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
     assert!(
       !self.named_objects.contains_key(&path),
