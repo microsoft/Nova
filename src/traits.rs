@@ -40,6 +40,12 @@ pub trait PrimeField:
 
   /// returns an uniformly random element from the finite field
   fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self;
+
+  /// returns the inverse of the supplied element
+  fn inverse(&self) -> Option<Self>;
+
+  /// Returns a byte array representing the scalar
+  fn as_bytes(&self) -> Vec<u8>;
 }
 
 /// Represents an element of a group
@@ -75,6 +81,9 @@ pub trait Group:
   /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
+
+  /// Returns the generator identity of the group
+  fn gen() -> Self;
 }
 
 /// Represents a compressed version of a group element

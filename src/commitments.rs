@@ -1,5 +1,5 @@
 use super::errors::NovaError;
-use super::traits::{CompressedGroup, Group};
+use super::traits::{CompressedGroup, Group, PrimeField};
 use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, MulAssign};
 use digest::{ExtendableOutput, Input};
@@ -7,7 +7,7 @@ use merlin::Transcript;
 use sha3::Shake256;
 use std::io::Read;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommitGens<G: Group> {
   gens: Vec<G>,
 }
@@ -35,6 +35,67 @@ impl<G: Group> CommitGens<G> {
     }
 
     CommitGens { gens }
+  }
+
+  pub fn len(&self) -> usize {
+    self.gens.len()
+  }
+
+  pub fn split_at(&self, n: usize) -> (CommitGens<G>, CommitGens<G>) {
+    let mut gens = self.gens.clone();
+    let (left, right) = gens.split_at_mut(n);
+    (
+      CommitGens {
+        gens: left.to_vec(),
+      },
+      CommitGens {
+        gens: right.to_vec(),
+      },
+    )
+  }
+
+  pub fn combine(&self, other: &CommitGens<G>) -> CommitGens<G> {
+    let gens = {
+      let mut c = self.gens.clone();
+      c.extend(&other.gens);
+      c
+    };
+    CommitGens { gens }
+  }
+
+  // combines the left and right halves of `self` using `w1` and `w2` as the weights
+  pub fn fold(&mut self, w1: &G::Scalar, w2: &G::Scalar) {
+    let w = vec![w1.clone(), w2.clone()];
+    let (L, R) = self.split_at(self.len() / 2);
+
+    let gens = (0..self.len() / 2)
+      .map(|i| {
+        let gens = CommitGens {
+          gens: vec![L.gens[i], R.gens[i]],
+        };
+        w.commit(&gens).comm
+      })
+      .collect();
+
+    self.gens = gens;
+  }
+
+  /// returns a singleton vector of generators where the entry is r * G, where G is the generator of the group
+  pub fn from_scalar(r: &G::Scalar) -> Self {
+    CommitGens {
+      gens: vec![G::gen().mul(r)],
+    }
+  }
+
+  /// reinterprets a vector of commitments as a set of generators
+  pub fn reinterpret_commitments_as_gens(
+    c: &Vec<CompressedCommitment<G::CompressedGroupElement>>,
+  ) -> Result<Self, NovaError> {
+    let d = (0..c.len())
+      .map(|i| c[i].decompress())
+      .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
+    let gens = (0..d.len()).map(|i| d[i].comm).collect();
+    Ok(CommitGens { gens })
   }
 }
 
@@ -64,9 +125,9 @@ pub trait CommitTrait<G: Group> {
 
 impl<G: Group> CommitTrait<G> for [G::Scalar] {
   fn commit(&self, gens: &CommitGens<G>) -> Commitment<G> {
-    assert_eq!(gens.gens.len(), self.len());
+    assert!(gens.gens.len() >= self.len());
     Commitment {
-      comm: G::vartime_multiscalar_mul(self, &gens.gens),
+      comm: G::vartime_multiscalar_mul(self, &gens.gens[0..self.len()]),
     }
   }
 }
@@ -84,6 +145,12 @@ impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
 impl<C: CompressedGroup> AppendToTranscriptTrait for CompressedCommitment<C> {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
     transcript.append_message(label, self.comm.as_bytes());
+  }
+}
+
+impl<S: PrimeField> AppendToTranscriptTrait for S {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    transcript.append_message(label, &self.as_bytes());
   }
 }
 

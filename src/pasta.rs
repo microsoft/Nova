@@ -1,12 +1,12 @@
 //! This module implements the Nova traits for pallas::Point and pallas::Scalar.
 use crate::traits::{ChallengeTrait, CompressedGroup, Group, PrimeField};
+use core::borrow::Borrow;
+use core::ops::Mul;
 use merlin::Transcript;
-use pasta_curves::arithmetic::{CurveExt, FieldExt, Group as Grp};
-use pasta_curves::group::GroupEncoding;
+use pasta_curves::arithmetic::{CurveExt, Field, FieldExt, Group as Grp};
+use pasta_curves::group::{Group as GrpTrait, GroupEncoding};
 use pasta_curves::{self, pallas, Ep, Fq};
 use rand::{CryptoRng, RngCore};
-use std::borrow::Borrow;
-use std::ops::Mul;
 
 impl Group for pallas::Point {
   type Scalar = pallas::Scalar;
@@ -43,6 +43,10 @@ impl Group for pallas::Point {
       Some(hash(&arr))
     }
   }
+
+  fn gen() -> Self {
+    pallas::Point::generator()
+  }
 }
 
 impl PrimeField for pallas::Scalar {
@@ -64,6 +68,14 @@ impl PrimeField for pallas::Scalar {
 
   fn random(_rng: &mut (impl RngCore + CryptoRng)) -> Self {
     Fq::rand()
+  }
+
+  fn inverse(&self) -> Option<Self> {
+    Some(self.invert().unwrap())
+  }
+
+  fn as_bytes(&self) -> Vec<u8> {
+    self.to_bytes().to_vec()
   }
 }
 

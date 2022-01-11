@@ -1,16 +1,24 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
-use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
+use super::commitments::{
+  AppendToTranscriptTrait, CommitGens, CommitTrait, Commitment, CompressedCommitment,
+};
 use super::errors::NovaError;
-use super::traits::{Group, PrimeField};
+use super::ipa::{
+  FinalInnerProductArgument, FinalInnerProductArgumentAux, InnerProductInstance,
+  InnerProductWitness, StepInnerProductArgument,
+};
+use super::traits::{ChallengeTrait, Group, PrimeField};
+use core::cmp::max;
 use itertools::concat;
+use merlin::Transcript;
 use rayon::prelude::*;
 
 /// Public parameters for a given R1CS
 #[derive(Debug)]
 pub struct R1CSGens<G: Group> {
-  gens_W: CommitGens<G>,
-  gens_E: CommitGens<G>,
+  gens: CommitGens<G>,
+  gens_aux: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
@@ -58,13 +66,13 @@ pub struct RelaxedR1CSInstance<G: Group> {
 impl<G: Group> R1CSGens<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
-    // generators to commit to witness vector `W`
-    let gens_W = CommitGens::new(b"gens_W", num_vars);
+    // generators to commit to witness vector `W` and slack vector `E`
+    let gens = CommitGens::new(b"gens", max(num_vars, num_cons));
 
-    // generators to commit to the error/slack vector `E`
-    let gens_E = CommitGens::new(b"gens_E", num_cons);
+    // generators to commit to auxiliary vectors
+    let gens_aux = CommitGens::new(b"gens_aux", max(num_vars, num_cons));
 
-    R1CSGens { gens_E, gens_W }
+    R1CSGens { gens, gens_aux }
   }
 }
 
@@ -126,7 +134,38 @@ impl<G: Group> R1CSShape<G> {
     Ok(shape)
   }
 
-  fn multiply_vec(
+  fn multiply_left(
+    &self,
+    r: &[G::Scalar],
+  ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
+    if r.len() != self.num_cons {
+      return Err(NovaError::InvalidRandomVectorLength);
+    }
+
+    // computes a product between a random vector `r` and a sparse matrix `M`
+    // This does not perform any validation of entries in M (e.g., if entries in `M` reference indexes outside the range of `r`)
+    // This is safe since we know that `M` is valid
+    let vec_sparse_matrix_product =
+      |r: &[G::Scalar], M: &Vec<(usize, usize, G::Scalar)>, num_cols| -> Vec<G::Scalar> {
+        (0..M.len())
+          .map(|i| {
+            let (row, col, val) = M[i];
+            (col, r[row] * val)
+          })
+          .fold(vec![G::Scalar::zero(); num_cols], |mut rM, (c, v)| {
+            rM[c] += v;
+            rM
+          })
+      };
+
+    let rA = vec_sparse_matrix_product(r, &self.A, self.num_vars + 1 + self.num_io);
+    let rB = vec_sparse_matrix_product(r, &self.B, self.num_vars + 1 + self.num_io);
+    let rC = vec_sparse_matrix_product(r, &self.C, self.num_vars + 1 + self.num_io);
+
+    Ok((rA, rB, rC))
+  }
+
+  fn multiply_right(
     &self,
     z: &[G::Scalar],
   ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
@@ -171,7 +210,7 @@ impl<G: Group> R1CSShape<G> {
     // verify if Az * Bz = u*Cz + E
     let res_eq: bool = {
       let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
-      let (Az, Bz, Cz) = self.multiply_vec(&z)?;
+      let (Az, Bz, Cz) = self.multiply_right(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
@@ -191,8 +230,8 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
-      let comm_W = W.W.commit(&gens.gens_W);
-      let comm_E = W.E.commit(&gens.gens_E);
+      let comm_W = W.W.commit(&gens.gens);
+      let comm_E = W.E.commit(&gens.gens);
 
       U.comm_W == comm_W && U.comm_E == comm_E
     };
@@ -217,7 +256,7 @@ impl<G: Group> R1CSShape<G> {
     // verify if Az * Bz = u*Cz
     let res_eq: bool = {
       let z = concat(vec![W.W.clone(), vec![G::Scalar::one()], U.X.clone()]);
-      let (Az, Bz, Cz) = self.multiply_vec(&z)?;
+      let (Az, Bz, Cz) = self.multiply_right(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
@@ -230,7 +269,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens_W);
+    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens);
 
     if res_eq && res_comm {
       Ok(())
@@ -257,12 +296,12 @@ impl<G: Group> R1CSShape<G> {
   > {
     let (AZ_1, BZ_1, CZ_1) = {
       let Z1 = concat(vec![W1.W.clone(), vec![U1.u], U1.X.clone()]);
-      self.multiply_vec(&Z1)?
+      self.multiply_right(&Z1)?
     };
 
     let (AZ_2, BZ_2, CZ_2) = {
       let Z2 = concat(vec![W2.W.clone(), vec![G::Scalar::one()], U2.X.clone()]);
-      self.multiply_vec(&Z2)?
+      self.multiply_right(&Z2)?
     };
 
     let AZ_1_circ_BZ_2 = (0..AZ_1.len())
@@ -284,7 +323,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens_E).compress();
+    let comm_T = T.commit(&gens.gens).compress();
 
     Ok((T, comm_T))
   }
@@ -302,7 +341,7 @@ impl<G: Group> R1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    self.W.commit(&gens.gens_W)
+    self.W.commit(&gens.gens)
   }
 }
 
@@ -335,7 +374,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
-    (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
+    (self.W.commit(&gens.gens), self.E.commit(&gens.gens))
   }
 
   /// Folds an incoming R1CSWitness into the current one
@@ -423,5 +462,379 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       Y_last: U2.X[U2.X.len() / 2..].to_owned(),
       counter: self.counter + 1,
     })
+  }
+}
+
+/// A succinct proof of knowledge of a witness to a relaxed R1CS instance
+pub struct RelaxedR1CSSNARK<G: Group> {
+  comm_Az: CompressedCommitment<G::CompressedGroupElement>,
+  comm_Bz: CompressedCommitment<G::CompressedGroupElement>,
+  comm_Cz: CompressedCommitment<G::CompressedGroupElement>,
+  comm_Az_circ_tau: CompressedCommitment<G::CompressedGroupElement>,
+
+  // rowcheck IPAs
+  ip_Az_circ_tau__Bz: G::Scalar,
+  ip_Cz_tau: G::Scalar,
+  ip_E_tau: G::Scalar,
+  ip_Az_circ_tau__rho: G::Scalar,
+
+  ipa_Az_circ_tau__Bz: FinalInnerProductArgumentAux<G>, // TODO: fold this with others
+  ipa_Cz_tau_and_E_tau: StepInnerProductArgument<G>, // a single step IPA for ipa_Cz_tau ipa_E_tau
+  ipa_Az_circ_tau__rho: FinalInnerProductArgument<G>, // TODO: fold this with others
+  ipa_Az__rho_circ_tau: StepInnerProductArgument<G>,
+
+  // lincheck IPAs
+  ip_rA_w: G::Scalar,
+  ip_rB_w: G::Scalar,
+  ip_rC_w: G::Scalar,
+  ipa_rA_w: StepInnerProductArgument<G>,
+  ipa_rB_w: StepInnerProductArgument<G>,
+  ipa_rC_w: StepInnerProductArgument<G>,
+  ipa_r_Az: StepInnerProductArgument<G>,
+  ipa_r_Bz: StepInnerProductArgument<G>,
+  ipa_r_Cz: StepInnerProductArgument<G>,
+
+  // final IPA for all step IPAs
+  final_ipa: FinalInnerProductArgument<G>,
+}
+
+impl<G: Group> RelaxedR1CSSNARK<G> {
+  fn protocol_name() -> &'static [u8] {
+    b"RelaxedR1CSSNARK"
+  }
+
+  /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
+  pub fn prove(
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    W: &RelaxedR1CSWitness<G>,
+    transcript: &mut Transcript,
+  ) -> Result<Self, NovaError> {
+    // append the protocol name to the transcript
+    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+
+    // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
+    let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+
+    // commit to Az, Bz, and Cz vectors
+    let (Az, comm_Az, Bz, comm_Bz, Cz, comm_Cz) = {
+      let (Az, Bz, Cz) = S.multiply_right(&z)?;
+      assert_eq!(Az.len(), S.num_cons);
+      assert_eq!(Bz.len(), S.num_cons);
+      assert_eq!(Cz.len(), S.num_cons);
+
+      let comm_Az = Az.commit(&gens.gens).compress();
+      let comm_Bz = Bz.commit(&gens.gens).compress();
+      let comm_Cz = Cz.commit(&gens.gens).compress();
+
+      (Az, comm_Az, Bz, comm_Bz, Cz, comm_Cz)
+    };
+
+    // append the commitments to the transcript
+    comm_Az.append_to_transcript(b"comm_Az", transcript);
+    comm_Bz.append_to_transcript(b"comm_Bz", transcript);
+    comm_Cz.append_to_transcript(b"comm_Cz", transcript);
+
+    // (1) Row check
+    // produce a challenge vector for the Hadamard product check
+    let tau = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"tau", transcript))
+      .collect::<Vec<G::Scalar>>();
+
+    // compute and commit to Az \circ tau
+    let Az_circ_tau = (0..Az.len())
+      .map(|i| Az[i] * tau[i])
+      .collect::<Vec<G::Scalar>>();
+    let comm_Az_circ_tau = Az_circ_tau.commit(&gens.gens_aux).compress();
+    comm_Az_circ_tau.append_to_transcript(b"comm_Az_circ_tau", transcript);
+
+    let ip_Az_circ_tau__Bz = FinalInnerProductArgument::<G>::inner_product(&Az_circ_tau, &Bz);
+    let ip_Cz_tau = FinalInnerProductArgument::<G>::inner_product(&Cz, &tau);
+    let ip_E_tau = FinalInnerProductArgument::<G>::inner_product(&W.E, &tau);
+    assert_eq!(ip_Az_circ_tau__Bz, U.u * ip_Cz_tau + ip_E_tau); // check that the Hadamard product check actually holds
+
+    let ipa_Az_circ_tau__Bz = FinalInnerProductArgumentAux::prove(
+      &comm_Bz.decompress()?,
+      &comm_Az_circ_tau.decompress()?,
+      &ip_Az_circ_tau__Bz,
+      &Bz,
+      &Az_circ_tau,
+      &gens.gens,
+      &gens.gens_aux,
+      transcript,
+    )?;
+
+    let (ipa_Cz_tau_and_E_tau, r_U, r_W) = StepInnerProductArgument::prove(
+      &InnerProductInstance::new(&comm_Cz, &tau, &ip_Cz_tau)?,
+      &InnerProductWitness::new(&Cz),
+      &InnerProductInstance::new(&U.comm_E.compress(), &tau, &ip_E_tau).unwrap(),
+      &InnerProductWitness::new(&W.E),
+      transcript,
+    );
+
+    // check if Az_circ_tau = Az \circ tau
+    let rho = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"tau", transcript))
+      .collect::<Vec<G::Scalar>>();
+    let ip_Az_circ_tau__rho = FinalInnerProductArgument::<G>::inner_product(&Az_circ_tau, &rho);
+
+    let rho_circ_tau = (0..rho.len())
+      .map(|i| rho[i] * tau[i])
+      .collect::<Vec<G::Scalar>>();
+    let ip_Az_rho_circ_tau = FinalInnerProductArgument::<G>::inner_product(&Az, &rho_circ_tau);
+    assert_eq!(ip_Az_circ_tau__rho, ip_Az_rho_circ_tau);
+
+    let ipa_Az_circ_tau__rho = FinalInnerProductArgument::prove(
+      &InnerProductInstance::new(&comm_Az_circ_tau, &rho, &ip_Az_circ_tau__rho).unwrap(),
+      &InnerProductWitness::new(&Az_circ_tau),
+      &gens.gens_aux,
+      transcript,
+    )?;
+
+    let (ipa_Az__rho_circ_tau, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&comm_Az, &rho_circ_tau, &ip_Az_rho_circ_tau).unwrap(),
+      &InnerProductWitness::new(&Az),
+      transcript,
+    );
+
+    // (2) Lin Checks
+    // produce a challenge vector of size `S.num_cons`
+    let r = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"r", transcript))
+      .collect::<Vec<G::Scalar>>();
+
+    // multiply R1CS matrices using r from the left
+    let (rA, rB, rC) = S.multiply_left(&r)?;
+    assert_eq!(rA.len(), S.num_vars + 1 + S.num_io);
+    assert_eq!(rB.len(), S.num_vars + 1 + S.num_io);
+    assert_eq!(rC.len(), S.num_vars + 1 + S.num_io);
+
+    let ip_rA_w: G::Scalar =
+      FinalInnerProductArgument::<G>::inner_product(&rA[0..S.num_vars], &W.W);
+    let ip_rB_w: G::Scalar =
+      FinalInnerProductArgument::<G>::inner_product(&rB[0..S.num_vars], &W.W);
+    let ip_rC_w: G::Scalar =
+      FinalInnerProductArgument::<G>::inner_product(&rC[0..S.num_vars], &W.W);
+
+    let ip_r_Az: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&r, &Az);
+    let ip_r_Bz: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&r, &Bz);
+    let ip_r_Cz: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&r, &Cz);
+
+    let ip_rA_z: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&rA, &z);
+    let ip_rB_z: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&rB, &z);
+    let ip_rC_z: G::Scalar = FinalInnerProductArgument::<G>::inner_product(&rC, &z);
+
+    // inner product relationships
+    debug_assert_eq!(ip_r_Az, ip_rA_z);
+    debug_assert_eq!(ip_r_Bz, ip_rB_z);
+    debug_assert_eq!(ip_r_Cz, ip_rC_z);
+
+    // prove the inner product relationships
+    let (ipa_rA_w, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rA[0..S.num_vars], &ip_rA_w).unwrap(),
+      &InnerProductWitness::new(&W.W),
+      transcript,
+    );
+    let (ipa_rB_w, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rB[0..S.num_vars], &ip_rB_w).unwrap(),
+      &InnerProductWitness::new(&W.W),
+      transcript,
+    );
+    let (ipa_rC_w, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rC[0..S.num_vars], &ip_rC_w).unwrap(),
+      &InnerProductWitness::new(&W.W),
+      transcript,
+    );
+
+    let (ipa_r_Az, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&comm_Az, &r, &ip_r_Az).unwrap(),
+      &InnerProductWitness::new(&Az),
+      transcript,
+    );
+
+    let (ipa_r_Bz, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&comm_Bz, &r, &ip_r_Bz).unwrap(),
+      &InnerProductWitness::new(&Bz),
+      transcript,
+    );
+
+    let (ipa_r_Cz, r_U, r_W) = StepInnerProductArgument::prove(
+      &r_U,
+      &r_W,
+      &InnerProductInstance::new(&comm_Cz, &r, &ip_r_Cz).unwrap(),
+      &InnerProductWitness::new(&Cz),
+      transcript,
+    );
+
+    let final_ipa = FinalInnerProductArgument::prove(&r_U, &r_W, &gens.gens, transcript)?;
+
+    Ok(RelaxedR1CSSNARK {
+      comm_Az,
+      comm_Bz,
+      comm_Cz,
+      ip_rA_w,
+      ip_rB_w,
+      ip_rC_w,
+      ipa_rA_w,
+      ipa_rB_w,
+      ipa_rC_w,
+      ipa_r_Az,
+      ipa_r_Bz,
+      ipa_r_Cz,
+      comm_Az_circ_tau,
+      ip_Az_circ_tau__Bz,
+      ip_Cz_tau,
+      ip_E_tau,
+      ipa_Cz_tau_and_E_tau,
+      ip_Az_circ_tau__rho, // we don't need to send ip_Az_rho_circ_tau
+      ipa_Az_circ_tau__rho,
+      ipa_Az__rho_circ_tau,
+      final_ipa,
+      ipa_Az_circ_tau__Bz,
+    })
+  }
+
+  /// verifies a proof of satisfiability of a RelaxedR1CS instance
+  pub fn verify(
+    &self,
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    transcript: &mut Transcript,
+  ) -> Result<(), NovaError> {
+    // append the protocol name to the transcript
+    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+
+    // append the commitments to the transcript
+    self.comm_Az.append_to_transcript(b"comm_Az", transcript);
+    self.comm_Bz.append_to_transcript(b"comm_Bz", transcript);
+    self.comm_Cz.append_to_transcript(b"comm_Cz", transcript);
+
+    // produce a challenge vector for the Hadamard product check
+    let tau = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"tau", transcript))
+      .collect::<Vec<G::Scalar>>();
+    self
+      .comm_Az_circ_tau
+      .append_to_transcript(b"comm_Az_circ_tau", transcript);
+    if self.ip_Az_circ_tau__Bz != U.u * self.ip_Cz_tau + self.ip_E_tau {
+      return Err(NovaError::HadamardCheckFailed);
+    }
+
+    self.ipa_Az_circ_tau__Bz.verify(
+      S.num_cons,
+      &self.comm_Bz.decompress()?,
+      &self.comm_Az_circ_tau.decompress()?,
+      &self.ip_Az_circ_tau__Bz,
+      &gens.gens,
+      &gens.gens_aux,
+      transcript,
+    )?;
+
+    let r_U = self.ipa_Cz_tau_and_E_tau.verify(
+      &InnerProductInstance::new(&self.comm_Cz, &tau, &self.ip_Cz_tau).unwrap(),
+      &InnerProductInstance::new(&U.comm_E.compress(), &tau, &self.ip_E_tau).unwrap(),
+      transcript,
+    );
+
+    // check if Az_circ_tau = Az \circ tau
+    let rho = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"tau", transcript))
+      .collect::<Vec<G::Scalar>>();
+    let rho_circ_tau = (0..S.num_cons)
+      .map(|i| rho[i] * tau[i])
+      .collect::<Vec<G::Scalar>>();
+
+    self.ipa_Az_circ_tau__rho.verify(
+      S.num_cons,
+      &InnerProductInstance::new(&self.comm_Az_circ_tau, &rho, &self.ip_Az_circ_tau__rho).unwrap(),
+      &gens.gens_aux,
+      transcript,
+    )?;
+
+    let r_U = self.ipa_Az__rho_circ_tau.verify(
+      &r_U,
+      &InnerProductInstance::new(&self.comm_Az, &rho_circ_tau, &self.ip_Az_circ_tau__rho).unwrap(),
+      transcript,
+    );
+
+    // produce a challenge vector of size `S.num_cons`
+    let r = (0..S.num_cons)
+      .map(|_| G::Scalar::challenge(b"r", transcript))
+      .collect::<Vec<G::Scalar>>();
+
+    // multiply R1CS matrices using r from the left
+    let (rA, rB, rC) = S.multiply_left(&r)?;
+    assert_eq!(rA.len(), S.num_vars + 1 + S.num_io);
+    assert_eq!(rB.len(), S.num_vars + 1 + S.num_io);
+    assert_eq!(rC.len(), S.num_vars + 1 + S.num_io);
+
+    let (ip_rA_z, ip_rB_z, ip_rC_z) = {
+      let uX = concat(vec![vec![U.u], U.X.clone()]);
+      let ip_rA_z =
+        self.ip_rA_w + FinalInnerProductArgument::<G>::inner_product(&rA[S.num_vars..], &uX);
+      let ip_rB_z =
+        self.ip_rB_w + FinalInnerProductArgument::<G>::inner_product(&rB[S.num_vars..], &uX);
+      let ip_rC_z =
+        self.ip_rC_w + FinalInnerProductArgument::<G>::inner_product(&rC[S.num_vars..], &uX);
+      (ip_rA_z, ip_rB_z, ip_rC_z)
+    };
+
+    // verify the inner product relationships
+    let r_U = self.ipa_rA_w.verify(
+      &r_U,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rA[0..S.num_vars], &self.ip_rA_w).unwrap(),
+      transcript,
+    );
+
+    let r_U = self.ipa_rB_w.verify(
+      &r_U,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rB[0..S.num_vars], &self.ip_rB_w).unwrap(),
+      transcript,
+    );
+
+    let r_U = self.ipa_rC_w.verify(
+      &r_U,
+      &InnerProductInstance::new(&U.comm_W.compress(), &rC[0..S.num_vars], &self.ip_rC_w).unwrap(),
+      transcript,
+    );
+
+    let r_U = self.ipa_r_Az.verify(
+      &r_U,
+      &InnerProductInstance::new(&self.comm_Az, &r, &ip_rA_z).unwrap(),
+      transcript,
+    );
+
+    let r_U = self.ipa_r_Bz.verify(
+      &r_U,
+      &InnerProductInstance::new(&self.comm_Bz, &r, &ip_rB_z).unwrap(),
+      transcript,
+    );
+
+    let r_U = self.ipa_r_Cz.verify(
+      &r_U,
+      &InnerProductInstance::new(&self.comm_Cz, &r, &ip_rC_z).unwrap(),
+      transcript,
+    );
+
+    // verify the final IPA proof
+    self
+      .final_ipa
+      .verify(max(S.num_vars, S.num_cons), &r_U, &gens.gens, transcript)?;
+
+    Ok(())
   }
 }
