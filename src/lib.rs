@@ -2,13 +2,15 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
+#![feature(int_log)]
 
 mod commitments;
 
 pub mod bellperson;
 pub mod errors;
+mod ipa;
 pub mod pasta;
-pub mod r1cs;
+mod r1cs;
 pub mod traits;
 pub mod gadgets;
 
@@ -18,7 +20,8 @@ use commitments::{AppendToTranscriptTrait, CompressedCommitment};
 use errors::NovaError;
 use merlin::Transcript;
 use r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
+  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSSNARK,
+  RelaxedR1CSWitness,
 };
 use traits::{ChallengeTrait, Group};
 
@@ -112,14 +115,15 @@ impl<G: Group> StepSNARK<G> {
 }
 
 /// A SNARK that holds the proof of the final step of an incremental computation
-pub struct FinalSNARK<G: Group> {
+/// `FinalSNARKTrivial` provides a trivial implementation where the proof is simply the folded `RelaxedR1CSWitness`
+pub struct FinalSNARKTrivial<G: Group> {
   W: RelaxedR1CSWitness<G>,
 }
 
-impl<G: Group> FinalSNARK<G> {
+impl<G: Group> FinalSNARKTrivial<G> {
   /// Produces a proof of a instance given its satisfying witness `W`.
-  pub fn prove(W: &RelaxedR1CSWitness<G>) -> Result<FinalSNARK<G>, NovaError> {
-    Ok(FinalSNARK { W: W.clone() })
+  pub fn prove(W: &RelaxedR1CSWitness<G>) -> Result<FinalSNARKTrivial<G>, NovaError> {
+    Ok(FinalSNARKTrivial { W: W.clone() })
   }
 
   /// Verifies the proof of a folded instance `U` given its shape `S` public parameters `gens`
@@ -131,6 +135,37 @@ impl<G: Group> FinalSNARK<G> {
   ) -> Result<(), NovaError> {
     // check that the witness is a valid witness to the folded instance `U`
     S.is_sat_relaxed(gens, U, &self.W)
+  }
+}
+
+/// A SNARK that holds the proof of the final step of an incremental computation
+/// `FinalSNARKSuccinct` provides an implementation where the proof is succinct
+pub struct FinalSNARK<G: Group> {
+  proof: RelaxedR1CSSNARK<G>,
+}
+
+impl<G: Group> FinalSNARK<G> {
+  /// Produces a proof of a instance given its satisfying witness `W`.
+  pub fn prove(
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    W: &RelaxedR1CSWitness<G>,
+    transcript: &mut Transcript,
+  ) -> Result<FinalSNARK<G>, NovaError> {
+    let proof = RelaxedR1CSSNARK::prove(gens, S, U, W, transcript)?;
+    Ok(FinalSNARK { proof })
+  }
+
+  /// Verifies the proof of a folded instance `U` given its shape `S` public parameters `gens`
+  pub fn verify(
+    &self,
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    transcript: &mut Transcript,
+  ) -> Result<(), NovaError> {
+    self.proof.verify(gens, S, U, transcript)
   }
 }
 
@@ -283,12 +318,22 @@ mod tests {
     r_W = W;
     r_U = U;
 
-    // produce a final SNARK
-    let res = FinalSNARK::prove(&r_W);
+    // produce a trivial final SNARK
+    let res = FinalSNARKTrivial::prove(&r_W);
     assert!(res.is_ok());
     let final_snark = res.unwrap();
-    // verify the final SNARK
+
+    // verify the trivial final SNARK
     let res = final_snark.verify(&gens, &S, &r_U);
+    assert!(res.is_ok());
+
+    // produce a non-trivial final SNARK
+    let res = FinalSNARK::prove(&gens, &S, &r_U, &r_W, &mut prover_transcript.clone());
+    assert!(res.is_ok());
+    let final_snark = res.unwrap();
+
+    // verify the non-trivial final SNARK
+    let res = final_snark.verify(&gens, &S, &r_U, &mut verifier_transcript.clone());
     assert!(res.is_ok());
   }
 }
