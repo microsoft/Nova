@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use super::commitments::{
   AppendToTranscriptTrait, CommitGens, CommitTrait, Commitment, CompressedCommitment,
 };
@@ -143,12 +144,11 @@ impl<G: Group> StepInnerProductArgument<G> {
     let y = U1.y + r * r * U2.y + r * self.C;
     let comm_x_vec = U1.comm_x_vec + U2.comm_x_vec * r;
 
-    let U = InnerProductInstance {
+    InnerProductInstance {
       comm_x_vec,
       a_vec,
       y,
-    };
-    U
+    }
   }
 }
 
@@ -162,7 +162,7 @@ impl<G: Group> InnerProductInstance<G> {
     Ok(InnerProductInstance {
       comm_x_vec: comm_x_vec_decompressed,
       a_vec: a_vec.to_vec(),
-      y: y.clone(),
+      y: *y,
     })
   }
 }
@@ -252,7 +252,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
         }
 
         gens_ref.fold(&r_inverse, &r);
-        n = n / 2;
+        n /= 2;
       }
 
       (L_vec, R_vec, x_vec_ref[0])
@@ -272,7 +272,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
 
     for i in 0..v.len() {
       products[i] = acc;
-      acc = acc * v[i];
+      acc *= v[i];
     }
 
     assert_ne!(acc, G::Scalar::zero());
@@ -314,7 +314,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
     let r = G::Scalar::challenge(b"r", transcript);
     let gens_y = CommitGens::from_scalar(&r);
 
-    let comm_y = [U.y.clone()].commit(&gens_y);
+    let comm_y = [U.y].commit(&gens_y);
     let gamma = U.comm_x_vec + comm_y;
 
     // verify the logarithmic-sized inner product argument
@@ -341,8 +341,8 @@ impl<G: Group> FinalInnerProductArgument<G> {
           let mut exps = vec![G::Scalar::zero(); n];
           exps[0] = {
             let mut v = G::Scalar::one();
-            for i in 0..r_inverse.len() {
-              v = v * r_inverse[i];
+            for r_inverse_i in &r_inverse {
+              v *= r_inverse_i;
             }
             v
           };
@@ -357,8 +357,8 @@ impl<G: Group> FinalInnerProductArgument<G> {
       };
 
       let gens_hat = {
-        let c = exps.commit(&gens).compress();
-        CommitGens::reinterpret_commitments_as_gens(&vec![c])?
+        let c = exps.commit(gens).compress();
+        CommitGens::reinterpret_commitments_as_gens(&[c])?
       };
 
       let a_hat = Self::inner_product(&U.a_vec, &exps);
@@ -366,7 +366,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
       let gens_folded = {
         let gens_L = CommitGens::reinterpret_commitments_as_gens(&self.L_vec)?;
         let gens_R = CommitGens::reinterpret_commitments_as_gens(&self.R_vec)?;
-        let gens_gamma = CommitGens::reinterpret_commitments_as_gens(&vec![gamma.compress()])?;
+        let gens_gamma = CommitGens::reinterpret_commitments_as_gens(&[gamma.compress()])?;
         gens_L.combine(&gens_R).combine(&gens_gamma)
       };
 
@@ -503,7 +503,7 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
 
         gens_ref.fold(&r_inverse, &r);
         gens_aux_ref.fold(&r, &r_inverse);
-        n = n / 2;
+        n /= 2;
       }
 
       (L_vec, R_vec, x_vec_ref[0], a_vec_ref[0])
@@ -524,7 +524,7 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
 
     for i in 0..v.len() {
       products[i] = acc;
-      acc = acc * v[i];
+      acc *= v[i];
     }
 
     assert_ne!(acc, G::Scalar::zero());
@@ -569,7 +569,7 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
     let gens_y = CommitGens::from_scalar(&r);
-    let comm_y = [y.clone()].commit(&gens_y);
+    let comm_y = [*y].commit(&gens_y);
 
     // compute a vector of public coins using self.L_vec and self.R_vec
     let r = (0..self.L_vec.len())
@@ -593,8 +593,8 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
         let mut exps = vec![G::Scalar::zero(); n];
         exps[0] = {
           let mut v = G::Scalar::one();
-          for i in 0..r_inverse.len() {
-            v = v * r_inverse[i];
+          for r_inverse_i in &r_inverse {
+            v *= r_inverse_i;
           }
           v
         };
@@ -623,8 +623,7 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
     let rhs = {
       let exps_inverse = Self::batch_invert(&exps);
       let v = {
-        let mut v = Vec::new();
-        v.push(self.x_hat * self.a_hat);
+        let mut v = vec![self.x_hat * self.a_hat];
         v.extend(
           (0..exps.len())
             .map(|i| exps[i] * self.x_hat)
@@ -638,7 +637,7 @@ impl<G: Group> FinalInnerProductArgumentAux<G> {
         v
       };
 
-      v.commit(&gens_y.combine(&gens).combine(&gens_aux))
+      v.commit(&gens_y.combine(gens).combine(gens_aux))
     };
 
     if lhs == rhs {

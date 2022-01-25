@@ -65,7 +65,7 @@ impl<G: Group> CommitGens<G> {
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
   pub fn fold(&mut self, w1: &G::Scalar, w2: &G::Scalar) {
-    let w = vec![w1.clone(), w2.clone()];
+    let w = vec![*w1, *w2];
     let (L, R) = self.split_at(self.len() / 2);
 
     let gens = (0..self.len() / 2)
@@ -89,7 +89,7 @@ impl<G: Group> CommitGens<G> {
 
   /// reinterprets a vector of commitments as a set of generators
   pub fn reinterpret_commitments_as_gens(
-    c: &Vec<CompressedCommitment<G::CompressedGroupElement>>,
+    c: &[CompressedCommitment<G::CompressedGroupElement>],
   ) -> Result<Self, NovaError> {
     let d = (0..c.len())
       .map(|i| c[i].decompress())
