@@ -44,9 +44,9 @@ where
 		//Compute the constants and hash 
 		let constants = PoseidonConstants::<Scalar, A>::new_with_strength(Strength::Strengthened); 
 		let out = poseidon_hash(cs.namespace(|| "Poseidon hash"), self.state.clone(), &constants)?;
-		//Only keep 254 bits. discard the lsb
+		//Only keep 128 bits
 		let bits = out.to_bits_le_strict(cs.namespace(|| "convert poseidon hash output to bits"))?;
-		le_bits_to_num(cs.namespace(|| "le bits to nummber"), bits[1..].into())
+		le_bits_to_num(cs.namespace(|| "le bits to nummber"), bits[..128].into())
 	}
 }
 
