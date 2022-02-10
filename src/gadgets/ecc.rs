@@ -20,13 +20,14 @@ where
   Fp: PrimeField,
   Fq: PrimeField + PrimeFieldBits,
 {
+  #[allow(dead_code)]
   pub fn random_vartime() -> Self {
     loop {
       let x = Fp::random(&mut OsRng);
       let y = (x * x * x + Fp::one() + Fp::one() + Fp::one() + Fp::one() + Fp::one()).sqrt();
       if y.is_some().unwrap_u8() == 1 {
         return Self {
-          x: x,
+          x,
           y: y.unwrap(),
           is_infinity: false,
           _p: Default::default(),
@@ -48,8 +49,8 @@ where
     let x = lambda * lambda - self.x - other.x;
     let y = lambda * (self.x - x) - self.y;
     Self {
-      x: x,
-      y: y,
+      x,
+      y,
       is_infinity: false,
       _p: Default::default(),
     }
@@ -72,8 +73,8 @@ where
     let x = lambda * lambda - self.x - self.x;
     let y = lambda * (self.x - x) - self.y;
     Self {
-      x: x,
-      y: y,
+      x,
+      y,
       is_infinity: false,
       _p: Default::default(),
     }
@@ -102,6 +103,7 @@ where
     R0
   }
 
+  #[allow(dead_code)]
   pub fn scalar_mul(&self, scalar: &Fq) -> Self {
     let mut res = Self {
       x: Fp::zero(),
@@ -165,35 +167,35 @@ mod tests {
 
     // perform the same computation by translating to pasta_curve types
     let a_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(a.x.to_repr().0.clone()).unwrap(),
-      pasta_curves::Fp::from_repr(a.y.to_repr().0.clone()).unwrap(),
+      pasta_curves::Fp::from_repr(a.x.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(a.y.to_repr().0).unwrap(),
     )
     .unwrap();
     let b_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(b.x.to_repr().0.clone()).unwrap(),
-      pasta_curves::Fp::from_repr(b.y.to_repr().0.clone()).unwrap(),
+      pasta_curves::Fp::from_repr(b.x.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(b.y.to_repr().0).unwrap(),
     )
     .unwrap();
     let c_pasta = (a_pasta + b_pasta).to_affine();
     let d_pasta = (a_pasta + a_pasta).to_affine();
     let e_pasta = a_pasta
-      .mul(pasta_curves::Fq::from_repr(s.to_repr().0.clone()).unwrap())
+      .mul(pasta_curves::Fq::from_repr(s.to_repr().0).unwrap())
       .to_affine();
 
     // transform c, d, and e into pasta_curve types
     let c_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(c.x.to_repr().0.clone()).unwrap(),
-      pasta_curves::Fp::from_repr(c.y.to_repr().0.clone()).unwrap(),
+      pasta_curves::Fp::from_repr(c.x.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(c.y.to_repr().0).unwrap(),
     )
     .unwrap();
     let d_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(d.x.to_repr().0.clone()).unwrap(),
-      pasta_curves::Fp::from_repr(d.y.to_repr().0.clone()).unwrap(),
+      pasta_curves::Fp::from_repr(d.x.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(d.y.to_repr().0).unwrap(),
     )
     .unwrap();
     let e_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(e.x.to_repr().0.clone()).unwrap(),
-      pasta_curves::Fp::from_repr(e.y.to_repr().0.clone()).unwrap(),
+      pasta_curves::Fp::from_repr(e.x.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(e.y.to_repr().0).unwrap(),
     )
     .unwrap();
 
