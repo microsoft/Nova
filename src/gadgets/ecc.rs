@@ -4,13 +4,13 @@ use rand::rngs::OsRng;
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
-struct Point<Fp, Fq>
+pub struct Point<Fp, Fq>
 where
   Fp: PrimeField,
   Fq: PrimeField + PrimeFieldBits,
 {
-  x: Fp,
-  y: Fp,
+  pub(crate) x: Fp, //TODO: Make this not public
+  pub(crate) y: Fp,
   is_infinity: bool,
   _p: PhantomData<Fq>,
 }
@@ -20,7 +20,16 @@ where
   Fp: PrimeField,
   Fq: PrimeField + PrimeFieldBits,
 {
-  #[allow(dead_code)]
+  pub fn new(x: Fp, y: Fp, is_infinity: bool) -> Self{
+		return Self{
+			x,
+			y,
+			is_infinity,
+			_p: Default::default(),
+		}
+	}
+	
+	#[allow(dead_code)]
   pub fn random_vartime() -> Self {
     loop {
       let x = Fp::random(&mut OsRng);

@@ -11,7 +11,7 @@ mod gadgets;
 pub mod pasta;
 pub mod r1cs;
 pub mod traits;
-pub mod gadgets;
+mod gadgets;
 
 use std::marker::PhantomData;
 
