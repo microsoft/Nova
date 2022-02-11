@@ -4,9 +4,43 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  ConstraintSystem, SynthesisError,
+  ConstraintSystem, LinearCombination, SynthesisError,
 };
-use ff::PrimeField;
+use ff::{PrimeField, PrimeFieldBits};
+
+///Gets as input the little indian representation of a number and spits out the number
+#[allow(dead_code)]
+pub fn le_bits_to_num<Scalar, CS>(
+  mut cs: CS,
+  bits: Vec<AllocatedBit>,
+) -> Result<AllocatedNum<Scalar>, SynthesisError>
+where
+  Scalar: PrimeField + PrimeFieldBits,
+  CS: ConstraintSystem<Scalar>,
+{
+  //We loop over the input bits and construct the constraint and the field element that corresponds
+  //to the result
+  let mut lc = LinearCombination::zero();
+  let mut coeff = Scalar::one();
+  let mut fe = Some(Scalar::zero());
+  for bit in bits.iter() {
+    lc = lc + (coeff, bit.get_variable());
+    fe = bit.get_value().map(|val| {
+      if val {
+        fe.unwrap() + coeff
+      } else {
+        fe.unwrap()
+      }
+    });
+    coeff = coeff.double();
+  }
+  let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
+    fe.ok_or(SynthesisError::AssignmentMissing)
+  })?;
+  lc = lc - num.get_variable();
+  cs.enforce(|| "compute number from bits", |lc| lc, |lc| lc, |_| lc);
+  Ok(num)
+}
 
 ///Allocate a variable that is set to zero
 pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
@@ -140,6 +174,7 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(r)
 }
 
+///If condition return a otherwise b
 pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
