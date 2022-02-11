@@ -1,4 +1,4 @@
-//!This module contains useful gadgets for the verifier circuit
+//!This module contains the ro gadget 
 use bellperson::{LinearCombination, ConstraintSystem, SynthesisError, gadgets::{num::AllocatedNum,boolean::Boolean}};
 use neptune::{circuit::poseidon_hash, Arity, poseidon::PoseidonConstants, Strength};
 use ff::{PrimeField, PrimeFieldBits};
