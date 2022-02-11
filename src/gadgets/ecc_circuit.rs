@@ -8,36 +8,26 @@ use bellperson::{
   },
   ConstraintSystem, SynthesisError,
 };
-use ff::{PrimeField, PrimeFieldBits};
+use ff::PrimeField;
 use rand::rngs::OsRng;
-use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct AllocatedPoint<Fp, Fq>
+pub struct AllocatedPoint<Fp>
 where
   Fp: PrimeField,
-  Fq: PrimeField + PrimeFieldBits,
 {
   x: AllocatedNum<Fp>,
   y: AllocatedNum<Fp>,
-  is_infinity: AllocatedNum<Fp>, //TODO: Make this allocatedbit
-  _p: PhantomData<Fq>,
+  is_infinity: AllocatedNum<Fp>, //TODO: Make this Allocatedbit?
 }
 
-impl<Fp, Fq> AllocatedPoint<Fp, Fq>
+impl<Fp> AllocatedPoint<Fp>
 where
   Fp: PrimeField,
-  Fq: PrimeField + PrimeFieldBits,
 {
   //Creates a new allocated point from allocated nums
   pub fn new(x: AllocatedNum<Fp>, y: AllocatedNum<Fp>, is_infinity: AllocatedNum<Fp>) -> Self {
-    //Make sure that is_infinity is either zero or 1: is_infinity * (1 - is_infinity) = 0
-    Self {
-      x,
-      y,
-      is_infinity,
-      _p: Default::default(),
-    }
+    Self { x, y, is_infinity }
   }
 
   #[allow(dead_code)]
@@ -68,7 +58,7 @@ where
   pub fn add<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
-    other: &AllocatedPoint<Fp, Fq>,
+    other: &AllocatedPoint<Fp>,
   ) -> Result<Self, SynthesisError> {
     //Allocate the boolean variables that check if either of the points is infinity
 
@@ -379,7 +369,7 @@ where
   pub fn scalar_mul_mont<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
-    scalar: &Fq,
+    scalar: Vec<AllocatedBit>,
   ) -> Result<Self, SynthesisError> {
     /*************************************************************/
     //Initialize RO = Self {
@@ -399,14 +389,8 @@ where
     /*************************************************************/
 
     let mut R1 = self.clone();
-    let bits: Vec<AllocatedBit> = scalar
-      .to_le_bits()
-      .into_iter()
-      .enumerate()
-      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit)))
-      .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()?;
 
-    for i in (0..bits.len()).rev() {
+    for i in (0..scalar.len()).rev() {
       /*************************************************************/
       //if bits[i] {
       //  R0 = R0.add(&R1);
@@ -425,25 +409,24 @@ where
         cs.namespace(|| format!("{}: Update R0", i)),
         &R0_and_R1,
         &R0_double,
-        &Boolean::from(bits[i].clone()),
+        &Boolean::from(scalar[i].clone()),
       )?;
 
       R1 = Self::conditionally_select(
         cs.namespace(|| format!("{}: Update R1", i)),
         &R1_double,
         &R0_and_R1,
-        &Boolean::from(bits[i].clone()),
+        &Boolean::from(scalar[i].clone()),
       )?;
     }
     Ok(R0)
   }
 
-  //TODO: Do we want to change the input scalar to be Vec<AllocatedBit>?
   #[allow(dead_code)]
   pub fn scalar_mul<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
-    scalar: &Fq,
+    scalar: Vec<AllocatedBit>,
   ) -> Result<Self, SynthesisError> {
     /*************************************************************/
     //Initialize res = Self {
@@ -458,14 +441,7 @@ where
     let one = alloc_one(cs.namespace(|| "Allocate one"))?;
     let mut res = Self::new(zero.clone(), zero.clone(), one.clone());
 
-    let bits: Vec<AllocatedBit> = scalar
-      .to_le_bits()
-      .into_iter()
-      .enumerate()
-      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit)))
-      .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()?;
-
-    for i in (0..bits.len()).rev() {
+    for i in (0..scalar.len()).rev() {
       /*************************************************************/
       //  res = res.double();
       /*************************************************************/
@@ -473,7 +449,7 @@ where
       res = res.double(cs.namespace(|| format!("{}: double", i)))?;
 
       /*************************************************************/
-      //  if bits[i] {
+      //  if scalar[i] {
       //    res = self.add(&res);
       //  }
       /*************************************************************/
@@ -483,7 +459,7 @@ where
         cs.namespace(|| format!("{}: Update res", i)),
         &self_and_res,
         &res,
-        &Boolean::from(bits[i].clone()),
+        &Boolean::from(scalar[i].clone()),
       )?;
     }
     Ok(res)
@@ -517,54 +493,47 @@ mod tests {
   use crate::bellperson::shape_cs::ShapeCS;
   use crate::bellperson::solver::SatisfyingAssignment;
   type G = pasta_curves::pallas::Point;
-  type Fq = pasta_curves::pallas::Base;
   type Fp = pasta_curves::pallas::Scalar;
   use crate::bellperson::r1cs::{NovaShape, NovaWitness};
-  use crate::gadgets::ecc::Point as Pp;
+  use ff::PrimeFieldBits;
 
-  fn synthesize_circuit<Fp, Fq, CS>(
-    mut cs: CS,
-  ) -> (AllocatedPoint<Fp, Fq>, AllocatedPoint<Fp, Fq>, Fq)
+  fn synthesize_smul<Fp, CS>(mut cs: CS)
   where
-    Fp: PrimeField,
-    Fq: PrimeField + PrimeFieldBits,
+    Fp: PrimeField + PrimeFieldBits,
     CS: ConstraintSystem<Fp>,
   {
-    // perform some curve arithmetic
-    let a = AllocatedPoint::<Fp, Fq>::random_vartime(cs.namespace(|| "a")).unwrap();
+    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
     let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
-    let s = Fq::random(&mut OsRng);
-    let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &s).unwrap();
+    let s = Fp::random(&mut OsRng);
+    //Allocate random bits and only keep 128 bits
+    let bits: Vec<AllocatedBit> = s
+      .to_le_bits()
+      .into_iter()
+      .enumerate()
+      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit)))
+      .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
+      .unwrap();
+    let e = a
+      .scalar_mul(cs.namespace(|| "Scalar Mul"), bits[..128].to_vec())
+      .unwrap();
     let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
-    (a, e, s)
   }
 
   #[test]
   fn test_ecc_circuit_ops() {
     //First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_circuit::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
+    let _ = synthesize_smul::<Fp, _>(cs.namespace(|| "synthesize"));
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Number of constraints: {}", cs.num_constraints());
+
     //Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let (a, e, s) = synthesize_circuit::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
+    let _ = synthesize_smul::<Fp, _>(cs.namespace(|| "synthesize"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     //Make sure that this is satisfiable
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
-
-    //Now use ecc.rs to check that we did not mess anything up
-
-    let a_p = Pp::<Fp, Fq>::new(
-      a.x.get_value().unwrap(),
-      a.y.get_value().unwrap(),
-      a.is_infinity.get_value().unwrap() == Fp::one(),
-    );
-
-    let e_p = a_p.scalar_mul(&s);
-    assert!(e.x.get_value().unwrap() == e_p.x);
-    assert!(e.y.get_value().unwrap() == e_p.y);
   }
 }
