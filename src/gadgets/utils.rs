@@ -1,7 +1,37 @@
 use bellperson::{ConstraintSystem, gadgets::{boolean::{AllocatedBit, Boolean}, num::AllocatedNum, Assignment}, SynthesisError};
 use ff::PrimeField;
 
+///Allocate a variable that is set to zero
+pub fn alloc_zero<F: PrimeField, CS:ConstraintSystem<F>>(mut cs: CS) -> Result<AllocatedNum<F>, SynthesisError> {
+	let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::zero()))?;
+	//Enforce that it is zero
+	cs.enforce(
+		|| "check zero is valid",
+		|lc| lc,
+		|lc| lc,
+		|lc| lc + zero.get_variable() 
+	);
+
+	Ok(zero)
+}
+
+///Allocate a variable that is set to one
+pub fn alloc_one<F: PrimeField, CS:ConstraintSystem<F>>(mut cs: CS) -> Result<AllocatedNum<F>, SynthesisError> {
+	let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::one()))?;
+	//Enforce that it is zero
+	cs.enforce(
+		|| "check one is valid",
+		|lc| lc,
+		|lc| lc,
+		|lc| lc + one.get_variable() - CS::one()
+	);
+
+	Ok(one)
+}
+
 //The next two functions are borrowed from sapling-crypto crate
+
+///Check that two numbers are equal and return a bit
 pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: AllocatedNum<F>,
