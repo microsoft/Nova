@@ -8,11 +8,11 @@ mod commitments;
 
 pub mod bellperson;
 pub mod errors;
+mod gadgets;
 mod ipa;
 pub mod pasta;
 mod r1cs;
 pub mod traits;
-mod gadgets;
 
 use std::marker::PhantomData;
 

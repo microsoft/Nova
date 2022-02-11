@@ -20,16 +20,16 @@ where
   Fp: PrimeField,
   Fq: PrimeField + PrimeFieldBits,
 {
-  pub fn new(x: Fp, y: Fp, is_infinity: bool) -> Self{
-		return Self{
-			x,
-			y,
-			is_infinity,
-			_p: Default::default(),
-		}
-	}
-	
-	#[allow(dead_code)]
+  pub fn new(x: Fp, y: Fp, is_infinity: bool) -> Self {
+    return Self {
+      x,
+      y,
+      is_infinity,
+      _p: Default::default(),
+    };
+  }
+
+  #[allow(dead_code)]
   pub fn random_vartime() -> Self {
     loop {
       let x = Fp::random(&mut OsRng);
