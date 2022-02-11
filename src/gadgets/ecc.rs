@@ -20,6 +20,7 @@ where
   Fp: PrimeField,
   Fq: PrimeField + PrimeFieldBits,
 {
+  #[allow(dead_code)]
   pub fn new(x: Fp, y: Fp, is_infinity: bool) -> Self {
     return Self {
       x,
