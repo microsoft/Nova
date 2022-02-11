@@ -2,8 +2,8 @@
 use ff::{PrimeField, PrimeFieldBits};
 use rand::rngs::OsRng;
 use std::marker::PhantomData;
-use bellperson::{LinearCombination, ConstraintSystem, SynthesisError, gadgets::{num::AllocatedNum, boolean::{AllocatedBit, Boolean}, Assignment}};
-use crate::gadgets::utils::{alloc_num_equals, conditionally_select};
+use bellperson::{ConstraintSystem, SynthesisError, gadgets::{num::AllocatedNum, boolean::{AllocatedBit, Boolean}, Assignment}};
+use crate::gadgets::utils::{alloc_one, alloc_zero, alloc_num_equals, conditionally_select};
 
 #[derive(Clone)]
 pub struct AllocatedPoint<Fp, Fq>
@@ -57,28 +57,79 @@ where
 	}
 
   pub fn add<CS: ConstraintSystem<Fp>>(&self, mut cs: CS, other: &AllocatedPoint<Fp, Fq>) -> Result<Self, SynthesisError> {
-    
-		//First allocate the inverse of (other.x - self.x)
+		
+		//Allocate the boolean variables that check if either of the points is infinity
+
+		let false_repr = AllocatedNum::alloc(cs.namespace(|| "false num"), || Ok(Fp::zero()))?;
+		let self_is_not_inf = Boolean::from(alloc_num_equals(
+			cs.namespace(|| "self is inf"), 
+			self.is_infinity.clone(), 
+			false_repr.clone()
+		)?);
+		let other_is_not_inf = Boolean::from(alloc_num_equals(
+			cs.namespace(|| "other is inf"), 
+			other.is_infinity.clone(), 
+			false_repr.clone()
+		)?);
+		
+		//************************************************************************/
+		//lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
+		//************************************************************************/
+		  
+		//First compute (other.x - self.x).inverse()
+		//If either self or other are 1 then compute bogus values 
+
+		// x_diff = other != inf && self != inf ? (other.x - self.x) : 1
+		let x_diff_actual = AllocatedNum::alloc(
+			cs.namespace(|| "x diff"),
+			|| Ok(*other.x.get_value().get()? - *self.x.get_value().get()?), 
+		)?;
+		cs.enforce(
+			|| "actual x_diff is correct", 
+			|lc| lc + other.x.get_variable() - self.x.get_variable(),
+			|lc| lc + CS::one(),
+			|lc| lc + x_diff_actual.get_variable()
+		);
+
+		let x_diff_default = alloc_one(cs.namespace(|| "Allocate default x_diff"))?;
+		let both_not_inf = Boolean::and(
+			cs.namespace(|| "Check both points are not inf"),
+			&self_is_not_inf,
+			&other_is_not_inf
+		)?;
+
+		let x_diff = conditionally_select(
+			cs.namespace(|| "Compute x_diff"),
+			&x_diff_actual,
+			&x_diff_default,
+			&both_not_inf
+		)?;
+		
 		let x_diff_inv = AllocatedNum::alloc(
 			cs.namespace(|| "x diff inverse"),
 			|| {
-				let inv = (*other.x.get_value().get()? - *self.x.get_value().get()?).invert();
-				if inv.is_some().unwrap_u8() == 1 {
-					Ok(inv.unwrap())
-				}else{
-					Err(SynthesisError::DivisionByZero)
+				if *both_not_inf.get_value().get()? {
+					//Set to the actual inverse
+					let inv = (*other.x.get_value().get()? - *self.x.get_value().get()?).invert();
+					if inv.is_some().unwrap_u8() == 1 {
+						Ok(inv.unwrap())
+					}else{
+						Err(SynthesisError::DivisionByZero)	
+					}
+				} else {
+					//Set to default
+					Ok(Fp::one())
 				}
 			},
 		)?;	
-		//Enforce that (other.x - self.x)*x_diff_inv == 1
+		
 		cs.enforce(
 			|| "Check inverse",
-			|lc| lc + other.x.get_variable() - self.x.get_variable(),
+			|lc| lc + x_diff.get_variable(),
 			|lc| lc + x_diff_inv.get_variable(),
 			|lc| lc + CS::one()
 		);
-		
-		//lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
+	
 		let lambda = AllocatedNum::alloc(
 			cs.namespace(|| "lambda"),
 			|| Ok((*other.y.get_value().get()? - *self.y.get_value().get()?)*x_diff_inv.get_value().get()?)
@@ -90,7 +141,10 @@ where
 			|lc| lc + lambda.get_variable()
 		);
 
+		//************************************************************************/
     //x = lambda * lambda - self.x - other.x;
+		//************************************************************************/
+		
 		let x = AllocatedNum::alloc(
 			cs.namespace(|| "x"), 
 			|| Ok(*lambda.get_value().get()?*lambda.get_value().get()? - *self.x.get_value().get()? - *other.x.get_value().get()?)
@@ -102,7 +156,10 @@ where
 			|lc| lc + x.get_variable() + self.x.get_variable() + other.x.get_variable(),
 		);
     
+		//************************************************************************/
 		//y = lambda * (self.x - x) - self.y;
+		//************************************************************************/
+		
 		let y = AllocatedNum::alloc(
 			cs.namespace(|| "y"), 
 			|| Ok(*lambda.get_value().get()?*(*self.x.get_value().get()? - *x.get_value().get()?) - *self.y.get_value().get()?)
@@ -116,21 +173,13 @@ where
 		);
 
 		let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is infinity"), || Ok(Fp::zero()))?;
+		
+		//************************************************************************/
 		// We only return the computed x, y if neither of the points is infinity. 
 		// if self.is_infinity return other.clone() 
 		// elif other.is_infinity return self.clone() 
 		// Otherwise return the computed points. 
-		let false_repr = AllocatedNum::alloc(cs.namespace(|| "false num"), || Ok(Fp::zero()))?;
-		let self_is_not_inf = Boolean::from(alloc_num_equals(
-			cs.namespace(|| "self is inf"), 
-			self.is_infinity.clone(), 
-			false_repr.clone()
-		)?);
-		let other_is_not_inf = Boolean::from(alloc_num_equals(
-			cs.namespace(|| "other is inf"), 
-			other.is_infinity.clone(), 
-			false_repr.clone()
-		)?);
+		//************************************************************************/
 		
 		//Now compute the output x 
 		let inner_x = conditionally_select(
@@ -178,6 +227,14 @@ where
 	
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     
+		//self_is_not_inf = self != inf
+		let zero = alloc_zero(cs.namespace(|| "Alloc zero"))?;
+		let self_is_not_inf = Boolean::from(alloc_num_equals(
+			cs.namespace(|| "self is inf"), 
+			self.is_infinity.clone(), 
+			zero.clone()
+		)?);
+
 		//*************************************************************/
     // lambda = (Fp::one() + Fp::one() + Fp::one())
     //  * self.x
@@ -185,27 +242,41 @@ where
     //  * ((Fp::one() + Fp::one()) * self.y).invert().unwrap();
 		/*************************************************************/
    
-	 	//Compute tmp = (Fp::one() + Fp::one())* self.y
-		let tmp = AllocatedNum::alloc(
-			cs.namespace(|| "tmp"),
-			|| Ok((*self.y.get_value().get()? + *self.y.get_value().get()?))
+	 	//Compute tmp = (Fp::one() + Fp::one())* self.y ? self != inf : 1
+		let tmp_actual = AllocatedNum::alloc(
+			cs.namespace(|| "tmp_actual"),
+			|| Ok(*self.y.get_value().get()? + *self.y.get_value().get()?)
 		)?;
 		cs.enforce(
-			|| "Compute tmp",
+			|| "check tmp_actual",
 			|lc| lc + CS::one() + CS::one(),
 			|lc| lc + self.y.get_variable(),
-			|lc| lc + tmp.get_variable(),
+			|lc| lc + tmp_actual.get_variable(),
 		);
+
+		let tmp_default = alloc_one(cs.namespace(|| "tmp_default"))?;
+		let tmp = conditionally_select(
+			cs.namespace(|| "tmp"),
+			&tmp_actual,
+			&tmp_default,
+			&self_is_not_inf,
+		)?;
 
 		//Compute inv = tmp.invert
 		let tmp_inv = AllocatedNum::alloc(
 			cs.namespace(|| "tmp inverse"),
 			|| {
-				let inv = (*tmp.get_value().get()?).invert();
-				if inv.is_some().unwrap_u8() == 1 {
-					Ok(inv.unwrap())
+				if *self_is_not_inf.get_value().get()? {
+					//Return the actual inverse
+					let inv = (*tmp.get_value().get()?).invert();
+					if inv.is_some().unwrap_u8() == 1 {
+						Ok(inv.unwrap())
+					}else{
+						Err(SynthesisError::DivisionByZero)
+					}
 				}else{
-					Err(SynthesisError::DivisionByZero)
+					//Return default value 1
+					Ok(Fp::one())
 				}
 			},
 		)?;	
@@ -285,18 +356,11 @@ where
 		//Only return the computed x and y if the point is not infinity
 		/*************************************************************/
 		
-		let zero_repr = AllocatedNum::alloc(cs.namespace(|| "false num"), || Ok(Fp::zero()))?;
-		let self_is_not_inf = Boolean::from(alloc_num_equals(
-			cs.namespace(|| "self is inf"), 
-			self.is_infinity.clone(), 
-			zero_repr.clone()
-		)?);
-	
 		//x 
 		let final_x = conditionally_select(
 			cs.namespace(|| "final x"),
 			&x,
-			&zero_repr,
+			&zero,
 			&self_is_not_inf
 		)?;
 	
@@ -304,7 +368,7 @@ where
 		let final_y = conditionally_select(
 			cs.namespace(|| "final y"),
 			&y,
-			&zero_repr,
+			&zero,
 			&self_is_not_inf
 		)?;
 		
@@ -314,58 +378,148 @@ where
 		Ok(Self::new(final_x, final_y, final_is_infinity))
   }
 
-	/*
   #[allow(dead_code)]
-  pub fn scalar_mul_mont(&self, scalar: &Fq) -> Self {
-    let mut R0 = Self {
-      x: Fp::zero(),
-      y: Fp::zero(),
-      is_infinity: true,
-      _p: Default::default(),
-    };
+  pub fn scalar_mul_mont<CS: ConstraintSystem<Fp>>(&self, mut cs: CS, scalar: &Fq) -> Result<Self, SynthesisError> {
+		
+		/*************************************************************/
+		//Initialize RO = Self {
+    //  x: Fp::zero(),
+    //  y: Fp::zero(),
+    //  is_infinity: true,
+    //  _p: Default::default(),
+    //};
+		/*************************************************************/
+    
+		let zero = alloc_zero(cs.namespace(|| "Allocate zero"))?;
+		let one = alloc_one(cs.namespace(|| "Allocate one"))?;
+		let mut R0 = Self::new(zero.clone(), zero.clone(), one.clone());
+		
+		/*************************************************************/
+		//Initialize R1 and the bits of the scalar
+		/*************************************************************/
+		
+		let mut R1 = self.clone();
+		let bits: Vec<AllocatedBit> = scalar.to_le_bits().into_iter().enumerate().map(
+			|(i, bit)| {
+				AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit))
+			}
+		).collect::<Result<Vec<AllocatedBit>, SynthesisError>>()?; 
+		
+		for i in (0..bits.len()).rev() {
+      
+			/*************************************************************/
+			//if bits[i] {
+      //  R0 = R0.add(&R1);
+      //  R1 = R1.double();
+      //} else {
+      //  R0 = R0.double();
+      //  R1 = R0.add(&R1);
+      //}
+			/*************************************************************/
+    
+			let R0_and_R1 = R0.add(cs.namespace(|| format!("{}: R0 + R1", i)), &R1)?;
+			let R0_double = R0.double(cs.namespace(|| format!("{}: 2 * R0", i)))?;
+			let R1_double = R1.double(cs.namespace(|| format!("{}: 2 * R1", i)))?;
 
-    let mut R1 = self.clone();
-    let bits = scalar.to_le_bits();
-    for i in (0..bits.len()).rev() {
-      if bits[i] {
-        R0 = R0.add(&R1);
-        R1 = R1.double();
-      } else {
-        R1 = R0.add(&R1);
-        R0 = R0.double();
-      }
-    }
-    R0
+			R0 = Self::conditionally_select(
+				cs.namespace(|| format!("{}: Update R0", i)),
+				&R0_and_R1,
+				&R0_double,
+				&Boolean::from(bits[i].clone())
+			)?;
+
+			R1 = Self::conditionally_select(
+				cs.namespace(|| format!("{}: Update R1", i)),
+				&R1_double,
+				&R0_and_R1,
+				&Boolean::from(bits[i].clone())
+			)?;	
+		}
+    Ok(R0)
   }
 
+	//TODO: Do we want to change the input scalar to be Vec<AllocatedBit>? 
   #[allow(dead_code)]
-  pub fn scalar_mul(&self, scalar: &Fq) -> Self {
-    let mut res = Self {
-      x: Fp::zero(),
-      y: Fp::zero(),
-      is_infinity: true,
-      _p: Default::default(),
-    };
-
-    let bits = scalar.to_le_bits();
+  pub fn scalar_mul<CS: ConstraintSystem<Fp>>(&self, mut cs: CS, scalar: &Fq) -> Result<Self, SynthesisError> {
+    /*************************************************************/
+		//Initialize res = Self {
+    //  x: Fp::zero(),
+    //  y: Fp::zero(),
+    //  is_infinity: true,
+    //  _p: Default::default(),
+    //};
+		/*************************************************************/
+    
+		let zero = alloc_zero(cs.namespace(|| "Allocate zero"))?;
+		let one = alloc_one(cs.namespace(|| "Allocate one"))?;
+		let mut res = Self::new(zero.clone(), zero.clone(), one.clone());
+		
+		let bits: Vec<AllocatedBit> = scalar.to_le_bits().into_iter().enumerate().map(
+			|(i, bit)| {
+				AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit))
+			}
+		).collect::<Result<Vec<AllocatedBit>, SynthesisError>>()?; 
+	
     for i in (0..bits.len()).rev() {
-      res = res.double();
-      if bits[i] {
-        res = self.add(&res);
-      }
+				
+			/*************************************************************/
+			//  res = res.double();
+			/*************************************************************/
+			
+			res = res.double(cs.namespace(|| format!("{}: double", i)))?;
+			
+			/*************************************************************/
+			//  if bits[i] {
+			//    res = self.add(&res);
+			//  }
+			/*************************************************************/
+
+			let self_and_res = self.add(cs.namespace(|| format!("{}: add", i)), &res)?;
+			res = Self::conditionally_select(
+				cs.namespace(|| format!("{}: Update res", i)),
+				&self_and_res,
+				&res,
+				&Boolean::from(bits[i].clone())
+			)?;
     }
-    res
-  }*/
+		Ok(res)
+  }
+	
+	/// If condition outputs a otherwise outputs b
+	pub fn conditionally_select<CS: ConstraintSystem<Fp>>(
+		mut cs: CS,
+		a: &Self,
+		b: &Self,
+		condition: &Boolean
+	) -> Result<Self, SynthesisError> {
+		let x = conditionally_select(
+			cs.namespace(|| "select x"), 
+			&a.x, 
+			&b.x, 
+			condition
+		)?;
+
+		let y = conditionally_select(
+			cs.namespace(|| "select y"), 
+			&a.y, 
+			&b.y, 
+			condition
+		)?;
+		
+		let is_infinity = conditionally_select(
+			cs.namespace(|| "select is_infinity"), 
+			&a.is_infinity, 
+			&b.is_infinity, 
+			condition
+		)?;
+		
+		Ok(Self::new(x, y, is_infinity))
+	}	
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  use ff::Field;
-  use pasta_curves::arithmetic::CurveAffine;
-  use pasta_curves::group::Curve;
-  use pasta_curves::EpAffine;
-  use std::ops::Mul;
 	use crate::bellperson::solver::SatisfyingAssignment; 
 	use crate::bellperson::shape_cs::ShapeCS; 
 	type G = pasta_curves::pallas::Point;
@@ -373,87 +527,52 @@ mod tests {
 	type Fp = pasta_curves::pallas::Scalar;
 	use crate::gadgets::ecc::Point as Pp;
 	use crate::bellperson::r1cs::{NovaShape, NovaWitness};
-	use crate::r1cs;
+
+	fn synthesize_circuit<Fp, Fq, CS>(mut cs: CS) -> (
+		AllocatedPoint<Fp,Fq>, 
+		AllocatedPoint<Fp,Fq>, 
+		Fq
+	)
+	where
+		Fp: PrimeField,
+		Fq: PrimeField + PrimeFieldBits,
+		CS: ConstraintSystem<Fp>
+	{
+		// perform some curve arithmetic
+		let a = AllocatedPoint::<Fp,Fq>::random_vartime(cs.namespace(|| "a")).unwrap();
+		let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap(); 
+    let s = Fq::random(&mut OsRng);
+    let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &s).unwrap();
+		let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap(); 
+		(a, e, s)
+	}
 
   #[test]
-  fn test_ecc_add_and_double() {
+  fn test_ecc_circuit_ops() {
 		//First create the shape
 		let mut cs: ShapeCS<G> = ShapeCS::new();
-    let a = AllocatedPoint::<Fp,Fq>::random_vartime(cs.namespace(|| "a")).unwrap();
-		let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap(); //Need to make something input so that the compiler is not complaining
-    let b = AllocatedPoint::<Fp,Fq>::random_vartime(cs.namespace(|| "b")).unwrap();
-		let _ = b.inputize(cs.namespace(|| "inputize n")).unwrap(); //Need to make something input so that the compiler is not complaining
-    let c = a.add(cs.namespace(|| "c"), &b).unwrap();
-		let d = a.double(cs.namespace(|| "d")).unwrap();
+    let _ = synthesize_circuit::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
 		let shape = cs.r1cs_shape();
    	let gens = cs.r1cs_gens(); 
-
-		// perform some curve arithmetic
+		println!("Number of constraints: {}", cs.num_constraints());
+		//Then the satisfying assignment
 		let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let a = AllocatedPoint::<Fp,Fq>::random_vartime(cs.namespace(|| "a")).unwrap();
-		let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap(); //Need to make something input so that the compiler is not complaining
-    let b = AllocatedPoint::<Fp,Fq>::random_vartime(cs.namespace(|| "b")).unwrap();
-		let _ = b.inputize(cs.namespace(|| "inputize n")).unwrap(); //Need to make something input so that the compiler is not complaining
-    let c = a.add(cs.namespace(|| "c"), &b).unwrap();
-    let d = a.double(cs.namespace(|| "d")).unwrap();
-		
+    let (a, e, s) = synthesize_circuit::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
 		let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 		
+		//Make sure that this is satisfiable
 		assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 
-		//Now create points out of the circuit to make sure we have not messed anythin up
-		let a_p = Pp::<Fp, Fq>::new(a.x.get_value().unwrap(), a.y.get_value().unwrap(), a.is_infinity.get_value().unwrap() == Fp::one());
-		let b_p = Pp::<Fp, Fq>::new(b.x.get_value().unwrap(), b.y.get_value().unwrap(), b.is_infinity.get_value().unwrap() == Fp::one());
-		let c_p = a_p.add(&b_p);
-		assert!(c.x.get_value().unwrap() == c_p.x);
-		assert!(c.y.get_value().unwrap() == c_p.y);
-		let d_p = a_p.double();
-		assert!(d.x.get_value().unwrap() == d_p.x);
-		assert!(d.y.get_value().unwrap() == d_p.y);
+		//Now use ecc.rs to check that we did not mess anything up
+	
+		let a_p = Pp::<Fp, Fq>::new(
+			a.x.get_value().unwrap(), 
+			a.y.get_value().unwrap(), 
+			a.is_infinity.get_value().unwrap() == Fp::one()
+		);
+		
+		let e_p = a_p.scalar_mul(&s);
+		assert!(e.x.get_value().unwrap() == e_p.x);
+		assert!(e.y.get_value().unwrap() == e_p.y);
 	}	
-  /*fn test_ecc_circuit_ops() {
-		//Now make sure that the circuit is satisfiable?
-		let d = a.double();
-    let s = Fq::random(&mut OsRng);
-    let e = a.scalar_mul(&s);
-
-    // perform the same computation by translating to pasta_curve types
-    let a_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(a.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(a.y.to_repr().0).unwrap(),
-    )
-    .unwrap();
-    let b_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(b.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(b.y.to_repr().0).unwrap(),
-    )
-    .unwrap();
-    let c_pasta = (a_pasta + b_pasta).to_affine();
-    let d_pasta = (a_pasta + a_pasta).to_affine();
-    let e_pasta = a_pasta
-      .mul(pasta_curves::Fq::from_repr(s.to_repr().0).unwrap())
-      .to_affine();
-
-    // transform c, d, and e into pasta_curve types
-    let c_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(c.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(c.y.to_repr().0).unwrap(),
-    )
-    .unwrap();
-    let d_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(d.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(d.y.to_repr().0).unwrap(),
-    )
-    .unwrap();
-    let e_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(e.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(e.y.to_repr().0).unwrap(),
-    )
-    .unwrap();
-
-    // check that we have the same outputs
-    assert_eq!(c_pasta, c_pasta_2);
-    assert_eq!(d_pasta, d_pasta_2);
-    assert_eq!(e_pasta, e_pasta_2);
-  }*/
 }
