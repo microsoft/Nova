@@ -46,6 +46,7 @@ where
   }
 
   //Make the point io
+  #[allow(dead_code)]
   pub fn inputize<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
     let _ = self.x.inputize(cs.namespace(|| "Input point.x"));
     let _ = self.y.inputize(cs.namespace(|| "Input point.y"));
