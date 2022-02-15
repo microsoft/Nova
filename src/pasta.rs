@@ -62,8 +62,8 @@ impl PrimeField for pallas::Scalar {
     }
   }
 
-  fn random(_rng: &mut (impl RngCore + CryptoRng)) -> Self {
-    Fq::rand()
+  fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
+    <Fq as ff::Field>::random(rng)
   }
 }
 
