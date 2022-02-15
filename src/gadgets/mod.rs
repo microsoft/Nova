@@ -1,4 +1,4 @@
 mod ecc;
 mod ecc_circuit;
-mod ro;
-mod utils;
+pub mod ro;
+pub mod utils;

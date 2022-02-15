@@ -43,7 +43,7 @@ where
 
   ///Compute a challenge by hashing the current state
   #[allow(dead_code)]
-  pub fn get_challenge<CS>(self, cs: &mut CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  pub fn get_challenge<CS>(self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
