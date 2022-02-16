@@ -17,7 +17,7 @@ use rayon::prelude::*;
 /// Public parameters for a given R1CS
 #[derive(Debug)]
 pub struct R1CSGens<G: Group> {
-  gens: CommitGens<G>,
+  pub(crate) gens: CommitGens<G>, //TODO: make this private again
   gens_aux: CommitGens<G>,
 }
 

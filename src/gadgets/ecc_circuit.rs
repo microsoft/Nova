@@ -16,9 +16,9 @@ pub struct AllocatedPoint<Fp>
 where
   Fp: PrimeField,
 {
-  x: AllocatedNum<Fp>,
-  y: AllocatedNum<Fp>,
-  is_infinity: AllocatedNum<Fp>, //TODO: Make this Allocatedbit?
+  pub(crate) x: AllocatedNum<Fp>,
+  pub(crate) y: AllocatedNum<Fp>,
+  pub(crate) is_infinity: AllocatedNum<Fp>, //TODO: Make this Allocatedbit?
 }
 
 impl<Fp> AllocatedPoint<Fp>
