@@ -1,9 +1,19 @@
-use bellperson::{Circuit, ConstraintSystem, SynthesisError, gadgets::{Assignment, num::AllocatedNum}};
+use bellperson::{Circuit, ConstraintSystem, SynthesisError, gadgets::{Assignment, num::AllocatedNum, boolean::Boolean}};
 use ff::{PrimeFieldBits};
 use generic_array::typenum;
 use super::r1cs::RelaxedR1CSInstance;
 use super::traits::{PrimeField, Group};
-use super::gadgets::{utils::le_bits_to_num, ro::PoseidonRO, ecc_circuit::AllocatedPoint};
+use super::gadgets::{
+	utils::{
+		alloc_zero,
+		alloc_one,
+		le_bits_to_num, 
+		conditionally_select, 
+		alloc_num_equals
+	}, 
+	ro::PoseidonRO, 
+	ecc_circuit::AllocatedPoint
+};
 use super::commitments::Commitment;
 
 ///Inputs to a Verification Circuit. The verification circuit is over G::Base
@@ -143,6 +153,7 @@ where
 				)?; 
 
 				let W_r = AllocatedPoint::new(W_r_x.clone(), W_r_y.clone(), W_r_inf.clone());
+				let _ = W_r.check_is_infinity(cs.namespace(|| "W_r check is_infinity"))?;
 
 				//E_r = (x, y, infinity)
 				let E_r_x = AllocatedNum::alloc(
@@ -166,6 +177,7 @@ where
 				)?; 
 				
 				let E_r = AllocatedPoint::new(E_r_x.clone(), E_r_y.clone(), E_r_inf.clone());
+				let _ = E_r.check_is_infinity(cs.namespace(|| "E_r check is_infinity"));
 
 				//u_r << |G::Base| despite the fact that u_r is a scalar. 
 				//So we parse all of its bytes as a G::Base element
@@ -238,6 +250,8 @@ where
 				)?; 
 
 				let T = AllocatedPoint::new(T_x.clone(), T_y.clone(), T_inf.clone());
+				let _ = T.check_is_infinity(cs.namespace(|| "T check is_infinity"));
+				
 				/***********************************************************************/
        	//Allocate params
 				/***********************************************************************/
@@ -273,6 +287,7 @@ where
 				)?; 
 				
 				let W = AllocatedPoint::new(W_x.clone(), W_y.clone(), W_inf.clone());
+				let _ = W.check_is_infinity(cs.namespace(|| "W check is_infinity"));
 
 				/***********************************************************************/
         //Check that h1 = Hash(u2,i,z0,zi)
@@ -307,9 +322,28 @@ where
         //U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
         /***********************************************************************/
         
-				//TODO: Add the i == 0 case
+				//Allocate 0 and 1
+				let zero = alloc_zero(cs.namespace(|| "zero"))?;
+				let one = alloc_one(cs.namespace(|| "one"))?;
 
-				//Compute the challenge:
+				//Compute default values of U2':
+				let zero_commitment = AllocatedPoint::new(
+					zero.clone(),
+					zero.clone(),
+					one.clone(),
+				);
+
+				//W_default and E_default are a commitment to zero
+				let W_default = zero_commitment.clone();
+				let E_default = zero_commitment.clone();
+				
+				//u_default = 0
+			
+				let u_default = zero.clone();
+
+				//TODO: Add X_default
+
+				//Compute fold:
         let mut hasher: PoseidonRO<G::Base, typenum::U9>= PoseidonRO::new();
 				hasher.absorb(params);
 				hasher.absorb(h1);
@@ -323,29 +357,57 @@ where
 				let r_bits = hasher.get_challenge(cs.namespace(|| "r bits"))?;
 				let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
-				//W_new = W_r + r * W
+				//W_fold = W_r + r * W
        	let rW = W.scalar_mul(cs.namespace(|| "r * W"), r_bits.clone())?;
-				let W_new = W_r.add(cs.namespace(|| "W_r + r * W"), &rW)?;
+				let W_fold = W_r.add(cs.namespace(|| "W_r + r * W"), &rW)?;
 
-				//E_new = E_r + r * T
+				//E_fold = E_r + r * T
        	let rT = T.scalar_mul(cs.namespace(|| "r * T"), r_bits)?;
-				let E_new = E_r.add(cs.namespace(|| "E_r + r * T"), &rT)?;
+				let E_fold = E_r.add(cs.namespace(|| "E_r + r * T"), &rT)?;
 
-				//u_new = u_r + r
-				let u_new = AllocatedNum::alloc(
-					cs.namespace(|| "u_new"),
+				//u_fold = u_r + r
+				let u_fold = AllocatedNum::alloc(
+					cs.namespace(|| "u_fold"),
 					|| Ok(*u_r.get_value().get()? + r.get_value().get()?)
 				)?;
 				cs.enforce(
-					|| "Check u_new",
+					|| "Check u_fold",
 					|lc| lc,
 					|lc| lc,
-					|lc| lc + u_new.get_variable() - u_r.get_variable() - r.get_variable()
+					|lc| lc + u_fold.get_variable() - u_r.get_variable() - r.get_variable()
 				);
 				
 				//TODO: Add folding of io
-
 				
+				//Now select the default values if i == 0 otherwise the fold values
+				let base_case = Boolean::from(
+					alloc_num_equals(
+						cs.namespace(|| "Check if base case"),
+						i.clone(),
+						zero.clone(),
+					)?
+				);
+				
+				let W_new = AllocatedPoint::conditionally_select(
+					cs.namespace(|| "W_new"),
+					&W_default,
+					&W_fold,
+					&base_case
+				)?;
+			
+				let E_new = AllocatedPoint::conditionally_select(
+					cs.namespace(|| "E_new"),
+					&E_default,
+					&E_fold,
+					&base_case
+				)?;
+				
+				let u_new = conditionally_select(
+					cs.namespace(|| "u_new"),
+					&u_default,
+					&u_fold,
+					&base_case
+				)?;
 				/***********************************************************************/
 				//Update z_i and i
 				/***********************************************************************/
@@ -364,6 +426,7 @@ where
 				);
 
 				let z_next = z_i; //TODO: Add the circuit!
+				
 				/***********************************************************************/
 				//Compute the new hash 
 				/***********************************************************************/
