@@ -47,14 +47,12 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::zero()))?;
-  //TODO: How do we enforce that it is zero?
-  //cs.enforce(
-  //  || "check zero is valid",
-  //  |lc| lc + zero.get_variable(),
-  //  |lc| lc + CS::one(),
-  //  |lc| lc ,
-  //);
-
+  cs.enforce(
+    || "check zero is valid",
+    |lc| lc + zero.get_variable(),
+    |lc| lc + zero.get_variable(),
+    |lc| lc ,
+  );
   Ok(zero)
 }
 
@@ -63,13 +61,12 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::one()))?;
-  //TODO: How to enforce that it is one?
-  //cs.enforce(
-  //  || "check one is valid",
-  //  |lc| lc,
-  //  |lc| lc,
-  //  |lc| lc + one.get_variable() - CS::one(),
-  //);
+  cs.enforce(
+    || "check one is valid",
+    |lc| lc + one.get_variable(),
+    |lc| lc + one.get_variable(),
+    |lc| lc + CS::one(),
+  );
 
   Ok(one)
 }
@@ -228,5 +225,54 @@ pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
     |lc| lc + c.get_variable() - b.get_variable(),
   );
 
+  Ok(c)
+}
+
+///If condition set to 0 otherwise a
+pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  condition: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? == F::one() {
+      Ok(F::zero())
+    } else {
+      Ok(*a.get_value().get()?)
+    }
+  })?;
+
+  // a * (1 - condition) = c
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + a.get_variable(),
+    |lc| lc + CS::one() - condition.get_variable(),
+    |lc| lc + c.get_variable(),
+  );
+
+  Ok(c)
+}
+
+///If condition set to 1 otherwise a
+pub fn select_one_or<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  condition: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? == F::one() {
+      Ok(F::one())
+    } else {
+      Ok(*a.get_value().get()?)
+    }
+  })?;
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + CS::one() - a.get_variable(),
+    |lc| lc + condition.get_variable(),
+    |lc| lc + c.get_variable() - a.get_variable(),
+  );
   Ok(c)
 }

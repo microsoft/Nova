@@ -38,7 +38,7 @@ where
 {
 		///Create new inputs/witness for the verification circuit
 		pub fn new(
-        h1: G::Base,
+        h1: G::Base, //TODO: Make this option
         u2: RelaxedR1CSInstance<G>,
         i: G::Base,
         z0: G::Base,
@@ -480,7 +480,7 @@ mod tests {
 		let gens2 = cs.r1cs_gens();
     println!("Circuit2 -> Number of constraints: {}", cs.num_constraints());
 
-		//TODO: Replace the default hash with the actual hash
+		//TODO: We need to hardwire default hash or give it as input
 		let default_hash = <<G2 as Group>::Base as ff::PrimeField>::from_str_vartime("178164938390736661201066150778981665957").unwrap();
 		let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
 		let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
