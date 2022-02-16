@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
-use crate::gadgets::utils::{alloc_one, alloc_zero, conditionally_select2, conditionally_select};
+use crate::gadgets::utils::{alloc_one, alloc_zero, conditionally_select2, conditionally_select, select_zero_or, select_one_or};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -97,8 +97,6 @@ where
       |lc| lc + x_diff_actual.get_variable(),
     );
 
-    let x_diff_default = alloc_one(cs.namespace(|| "Allocate default x_diff"))?;
-    
 		//Compute self.is_infinity OR other.is_infinity
 		let at_least_one_inf = AllocatedNum::alloc(
 			cs.namespace(|| "at least one inf"),
@@ -111,9 +109,9 @@ where
 			|lc| lc + at_least_one_inf.get_variable(),
 		);
 		
-    let x_diff = conditionally_select2(
+    //x_diff = 1 if either self.is_infinity or other.is_infinity else x_diff_actual
+		let x_diff = select_one_or(
       cs.namespace(|| "Compute x_diff"),
-      &x_diff_default,
       &x_diff_actual,
       &at_least_one_inf,
     )?;
@@ -241,9 +239,6 @@ where
 
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
 		
-		//Allocate zero. 
-		let zero = alloc_zero(cs.namespace(|| "zero"))?;
-
     //*************************************************************/
     // lambda = (Fp::one() + Fp::one() + Fp::one())
     //  * self.x
@@ -262,10 +257,8 @@ where
       |lc| lc + tmp_actual.get_variable(),
     );
 
-    let tmp_default = alloc_one(cs.namespace(|| "tmp_default"))?;
-    let tmp = conditionally_select2(
+    let tmp = select_one_or(
       cs.namespace(|| "tmp"),
-      &tmp_default,
       &tmp_actual,
       &self.is_infinity,
     )?;
@@ -363,10 +356,10 @@ where
     /*************************************************************/
 
     //x
-    let final_x = conditionally_select2(cs.namespace(|| "final x"), &zero, &x, &self.is_infinity)?;
+    let final_x = select_zero_or(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
 
     //y
-    let final_y = conditionally_select2(cs.namespace(|| "final y"), &zero, &y, &self.is_infinity)?;
+    let final_y = select_zero_or(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
 
     //is_infinity
     let final_is_infinity = self.is_infinity.clone();
@@ -503,17 +496,20 @@ mod tests {
   use crate::bellperson::solver::SatisfyingAssignment;
   type G = pasta_curves::pallas::Point;
   type Fp = pasta_curves::pallas::Scalar;
+  type Fq = pasta_curves::vesta::Scalar;
   use crate::bellperson::r1cs::{NovaShape, NovaWitness};
   use ff::PrimeFieldBits;
+	use crate::gadgets::ecc::Point;
 
-  fn synthesize_smul<Fp, CS>(mut cs: CS)
+  fn synthesize_smul<Fp, Fq, CS>(mut cs: CS) -> (AllocatedPoint<Fp>, AllocatedPoint<Fp>, Fq)
   where
-    Fp: PrimeField + PrimeFieldBits,
+		Fp: PrimeField,
+    Fq: PrimeField + PrimeFieldBits,
     CS: ConstraintSystem<Fp>,
   {
     let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
     let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
-    let s = Fp::random(&mut OsRng);
+    let s = Fq::random(&mut OsRng);
 		//Allocate random bits and only keep 128 bits
     let bits: Vec<AllocatedBit> = s
       .to_le_bits()
@@ -523,25 +519,31 @@ mod tests {
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
     let e = a
-      .scalar_mul(cs.namespace(|| "Scalar Mul"), bits[..128].to_vec())
+      //.scalar_mul(cs.namespace(|| "Scalar Mul"), bits[..128].to_vec())
+      .scalar_mul(cs.namespace(|| "Scalar Mul"), bits)
       .unwrap();
     let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
-  }
+  	return (a, e, s);
+	}
 
   #[test]
   fn test_ecc_circuit_ops() {
     //First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_smul::<Fp, _>(cs.namespace(|| "synthesize"));
+    let _ = synthesize_smul::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
 
     //Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_smul::<Fp, _>(cs.namespace(|| "synthesize"));
+    let (a, e, s) = synthesize_smul::<Fp,Fq, _>(cs.namespace(|| "synthesize"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
-
+		
+		let a_p: Point<Fp, Fq> = Point::new(a.x.get_value().unwrap(), a.y.get_value().unwrap(), a.is_infinity.get_value().unwrap() == Fp::one());
+		let e_p: Point<Fp, Fq> = Point::new(e.x.get_value().unwrap(), e.y.get_value().unwrap(), e.is_infinity.get_value().unwrap() == Fp::one());
+		let e_new = a_p.scalar_mul(&s);
+		assert!(e_p.x == e_new.x && e_p.y == e_new.y);
     //Make sure that this is satisfiable
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
   }
