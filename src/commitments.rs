@@ -14,12 +14,12 @@ pub struct CommitGens<G: Group> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Commitment<G: Group> {
-  comm: G,
+  pub(crate) comm: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompressedCommitment<C: CompressedGroup> {
-  pub(crate) comm: C,
+  comm: C,
 }
 
 impl<G: Group> CommitGens<G> {

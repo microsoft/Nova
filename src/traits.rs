@@ -54,7 +54,10 @@ pub trait Group:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
-  /// A type representing an element of the scalar field of the group
+  /// A type representing an element of the base field of the group
+	type Base: PrimeField;
+	
+	/// A type representing an element of the scalar field of the group
   type Scalar: PrimeField + ChallengeTrait;
 
   /// A type representing the compressed version of the group element
@@ -75,6 +78,9 @@ pub trait Group:
   /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
+
+  ///Returns the affine coordinates (x, y, infinty) for the point
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
 }
 
 /// Represents a compressed version of a group element
