@@ -47,13 +47,13 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::zero()))?;
-  //Enforce that it is zero
-  cs.enforce(
-    || "check zero is valid",
-    |lc| lc,
-    |lc| lc,
-    |lc| lc + zero.get_variable(),
-  );
+  //TODO: How do we enforce that it is zero?
+  //cs.enforce(
+  //  || "check zero is valid",
+  //  |lc| lc + zero.get_variable(),
+  //  |lc| lc + CS::one(),
+  //  |lc| lc ,
+  //);
 
   Ok(zero)
 }
@@ -63,13 +63,13 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::one()))?;
-  //Enforce that it is zero
-  cs.enforce(
-    || "check one is valid",
-    |lc| lc,
-    |lc| lc,
-    |lc| lc + one.get_variable() - CS::one(),
-  );
+  //TODO: How to enforce that it is one?
+  //cs.enforce(
+  //  || "check one is valid",
+  //  |lc| lc,
+  //  |lc| lc,
+  //  |lc| lc + one.get_variable() - CS::one(),
+  //);
 
   Ok(one)
 }
@@ -196,6 +196,35 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
     || "conditional select constraint",
     |lc| lc + a.get_variable() - b.get_variable(),
     |_| condition.lc(CS::one(), F::one()),
+    |lc| lc + c.get_variable() - b.get_variable(),
+  );
+
+  Ok(c)
+}
+
+///Same as the above but Condition is an AllocatedNum that needs to be 
+///0 or 1. 1 => True, 0 => False
+pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  b: &AllocatedNum<F>,
+  condition: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? == F::one() {
+      Ok(*a.get_value().get()?)
+    } else {
+      Ok(*b.get_value().get()?)
+    }
+  })?;
+
+  // a * condition + b*(1-condition) = c ->
+  // a * condition - b*condition = c - b
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + a.get_variable() - b.get_variable(),
+    |lc| lc + condition.get_variable(),
     |lc| lc + c.get_variable() - b.get_variable(),
   );
 
