@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
-use crate::gadgets::utils::{alloc_one, alloc_zero, conditionally_select2, conditionally_select, select_zero_or, select_one_or};
+use crate::gadgets::utils::{
+  alloc_one, alloc_zero, conditionally_select, conditionally_select2, select_one_or, select_zero_or,
+};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -18,7 +20,7 @@ where
 {
   pub(crate) x: AllocatedNum<Fp>,
   pub(crate) y: AllocatedNum<Fp>,
-  pub(crate) is_infinity: AllocatedNum<Fp>, 
+  pub(crate) is_infinity: AllocatedNum<Fp>,
 }
 
 impl<Fp> AllocatedPoint<Fp>
@@ -29,19 +31,22 @@ where
   pub fn new(x: AllocatedNum<Fp>, y: AllocatedNum<Fp>, is_infinity: AllocatedNum<Fp>) -> Self {
     Self { x, y, is_infinity }
   }
-	
-	//Check that is infinity is 0/1 
+
+  //Check that is infinity is 0/1
   #[allow(dead_code)]
-	pub fn check_is_infinity<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
-		//Check that is_infinity * ( 1 - is_infinity ) = 0
-		cs.enforce(
-			|| "is_infinity is bit",
-			|lc| lc + self.is_infinity.get_variable(),
-			|lc| lc + CS::one() - self.is_infinity.get_variable(),
-			|lc| lc ,
-		);
-		Ok(())
-	}
+  pub fn check_is_infinity<CS: ConstraintSystem<Fp>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<(), SynthesisError> {
+    //Check that is_infinity * ( 1 - is_infinity ) = 0
+    cs.enforce(
+      || "is_infinity is bit",
+      |lc| lc + self.is_infinity.get_variable(),
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc,
+    );
+    Ok(())
+  }
 
   #[allow(dead_code)]
   //Allocate a random point. Only used for testing
@@ -68,22 +73,20 @@ where
       .inputize(cs.namespace(|| "Input point.is_infinity"));
     Ok(())
   }
-	
-	//Adds other point to this point and returns the result
-	//Assumes that both other.is_infinity and this.is_infinty are bits
+
+  //Adds other point to this point and returns the result
+  //Assumes that both other.is_infinity and this.is_infinty are bits
   pub fn add<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
     other: &AllocatedPoint<Fp>,
   ) -> Result<Self, SynthesisError> {
-    
-		//Allocate the boolean variables that check if either of the points is infinity
+    //Allocate the boolean variables that check if either of the points is infinity
 
     //************************************************************************/
     //lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
     //************************************************************************/
-    
-		//First compute (other.x - self.x).inverse()
+    //First compute (other.x - self.x).inverse()
     //If either self or other are 1 then compute bogus values
 
     // x_diff = other != inf && self != inf ? (other.x - self.x) : 1
@@ -97,31 +100,30 @@ where
       |lc| lc + x_diff_actual.get_variable(),
     );
 
-		//Compute self.is_infinity OR other.is_infinity
-		let at_least_one_inf = AllocatedNum::alloc(
-			cs.namespace(|| "at least one inf"),
-			|| Ok(*self.is_infinity.get_value().get()? * *other.is_infinity.get_value().get()?)
-		)?;
-		cs.enforce(
-			|| "at least one inf = self.is_infinity * other.is_infinity",
-			|lc| lc + self.is_infinity.get_variable(),
-			|lc| lc + other.is_infinity.get_variable(),
-			|lc| lc + at_least_one_inf.get_variable(),
-		);
-		
+    //Compute self.is_infinity OR other.is_infinity
+    let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
+      Ok(*self.is_infinity.get_value().get()? * *other.is_infinity.get_value().get()?)
+    })?;
+    cs.enforce(
+      || "at least one inf = self.is_infinity * other.is_infinity",
+      |lc| lc + self.is_infinity.get_variable(),
+      |lc| lc + other.is_infinity.get_variable(),
+      |lc| lc + at_least_one_inf.get_variable(),
+    );
+
     //x_diff = 1 if either self.is_infinity or other.is_infinity else x_diff_actual
-		let x_diff = select_one_or(
+    let x_diff = select_one_or(
       cs.namespace(|| "Compute x_diff"),
       &x_diff_actual,
       &at_least_one_inf,
     )?;
 
     let x_diff_inv = AllocatedNum::alloc(cs.namespace(|| "x diff inverse"), || {
-      if *at_least_one_inf.get_value().get()? == Fp::one(){
+      if *at_least_one_inf.get_value().get()? == Fp::one() {
         //Set to default
         Ok(Fp::one())
-      }else{
-				//Set to the actual inverse
+      } else {
+        //Set to the actual inverse
         let inv = (*other.x.get_value().get()? - *self.x.get_value().get()?).invert();
         if inv.is_some().unwrap_u8() == 1 {
           Ok(inv.unwrap())
@@ -238,7 +240,6 @@ where
   }
 
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
-		
     //*************************************************************/
     // lambda = (Fp::one() + Fp::one() + Fp::one())
     //  * self.x
@@ -257,19 +258,15 @@ where
       |lc| lc + tmp_actual.get_variable(),
     );
 
-    let tmp = select_one_or(
-      cs.namespace(|| "tmp"),
-      &tmp_actual,
-      &self.is_infinity,
-    )?;
+    let tmp = select_one_or(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
     //Compute inv = tmp.invert
     let tmp_inv = AllocatedNum::alloc(cs.namespace(|| "tmp inverse"), || {
-      if *self.is_infinity.get_value().get()? == Fp::one(){
+      if *self.is_infinity.get_value().get()? == Fp::one() {
         //Return default value 1
         Ok(Fp::one())
-      }else{
-				//Return the actual inverse
+      } else {
+        //Return the actual inverse
         let inv = (*tmp.get_value().get()?).invert();
         if inv.is_some().unwrap_u8() == 1 {
           Ok(inv.unwrap())
@@ -498,19 +495,19 @@ mod tests {
   type Fp = pasta_curves::pallas::Scalar;
   type Fq = pasta_curves::vesta::Scalar;
   use crate::bellperson::r1cs::{NovaShape, NovaWitness};
+  use crate::gadgets::ecc::Point;
   use ff::PrimeFieldBits;
-	use crate::gadgets::ecc::Point;
 
   fn synthesize_smul<Fp, Fq, CS>(mut cs: CS) -> (AllocatedPoint<Fp>, AllocatedPoint<Fp>, Fq)
   where
-		Fp: PrimeField,
+    Fp: PrimeField,
     Fq: PrimeField + PrimeFieldBits,
     CS: ConstraintSystem<Fp>,
   {
     let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
     let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
     let s = Fq::random(&mut OsRng);
-		//Allocate random bits and only keep 128 bits
+    //Allocate random bits and only keep 128 bits
     let bits: Vec<AllocatedBit> = s
       .to_le_bits()
       .into_iter()
@@ -523,8 +520,8 @@ mod tests {
       .scalar_mul(cs.namespace(|| "Scalar Mul"), bits)
       .unwrap();
     let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
-  	return (a, e, s);
-	}
+    return (a, e, s);
+  }
 
   #[test]
   fn test_ecc_circuit_ops() {
@@ -537,13 +534,21 @@ mod tests {
 
     //Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let (a, e, s) = synthesize_smul::<Fp,Fq, _>(cs.namespace(|| "synthesize"));
+    let (a, e, s) = synthesize_smul::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
-		
-		let a_p: Point<Fp, Fq> = Point::new(a.x.get_value().unwrap(), a.y.get_value().unwrap(), a.is_infinity.get_value().unwrap() == Fp::one());
-		let e_p: Point<Fp, Fq> = Point::new(e.x.get_value().unwrap(), e.y.get_value().unwrap(), e.is_infinity.get_value().unwrap() == Fp::one());
-		let e_new = a_p.scalar_mul(&s);
-		assert!(e_p.x == e_new.x && e_p.y == e_new.y);
+
+    let a_p: Point<Fp, Fq> = Point::new(
+      a.x.get_value().unwrap(),
+      a.y.get_value().unwrap(),
+      a.is_infinity.get_value().unwrap() == Fp::one(),
+    );
+    let e_p: Point<Fp, Fq> = Point::new(
+      e.x.get_value().unwrap(),
+      e.y.get_value().unwrap(),
+      e.is_infinity.get_value().unwrap() == Fp::one(),
+    );
+    let e_new = a_p.scalar_mul(&s);
+    assert!(e_p.x == e_new.x && e_p.y == e_new.y);
     //Make sure that this is satisfiable
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
   }
