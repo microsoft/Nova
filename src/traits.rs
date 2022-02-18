@@ -61,9 +61,9 @@ pub trait Group:
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
   /// A type representing an element of the base field of the group
-	type Base: PrimeField;
-	
-	/// A type representing an element of the scalar field of the group
+  type Base: PrimeField;
+
+  /// A type representing an element of the scalar field of the group
   type Scalar: PrimeField + ChallengeTrait;
 
   /// A type representing the compressed version of the group element
@@ -88,8 +88,8 @@ pub trait Group:
   /// Returns the generator identity of the group
   fn gen() -> Self;
 
-	///Returns the affine coordinates (x, y, infinty) for the point
-	fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+  ///Returns the affine coordinates (x, y, infinty) for the point
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
 }
 
 /// Represents a compressed version of a group element

@@ -95,7 +95,7 @@ impl<G: Group> R1CSShape<G> {
         .map(|i| {
           let (row, col, _val) = M[i];
           if row >= num_cons || col > num_io + num_vars {
-						Err(NovaError::InvalidIndex)
+            Err(NovaError::InvalidIndex)
           } else {
             Ok(())
           }
