@@ -1,7 +1,6 @@
 //! This library implements core components of Nova.
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
-#![feature(test)]
 #![deny(missing_docs)]
 
 mod commitments;
