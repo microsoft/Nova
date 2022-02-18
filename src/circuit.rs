@@ -37,7 +37,8 @@ where
 	G: Group,
 {
 		///Create new inputs/witness for the verification circuit
-		pub fn new(
+  #[allow(dead_code)]
+    pub fn new(
         h1: G::Base, //TODO: Make this option
         u2: RelaxedR1CSInstance<G>,
         i: G::Base,
@@ -75,6 +76,7 @@ where
     G: Group,
 {
     ///Create a new verification circuit for the input relaxed r1cs instances
+  #[allow(dead_code)]
 		pub fn new(inputs: Option<VerificationCircuitInputs<G>>) -> Self {
 			Self { inputs }
 		}
