@@ -3,17 +3,33 @@ use crate::traits::{ChallengeTrait, CompressedGroup, Group, PrimeField};
 use core::borrow::Borrow;
 use core::ops::Mul;
 use merlin::Transcript;
-use pasta_curves::arithmetic::{CurveExt, Field, FieldExt, Group as Grp, CurveAffine};
-use pasta_curves::group::{Group as GrpTrait, GroupEncoding, Curve};
-use pasta_curves::{self, pallas, vesta, Ep, Eq, Fq, Fp};
+use pasta_curves::arithmetic::{CurveAffine, CurveExt, Field, FieldExt, Group as Grp};
+use pasta_curves::group::{Curve, Group as GrpTrait, GroupEncoding};
+use pasta_curves::{self, pallas, vesta, Ep, Eq, Fp, Fq};
 use rand::{CryptoRng, RngCore};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
+///A wrapper for compressed group elements that come from the pallas curve
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PallasCompressedElementWrapper {
+  repr: [u8; 32],
+}
+
+impl PallasCompressedElementWrapper {
+  ///Wraps repr into the wrapper
+  pub fn new(repr: [u8; 32]) -> Self {
+    return Self { repr };
+  }
+}
+
+unsafe impl Send for PallasCompressedElementWrapper {}
+unsafe impl Sync for PallasCompressedElementWrapper {}
+
 impl Group for pallas::Point {
   type Base = pallas::Base;
-	type Scalar = pallas::Scalar;
-  type CompressedGroupElement = [u8; 32];
+  type Scalar = pallas::Scalar;
+  type CompressedGroupElement = PallasCompressedElementWrapper;
 
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
@@ -32,7 +48,7 @@ impl Group for pallas::Point {
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
-    self.to_bytes()
+    PallasCompressedElementWrapper::new(self.to_bytes())
   }
 
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
@@ -51,16 +67,16 @@ impl Group for pallas::Point {
     pallas::Point::generator()
   }
 
-	///Ioanna: This is so that we can turn Points to affine coordinates 
-	///We need this to implement Scalar mul in the circuit
-	fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
-		let coordinates = self.to_affine().coordinates();
-		if coordinates.is_some().unwrap_u8() == 1{
-			(*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
-		}else{
-			(Self::Base::zero(), Self::Base::zero(), true) 
-		}
-	}
+  ///Ioanna: This is so that we can turn Points to affine coordinates
+  ///We need this to implement Scalar mul in the circuit
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
+    let coordinates = self.to_affine().coordinates();
+    if coordinates.is_some().unwrap_u8() == 1 {
+      (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
+    } else {
+      (Self::Base::zero(), Self::Base::zero(), true)
+    }
+  }
 }
 
 impl PrimeField for pallas::Scalar {
@@ -101,26 +117,39 @@ impl ChallengeTrait for pallas::Scalar {
   }
 }
 
-impl CompressedGroup for [u8; 32] {
+impl CompressedGroup for PallasCompressedElementWrapper {
   type GroupElement = pallas::Point;
-	
-	fn decompress(&self) -> Option<pallas::Point> {
-    Some(Ep::from_bytes(self).unwrap())
+
+  fn decompress(&self) -> Option<pallas::Point> {
+    Some(Ep::from_bytes(&self.repr).unwrap())
   }
   fn as_bytes(&self) -> &[u8] {
-    self
+    &self.repr
   }
 }
 
 //////////////////////////////////////Vesta////////////////////////////////////////////////
 
+///A wrapper for compressed group elements that come from the vesta curve
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VestaCompressedElementWrapper {
+  repr: [u8; 32],
+}
+
+impl VestaCompressedElementWrapper {
+  ///Wraps repr into the wrapper
+  pub fn new(repr: [u8; 32]) -> Self {
+    return Self { repr };
+  }
+}
+
+unsafe impl Send for VestaCompressedElementWrapper {}
+unsafe impl Sync for VestaCompressedElementWrapper {}
+
 impl Group for vesta::Point {
   type Base = vesta::Base;
-	type Scalar = vesta::Scalar;
-  type CompressedGroupElement = [u8; 33]; //IOANNA: HACK HACK HACK 
-	// Should be <vesta::Point as GroupEncoding>::Repr as above but this is [u8;32]
-	// and for this type Compressed Group is already implemented but with GroupElement: pallas::Point
-	// TODO: Avoid this hack. Maybe make CompressedGroup Generic?  
+  type Scalar = vesta::Scalar;
+  type CompressedGroupElement = VestaCompressedElementWrapper;
 
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
@@ -139,11 +168,7 @@ impl Group for vesta::Point {
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
-		//HACK HACK HACK: Add one more element so that the compression 
-		//output type is not the same for pallas and vesta
-    let mut arr = [0;33];
-		arr[..32].copy_from_slice(&self.to_bytes());
-		return arr
+    VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
@@ -162,16 +187,16 @@ impl Group for vesta::Point {
     vesta::Point::generator()
   }
 
-	///Ioanna: This is so that we can turn Points to affine coordinates 
-	///We need this to implement Scalar mul in the circuit
-	fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
-		let coordinates = self.to_affine().coordinates();
-		if coordinates.is_some().unwrap_u8() == 1{
-			(*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
-		}else{
-			(Self::Base::zero(), Self::Base::zero(), true) 
-		}
-	}
+  ///Ioanna: This is so that we can turn Points to affine coordinates
+  ///We need this to implement Scalar mul in the circuit
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
+    let coordinates = self.to_affine().coordinates();
+    if coordinates.is_some().unwrap_u8() == 1 {
+      (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
+    } else {
+      (Self::Base::zero(), Self::Base::zero(), true)
+    }
+  }
 }
 
 impl PrimeField for vesta::Scalar {
@@ -204,7 +229,6 @@ impl PrimeField for vesta::Scalar {
   }
 }
 
-
 impl ChallengeTrait for vesta::Scalar {
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
     let mut buf = [0u8; 64];
@@ -213,16 +237,13 @@ impl ChallengeTrait for vesta::Scalar {
   }
 }
 
-impl CompressedGroup for [u8; 33] {
- 	type GroupElement = vesta::Point; 
-	
-	fn decompress(&self) -> Option<vesta::Point> {
-    //HACK HACK HACK: See compress function above
-		let mut bytes = [0; 32];
-		bytes[..32].copy_from_slice(self);
-		Some(Eq::from_bytes(&bytes).unwrap())
+impl CompressedGroup for VestaCompressedElementWrapper {
+  type GroupElement = vesta::Point;
+
+  fn decompress(&self) -> Option<vesta::Point> {
+    Some(Eq::from_bytes(&self.repr).unwrap())
   }
   fn as_bytes(&self) -> &[u8] {
-    self
+    &self.repr
   }
 }
