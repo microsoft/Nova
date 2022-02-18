@@ -51,7 +51,7 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
     || "check zero is valid",
     |lc| lc + zero.get_variable(),
     |lc| lc + zero.get_variable(),
-    |lc| lc ,
+    |lc| lc,
   );
   Ok(zero)
 }
@@ -199,7 +199,7 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-///Same as the above but Condition is an AllocatedNum that needs to be 
+///Same as the above but Condition is an AllocatedNum that needs to be
 ///0 or 1. 1 => True, 0 => False
 pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
