@@ -7,31 +7,29 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use neptune::{circuit::poseidon_hash, poseidon::PoseidonConstants, Arity, Strength};
-use std::marker::PhantomData;
+use neptune::circuit::poseidon_hash;
+use crate::poseidon::params::NovaPoseidonConstants;
 
 ///A random oracle instantiated with the poseidon hash function of a specified Arity
-pub struct PoseidonRO<Scalar, A>
+pub struct PoseidonRO<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
-  A: Arity<Scalar>,
 {
   //Internal state
   state: Vec<AllocatedNum<Scalar>>,
-  phantom: PhantomData<A>,
+  constants: NovaPoseidonConstants<Scalar>,
 }
 
-impl<Scalar, A> PoseidonRO<Scalar, A>
+impl<Scalar> PoseidonRO<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
-  A: Arity<Scalar>,
 {
   ///Initialize the internal state to 0
   #[allow(dead_code)]
-  pub fn new() -> Self {
+  pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
     Self {
       state: Vec::new(),
-      phantom: PhantomData,
+      constants
     }
   }
 
@@ -47,15 +45,19 @@ where
   where
     CS: ConstraintSystem<Scalar>,
   {
-    //Make sure that the size of the state is equal to the arity
-    assert_eq!(A::to_usize(), self.state.len());
-    //Compute the constants and hash
-    let constants = PoseidonConstants::<Scalar, A>::new_with_strength(Strength::Strengthened);
-    let out = poseidon_hash(
-      cs.namespace(|| "Poseidon hash"),
-      self.state.clone(),
-      &constants,
-    )?;
+    let out = match self.state.len() {
+      9 => poseidon_hash(
+            cs.namespace(|| "Poseidon hash"),
+            self.state.clone(),
+            &self.constants.constants9,
+      )?,
+      10 => poseidon_hash(
+            cs.namespace(|| "Poseidon hash"),
+            self.state.clone(),
+            &self.constants.constants10,
+      )?,
+      _ => panic!("Number of elements in the RO state does not match any of the arities used in Nova")
+    };
     //Only keep 128 bits
     let bits: Vec<AllocatedBit> = out
       .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
@@ -75,7 +77,6 @@ mod tests {
   use super::*;
   use crate::bellperson::shape_cs::ShapeCS;
   use crate::bellperson::solver::SatisfyingAssignment;
-  use generic_array::typenum;
   type S = pasta_curves::pallas::Scalar;
   type G = pasta_curves::pallas::Point;
   use crate::gadgets::utils::le_bits_to_num;
@@ -104,9 +105,10 @@ mod tests {
 
   #[test]
   fn test_poseidon_ro() {
-    let mut ro: PoseidonRO<S, typenum::U8> = PoseidonRO::new();
+    let constants = NovaPoseidonConstants::new();
+    let mut ro: PoseidonRO<S> = PoseidonRO::new(constants);
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    for i in 0..8 {
+    for i in 0..9 {
       let num =
         AllocatedNum::alloc(cs.namespace(|| format!("data {}", i)), || Ok(S::zero())).unwrap();
       ro.absorb(num)
