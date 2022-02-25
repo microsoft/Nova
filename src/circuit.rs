@@ -11,7 +11,7 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::PrimeFieldBits;
-use generic_array::typenum;
+use super::poseidon::params::NovaPoseidonConstants;
 
 ///Inputs to a Verification Circuit. The verification circuit is over G::Base
 pub struct VerificationCircuitInputs<G>
@@ -64,25 +64,28 @@ where
 pub struct VerificationCircuit<G>
 where
   G: Group,
+  <G as Group>::Base: ff::PrimeField,
 {
   inputs: Option<VerificationCircuitInputs<G>>,
+  poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
 impl<G> VerificationCircuit<G>
 where
   G: Group,
+  <G as Group>::Base: ff::PrimeField,
 {
   ///Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
-  pub fn new(inputs: Option<VerificationCircuitInputs<G>>) -> Self {
-    Self { inputs }
+  pub fn new(inputs: Option<VerificationCircuitInputs<G>>, poseidon_constants: NovaPoseidonConstants<G::Base>) -> Self where <G as Group>::Base: ff::PrimeField{
+    Self { inputs, poseidon_constants }
   }
 }
 
 impl<G> Circuit<<G as Group>::Base> for VerificationCircuit<G>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
+  <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -249,7 +252,7 @@ where
     /***********************************************************************/
 
     //TODO: Change this to U11
-    let mut hasher: PoseidonRO<G::Base, typenum::U10> = PoseidonRO::new();
+    let mut hasher: PoseidonRO<G::Base> = PoseidonRO::new(self.poseidon_constants.clone());
 
     hasher.absorb(W_r_x.clone());
     hasher.absorb(W_r_y.clone());
@@ -295,7 +298,7 @@ where
     //TODO: Add X_default
 
     //Compute fold:
-    let mut hasher: PoseidonRO<G::Base, typenum::U9> = PoseidonRO::new();
+    let mut hasher: PoseidonRO<G::Base> = PoseidonRO::new(self.poseidon_constants.clone());
     hasher.absorb(params);
     hasher.absorb(h1);
     hasher.absorb(h2);
@@ -373,7 +376,7 @@ where
     //Compute the new hash
     /***********************************************************************/
 
-    let mut hasher: PoseidonRO<G::Base, typenum::U10> = PoseidonRO::new();
+    let mut hasher: PoseidonRO<G::Base> = PoseidonRO::new(self.poseidon_constants.clone());
     hasher.absorb(W_new.x.clone());
     hasher.absorb(W_new.y.clone());
     hasher.absorb(W_new.is_infinity.clone());
@@ -405,7 +408,8 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     //The first circuit that verifies G2
-    let circuit1: VerificationCircuit<G2> = VerificationCircuit::new(None);
+    let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> = NovaPoseidonConstants::new();
+    let circuit1: VerificationCircuit<G2> = VerificationCircuit::new(None, poseidon_constants1.clone());
     //First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -417,7 +421,8 @@ mod tests {
     );
 
     //The second circuit that verifies G1
-    let circuit2: VerificationCircuit<G1> = VerificationCircuit::new(None);
+    let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> = NovaPoseidonConstants::new();
+    let circuit2: VerificationCircuit<G1> = VerificationCircuit::new(None, poseidon_constants2.clone());
     //First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -448,7 +453,7 @@ mod tests {
       T,                                           //TODO: Fix This
       w,
     );
-    let circuit = VerificationCircuit::new(Some(inputs));
+    let circuit = VerificationCircuit::new(Some(inputs), poseidon_constants1.clone());
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
 

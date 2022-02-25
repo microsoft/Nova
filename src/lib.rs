@@ -15,6 +15,7 @@ mod ipa;
 pub mod pasta;
 mod r1cs;
 pub mod traits;
+mod poseidon;
 
 use std::marker::PhantomData;
 
