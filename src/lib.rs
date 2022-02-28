@@ -11,8 +11,8 @@ pub mod errors;
 mod gadgets;
 pub mod pasta;
 pub mod r1cs;
-pub mod traits;
 mod poseidon;
+pub mod traits;
 
 use std::marker::PhantomData;
 
