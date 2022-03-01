@@ -8,7 +8,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U10, U9};
+use generic_array::typenum::{U10, U8, U9};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -20,6 +20,7 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
+  pub(crate) constants8: PoseidonConstants<F, U8>, //TODO: Change these to actual arities
   pub(crate) constants9: PoseidonConstants<F, U9>, //TODO: Change these to actual arities
   pub(crate) constants10: PoseidonConstants<F, U10>,
 }
@@ -30,9 +31,11 @@ where
 {
   ///Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
+    let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
     let constants9 = PoseidonConstants::<F, U9>::new_with_strength(Strength::Strengthened);
     let constants10 = PoseidonConstants::<F, U10>::new_with_strength(Strength::Strengthened);
     Self {
+      constants8,
       constants9,
       constants10,
     }
@@ -78,6 +81,10 @@ where
   pub fn get_challenge(&mut self) -> Scalar {
     let hash = match self.state.len() {
       //TODO: Change these to the actual arity
+      8 => {
+        Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
+      }
+
       9 => {
         Poseidon::<Scalar, U9>::new_with_preimage(&self.state, &self.constants.constants9).hash()
       }
@@ -144,6 +151,11 @@ where
   {
     let out = match self.state.len() {
       //TODO: Set to the actual arities when we add IO folding
+      8 => poseidon_hash(
+        cs.namespace(|| "Poseidon hash"),
+        self.state.clone(),
+        &self.constants.constants8,
+      )?,
       9 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
