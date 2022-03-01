@@ -1,3 +1,15 @@
+//! There are two Verification Circuits. Each of them is over a Pasta curve but
+//! only one of them executes the next step of the computation by applying the inner function F.
+//! There are also two running relaxed r1cs instances.
+//!
+//! When we build a circuit we denote u1 the running relaxed r1cs instance of
+//! the circuit and u2 the running relaxed r1cs instance of the other circuit.
+//! The circuit takes as input two hashes h1 and h2.
+//! If the circuit applies the inner function F, then
+//! h1 = H(u2, i, z0, zi) and h2 = H(u1, i)
+//! otherwise
+//! h1 = H(u2, i) and h2 = H(u1, i, z0, zi)
+
 use super::commitments::Commitment;
 use super::gadgets::{
   ecc_circuit::AllocatedPoint,
@@ -6,25 +18,24 @@ use super::gadgets::{
 use super::poseidon::NovaPoseidonConstants;
 use super::poseidon::PoseidonROGadget;
 use super::r1cs::RelaxedR1CSInstance;
-use super::traits::{Group, PrimeField};
+use super::traits::{Group, InnerCircuit, PrimeField};
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::PrimeFieldBits;
 
-///Inputs to a Verification Circuit. The verification circuit is over G::Base
 pub struct VerificationCircuitInputs<G>
 where
   G: Group,
 {
-  h1: G::Base,   //H(u2, i, z0, zi) where u2 is the running instance for the other circuit
-  h2: G::Scalar, //Hash of the running relaxed r1cs instance of this circuit
+  h1: G::Base,
+  h2: G::Scalar,
   u2: RelaxedR1CSInstance<G>,
   i: G::Base,
   z0: G::Base,
   zi: G::Base,
-  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge
+  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge. TODO: Hard code them or make them part of the input hash
   T: Commitment<G>,
   w: Commitment<G>, //The commitment to the witness of the fresh r1cs instance
 }
@@ -36,7 +47,7 @@ where
   ///Create new inputs/witness for the verification circuit
   #[allow(dead_code)]
   pub fn new(
-    h1: G::Base, //TODO: Make this option
+    h1: G::Base,
     u2: RelaxedR1CSInstance<G>,
     i: G::Base,
     z0: G::Base,
@@ -61,24 +72,28 @@ where
 }
 
 ///Circuit that encodes only the folding verifier
-pub struct VerificationCircuit<G>
+pub struct VerificationCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
+  IC: InnerCircuit<G::Base>,
 {
   inputs: Option<VerificationCircuitInputs<G>>,
+  inner_circuit: Option<IC>, //The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
-impl<G> VerificationCircuit<G>
+impl<G, IC> VerificationCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
+  IC: InnerCircuit<G::Base>,
 {
   ///Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
     inputs: Option<VerificationCircuitInputs<G>>,
+    inner_circuit: Option<IC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
   where
@@ -86,27 +101,29 @@ where
   {
     Self {
       inputs,
+      inner_circuit,
       poseidon_constants,
     }
   }
 }
 
-impl<G> Circuit<<G as Group>::Base> for VerificationCircuit<G>
+impl<G, IC> Circuit<<G as Group>::Base> for VerificationCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
+  IC: InnerCircuit<G::Base>,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
-    //TODO: For now we assume that |G2| < |G1|. We need to generalize
-
     /***********************************************************************/
     //This circuit does not modify h2 but it outputs it.
     //Allocate it and output it.
     /***********************************************************************/
+
+    //TODO: Make this work when |G::Scalar| > |G::Base|
 
     let h2 = AllocatedNum::alloc(cs.namespace(|| "h2"), || {
       let h2_bits = self.inputs.get()?.h2.to_le_bits();
@@ -193,18 +210,6 @@ where
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
     /***********************************************************************/
-    //Allocate z0
-    /***********************************************************************/
-
-    let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
-
-    /***********************************************************************/
-    //Allocate zi
-    /***********************************************************************/
-
-    let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
-
-    /***********************************************************************/
     //Allocate T
     /***********************************************************************/
 
@@ -257,36 +262,6 @@ where
     let _ = W.check_is_infinity(cs.namespace(|| "W check is_infinity"));
 
     /***********************************************************************/
-    //Check that h1 = Hash(u2,i,z0,zi)
-    /***********************************************************************/
-
-    //TODO: Change this to U11
-    let mut hasher: PoseidonROGadget<G::Base> =
-      PoseidonROGadget::new(self.poseidon_constants.clone());
-
-    hasher.absorb(W_r_x.clone());
-    hasher.absorb(W_r_y.clone());
-    hasher.absorb(W_r_inf.clone());
-    hasher.absorb(E_r_x.clone());
-    hasher.absorb(E_r_y.clone());
-    hasher.absorb(E_r_inf.clone());
-    hasher.absorb(u_r.clone());
-    //TODO: Add X_r
-    hasher.absorb(i.clone());
-    hasher.absorb(z_0.clone());
-    hasher.absorb(z_i.clone());
-
-    let hash_bits = hasher.get_challenge(cs.namespace(|| "Input hash"))?;
-    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-
-    cs.enforce(
-      || "check h1",
-      |lc| lc,
-      |lc| lc,
-      |lc| lc + h1.get_variable() - hash.get_variable(),
-    );
-
-    /***********************************************************************/
     //U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
     /***********************************************************************/
 
@@ -307,18 +282,21 @@ where
 
     //TODO: Add X_default
 
-    //Compute fold:
-    hasher.flush_state();
-    hasher.absorb(params);
-    hasher.absorb(h1);
-    hasher.absorb(h2);
-    hasher.absorb(W_x);
-    hasher.absorb(W_y);
-    hasher.absorb(W_inf);
-    hasher.absorb(T_x);
-    hasher.absorb(T_y);
-    hasher.absorb(T_inf);
-    let r_bits = hasher.get_challenge(cs.namespace(|| "r bits"))?;
+    //Compute r:
+
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
+
+    ro.absorb(params);
+    ro.absorb(h1.clone());
+    ro.absorb(h2);
+    ro.absorb(W_x);
+    ro.absorb(W_y);
+    ro.absorb(W_inf);
+    ro.absorb(T_x);
+    ro.absorb(T_y);
+    ro.absorb(T_inf);
+
+    let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
     //W_fold = W_r + r * W
@@ -364,11 +342,11 @@ where
     )?;
 
     let u_new = conditionally_select(cs.namespace(|| "u_new"), &u_default, &u_fold, &base_case)?;
+
     /***********************************************************************/
-    //Update z_i and i
+    //Compute i + 1
     /***********************************************************************/
 
-    //i = i + 1;
     let next_i = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
       Ok(*i.get_value().get()? + G::Base::one())
     })?;
@@ -380,27 +358,124 @@ where
       |lc| lc + next_i.get_variable() - CS::one() - i.get_variable(),
     );
 
-    let z_next = z_i; //TODO: Add the circuit!
+    if self.inner_circuit.is_some() {
+      /***********************************************************************/
+      //Allocate z0
+      /***********************************************************************/
 
-    /***********************************************************************/
-    //Compute the new hash
-    /***********************************************************************/
+      let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
 
-    hasher.flush_state();
-    hasher.absorb(W_new.x.clone());
-    hasher.absorb(W_new.y.clone());
-    hasher.absorb(W_new.is_infinity.clone());
-    hasher.absorb(E_new.x.clone());
-    hasher.absorb(E_new.y.clone());
-    hasher.absorb(E_new.is_infinity.clone());
-    hasher.absorb(u_new.clone());
-    //TODO: Add X_r
-    hasher.absorb(next_i.clone());
-    hasher.absorb(z_0.clone());
-    hasher.absorb(z_next.clone());
-    let h1_new_bits = hasher.get_challenge(cs.namespace(|| "h1_new bits"))?;
-    let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
-    let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
+      /***********************************************************************/
+      //Allocate zi
+      /***********************************************************************/
+
+      let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
+
+      /***********************************************************************/
+      //Check that h1 = Hash(u2,i,z0,zi)
+      /***********************************************************************/
+
+      let mut h1_hash: PoseidonROGadget<G::Base> =
+        PoseidonROGadget::new(self.poseidon_constants.clone());
+
+      h1_hash.absorb(W_r_x.clone());
+      h1_hash.absorb(W_r_y.clone());
+      h1_hash.absorb(W_r_inf.clone());
+      h1_hash.absorb(E_r_x.clone());
+      h1_hash.absorb(E_r_y.clone());
+      h1_hash.absorb(E_r_inf.clone());
+      h1_hash.absorb(u_r.clone());
+      //TODO: Add X_r
+
+      h1_hash.absorb(i.clone());
+      h1_hash.absorb(z_0.clone());
+      h1_hash.absorb(z_i.clone());
+
+      let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?;
+      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+
+      cs.enforce(
+        || "check h1",
+        |lc| lc,
+        |lc| lc,
+        |lc| lc + h1.get_variable() - hash.get_variable(),
+      );
+
+      /***********************************************************************/
+      //Compute z_{i+1}
+      /***********************************************************************/
+
+      let z_next = self
+        .inner_circuit
+        .unwrap()
+        .synthesize(&mut cs.namespace(|| "F"), z_i)?;
+
+      /***********************************************************************/
+      //Compute the new hash H(u2, i+1, z0, z_{i+1})
+      /***********************************************************************/
+
+      h1_hash.flush_state();
+      h1_hash.absorb(W_new.x.clone());
+      h1_hash.absorb(W_new.y.clone());
+      h1_hash.absorb(W_new.is_infinity.clone());
+      h1_hash.absorb(E_new.x.clone());
+      h1_hash.absorb(E_new.y.clone());
+      h1_hash.absorb(E_new.is_infinity.clone());
+      h1_hash.absorb(u_new.clone());
+      //TODO: Add X_r
+      h1_hash.absorb(next_i.clone());
+      h1_hash.absorb(z_0.clone());
+      h1_hash.absorb(z_next.clone());
+      let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
+      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
+      let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
+    } else {
+      /***********************************************************************/
+      //Check that h1 = Hash(u2, i)
+      /***********************************************************************/
+
+      let mut h1_hash: PoseidonROGadget<G::Base> =
+        PoseidonROGadget::new(self.poseidon_constants.clone());
+
+      h1_hash.absorb(W_r_x.clone());
+      h1_hash.absorb(W_r_y.clone());
+      h1_hash.absorb(W_r_inf.clone());
+      h1_hash.absorb(E_r_x.clone());
+      h1_hash.absorb(E_r_y.clone());
+      h1_hash.absorb(E_r_inf.clone());
+      h1_hash.absorb(u_r.clone());
+      h1_hash.absorb(i.clone());
+      //TODO: Add X_r
+
+      let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?;
+      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+
+      cs.enforce(
+        || "check h1",
+        |lc| lc,
+        |lc| lc,
+        |lc| lc + h1.get_variable() - hash.get_variable(),
+      );
+
+      /***********************************************************************/
+      //Compute the new hash H(u2')
+      /***********************************************************************/
+
+      h1_hash.flush_state();
+      h1_hash.absorb(W_new.x.clone());
+      h1_hash.absorb(W_new.y.clone());
+      h1_hash.absorb(W_new.is_infinity.clone());
+      h1_hash.absorb(E_new.x.clone());
+      h1_hash.absorb(E_new.y.clone());
+      h1_hash.absorb(E_new.is_infinity.clone());
+      h1_hash.absorb(u_new.clone());
+      h1_hash.absorb(next_i.clone());
+      //TODO: Add X_r
+      let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
+      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
+      let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
+    }
+
     Ok(())
   }
 }
@@ -414,14 +489,41 @@ mod tests {
   type G2 = pasta_curves::vesta::Point;
   use crate::bellperson::r1cs::{NovaShape, NovaWitness};
   use crate::commitments::CommitTrait;
+  use std::marker::PhantomData;
+
+  struct TestCircuit<F>
+  where
+    F: PrimeField + ff::PrimeField,
+  {
+    _p: PhantomData<F>,
+  }
+
+  impl<F> InnerCircuit<F> for TestCircuit<F>
+  where
+    F: PrimeField + ff::PrimeField,
+  {
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      cs: &mut CS,
+      z: AllocatedNum<F>,
+    ) -> Result<AllocatedNum<F>, SynthesisError> {
+      Ok(z.clone())
+    }
+  }
 
   #[test]
   fn test_verification_circuit() {
     //The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit1: VerificationCircuit<G2> =
-      VerificationCircuit::new(None, poseidon_constants1.clone());
+    let circuit1: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      VerificationCircuit::new(
+        None,
+        Some(TestCircuit {
+          _p: Default::default(),
+        }),
+        poseidon_constants1.clone(),
+      );
     //First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -435,8 +537,8 @@ mod tests {
     //The second circuit that verifies G1
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit2: VerificationCircuit<G1> =
-      VerificationCircuit::new(None, poseidon_constants2.clone());
+    let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+      VerificationCircuit::new(None, None, poseidon_constants2.clone());
     //First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -467,7 +569,14 @@ mod tests {
       T,                                           //TODO: Fix This
       w,
     );
-    let circuit = VerificationCircuit::new(Some(inputs), poseidon_constants1.clone());
+    let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      VerificationCircuit::new(
+        Some(inputs),
+        Some(TestCircuit {
+          _p: Default::default(),
+        }),
+        poseidon_constants1.clone(),
+      );
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
 
