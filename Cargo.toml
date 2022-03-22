@@ -11,7 +11,7 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson =  "0.18.0"
+bellperson =  "0.19.0"
 ff = "0.11.0"
 merlin = "2.0.0"
 rand = "0.8.4"
