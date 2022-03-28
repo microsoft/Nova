@@ -227,6 +227,177 @@ where
     return Ok(Self::new(final_x, final_y, final_is_infinity));
   }
 
+  pub fn subtract<CS: ConstraintSystem<Fp>>(
+    &self,
+    mut cs: CS,
+    other: &AllocatedPoint<Fp>,
+  ) -> Result<Self, SynthesisError> {
+    //Allocate the boolean variables that check if either of the points is infinity
+
+    let false_repr = AllocatedNum::alloc(cs.namespace(|| "false num"), || Ok(Fp::zero()))?;
+    let self_is_not_inf = Boolean::from(alloc_num_equals(
+      cs.namespace(|| "self is inf"),
+      self.is_infinity.clone(),
+      false_repr.clone(),
+    )?);
+    let other_is_not_inf = Boolean::from(alloc_num_equals(
+      cs.namespace(|| "other is inf"),
+      other.is_infinity.clone(),
+      false_repr.clone(),
+    )?);
+
+    //************************************************************************/
+    //lambda = (other.y + self.y) * (self.x - other.x).invert().unwrap();
+    //************************************************************************/
+    //First compute (self.x - other.x).inverse()
+    //If either self or other are 1 then compute bogus values
+
+    // x_diff = other != inf && self != inf ? (self.x - other.x) : 1
+    let x_diff_actual = AllocatedNum::alloc(cs.namespace(|| "x diff"), || {
+      Ok(*self.x.get_value().get()? - *other.x.get_value().get()?)
+    })?;
+    cs.enforce(
+      || "actual x_diff is correct",
+      |lc| lc + self.x.get_variable() - other.x.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc + x_diff_actual.get_variable(),
+    );
+
+    let x_diff_default = alloc_one(cs.namespace(|| "Allocate default x_diff"))?;
+    let both_not_inf = Boolean::and(
+      cs.namespace(|| "Check both points are not inf"),
+      &self_is_not_inf,
+      &other_is_not_inf,
+    )?;
+
+    let x_diff = conditionally_select(
+      cs.namespace(|| "Compute x_diff"),
+      &x_diff_actual,
+      &x_diff_default,
+      &both_not_inf,
+    )?;
+
+    let x_diff_inv = AllocatedNum::alloc(cs.namespace(|| "x diff inverse"), || {
+      if *both_not_inf.get_value().get()? {
+        //Set to the actual inverse
+        let inv = (*self.x.get_value().get()? - *other.x.get_value().get()?).invert();
+        if inv.is_some().unwrap_u8() == 1 {
+          Ok(inv.unwrap())
+        } else {
+          Err(SynthesisError::DivisionByZero)
+        }
+      } else {
+        //Set to default
+        Ok(Fp::one())
+      }
+    })?;
+
+    cs.enforce(
+      || "Check inverse",
+      |lc| lc + x_diff.get_variable(),
+      |lc| lc + x_diff_inv.get_variable(),
+      |lc| lc + CS::one(),
+    );
+
+    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
+      Ok(
+        (*other.y.get_value().get()? + *self.y.get_value().get()?)
+          * x_diff_inv.get_value().get()?,
+      )
+    })?;
+    cs.enforce(
+      || "Check that lambda is correct",
+      |lc| lc + other.y.get_variable() + self.y.get_variable(),
+      |lc| lc + x_diff_inv.get_variable(),
+      |lc| lc + lambda.get_variable(),
+    );
+
+    //************************************************************************/
+    //x = lambda * lambda - self.x - other.x;
+    //************************************************************************/
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+      Ok(
+        *lambda.get_value().get()? * lambda.get_value().get()?
+          - *self.x.get_value().get()?
+          - *other.x.get_value().get()?,
+      )
+    })?;
+    cs.enforce(
+      || "check that x is correct",
+      |lc| lc + lambda.get_variable(),
+      |lc| lc + lambda.get_variable(),
+      |lc| lc + x.get_variable() + self.x.get_variable() + other.x.get_variable(),
+    );
+
+    //************************************************************************/
+    //y = lambda * (self.x - x) - self.y;
+    //************************************************************************/
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      Ok(
+        *lambda.get_value().get()? * (*self.x.get_value().get()? - *x.get_value().get()?)
+          - *self.y.get_value().get()?,
+      )
+    })?;
+
+    cs.enforce(
+      || "Check that y is correct",
+      |lc| lc + lambda.get_variable(),
+      |lc| lc + self.x.get_variable() - x.get_variable(),
+      |lc| lc + y.get_variable() + self.y.get_variable(),
+    );
+
+    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is infinity"), || Ok(Fp::zero()))?;
+
+    //************************************************************************/
+    // We only return the computed x, y if neither of the points is infinity.
+    // if self.is_infinity return other.clone()
+    // elif other.is_infinity return self.clone()
+    // Otherwise return the computed points.
+    //************************************************************************/
+    //Now compute the output x
+    let inner_x = conditionally_select(
+      cs.namespace(|| "final x: inner if"),
+      &x,
+      &self.x,
+      &other_is_not_inf,
+    )?;
+    let final_x = conditionally_select(
+      cs.namespace(|| "final x: outer if"),
+      &inner_x,
+      &other.x,
+      &self_is_not_inf,
+    )?;
+
+    //The output y
+    let inner_y = conditionally_select(
+      cs.namespace(|| "final y: inner if"),
+      &y,
+      &self.y,
+      &other_is_not_inf,
+    )?;
+    let final_y = conditionally_select(
+      cs.namespace(|| "final y: outer if"),
+      &inner_y,
+      &other.y,
+      &self_is_not_inf,
+    )?;
+
+    //The output is_infinity
+    let inner_is_infinity = conditionally_select(
+      cs.namespace(|| "final is infinity: inner if"),
+      &is_infinity,
+      &self.is_infinity,
+      &other_is_not_inf,
+    )?;
+    let final_is_infinity = conditionally_select(
+      cs.namespace(|| "final is infinity: outer if"),
+      &inner_is_infinity,
+      &other.is_infinity,
+      &self_is_not_inf,
+    )?;
+    return Ok(Self::new(final_x, final_y, final_is_infinity));
+  }
+
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     //self_is_not_inf = self != inf
     let zero = alloc_zero(cs.namespace(|| "Alloc zero"))?;
@@ -518,6 +689,14 @@ mod tests {
       .scalar_mul(cs.namespace(|| "Scalar Mul"), bits[..128].to_vec())
       .unwrap();
     let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
+    let f = e
+      .subtract(cs.namespace(|| "Point Sub 1"), &a)
+      .unwrap();
+    let _ = f.inputize(cs.namespace(|| "inputize f")).unwrap();
+    let g = f
+      .subtract(cs.namespace(|| "Point Sub 2"), &a)
+      .unwrap();
+    let _ = g.inputize(cs.namespace(|| "inputize g")).unwrap();
   }
 
   #[test]
