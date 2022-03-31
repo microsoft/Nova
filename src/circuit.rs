@@ -20,10 +20,11 @@ use super::poseidon::PoseidonROGadget;
 use super::r1cs::RelaxedR1CSInstance;
 use super::traits::{Group, InnerCircuit, PrimeField};
 use bellperson::{
-  gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
+  gadgets::{boolean::Boolean, num::{AllocatedNum}, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::PrimeFieldBits;
+use bellperson_nonnative::{util::{num::Num, convert::f_to_nat}, mp::bignat::{BigNat, BigNatParams}};
 
 pub struct VerificationCircuitInputs<G>
 where
@@ -35,7 +36,7 @@ where
   i: G::Base,
   z0: G::Base,
   zi: G::Base,
-  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge. TODO: Hard code them or make them part of the input hash
+  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge. TODO: make this an output
   T: Commitment<G>,
   w: Commitment<G>, //The commitment to the witness of the fresh r1cs instance
 }
@@ -123,22 +124,15 @@ where
     //Allocate it and output it.
     /***********************************************************************/
 
-    //TODO: Make this work when |G::Scalar| > |G::Base|
-
-    let h2 = AllocatedNum::alloc(cs.namespace(|| "h2"), || {
-      let h2_bits = self.inputs.get()?.h2.to_le_bits();
-      let mut mult = G::Base::one();
-      let mut h2 = G::Base::zero();
-      for bit in h2_bits {
-        if bit {
-          h2 = h2 + mult;
-        }
-        mult = mult + mult;
-      }
-      Ok(h2)
-    })?;
-
-    let _ = h2.inputize(cs.namespace(|| "Output 1"))?;
+    //Allocate h2 as a big number with 8 limbs
+    let h2_limbs = BigNat::alloc_from_nat(
+        cs.namespace(|| "allocate h2"),
+        || Ok(f_to_nat(&self.inputs.get()?.h2)),
+        32,
+        8
+    )?;
+       
+    let _ = h2_limbs.inputize(cs.namespace(|| "Output 1"))?;
 
     /***********************************************************************/
     //Allocate h1
@@ -146,8 +140,13 @@ where
 
     let h1 = AllocatedNum::alloc(cs.namespace(|| "h1"), || Ok(self.inputs.get()?.h1))?;
 
+    let h1_limbs = BigNat::from_num(
+        Num::from(h1.clone()),
+        BigNatParams::new(32, 8)
+    );
+
     /***********************************************************************/
-    //Allocate u2 by allocating W_r, E_r, u_r, io_r
+    //Allocate u2 by allocating W_r, E_r, u_r, X_r
     /***********************************************************************/
 
     //W_r = (x, y, infinity)
@@ -202,6 +201,21 @@ where
       }
       Ok(u)
     })?;
+
+    //The running X is two items! the running h1 and the running h2
+    let X_r_0 = BigNat::alloc_from_nat(
+        cs.namespace(|| "allocate X_r[0]"),
+        || Ok(f_to_nat(&self.inputs.get()?.u2.X[0])),
+        32,
+        8
+    )?;
+    let X_r_1 = BigNat::alloc_from_nat(
+        cs.namespace(|| "allocate X_r[1]"),
+        || Ok(f_to_nat(&self.inputs.get()?.u2.X[1])),
+        32,
+        8
+    )?;
+
 
     /***********************************************************************/
     //Allocate i
@@ -267,6 +281,8 @@ where
 
     //Allocate 0 and 1
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
+    //Hack: We just do this because the number of inputs must be even!!
+    zero.inputize(cs.namespace(|| "allocate zero as input"))?;
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     //Compute default values of U2':
@@ -277,10 +293,23 @@ where
     let E_default = zero_commitment.clone();
 
     //u_default = 0
-
     let u_default = zero.clone();
 
-    //TODO: Add X_default
+    //X_default = 0
+    let X_0 = BigNat::alloc_from_nat(
+        cs.namespace(|| "allocate x_default[0]"),
+        || Ok(f_to_nat(&G::Scalar::zero())),
+        32, //TODO: make these variables
+        8
+    )?; 
+
+    let X_1 = BigNat::alloc_from_nat(
+        cs.namespace(|| "allocate x_default[1]"),
+        || Ok(f_to_nat(&G::Scalar::zero())),
+        32, //TODO: make these variables
+        8
+    )?; 
+
 
     //Compute r:
 
@@ -288,14 +317,35 @@ where
 
     ro.absorb(params);
     ro.absorb(h1.clone());
-    ro.absorb(h2);
+    //absorb each of the limbs of h2
+    for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate(){
+        let limb_num = limb.as_sapling_allocated_num(
+            cs.namespace(|| format!("convert limb {} of h2 to num", i))
+        )?;
+        ro.absorb(limb_num);
+    }
     ro.absorb(W_x);
     ro.absorb(W_y);
     ro.absorb(W_inf);
     ro.absorb(T_x);
     ro.absorb(T_y);
     ro.absorb(T_inf);
-
+    //absorb each of the limbs of X_r[0] 
+    for (i, limb) in X_r_0.as_limbs::<CS>().iter().enumerate(){
+        let limb_num = limb.as_sapling_allocated_num(
+            cs.namespace(|| format!("convert limb {} of X_r_0 to num", i))
+        )?;
+        ro.absorb(limb_num);
+    }
+    
+    //absorb each of the limbs of X_r[1] 
+    for (i, limb) in X_r_1.as_limbs::<CS>().iter().enumerate(){
+        let limb_num = limb.as_sapling_allocated_num(
+            cs.namespace(|| format!("convert limb {} of X_r_1 to num", i))
+        )?;
+        ro.absorb(limb_num);
+    }
+    
     let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
@@ -318,7 +368,37 @@ where
       |lc| lc + u_fold.get_variable() - u_r.get_variable() - r.get_variable(),
     );
 
-    //TODO: Add folding of io
+    //Fold the IO:
+    //Analyze r into limbs
+    let r_limbs = BigNat::from_num(
+        Num::from(r.clone()),
+        BigNatParams::new(32, 8)
+    );
+    
+
+    //TODO: Make the modulus hard coded into the circuit
+    let q = G::Scalar::get_order();
+    let q_limbs = BigNat::alloc_from_nat(
+       cs.namespace(|| "alloc q"),
+       || Ok(q),
+       32,
+       8,
+    )?;
+
+    //The error is in the following line!!
+    //First the fold h1 with X_r[0];
+    let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &q_limbs)?;
+    //add X_r_0 
+    let r_new = X_r_0.add::<CS>(&r_0)?;
+    //Now reduce 
+    let X_r_fold_0 = r_new.red_mod(cs.namespace(|| "reduce X_r_new_0"), &q_limbs)?;
+    
+    //First the fold h2 with X_r[1];
+    //let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &q_limbs)?;
+    //add X_r_0 
+    //let r_new2 = X_r_1.add::<CS>(&r_1)?;
+    //Now reduce 
+    //let X_r_fold_1 = r_new2.red_mod(cs.namespace(|| "reduce X_r_new_0"), &q_limbs)?;
 
     //Now select the default values if i == 0 otherwise the fold values
     let base_case = Boolean::from(alloc_num_equals(
@@ -343,6 +423,8 @@ where
 
     let u_new = conditionally_select(cs.namespace(|| "u_new"), &u_default, &u_fold, &base_case)?;
 
+    //TODO: add conditionally select for the limbs!
+    
     /***********************************************************************/
     //Compute i + 1
     /***********************************************************************/
@@ -504,7 +586,7 @@ mod tests {
   {
     fn synthesize<CS: ConstraintSystem<F>>(
       &self,
-      cs: &mut CS,
+      _cs: &mut CS,
       z: AllocatedNum<F>,
     ) -> Result<AllocatedNum<F>, SynthesisError> {
       Ok(z.clone())

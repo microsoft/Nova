@@ -11,7 +11,7 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson =  "0.19.0"
+bellperson =  "0.19.1"
 ff = {version = "0.11.0", features = ["derive"]}
 merlin = "2.0.0"
 rand = "0.8.4"
@@ -24,3 +24,5 @@ subtle = "2.4"
 pasta_curves = "0.3.0"
 neptune = "6"
 generic-array = "0.14.4"
+bellperson-nonnative = { git = "https://github.com/srinathsetty/bellperson-nonnative" }
+rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }

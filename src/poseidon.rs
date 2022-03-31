@@ -8,7 +8,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U10, U8, U9};
+use generic_array::typenum::{U10, U8, U9, U32};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -23,6 +23,7 @@ where
   pub(crate) constants8: PoseidonConstants<F, U8>, //TODO: Change these to actual arities
   pub(crate) constants9: PoseidonConstants<F, U9>, //TODO: Change these to actual arities
   pub(crate) constants10: PoseidonConstants<F, U10>,
+  pub(crate) constants32: PoseidonConstants<F, U32>,
 }
 
 impl<F> NovaPoseidonConstants<F>
@@ -34,10 +35,12 @@ where
     let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
     let constants9 = PoseidonConstants::<F, U9>::new_with_strength(Strength::Strengthened);
     let constants10 = PoseidonConstants::<F, U10>::new_with_strength(Strength::Strengthened);
+    let constants32 = PoseidonConstants::<F, U32>::new_with_strength(Strength::Strengthened);
     Self {
       constants8,
       constants9,
       constants10,
+      constants32,
     }
   }
 }
@@ -90,6 +93,9 @@ where
       }
       10 => {
         Poseidon::<Scalar, U10>::new_with_preimage(&self.state, &self.constants.constants10).hash()
+      }
+      32 => {
+        Poseidon::<Scalar, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
       }
       _ => {
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
@@ -150,7 +156,7 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      //TODO: Set to the actual arities when we add IO folding
+      //TODO: Set to the actual arities when we add IO folding 
       8 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
@@ -165,6 +171,11 @@ where
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
         &self.constants.constants10,
+      )?,
+      32 => poseidon_hash(
+        cs.namespace(|| "Poseidon hash"),
+        self.state.clone(),
+        &self.constants.constants32,
       )?,
       _ => {
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
@@ -207,7 +218,7 @@ mod tests {
       ro.absorb(num);
       let num_gadget =
         AllocatedNum::alloc(cs.namespace(|| format!("data {}", i)), || Ok(num)).unwrap();
-      let _ = num_gadget.inputize(&mut cs).unwrap();
+      let _ = num_gadget.inputize(&mut cs.namespace(|| format!("input {}", i))).unwrap();
       ro_gadget.absorb(num_gadget);
     }
     let num = ro.get_challenge();

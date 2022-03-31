@@ -5,6 +5,7 @@ use core::fmt::Debug;
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use merlin::Transcript;
 use rand::{CryptoRng, RngCore};
+use rug::Integer;
 
 /// Represents an element of a prime field
 pub trait PrimeField:
@@ -41,6 +42,9 @@ pub trait PrimeField:
 
   /// returns an uniformly random element from the finite field
   fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self;
+
+  /// Get prime field order as a rug::Integer
+  fn get_order() -> Integer;
 }
 
 /// Represents an element of a group
