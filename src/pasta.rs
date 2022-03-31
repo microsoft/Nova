@@ -7,6 +7,7 @@ use pasta_curves::arithmetic::{CurveAffine, CurveExt, Field, FieldExt, Group as 
 use pasta_curves::group::{Curve, Group as GrpTrait, GroupEncoding};
 use pasta_curves::{self, pallas, vesta, Ep, Eq, Fp, Fq};
 use rand::{CryptoRng, RngCore};
+use rug::Integer;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -106,6 +107,10 @@ impl PrimeField for pallas::Scalar {
 
   fn as_bytes(&self) -> Vec<u8> {
     self.to_bytes().to_vec()
+  }
+
+  fn get_order() -> Integer {
+    return Integer::from_str_radix("40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001", 16).unwrap(); 
   }
 }
 
@@ -226,6 +231,10 @@ impl PrimeField for vesta::Scalar {
 
   fn as_bytes(&self) -> Vec<u8> {
     self.to_bytes().to_vec()
+  }
+
+  fn get_order() -> Integer {
+    return Integer::from_str_radix("40000000000000000000000000000000224698fc094cf91b992d30ed00000001", 16).unwrap(); 
   }
 }
 
