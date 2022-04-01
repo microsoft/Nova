@@ -377,21 +377,21 @@ where
     
 
     //TODO: Make the modulus hard coded into the circuit
-    let q = G::Scalar::get_order();
-    let q_limbs = BigNat::alloc_from_nat(
-       cs.namespace(|| "alloc q"),
-       || Ok(q),
+    let m = G::Scalar::get_order();
+    let m_limbs = BigNat::alloc_from_nat(
+       cs.namespace(|| "alloc m"),
+       || Ok(m),
        32,
        8,
     )?;
 
     //The error is in the following line!!
     //First the fold h1 with X_r[0];
-    let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &q_limbs)?;
+    let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &m_limbs)?;
     //add X_r_0 
     let r_new = X_r_0.add::<CS>(&r_0)?;
     //Now reduce 
-    let X_r_fold_0 = r_new.red_mod(cs.namespace(|| "reduce X_r_new_0"), &q_limbs)?;
+    let X_r_fold_0 = r_new.red_mod(cs.namespace(|| "reduce X_r_new_0"), &m_limbs)?;
     
     //First the fold h2 with X_r[1];
     //let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &q_limbs)?;
