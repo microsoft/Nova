@@ -25,4 +25,5 @@ pasta_curves = "0.3.0"
 neptune = "6"
 generic-array = "0.14.4"
 bellperson-nonnative = { git = "https://github.com/srinathsetty/bellperson-nonnative" }
+#bellperson-nonnative = { path = "../bellperson-nonnative" }
 rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
