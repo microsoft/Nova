@@ -5,14 +5,27 @@ use bellperson::{gadgets::num::AllocatedNum, SynthesisError, ConstraintSystem};
 fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
     cs: &mut CS,
 ) -> Result<(), SynthesisError>{
+    //get two bits as input and check that they are indeed bits
     let a = AllocatedNum::alloc(
         cs.namespace(|| "a"),
         || Ok(Fr::one()),
     )?;
+    let _ = a.inputize(cs.namespace(|| "a is input"));
     cs.enforce(
-        || "check 0 or 1",
+        || "check a is 0 or 1",
         |lc| lc + CS::one() - a.get_variable(),
         |lc| lc + a.get_variable(),
+        |lc| lc,
+    );
+    let b = AllocatedNum::alloc(
+        cs.namespace(|| "b"),
+        || Ok(Fr::one()),
+    )?;
+    let _ = b.inputize(cs.namespace(|| "b is input"));
+    cs.enforce(
+        || "check b is 0 or 1",
+        |lc| lc + CS::one() - b.get_variable(),
+        |lc| lc + b.get_variable(),
         |lc| lc,
     );
     Ok(())

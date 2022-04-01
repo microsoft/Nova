@@ -20,13 +20,15 @@ fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
         limb_width,
         n_limbs,
     )?;
+    let _ = a.inputize(cs.namespace(|| "input a"))?;
     let b = BigNat::alloc_from_nat(
         cs.namespace(|| "b"),
         || Ok(b_val.clone()),
         limb_width,
         n_limbs,
     )?;
-    let mut m = BigNat::alloc_from_nat(
+    let _ = b.inputize(cs.namespace(|| "input b"))?;
+    let m = BigNat::alloc_from_nat(
         cs.namespace(|| "m"),
         || Ok(m_val.clone()),
         limb_width,
@@ -71,6 +73,7 @@ fn test_mult_mod(){
       "Mult mod constraint no: {}",
       cs.num_constraints()
     );
+   
     //Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
