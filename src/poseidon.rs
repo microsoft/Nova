@@ -8,7 +8,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U24, U26, U32};
+use generic_array::typenum::{U25, U27, U31};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -20,9 +20,9 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
-  pub(crate) constants24: PoseidonConstants<F, U24>,
-  pub(crate) constants26: PoseidonConstants<F, U26>,
-  pub(crate) constants32: PoseidonConstants<F, U32>,
+  pub(crate) constants25: PoseidonConstants<F, U25>,
+  pub(crate) constants27: PoseidonConstants<F, U27>,
+  pub(crate) constants31: PoseidonConstants<F, U31>,
 }
 
 impl<F> NovaPoseidonConstants<F>
@@ -31,13 +31,13 @@ where
 {
   ///Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
-    let constants24 = PoseidonConstants::<F, U24>::new_with_strength(Strength::Strengthened);
-    let constants26 = PoseidonConstants::<F, U26>::new_with_strength(Strength::Strengthened);
-    let constants32 = PoseidonConstants::<F, U32>::new_with_strength(Strength::Strengthened);
+    let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);
+    let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
+    let constants31 = PoseidonConstants::<F, U31>::new_with_strength(Strength::Strengthened);
     Self {
-      constants24,
-      constants26,
-      constants32,
+      constants25,
+      constants27,
+      constants31,
     }
   }
 }
@@ -80,14 +80,14 @@ where
   #[allow(dead_code)]
   pub fn get_challenge(&mut self) -> Scalar {
     let hash = match self.state.len() {
-      24 => {
-        Poseidon::<Scalar, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
+      25 => {
+        Poseidon::<Scalar, U25>::new_with_preimage(&self.state, &self.constants.constants25).hash()
       }
-      26 => {
-        Poseidon::<Scalar, U26>::new_with_preimage(&self.state, &self.constants.constants26).hash()
+      27 => {
+        Poseidon::<Scalar, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
       }
-      32 => {
-        Poseidon::<Scalar, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
+      31 => {
+        Poseidon::<Scalar, U31>::new_with_preimage(&self.state, &self.constants.constants31).hash()
       }
       _ => {
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
@@ -148,20 +148,20 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      24 => poseidon_hash(
+      25 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
-        &self.constants.constants24,
+        &self.constants.constants25,
       )?,
-      26 => poseidon_hash(
+      27 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
-        &self.constants.constants26,
+        &self.constants.constants27,
       )?,
-      32 => poseidon_hash(
+      31 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
-        &self.constants.constants32,
+        &self.constants.constants31,
       )?,
       _ => {
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
