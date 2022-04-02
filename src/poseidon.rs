@@ -8,7 +8,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U10, U24, U26, U32, U8, U9};
+use generic_array::typenum::{U24, U26, U32};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -20,9 +20,6 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
-  pub(crate) constants8: PoseidonConstants<F, U8>, //TODO: Change these to actual arities
-  pub(crate) constants9: PoseidonConstants<F, U9>, //TODO: Change these to actual arities
-  pub(crate) constants10: PoseidonConstants<F, U10>,
   pub(crate) constants24: PoseidonConstants<F, U24>,
   pub(crate) constants26: PoseidonConstants<F, U26>,
   pub(crate) constants32: PoseidonConstants<F, U32>,
@@ -34,16 +31,10 @@ where
 {
   ///Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
-    let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
-    let constants9 = PoseidonConstants::<F, U9>::new_with_strength(Strength::Strengthened);
-    let constants10 = PoseidonConstants::<F, U10>::new_with_strength(Strength::Strengthened);
     let constants24 = PoseidonConstants::<F, U24>::new_with_strength(Strength::Strengthened);
     let constants26 = PoseidonConstants::<F, U26>::new_with_strength(Strength::Strengthened);
     let constants32 = PoseidonConstants::<F, U32>::new_with_strength(Strength::Strengthened);
     Self {
-      constants8,
-      constants9,
-      constants10,
       constants24,
       constants26,
       constants32,
@@ -88,30 +79,20 @@ where
   ///Compute a challenge by hashing the current state
   #[allow(dead_code)]
   pub fn get_challenge(&mut self) -> Scalar {
-    let hash =
-      match self.state.len() {
-        //TODO: Change these to the actual arity
-        8 => {
-          Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
-        }
-
-        9 => {
-          Poseidon::<Scalar, U9>::new_with_preimage(&self.state, &self.constants.constants9).hash()
-        }
-        10 => Poseidon::<Scalar, U10>::new_with_preimage(&self.state, &self.constants.constants10)
-          .hash(),
-        24 => Poseidon::<Scalar, U24>::new_with_preimage(&self.state, &self.constants.constants24)
-          .hash(),
-        26 => Poseidon::<Scalar, U26>::new_with_preimage(&self.state, &self.constants.constants26)
-          .hash(),
-        32 => Poseidon::<Scalar, U32>::new_with_preimage(&self.state, &self.constants.constants32)
-          .hash(),
-        _ => {
-          panic!(
-            "Number of elements in the RO state does not match any of the arities used in Nova"
-          )
-        }
-      };
+    let hash = match self.state.len() {
+      24 => {
+        Poseidon::<Scalar, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
+      }
+      26 => {
+        Poseidon::<Scalar, U26>::new_with_preimage(&self.state, &self.constants.constants26).hash()
+      }
+      32 => {
+        Poseidon::<Scalar, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
+      }
+      _ => {
+        panic!("Number of elements in the RO state does not match any of the arities used in Nova")
+      }
+    };
     //Only keep 128 bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
@@ -167,22 +148,6 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      //TODO: Set to the actual arities when we add IO folding
-      8 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants8,
-      )?,
-      9 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants9,
-      )?,
-      10 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants10,
-      )?,
       24 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
@@ -234,7 +199,7 @@ mod tests {
     let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    for i in 0..9 {
+    for i in 0..32 {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
