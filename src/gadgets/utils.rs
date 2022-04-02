@@ -6,6 +6,7 @@ use bellperson::{
   },
   ConstraintSystem, LinearCombination, SynthesisError,
 };
+use bellperson_nonnative::mp::bignat::BigNat;
 use ff::{PrimeField, PrimeFieldBits};
 
 ///Gets as input the little indian representation of a number and spits out the number
@@ -49,9 +50,9 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::zero()))?;
   cs.enforce(
     || "check zero is valid",
-    |lc| lc + zero.get_variable(),
-    |lc| lc + zero.get_variable(),
     |lc| lc,
+    |lc| lc,
+    |lc| lc + zero.get_variable(),
   );
   Ok(zero)
 }
@@ -63,9 +64,9 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::one()))?;
   cs.enforce(
     || "check one is valid",
-    |lc| lc + one.get_variable(),
-    |lc| lc + one.get_variable(),
     |lc| lc + CS::one(),
+    |lc| lc + CS::one(),
+    |lc| lc + one.get_variable(),
   );
 
   Ok(one)
@@ -196,6 +197,40 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
     |lc| lc + c.get_variable() - b.get_variable(),
   );
 
+  Ok(c)
+}
+
+///If condition return a otherwise b where a and b are BigNats
+pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &BigNat<F>,
+  b: &BigNat<F>,
+  condition: &Boolean,
+) -> Result<BigNat<F>, SynthesisError> {
+  assert!(a.limbs.len() == b.limbs.len());
+  let c = BigNat::alloc_from_nat(
+    cs.namespace(|| "conditional select result"),
+    || {
+      if *condition.get_value().get()? {
+        Ok(a.value.get()?.clone())
+      } else {
+        Ok(b.value.get()?.clone())
+      }
+    },
+    a.params.limb_width,
+    a.params.n_limbs,
+  )?;
+
+  // a * condition + b*(1-condition) = c ->
+  // a * condition - b*condition = c - b
+  for i in 0..c.limbs.len() {
+    cs.enforce(
+      || format!("conditional select constraint {}", i),
+      |lc| lc + &a.limbs[i] - &b.limbs[i],
+      |_| condition.lc(CS::one(), F::one()),
+      |lc| lc + &c.limbs[i] - &b.limbs[i],
+    );
+  }
   Ok(c)
 }
 
