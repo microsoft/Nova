@@ -91,7 +91,7 @@ impl<G: Group> R1CSShape<G> {
                     num_io: usize,
                     M: &[(usize, usize, G::Scalar)]|
      -> Result<(), NovaError> {
-      let res = (0..num_cons)
+      let res = (0..M.len())
         .map(|i| {
           let (row, col, _val) = M[i];
           if row >= num_cons || col > num_io + num_vars {

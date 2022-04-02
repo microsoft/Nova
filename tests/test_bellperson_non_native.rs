@@ -4,6 +4,28 @@ use bellperson::{SynthesisError, ConstraintSystem};
 use bellperson_nonnative::{util::{num::Num, convert::nat_to_f}, mp::bignat::{BigNat, BigNatParams}};
 use rug::Integer;
 
+fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
+    cs: &mut CS,
+    a_val: &Integer,
+    limb_width: usize,
+    n_limbs: usize,
+) -> Result<(), SynthesisError>{
+    let a_num = Num::alloc(cs.namespace(|| "alloc a num"), || Ok(nat_to_f(a_val).unwrap()))?;
+    let a1 = BigNat::from_num(
+        a_num,
+        BigNatParams::new(limb_width, n_limbs),
+    );
+    let a2 = BigNat::alloc_from_nat(
+      cs.namespace(|| "alloc a2"),
+      || Ok(a_val.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+    let _ = a2.inputize(cs.namespace(|| "make a input"));
+    a1.equal_when_carried(cs.namespace(|| "check equal"), &a2);
+    Ok(())
+}
+
 fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
     cs: &mut CS,
     a_val: &Integer,
@@ -208,6 +230,32 @@ fn test_add_mod(){
     //Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+
+    //Make sure that this is satisfiable
+    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+}
+
+#[test]
+fn test_equal(){
+    type G = pasta_curves::pallas::Point;
+    
+    //Set the inputs
+    let a_val = Integer::from_str_radix("1157233675242885698197099479540877", 10).unwrap();
+
+    //First create the shape
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
+    let shape = cs.r1cs_shape();
+    let gens = cs.r1cs_gens();
+    println!(
+      "Equal constraint no: {}",
+      cs.num_constraints()
+    );
+   
+    //Now get the assignment
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     //Make sure that this is satisfiable
