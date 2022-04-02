@@ -32,6 +32,21 @@ use bellperson_nonnative::{
 };
 use ff::PrimeFieldBits;
 
+#[derive(Debug, Clone)]
+pub struct VerificationCircuitParams {
+  limb_width: usize,
+  n_limbs: usize,
+}
+
+impl VerificationCircuitParams {
+  pub fn new(limb_width: usize, n_limbs: usize) -> Self {
+    Self {
+      limb_width,
+      n_limbs,
+    }
+  }
+}
+
 pub struct VerificationCircuitInputs<G>
 where
   G: Group,
@@ -85,6 +100,7 @@ where
   <G as Group>::Base: ff::PrimeField,
   IC: InnerCircuit<G::Base>,
 {
+  params: VerificationCircuitParams,
   inputs: Option<VerificationCircuitInputs<G>>,
   inner_circuit: Option<IC>, //The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
@@ -99,6 +115,7 @@ where
   ///Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
+    params: VerificationCircuitParams,
     inputs: Option<VerificationCircuitInputs<G>>,
     inner_circuit: Option<IC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
@@ -107,6 +124,7 @@ where
     <G as Group>::Base: ff::PrimeField,
   {
     Self {
+      params,
       inputs,
       inner_circuit,
       poseidon_constants,
@@ -134,8 +152,8 @@ where
     let h2_limbs = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate h2"),
       || Ok(f_to_nat(&self.inputs.get()?.h2)),
-      32,
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     let _ = h2_limbs.inputize(cs.namespace(|| "Output 1"))?;
@@ -145,12 +163,11 @@ where
     /***********************************************************************/
 
     let h1 = AllocatedNum::alloc(cs.namespace(|| "allocate h1"), || Ok(self.inputs.get()?.h1))?;
-    //TODO: Make limb_width and n_limbs variable
     let h1_limbs = BigNat::from_num(
       cs.namespace(|| "allocate h1_limbs"),
       Num::from(h1.clone()),
-      32,
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     /***********************************************************************/
@@ -214,8 +231,8 @@ where
     let Xr0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X_r[0]"),
       || Ok(f_to_nat(&self.inputs.get()?.u2.X[0])),
-      32,
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     //Analyze Xr0 as limbs to use later
@@ -232,8 +249,8 @@ where
     let Xr1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X_r[1]"),
       || Ok(f_to_nat(&self.inputs.get()?.u2.X[1])),
-      32,
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     //Analyze Xr1 as limbs to use later
@@ -329,15 +346,15 @@ where
     let X0_default = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&G::Scalar::zero())),
-      32, //TODO: make these variables
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     let X1_default = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[1]"),
       || Ok(f_to_nat(&G::Scalar::zero())),
-      32, //TODO: make these variables
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     //Compute r:
@@ -395,13 +412,18 @@ where
     let r_limbs = BigNat::from_num(
       cs.namespace(|| "allocate r_limbs"),
       Num::from(r.clone()),
-      32,
-      8,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     //TODO: Make the modulus hard coded into the circuit
     let m = G::Scalar::get_order();
-    let m_limbs = BigNat::alloc_from_nat(cs.namespace(|| "alloc m"), || Ok(m), 32, 8)?;
+    let m_limbs = BigNat::alloc_from_nat(
+      cs.namespace(|| "alloc m"),
+      || Ok(m),
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
 
     //First the fold h1 with X_r[0];
     let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &m_limbs)?;
@@ -686,11 +708,14 @@ mod tests {
 
   #[test]
   fn test_verification_circuit() {
+    //We experiment with 8 limbs of 32 bits each
+    let params = VerificationCircuitParams::new(32, 8);
     //The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit1: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       VerificationCircuit::new(
+        params.clone(),
         None,
         Some(TestCircuit {
           _p: Default::default(),
@@ -711,7 +736,7 @@ mod tests {
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
-      VerificationCircuit::new(None, None, poseidon_constants2.clone());
+      VerificationCircuit::new(params.clone(), None, None, poseidon_constants2.clone());
     //First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -744,6 +769,7 @@ mod tests {
     );
     let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       VerificationCircuit::new(
+        params.clone(),
         Some(inputs),
         Some(TestCircuit {
           _p: Default::default(),
