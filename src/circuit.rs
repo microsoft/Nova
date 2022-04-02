@@ -13,18 +13,24 @@
 use super::commitments::Commitment;
 use super::gadgets::{
   ecc_circuit::AllocatedPoint,
-  utils::{alloc_num_equals, alloc_one, alloc_zero, conditionally_select, le_bits_to_num},
+  utils::{
+    alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select_bignat,
+    le_bits_to_num,
+  },
 };
 use super::poseidon::NovaPoseidonConstants;
 use super::poseidon::PoseidonROGadget;
 use super::r1cs::RelaxedR1CSInstance;
 use super::traits::{Group, InnerCircuit, PrimeField};
 use bellperson::{
-  gadgets::{boolean::Boolean, num::{AllocatedNum}, Assignment},
+  gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
 };
+use bellperson_nonnative::{
+  mp::bignat::BigNat,
+  util::{convert::f_to_nat, num::Num},
+};
 use ff::PrimeFieldBits;
-use bellperson_nonnative::{util::{num::Num, convert::f_to_nat}, mp::bignat::{BigNat, BigNatParams}};
 
 pub struct VerificationCircuitInputs<G>
 where
@@ -126,24 +132,26 @@ where
 
     //Allocate h2 as a big number with 8 limbs
     let h2_limbs = BigNat::alloc_from_nat(
-        cs.namespace(|| "allocate h2"),
-        || Ok(f_to_nat(&self.inputs.get()?.h2)),
-        32,
-        8
+      cs.namespace(|| "allocate h2"),
+      || Ok(f_to_nat(&self.inputs.get()?.h2)),
+      32,
+      8,
     )?;
-       
+
     let _ = h2_limbs.inputize(cs.namespace(|| "Output 1"))?;
 
     /***********************************************************************/
     //Allocate h1
     /***********************************************************************/
 
-    let h1 = AllocatedNum::alloc(cs.namespace(|| "h1"), || Ok(self.inputs.get()?.h1))?;
-
+    let h1 = AllocatedNum::alloc(cs.namespace(|| "allocate h1"), || Ok(self.inputs.get()?.h1))?;
+    //TODO: Make limb_width and n_limbs variable
     let h1_limbs = BigNat::from_num(
-        Num::from(h1.clone()),
-        BigNatParams::new(32, 8)
-    );
+      cs.namespace(|| "allocate h1_limbs"),
+      Num::from(h1.clone()),
+      32,
+      8,
+    )?;
 
     /***********************************************************************/
     //Allocate u2 by allocating W_r, E_r, u_r, X_r
@@ -203,19 +211,41 @@ where
     })?;
 
     //The running X is two items! the running h1 and the running h2
-    let X_r_0 = BigNat::alloc_from_nat(
-        cs.namespace(|| "allocate X_r[0]"),
-        || Ok(f_to_nat(&self.inputs.get()?.u2.X[0])),
-        32,
-        8
-    )?;
-    let X_r_1 = BigNat::alloc_from_nat(
-        cs.namespace(|| "allocate X_r[1]"),
-        || Ok(f_to_nat(&self.inputs.get()?.u2.X[1])),
-        32,
-        8
+    let Xr0 = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate X_r[0]"),
+      || Ok(f_to_nat(&self.inputs.get()?.u2.X[0])),
+      32,
+      8,
     )?;
 
+    //Analyze Xr0 as limbs to use later
+    let Xr0_limbs = Xr0
+      .as_limbs::<CS>()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb
+          .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[0] to num", i)))
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+
+    let Xr1 = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate X_r[1]"),
+      || Ok(f_to_nat(&self.inputs.get()?.u2.X[1])),
+      32,
+      8,
+    )?;
+
+    //Analyze Xr1 as limbs to use later
+    let Xr1_limbs = Xr1
+      .as_limbs::<CS>()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb
+          .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[1] to num", i)))
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     /***********************************************************************/
     //Allocate i
@@ -296,20 +326,19 @@ where
     let u_default = zero.clone();
 
     //X_default = 0
-    let X_0 = BigNat::alloc_from_nat(
-        cs.namespace(|| "allocate x_default[0]"),
-        || Ok(f_to_nat(&G::Scalar::zero())),
-        32, //TODO: make these variables
-        8
-    )?; 
+    let X0_default = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate x_default[0]"),
+      || Ok(f_to_nat(&G::Scalar::zero())),
+      32, //TODO: make these variables
+      8,
+    )?;
 
-    let X_1 = BigNat::alloc_from_nat(
-        cs.namespace(|| "allocate x_default[1]"),
-        || Ok(f_to_nat(&G::Scalar::zero())),
-        32, //TODO: make these variables
-        8
-    )?; 
-
+    let X1_default = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate x_default[1]"),
+      || Ok(f_to_nat(&G::Scalar::zero())),
+      32, //TODO: make these variables
+      8,
+    )?;
 
     //Compute r:
 
@@ -317,12 +346,11 @@ where
 
     ro.absorb(params);
     ro.absorb(h1.clone());
-    //absorb each of the limbs of h2
-    for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate(){
-        let limb_num = limb.as_sapling_allocated_num(
-            cs.namespace(|| format!("convert limb {} of h2 to num", i))
-        )?;
-        ro.absorb(limb_num);
+    //absorb each of the limbs of h2 //TODO: Check if it is more efficient to treat h2 as allocNum
+    for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate() {
+      let limb_num = limb
+        .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of h2 to num", i)))?;
+      ro.absorb(limb_num);
     }
     ro.absorb(W_x);
     ro.absorb(W_y);
@@ -330,22 +358,16 @@ where
     ro.absorb(T_x);
     ro.absorb(T_y);
     ro.absorb(T_inf);
-    //absorb each of the limbs of X_r[0] 
-    for (i, limb) in X_r_0.as_limbs::<CS>().iter().enumerate(){
-        let limb_num = limb.as_sapling_allocated_num(
-            cs.namespace(|| format!("convert limb {} of X_r_0 to num", i))
-        )?;
-        ro.absorb(limb_num);
+    //absorb each of the limbs of X_r[0]
+    for limb in Xr0_limbs.clone().into_iter() {
+      ro.absorb(limb);
     }
-    
-    //absorb each of the limbs of X_r[1] 
-    for (i, limb) in X_r_1.as_limbs::<CS>().iter().enumerate(){
-        let limb_num = limb.as_sapling_allocated_num(
-            cs.namespace(|| format!("convert limb {} of X_r_1 to num", i))
-        )?;
-        ro.absorb(limb_num);
+
+    //absorb each of the limbs of X_r[1]
+    for limb in Xr1_limbs.clone().into_iter() {
+      ro.absorb(limb);
     }
-    
+
     let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
@@ -371,34 +393,29 @@ where
     //Fold the IO:
     //Analyze r into limbs
     let r_limbs = BigNat::from_num(
-        Num::from(r.clone()),
-        BigNatParams::new(32, 8)
-    );
-    
+      cs.namespace(|| "allocate r_limbs"),
+      Num::from(r.clone()),
+      32,
+      8,
+    )?;
 
     //TODO: Make the modulus hard coded into the circuit
     let m = G::Scalar::get_order();
-    let m_limbs = BigNat::alloc_from_nat(
-       cs.namespace(|| "alloc m"),
-       || Ok(m),
-       32,
-       8,
-    )?;
+    let m_limbs = BigNat::alloc_from_nat(cs.namespace(|| "alloc m"), || Ok(m), 32, 8)?;
 
-    //The error is in the following line!!
     //First the fold h1 with X_r[0];
     let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &m_limbs)?;
-    //add X_r_0 
-    let r_new = X_r_0.add::<CS>(&r_0)?;
-    //Now reduce 
-    let X_r_fold_0 = r_new.red_mod(cs.namespace(|| "reduce X_r_new_0"), &m_limbs)?;
-    
+    //add X_r[0]
+    let r_new_0 = Xr0.add::<CS>(&r_0)?;
+    //Now reduce
+    let Xr0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X_r[0]"), &m_limbs)?;
+
     //First the fold h2 with X_r[1];
-    //let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &q_limbs)?;
-    //add X_r_0 
-    //let r_new2 = X_r_1.add::<CS>(&r_1)?;
-    //Now reduce 
-    //let X_r_fold_1 = r_new2.red_mod(cs.namespace(|| "reduce X_r_new_0"), &q_limbs)?;
+    let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &m_limbs)?;
+    //add X_r[1]
+    let r_new_1 = Xr1.add::<CS>(&r_1)?;
+    //Now reduce
+    let Xr1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X_r[1]"), &m_limbs)?;
 
     //Now select the default values if i == 0 otherwise the fold values
     let base_case = Boolean::from(alloc_num_equals(
@@ -423,8 +440,44 @@ where
 
     let u_new = conditionally_select(cs.namespace(|| "u_new"), &u_default, &u_fold, &base_case)?;
 
-    //TODO: add conditionally select for the limbs!
-    
+    let Xr0_new = conditionally_select_bignat(
+      cs.namespace(|| "X_r_new[0]"),
+      &X0_default,
+      &Xr0_fold,
+      &base_case,
+    )?;
+
+    //Analyze Xr0_new as limbs to use later
+    let Xr0_new_limbs = Xr0_new
+      .as_limbs::<CS>()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb.as_sapling_allocated_num(
+          cs.namespace(|| format!("convert limb {} of X_r_new[0] to num", i)),
+        )
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+
+    let Xr1_new = conditionally_select_bignat(
+      cs.namespace(|| "X_r_new[1]"),
+      &X1_default,
+      &Xr1_fold,
+      &base_case,
+    )?;
+
+    //Analyze Xr1_new as limbs to use later
+    let Xr1_new_limbs = Xr1_new
+      .as_limbs::<CS>()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb.as_sapling_allocated_num(
+          cs.namespace(|| format!("convert limb {} of X_r_new[1] to num", i)),
+        )
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+
     /***********************************************************************/
     //Compute i + 1
     /***********************************************************************/
@@ -467,7 +520,16 @@ where
       h1_hash.absorb(E_r_y.clone());
       h1_hash.absorb(E_r_inf.clone());
       h1_hash.absorb(u_r.clone());
-      //TODO: Add X_r
+
+      //absorb each of the limbs of X_r[0]
+      for limb in Xr0_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
+      //absorb each of the limbs of X_r[1]
+      for limb in Xr1_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
 
       h1_hash.absorb(i.clone());
       h1_hash.absorb(z_0.clone());
@@ -504,7 +566,17 @@ where
       h1_hash.absorb(E_new.y.clone());
       h1_hash.absorb(E_new.is_infinity.clone());
       h1_hash.absorb(u_new.clone());
-      //TODO: Add X_r
+
+      //absorb each of the limbs of X_r_new[0]
+      for limb in Xr0_new_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
+      //absorb each of the limbs of X_r_new[1]
+      for limb in Xr1_new_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
       h1_hash.absorb(next_i.clone());
       h1_hash.absorb(z_0.clone());
       h1_hash.absorb(z_next.clone());
@@ -527,7 +599,16 @@ where
       h1_hash.absorb(E_r_inf.clone());
       h1_hash.absorb(u_r.clone());
       h1_hash.absorb(i.clone());
-      //TODO: Add X_r
+
+      //absorb each of the limbs of X_r[0]
+      for limb in Xr0_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
+      //absorb each of the limbs of X_r[1]
+      for limb in Xr1_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
 
       let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?;
       let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
@@ -552,7 +633,17 @@ where
       h1_hash.absorb(E_new.is_infinity.clone());
       h1_hash.absorb(u_new.clone());
       h1_hash.absorb(next_i.clone());
-      //TODO: Add X_r
+
+      //absorb each of the limbs of X_r_new[0]
+      for limb in Xr0_new_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
+      //absorb each of the limbs of X_r_new[1]
+      for limb in Xr1_new_limbs.into_iter() {
+        h1_hash.absorb(limb);
+      }
+
       let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
       let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
       let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
@@ -633,7 +724,7 @@ mod tests {
 
     //TODO: We need to hardwire default hash or give it as input
     let default_hash = <<G2 as Group>::Base as ff::PrimeField>::from_str_vartime(
-      "178164938390736661201066150778981665957",
+      "60657083072851940993857593949806587269",
     )
     .unwrap();
     let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
