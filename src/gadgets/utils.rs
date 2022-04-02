@@ -6,8 +6,9 @@ use bellperson::{
   },
   ConstraintSystem, LinearCombination, SynthesisError,
 };
-use bellperson_nonnative::mp::bignat::BigNat;
+use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
 use ff::{PrimeField, PrimeFieldBits};
+use rug::Integer;
 
 ///Gets as input the little indian representation of a number and spits out the number
 #[allow(dead_code)]
@@ -70,6 +71,33 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   );
 
   Ok(one)
+}
+
+///Allocate bignat a constant
+pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  val: &Integer,
+  limb_width: usize,
+  n_limbs: usize,
+) -> Result<BigNat<F>, SynthesisError> {
+  let limbs = nat_to_limbs(val, limb_width, n_limbs).unwrap();
+  let bignat = BigNat::alloc_from_limbs(
+    cs.namespace(|| "alloc bignat"),
+    || Ok(limbs.clone()),
+    None,
+    limb_width,
+    n_limbs,
+  )?;
+  //Now enforce that the limbs are all equal to the constants
+  for i in 0..n_limbs {
+    cs.enforce(
+      || format!("check limb {}", i),
+      |lc| lc + &bignat.limbs[i],
+      |lc| lc + CS::one(),
+      |lc| lc + (limbs[i], CS::one()),
+    );
+  }
+  return Ok(bignat);
 }
 
 //The next two functions are borrowed from sapling-crypto crate
