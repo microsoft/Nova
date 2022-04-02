@@ -6,9 +6,9 @@
 //! the circuit and u2 the running relaxed r1cs instance of the other circuit.
 //! The circuit takes as input two hashes h1 and h2.
 //! If the circuit applies the inner function F, then
-//! h1 = H(u2, i, z0, zi) and h2 = H(u1, i)
+//! h1 = H(params = H(shape, gens), u2, i, z0, zi) and h2 = H(u1, i)
 //! otherwise
-//! h1 = H(u2, i) and h2 = H(u1, i, z0, zi)
+//! h1 = H(u2, i) and h2 = H(params = H(shape, gens), u1, i, z0, zi)
 
 use super::commitments::Commitment;
 use super::gadgets::{
@@ -57,7 +57,7 @@ where
   i: G::Base,
   z0: G::Base,
   zi: G::Base,
-  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge. TODO: make this an output
+  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   T: Commitment<G>,
   w: Commitment<G>, //The commitment to the witness of the fresh r1cs instance
 }
@@ -361,7 +361,6 @@ where
 
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
 
-    ro.absorb(params);
     ro.absorb(h1.clone());
     //absorb each of the limbs of h2 //TODO: Check if it is more efficient to treat h2 as allocNum
     for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate() {
@@ -529,12 +528,13 @@ where
       let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
 
       /***********************************************************************/
-      //Check that h1 = Hash(u2,i,z0,zi)
+      //Check that h1 = Hash(params, u2,i,z0,zi)
       /***********************************************************************/
 
       let mut h1_hash: PoseidonROGadget<G::Base> =
         PoseidonROGadget::new(self.poseidon_constants.clone());
 
+      h1_hash.absorb(params.clone());
       h1_hash.absorb(W_r_x.clone());
       h1_hash.absorb(W_r_y.clone());
       h1_hash.absorb(W_r_inf.clone());
@@ -577,10 +577,11 @@ where
         .synthesize(&mut cs.namespace(|| "F"), z_i)?;
 
       /***********************************************************************/
-      //Compute the new hash H(u2, i+1, z0, z_{i+1})
+      //Compute the new hash H(params, u2_new, i+1, z0, z_{i+1})
       /***********************************************************************/
 
       h1_hash.flush_state();
+      h1_hash.absorb(params.clone());
       h1_hash.absorb(W_new.x.clone());
       h1_hash.absorb(W_new.y.clone());
       h1_hash.absorb(W_new.is_infinity.clone());
@@ -607,12 +608,13 @@ where
       let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
     } else {
       /***********************************************************************/
-      //Check that h1 = Hash(u2, i)
+      //Check that h1 = Hash(params, u2, i)
       /***********************************************************************/
 
       let mut h1_hash: PoseidonROGadget<G::Base> =
         PoseidonROGadget::new(self.poseidon_constants.clone());
 
+      h1_hash.absorb(params.clone());
       h1_hash.absorb(W_r_x.clone());
       h1_hash.absorb(W_r_y.clone());
       h1_hash.absorb(W_r_inf.clone());
@@ -643,10 +645,11 @@ where
       );
 
       /***********************************************************************/
-      //Compute the new hash H(u2')
+      //Compute the new hash H(params, u2')
       /***********************************************************************/
 
       h1_hash.flush_state();
+      h1_hash.absorb(params.clone());
       h1_hash.absorb(W_new.x.clone());
       h1_hash.absorb(W_new.y.clone());
       h1_hash.absorb(W_new.is_infinity.clone());
@@ -749,7 +752,7 @@ mod tests {
 
     //TODO: We need to hardwire default hash or give it as input
     let default_hash = <<G2 as Group>::Base as ff::PrimeField>::from_str_vartime(
-      "60657083072851940993857593949806587269",
+      "332553638888022689042501686561503049809",
     )
     .unwrap();
     let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
