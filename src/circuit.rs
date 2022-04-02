@@ -14,8 +14,8 @@ use super::commitments::Commitment;
 use super::gadgets::{
   ecc_circuit::AllocatedPoint,
   utils::{
-    alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select_bignat,
-    le_bits_to_num,
+    alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
+    conditionally_select_bignat, le_bits_to_num,
   },
 };
 use super::poseidon::NovaPoseidonConstants;
@@ -415,11 +415,10 @@ where
       self.params.n_limbs,
     )?;
 
-    //TODO: Make the modulus hard coded into the circuit
-    let m = G::Scalar::get_order();
-    let m_limbs = BigNat::alloc_from_nat(
+    //Allocate the order of the non-native field as a constant
+    let m_limbs = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
-      || Ok(m),
+      &G::Scalar::get_order(),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -526,6 +525,23 @@ where
       /***********************************************************************/
 
       let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
+
+      /***********************************************************************/
+      //Check that if i == 0, z0 = zi, that is (i == 0) AND (z0 != zi) = false
+      /***********************************************************************/
+
+      let z0_is_zi = Boolean::from(alloc_num_equals(
+        cs.namespace(|| "z0 = zi"),
+        z_0.clone(),
+        z_i.clone(),
+      )?);
+
+      cs.enforce(
+        || "i == 0 and z0 != zi = false",
+        |_| base_case.lc(CS::one(), G::Base::one()),
+        |_| z0_is_zi.not().lc(CS::one(), G::Base::one()),
+        |lc| lc,
+      );
 
       /***********************************************************************/
       //Check that h1 = Hash(params, u2,i,z0,zi)
