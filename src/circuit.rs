@@ -39,6 +39,7 @@ pub struct VerificationCircuitParams {
 }
 
 impl VerificationCircuitParams {
+  #[allow(dead_code)]
   pub fn new(limb_width: usize, n_limbs: usize) -> Self {
     Self {
       limb_width,
@@ -57,16 +58,16 @@ where
   i: G::Base,
   z0: G::Base,
   zi: G::Base,
-  params: G::Base, //Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+  params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   T: Commitment<G>,
-  w: Commitment<G>, //The commitment to the witness of the fresh r1cs instance
+  w: Commitment<G>, // The commitment to the witness of the fresh r1cs instance
 }
 
 impl<G> VerificationCircuitInputs<G>
 where
   G: Group,
 {
-  ///Create new inputs/witness for the verification circuit
+  /// Create new inputs/witness for the verification circuit
   #[allow(dead_code)]
   pub fn new(
     h1: G::Base,
@@ -93,7 +94,7 @@ where
   }
 }
 
-///Circuit that encodes only the folding verifier
+/// Circuit that encodes only the folding verifier
 pub struct VerificationCircuit<G, IC>
 where
   G: Group,
@@ -102,7 +103,7 @@ where
 {
   params: VerificationCircuitParams,
   inputs: Option<VerificationCircuitInputs<G>>,
-  inner_circuit: Option<IC>, //The function that is applied for each step. may be None.
+  inner_circuit: Option<IC>, // The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
@@ -112,7 +113,7 @@ where
   <G as Group>::Base: ff::PrimeField,
   IC: InnerCircuit<G::Base>,
 {
-  ///Create a new verification circuit for the input relaxed r1cs instances
+  /// Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
     params: VerificationCircuitParams,
@@ -144,11 +145,11 @@ where
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     /***********************************************************************/
-    //This circuit does not modify h2 but it outputs it.
-    //Allocate it and output it.
+    // This circuit does not modify h2 but it outputs it.
+    // Allocate it and output it.
     /***********************************************************************/
 
-    //Allocate h2 as a big number with 8 limbs
+    // Allocate h2 as a big number with 8 limbs
     let h2_limbs = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate h2"),
       || Ok(f_to_nat(&self.inputs.get()?.h2)),
@@ -159,7 +160,7 @@ where
     let _ = h2_limbs.inputize(cs.namespace(|| "Output 1"))?;
 
     /***********************************************************************/
-    //Allocate h1
+    // Allocate h1
     /***********************************************************************/
 
     let h1 = AllocatedNum::alloc(cs.namespace(|| "allocate h1"), || Ok(self.inputs.get()?.h1))?;
@@ -171,10 +172,10 @@ where
     )?;
 
     /***********************************************************************/
-    //Allocate u2 by allocating W_r, E_r, u_r, X_r
+    // Allocate u2 by allocating W_r, E_r, u_r, X_r
     /***********************************************************************/
 
-    //W_r = (x, y, infinity)
+    // W_r = (x, y, infinity)
     let W_r_x = AllocatedNum::alloc(cs.namespace(|| "W_r.x"), || {
       Ok(self.inputs.get()?.u2.comm_W.comm.to_coordinates().0)
     })?;
@@ -193,7 +194,7 @@ where
     let W_r = AllocatedPoint::new(W_r_x.clone(), W_r_y.clone(), W_r_inf.clone());
     let _ = W_r.check_is_infinity(cs.namespace(|| "W_r check is_infinity"))?;
 
-    //E_r = (x, y, infinity)
+    // E_r = (x, y, infinity)
     let E_r_x = AllocatedNum::alloc(cs.namespace(|| "E_r.x"), || {
       Ok(self.inputs.get()?.u2.comm_E.comm.to_coordinates().0)
     })?;
@@ -212,8 +213,8 @@ where
     let E_r = AllocatedPoint::new(E_r_x.clone(), E_r_y.clone(), E_r_inf.clone());
     let _ = E_r.check_is_infinity(cs.namespace(|| "E_r check is_infinity"));
 
-    //u_r << |G::Base| despite the fact that u_r is a scalar.
-    //So we parse all of its bytes as a G::Base element
+    // u_r << |G::Base| despite the fact that u_r is a scalar.
+    // So we parse all of its bytes as a G::Base element
     let u_r = AllocatedNum::alloc(cs.namespace(|| "u_r"), || {
       let u_bits = self.inputs.get()?.u2.u.to_le_bits();
       let mut mult = G::Base::one();
@@ -227,7 +228,7 @@ where
       Ok(u)
     })?;
 
-    //The running X is two items! the running h1 and the running h2
+    // The running X is two items! the running h1 and the running h2
     let Xr0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X_r[0]"),
       || Ok(f_to_nat(&self.inputs.get()?.u2.X[0])),
@@ -235,7 +236,7 @@ where
       self.params.n_limbs,
     )?;
 
-    //Analyze Xr0 as limbs to use later
+    // Analyze Xr0 as limbs to use later
     let Xr0_limbs = Xr0
       .as_limbs::<CS>()
       .iter()
@@ -253,7 +254,7 @@ where
       self.params.n_limbs,
     )?;
 
-    //Analyze Xr1 as limbs to use later
+    // Analyze Xr1 as limbs to use later
     let Xr1_limbs = Xr1
       .as_limbs::<CS>()
       .iter()
@@ -265,16 +266,16 @@ where
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     /***********************************************************************/
-    //Allocate i
+    // Allocate i
     /***********************************************************************/
 
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
     /***********************************************************************/
-    //Allocate T
+    // Allocate T
     /***********************************************************************/
 
-    //T = (x, y, infinity)
+    // T = (x, y, infinity)
     let T_x = AllocatedNum::alloc(cs.namespace(|| "T.x"), || {
       Ok(self.inputs.get()?.T.comm.to_coordinates().0)
     })?;
@@ -294,16 +295,16 @@ where
     let _ = T.check_is_infinity(cs.namespace(|| "T check is_infinity"));
 
     /***********************************************************************/
-    //Allocate params
+    // Allocate params
     /***********************************************************************/
 
     let params = AllocatedNum::alloc(cs.namespace(|| "params"), || Ok(self.inputs.get()?.params))?;
 
     /***********************************************************************/
-    //Allocate W
+    // Allocate W
     /***********************************************************************/
 
-    //T = (x, y, infinity)
+    // T = (x, y, infinity)
     let W_x = AllocatedNum::alloc(cs.namespace(|| "W.x"), || {
       Ok(self.inputs.get()?.w.comm.to_coordinates().0)
     })?;
@@ -323,26 +324,26 @@ where
     let _ = W.check_is_infinity(cs.namespace(|| "W check is_infinity"));
 
     /***********************************************************************/
-    //U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
+    // U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
     /***********************************************************************/
 
     //Allocate 0 and 1
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    //Hack: We just do this because the number of inputs must be even!!
+    // Hack: We just do this because the number of inputs must be even!!
     zero.inputize(cs.namespace(|| "allocate zero as input"))?;
     let one = alloc_one(cs.namespace(|| "one"))?;
 
-    //Compute default values of U2':
+    // Compute default values of U2':
     let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one.clone());
 
     //W_default and E_default are a commitment to zero
     let W_default = zero_commitment.clone();
     let E_default = zero_commitment.clone();
 
-    //u_default = 0
+    // u_default = 0
     let u_default = zero.clone();
 
-    //X_default = 0
+    // X_default = 0
     let X0_default = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&G::Scalar::zero())),
@@ -357,12 +358,13 @@ where
       self.params.n_limbs,
     )?;
 
-    //Compute r:
+    // Compute r:
 
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
 
     ro.absorb(h1.clone());
-    //absorb each of the limbs of h2 //TODO: Check if it is more efficient to treat h2 as allocNum
+    // absorb each of the limbs of h2
+    // TODO: Check if it is more efficient to treat h2 as allocNum
     for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate() {
       let limb_num = limb
         .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of h2 to num", i)))?;
@@ -374,12 +376,12 @@ where
     ro.absorb(T_x);
     ro.absorb(T_y);
     ro.absorb(T_inf);
-    //absorb each of the limbs of X_r[0]
+    // absorb each of the limbs of X_r[0]
     for limb in Xr0_limbs.clone().into_iter() {
       ro.absorb(limb);
     }
 
-    //absorb each of the limbs of X_r[1]
+    // absorb each of the limbs of X_r[1]
     for limb in Xr1_limbs.clone().into_iter() {
       ro.absorb(limb);
     }
@@ -387,15 +389,15 @@ where
     let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
-    //W_fold = W_r + r * W
+    // W_fold = W_r + r * W
     let rW = W.scalar_mul(cs.namespace(|| "r * W"), r_bits.clone())?;
     let W_fold = W_r.add(cs.namespace(|| "W_r + r * W"), &rW)?;
 
-    //E_fold = E_r + r * T
+    // E_fold = E_r + r * T
     let rT = T.scalar_mul(cs.namespace(|| "r * T"), r_bits)?;
     let E_fold = E_r.add(cs.namespace(|| "E_r + r * T"), &rT)?;
 
-    //u_fold = u_r + r
+    // u_fold = u_r + r
     let u_fold = AllocatedNum::alloc(cs.namespace(|| "u_fold"), || {
       Ok(*u_r.get_value().get()? + r.get_value().get()?)
     })?;
@@ -406,8 +408,8 @@ where
       |lc| lc + u_fold.get_variable() - u_r.get_variable() - r.get_variable(),
     );
 
-    //Fold the IO:
-    //Analyze r into limbs
+    // Fold the IO:
+    // Analyze r into limbs
     let r_limbs = BigNat::from_num(
       cs.namespace(|| "allocate r_limbs"),
       Num::from(r.clone()),
@@ -415,7 +417,7 @@ where
       self.params.n_limbs,
     )?;
 
-    //Allocate the order of the non-native field as a constant
+    // Allocate the order of the non-native field as a constant
     let m_limbs = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
       &G::Scalar::get_order(),
@@ -423,21 +425,21 @@ where
       self.params.n_limbs,
     )?;
 
-    //First the fold h1 with X_r[0];
+    // First the fold h1 with X_r[0];
     let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &m_limbs)?;
-    //add X_r[0]
+    // add X_r[0]
     let r_new_0 = Xr0.add::<CS>(&r_0)?;
-    //Now reduce
+    // Now reduce
     let Xr0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X_r[0]"), &m_limbs)?;
 
-    //First the fold h2 with X_r[1];
+    // First the fold h2 with X_r[1];
     let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &m_limbs)?;
-    //add X_r[1]
+    // add X_r[1]
     let r_new_1 = Xr1.add::<CS>(&r_1)?;
-    //Now reduce
+    // Now reduce
     let Xr1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X_r[1]"), &m_limbs)?;
 
-    //Now select the default values if i == 0 otherwise the fold values
+    // Now select the default values if i == 0 otherwise the fold values
     let base_case = Boolean::from(alloc_num_equals(
       cs.namespace(|| "Check if base case"),
       i.clone(),
@@ -467,7 +469,7 @@ where
       &base_case,
     )?;
 
-    //Analyze Xr0_new as limbs to use later
+    // Analyze Xr0_new as limbs to use later
     let Xr0_new_limbs = Xr0_new
       .as_limbs::<CS>()
       .iter()
@@ -486,7 +488,7 @@ where
       &base_case,
     )?;
 
-    //Analyze Xr1_new as limbs to use later
+    // Analyze Xr1_new as limbs to use later
     let Xr1_new_limbs = Xr1_new
       .as_limbs::<CS>()
       .iter()
@@ -544,7 +546,7 @@ where
       );
 
       /***********************************************************************/
-      //Check that h1 = Hash(params, u2,i,z0,zi)
+      // Check that h1 = Hash(params, u2,i,z0,zi)
       /***********************************************************************/
 
       let mut h1_hash: PoseidonROGadget<G::Base> =
@@ -559,12 +561,12 @@ where
       h1_hash.absorb(E_r_inf.clone());
       h1_hash.absorb(u_r.clone());
 
-      //absorb each of the limbs of X_r[0]
+      // absorb each of the limbs of X_r[0]
       for limb in Xr0_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
 
-      //absorb each of the limbs of X_r[1]
+      // absorb each of the limbs of X_r[1]
       for limb in Xr1_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
@@ -584,7 +586,7 @@ where
       );
 
       /***********************************************************************/
-      //Compute z_{i+1}
+      // Compute z_{i+1}
       /***********************************************************************/
 
       let z_next = self
@@ -593,7 +595,7 @@ where
         .synthesize(&mut cs.namespace(|| "F"), z_i)?;
 
       /***********************************************************************/
-      //Compute the new hash H(params, u2_new, i+1, z0, z_{i+1})
+      // Compute the new hash H(params, u2_new, i+1, z0, z_{i+1})
       /***********************************************************************/
 
       h1_hash.flush_state();
@@ -606,12 +608,12 @@ where
       h1_hash.absorb(E_new.is_infinity.clone());
       h1_hash.absorb(u_new.clone());
 
-      //absorb each of the limbs of X_r_new[0]
+      // absorb each of the limbs of X_r_new[0]
       for limb in Xr0_new_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
 
-      //absorb each of the limbs of X_r_new[1]
+      // absorb each of the limbs of X_r_new[1]
       for limb in Xr1_new_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
@@ -624,7 +626,7 @@ where
       let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
     } else {
       /***********************************************************************/
-      //Check that h1 = Hash(params, u2, i)
+      // Check that h1 = Hash(params, u2, i)
       /***********************************************************************/
 
       let mut h1_hash: PoseidonROGadget<G::Base> =
@@ -661,7 +663,7 @@ where
       );
 
       /***********************************************************************/
-      //Compute the new hash H(params, u2')
+      // Compute the new hash H(params, u2')
       /***********************************************************************/
 
       h1_hash.flush_state();
@@ -675,12 +677,12 @@ where
       h1_hash.absorb(u_new.clone());
       h1_hash.absorb(next_i.clone());
 
-      //absorb each of the limbs of X_r_new[0]
+      // absorb each of the limbs of X_r_new[0]
       for limb in Xr0_new_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
 
-      //absorb each of the limbs of X_r_new[1]
+      // absorb each of the limbs of X_r_new[1]
       for limb in Xr1_new_limbs.into_iter() {
         h1_hash.absorb(limb);
       }
@@ -727,9 +729,9 @@ mod tests {
 
   #[test]
   fn test_verification_circuit() {
-    //We experiment with 8 limbs of 32 bits each
+    // We experiment with 8 limbs of 32 bits each
     let params = VerificationCircuitParams::new(32, 8);
-    //The first circuit that verifies G2
+    // The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit1: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
@@ -741,7 +743,7 @@ mod tests {
         }),
         poseidon_constants1.clone(),
       );
-    //First create the shape
+    // First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let shape1 = cs.r1cs_shape();
@@ -751,12 +753,12 @@ mod tests {
       cs.num_constraints()
     );
 
-    //The second circuit that verifies G1
+    // The second circuit that verifies G1
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
       VerificationCircuit::new(params.clone(), None, None, poseidon_constants2.clone());
-    //First create the shape
+    // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let shape2 = cs.r1cs_shape();
@@ -773,17 +775,17 @@ mod tests {
     .unwrap();
     let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
-    //Now get an assignment
+    // Now get an assignment
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: VerificationCircuitInputs<G2> = VerificationCircuitInputs::new(
       default_hash,
       RelaxedR1CSInstance::default(&gens2, &shape2),
-      <<G2 as Group>::Base as PrimeField>::zero(), //TODO: Fix This
-      <<G2 as Group>::Base as PrimeField>::zero(), //TODO: Fix This
-      <<G2 as Group>::Base as PrimeField>::zero(), //TODO: Fix This
-      <<G2 as Group>::Scalar as PrimeField>::zero(), //TODO: Fix This
-      <<G2 as Group>::Base as PrimeField>::zero(), //TODO: Fix This
-      T,                                           //TODO: Fix This
+      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Scalar as PrimeField>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
+      T,                                           // TODO: provide real inputs
       w,
     );
     let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
@@ -798,7 +800,7 @@ mod tests {
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
 
-    //Make sure that this is satisfiable
+    // Make sure that this is satisfiable
     assert!(shape1.is_sat(&gens1, &inst, &witness).is_ok());
   }
 }

@@ -1,5 +1,4 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -12,9 +11,12 @@ use generic_array::typenum::{U25, U27, U31};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
-  Strength,
 };
-///All Poseidon Constants that are used in Nova
+
+#[cfg(test)]
+use neptune::Strength;
+
+/// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
 pub struct NovaPoseidonConstants<F>
 where
@@ -25,11 +27,12 @@ where
   pub(crate) constants31: PoseidonConstants<F, U31>,
 }
 
+#[cfg(test)]
 impl<F> NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
-  ///Generate Poseidon constants for the arities that Nova uses
+  /// Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
     let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
@@ -42,7 +45,7 @@ where
   }
 }
 
-///A Poseidon-based RO to use outside circuits
+/// A Poseidon-based RO to use outside circuits
 pub struct PoseidonRO<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
@@ -65,13 +68,19 @@ where
     }
   }
 
-  ///Absorb a new number into the state of the oracle
+  #[allow(dead_code)]
+  /// Flush the state of the RO
+  pub fn flush_state(&mut self) {
+    self.state = Vec::new();
+  }
+
+  /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: Scalar) {
     self.state.push(e.clone());
   }
 
-  ///Compute a challenge by hashing the current state
+  /// Compute a challenge by hashing the current state
   #[allow(dead_code)]
   pub fn get_challenge(&mut self) -> Scalar {
     let hash = match self.state.len() {
@@ -102,12 +111,12 @@ where
   }
 }
 
-///A Poseidon-based RO gadget to use inside the verifier circuit.
+/// A Poseidon-based RO gadget to use inside the verifier circuit.
 pub struct PoseidonROGadget<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  //Internal state
+  // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: NovaPoseidonConstants<Scalar>,
 }
@@ -116,7 +125,7 @@ impl<Scalar> PoseidonROGadget<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  ///Initialize the internal state and set the poseidon constants
+  /// Initialize the internal state and set the poseidon constants
   #[allow(dead_code)]
   pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
     Self {
@@ -125,18 +134,18 @@ where
     }
   }
 
-  ///Flush the state of the RO
+  /// Flush the state of the RO
   pub fn flush_state(&mut self) {
     self.state = Vec::new();
   }
 
-  ///Absorb a new number into the state of the oracle
+  /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
     self.state.push(e.clone());
   }
 
-  ///Compute a challenge by hashing the current state
+  /// Compute a challenge by hashing the current state
   #[allow(dead_code)]
   pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
@@ -162,7 +171,7 @@ where
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
       }
     };
-    //Only keep 128 bits
+    // Only keep 128 bits
     let bits: Vec<AllocatedBit> = out
       .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
       .iter()
@@ -187,8 +196,7 @@ mod tests {
 
   #[test]
   fn test_poseidon_ro() {
-    //Check that the number computed inside the circuit is equal to the number computed outside the
-    //circuit
+    // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = NovaPoseidonConstants::new();
     let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());

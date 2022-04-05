@@ -10,7 +10,7 @@ use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
 use ff::{PrimeField, PrimeFieldBits};
 use rug::Integer;
 
-///Gets as input the little indian representation of a number and spits out the number
+/// Gets as input the little indian representation of a number and spits out the number
 #[allow(dead_code)]
 pub fn le_bits_to_num<Scalar, CS>(
   mut cs: CS,
@@ -20,8 +20,8 @@ where
   Scalar: PrimeField + PrimeFieldBits,
   CS: ConstraintSystem<Scalar>,
 {
-  //We loop over the input bits and construct the constraint and the field element that corresponds
-  //to the result
+  // We loop over the input bits and construct the constraint
+  // and the field element that corresponds to the result
   let mut lc = LinearCombination::zero();
   let mut coeff = Scalar::one();
   let mut fe = Some(Scalar::zero());
@@ -44,7 +44,7 @@ where
   Ok(num)
 }
 
-///Allocate a variable that is set to zero
+/// Allocate a variable that is set to zero
 pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
@@ -58,7 +58,7 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(zero)
 }
 
-///Allocate a variable that is set to one
+/// Allocate a variable that is set to one
 pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
@@ -73,7 +73,7 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(one)
 }
 
-///Allocate bignat a constant
+/// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   val: &Integer,
@@ -88,7 +88,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
     limb_width,
     n_limbs,
   )?;
-  //Now enforce that the limbs are all equal to the constants
+  // Now enforce that the limbs are all equal to the constants
   for i in 0..n_limbs {
     cs.enforce(
       || format!("check limb {}", i),
@@ -100,9 +100,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   return Ok(bignat);
 }
 
-//The next two functions are borrowed from sapling-crypto crate
-
-///Check that two numbers are equal and return a bit
+/// Check that two numbers are equal and return a bit
 pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: AllocatedNum<F>,
@@ -128,7 +126,6 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
     Ok(delta)
   })?;
 
-  //
   cs.enforce(
     || "delta = (a - b)",
     |lc| lc + a.get_variable() - b.get_variable(),
@@ -200,7 +197,7 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(r)
 }
 
-///If condition return a otherwise b
+/// If condition return a otherwise b
 pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
@@ -228,7 +225,7 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-///If condition return a otherwise b where a and b are BigNats
+/// If condition return a otherwise b where a and b are BigNats
 pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &BigNat<F>,
@@ -262,8 +259,8 @@ pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-///Same as the above but Condition is an AllocatedNum that needs to be
-///0 or 1. 1 => True, 0 => False
+/// Same as the above but Condition is an AllocatedNum that needs to be
+/// 0 or 1. 1 => True, 0 => False
 pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
@@ -291,7 +288,7 @@ pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-///If condition set to 0 otherwise a
+/// If condition set to 0 otherwise a
 pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
@@ -306,7 +303,6 @@ pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
   })?;
 
   // a * (1 - condition) = c
-
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable(),
@@ -317,7 +313,7 @@ pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-///If condition set to 1 otherwise a
+/// If condition set to 1 otherwise a
 pub fn select_one_or<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,

@@ -276,7 +276,7 @@ where
     let b = b(LinearCombination::zero());
     let c = c(LinearCombination::zero());
 
-    self.constraints.push((a, b, c, path.clone()));
+    self.constraints.push((a, b, c, path));
   }
 
   fn push_namespace<NR, N>(&mut self, name_fn: N)
