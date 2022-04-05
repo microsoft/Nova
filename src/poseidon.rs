@@ -199,7 +199,7 @@ mod tests {
     let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    for i in 0..32 {
+    for i in 0..31 {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
