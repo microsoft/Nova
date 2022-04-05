@@ -771,8 +771,8 @@ mod tests {
       "332553638888022689042501686561503049809",
     )
     .unwrap();
-    let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
-    let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens);
+    let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
+    let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     //Now get an assignment
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: VerificationCircuitInputs<G2> = VerificationCircuitInputs::new(

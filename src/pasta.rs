@@ -1,13 +1,13 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::traits::{ChallengeTrait, CompressedGroup, Group, PrimeField};
 use merlin::Transcript;
-use pasta_curves::arithmetic::{CurveAffine, CurveExt, Field, FieldExt, Group as Grp};
-use pasta_curves::group::{Curve, Group as GrpTrait, GroupEncoding};
+use pasta_curves::arithmetic::{CurveAffine, CurveExt, FieldExt, Group as Grp};
+use pasta_curves::group::{Curve, GroupEncoding};
 use pasta_curves::{self, pallas, vesta, Ep, Eq, Fp, Fq};
 use rand::{CryptoRng, RngCore};
+use rug::Integer;
 use std::borrow::Borrow;
 use std::ops::Mul;
-use rug::Integer;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -178,12 +178,6 @@ impl Group for vesta::Point {
     }
   }
 
-  fn gen() -> Self {
-    vesta::Point::generator()
-  }
-
-  ///Ioanna: This is so that we can turn Points to affine coordinates
-  ///We need this to implement Scalar mul in the circuit
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
     let coordinates = self.to_affine().coordinates();
     if coordinates.is_some().unwrap_u8() == 1 {
@@ -211,16 +205,8 @@ impl PrimeField for vesta::Scalar {
     }
   }
 
-  fn random(_rng: &mut (impl RngCore + CryptoRng)) -> Self {
-    Fp::rand()
-  }
-
-  fn inverse(&self) -> Option<Self> {
-    Some(self.invert().unwrap())
-  }
-
-  fn as_bytes(&self) -> Vec<u8> {
-    self.to_bytes().to_vec()
+  fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
+    <Fp as ff::Field>::random(rng)
   }
 
   fn get_order() -> Integer {

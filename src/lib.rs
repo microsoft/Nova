@@ -10,8 +10,8 @@ mod circuit;
 pub mod errors;
 mod gadgets;
 pub mod pasta;
-pub mod r1cs;
 mod poseidon;
+pub mod r1cs;
 pub mod traits;
 
 use std::marker::PhantomData;

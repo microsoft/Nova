@@ -65,11 +65,6 @@ where
     }
   }
 
-  ///Flush the state of the RO
-  pub fn flush_state(&mut self) {
-    self.state = Vec::new();
-  }
-
   ///Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: Scalar) {
