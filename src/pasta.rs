@@ -5,12 +5,9 @@ use pasta_curves::arithmetic::{CurveAffine, CurveExt, Field, FieldExt, Group as 
 use pasta_curves::group::{Curve, Group as GrpTrait, GroupEncoding};
 use pasta_curves::{self, pallas, vesta, Ep, Eq, Fp, Fq};
 use rand::{CryptoRng, RngCore};
-<<<<<<< HEAD
 use std::borrow::Borrow;
 use std::ops::Mul;
-=======
 use rug::Integer;
->>>>>>> dcff0e6... start adding folding of the io. there is an error in the first call to  mult_mod
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
