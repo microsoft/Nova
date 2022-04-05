@@ -50,9 +50,9 @@ pub struct PoseidonRO<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  //Internal State
+  // Internal State
   state: Vec<Scalar>,
-  //Constants for Poseidon
+  // Constants for Poseidon
   constants: NovaPoseidonConstants<Scalar>,
 }
 
@@ -97,7 +97,7 @@ where
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
       }
     };
-    //Only keep 128 bits
+    // Only keep 128 bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
