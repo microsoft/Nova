@@ -89,6 +89,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
     n_limbs,
   )?;
   // Now enforce that the limbs are all equal to the constants
+  #[allow(clippy::needless_range_loop)]
   for i in 0..n_limbs {
     cs.enforce(
       || format!("check limb {}", i),
@@ -97,7 +98,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
       |lc| lc + (limbs[i], CS::one()),
     );
   }
-  return Ok(bignat);
+  Ok(bignat)
 }
 
 /// Check that two numbers are equal and return a bit

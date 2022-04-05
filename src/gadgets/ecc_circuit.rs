@@ -236,7 +236,7 @@ where
       &inner_is_infinity,
       &self.is_infinity,
     )?;
-    return Ok(Self::new(final_x, final_y, final_is_infinity));
+    Ok(Self::new(final_x, final_y, final_is_infinity))
   }
 
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
@@ -381,7 +381,7 @@ where
 
     let zero = alloc_zero(cs.namespace(|| "Allocate zero"))?;
     let one = alloc_one(cs.namespace(|| "Allocate one"))?;
-    let mut R0 = Self::new(zero.clone(), zero.clone(), one.clone());
+    let mut R0 = Self::new(zero.clone(), zero, one);
 
     /*************************************************************/
     // Initialize R1 and the bits of the scalar
@@ -438,7 +438,7 @@ where
 
     let zero = alloc_zero(cs.namespace(|| "Allocate zero"))?;
     let one = alloc_one(cs.namespace(|| "Allocate one"))?;
-    let mut res = Self::new(zero.clone(), zero.clone(), one.clone());
+    let mut res = Self::new(zero.clone(), zero, one);
 
     for i in (0..scalar.len()).rev() {
       /*************************************************************/
@@ -517,7 +517,7 @@ mod tests {
       .unwrap();
     let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), bits).unwrap();
     let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
-    return (a, e, s);
+    (a, e, s)
   }
 
   #[test]

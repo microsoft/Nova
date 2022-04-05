@@ -37,6 +37,7 @@ fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
   a_val: &Integer,

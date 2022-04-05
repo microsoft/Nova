@@ -77,7 +77,7 @@ where
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: Scalar) {
-    self.state.push(e.clone());
+    self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
@@ -107,7 +107,7 @@ where
       }
       coeff += coeff;
     }
-    return res;
+    res
   }
 }
 
@@ -142,7 +142,7 @@ where
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
-    self.state.push(e.clone());
+    self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state

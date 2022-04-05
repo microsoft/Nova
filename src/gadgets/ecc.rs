@@ -22,12 +22,12 @@ where
 {
   #[allow(dead_code)]
   pub fn new(x: Fp, y: Fp, is_infinity: bool) -> Self {
-    return Self {
+    Self {
       x,
       y,
       is_infinity,
       _p: Default::default(),
-    };
+    }
   }
 
   #[allow(dead_code)]
@@ -134,6 +134,7 @@ where
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 mod fp {
   use ff::PrimeField;
 
@@ -145,6 +146,7 @@ mod fp {
 }
 
 #[cfg(test)]
+#[allow(clippy::too_many_arguments)]
 mod fq {
   use ff::PrimeField;
 

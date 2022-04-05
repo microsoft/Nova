@@ -68,7 +68,7 @@ where
   G: Group,
 {
   /// Create new inputs/witness for the verification circuit
-  #[allow(dead_code)]
+  #[allow(dead_code, clippy::too_many_arguments)]
   pub fn new(
     h1: G::Base,
     u2: RelaxedR1CSInstance<G>,
@@ -221,7 +221,7 @@ where
       let mut u = G::Base::zero();
       for bit in u_bits {
         if bit {
-          u = u + mult;
+          u += mult;
         }
         mult = mult + mult;
       }
@@ -334,11 +334,11 @@ where
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     // Compute default values of U2':
-    let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one.clone());
+    let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one);
 
     //W_default and E_default are a commitment to zero
     let W_default = zero_commitment.clone();
-    let E_default = zero_commitment.clone();
+    let E_default = zero_commitment;
 
     // u_default = 0
     let u_default = zero.clone();
@@ -443,7 +443,7 @@ where
     let base_case = Boolean::from(alloc_num_equals(
       cs.namespace(|| "Check if base case"),
       i.clone(),
-      zero.clone(),
+      zero,
     )?);
 
     let W_new = AllocatedPoint::conditionally_select(
@@ -553,12 +553,12 @@ where
         PoseidonROGadget::new(self.poseidon_constants.clone());
 
       h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r_x.clone());
-      h1_hash.absorb(W_r_y.clone());
-      h1_hash.absorb(W_r_inf.clone());
-      h1_hash.absorb(E_r_x.clone());
-      h1_hash.absorb(E_r_y.clone());
-      h1_hash.absorb(E_r_inf.clone());
+      h1_hash.absorb(W_r_x);
+      h1_hash.absorb(W_r_y);
+      h1_hash.absorb(W_r_inf);
+      h1_hash.absorb(E_r_x);
+      h1_hash.absorb(E_r_y);
+      h1_hash.absorb(E_r_inf);
       h1_hash.absorb(u_r.clone());
 
       // absorb each of the limbs of X_r[0]
@@ -599,14 +599,14 @@ where
       /***********************************************************************/
 
       h1_hash.flush_state();
-      h1_hash.absorb(params.clone());
+      h1_hash.absorb(params);
       h1_hash.absorb(W_new.x.clone());
       h1_hash.absorb(W_new.y.clone());
-      h1_hash.absorb(W_new.is_infinity.clone());
+      h1_hash.absorb(W_new.is_infinity);
       h1_hash.absorb(E_new.x.clone());
       h1_hash.absorb(E_new.y.clone());
-      h1_hash.absorb(E_new.is_infinity.clone());
-      h1_hash.absorb(u_new.clone());
+      h1_hash.absorb(E_new.is_infinity);
+      h1_hash.absorb(u_new);
 
       // absorb each of the limbs of X_r_new[0]
       for limb in Xr0_new_limbs.into_iter() {
@@ -619,27 +619,26 @@ where
       }
 
       h1_hash.absorb(next_i.clone());
-      h1_hash.absorb(z_0.clone());
-      h1_hash.absorb(z_next.clone());
+      h1_hash.absorb(z_0);
+      h1_hash.absorb(z_next);
       let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
-      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
+      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits)?;
       let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
     } else {
       /***********************************************************************/
       // Check that h1 = Hash(params, u2, i)
       /***********************************************************************/
 
-      let mut h1_hash: PoseidonROGadget<G::Base> =
-        PoseidonROGadget::new(self.poseidon_constants.clone());
+      let mut h1_hash: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants);
 
       h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r_x.clone());
-      h1_hash.absorb(W_r_y.clone());
-      h1_hash.absorb(W_r_inf.clone());
-      h1_hash.absorb(E_r_x.clone());
-      h1_hash.absorb(E_r_y.clone());
-      h1_hash.absorb(E_r_inf.clone());
-      h1_hash.absorb(u_r.clone());
+      h1_hash.absorb(W_r_x);
+      h1_hash.absorb(W_r_y);
+      h1_hash.absorb(W_r_inf);
+      h1_hash.absorb(E_r_x);
+      h1_hash.absorb(E_r_y);
+      h1_hash.absorb(E_r_inf);
+      h1_hash.absorb(u_r);
       h1_hash.absorb(i.clone());
 
       //absorb each of the limbs of X_r[0]
@@ -667,14 +666,14 @@ where
       /***********************************************************************/
 
       h1_hash.flush_state();
-      h1_hash.absorb(params.clone());
+      h1_hash.absorb(params);
       h1_hash.absorb(W_new.x.clone());
       h1_hash.absorb(W_new.y.clone());
-      h1_hash.absorb(W_new.is_infinity.clone());
+      h1_hash.absorb(W_new.is_infinity);
       h1_hash.absorb(E_new.x.clone());
       h1_hash.absorb(E_new.y.clone());
-      h1_hash.absorb(E_new.is_infinity.clone());
-      h1_hash.absorb(u_new.clone());
+      h1_hash.absorb(E_new.is_infinity);
+      h1_hash.absorb(u_new);
       h1_hash.absorb(next_i.clone());
 
       // absorb each of the limbs of X_r_new[0]
@@ -688,7 +687,7 @@ where
       }
 
       let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
-      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits.clone())?;
+      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits)?;
       let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
     }
 
@@ -723,7 +722,7 @@ mod tests {
       _cs: &mut CS,
       z: AllocatedNum<F>,
     ) -> Result<AllocatedNum<F>, SynthesisError> {
-      Ok(z.clone())
+      Ok(z)
     }
   }
 
@@ -757,7 +756,7 @@ mod tests {
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
-      VerificationCircuit::new(params.clone(), None, None, poseidon_constants2.clone());
+      VerificationCircuit::new(params.clone(), None, None, poseidon_constants2);
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -790,12 +789,12 @@ mod tests {
     );
     let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       VerificationCircuit::new(
-        params.clone(),
+        params,
         Some(inputs),
         Some(TestCircuit {
           _p: Default::default(),
         }),
-        poseidon_constants1.clone(),
+        poseidon_constants1,
       );
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape1, &gens1).unwrap();

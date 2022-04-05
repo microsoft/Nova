@@ -11,16 +11,16 @@ use std::ops::Mul;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
-///A wrapper for compressed group elements that come from the pallas curve
+/// A wrapper for compressed group elements that come from the pallas curve
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PallasCompressedElementWrapper {
   repr: [u8; 32],
 }
 
 impl PallasCompressedElementWrapper {
-  ///Wraps repr into the wrapper
+  /// Wraps repr into the wrapper
   pub fn new(repr: [u8; 32]) -> Self {
-    return Self { repr };
+    Self { repr }
   }
 }
 
@@ -96,11 +96,11 @@ impl PrimeField for pallas::Scalar {
   }
 
   fn get_order() -> Integer {
-    return Integer::from_str_radix(
+    Integer::from_str_radix(
       "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
       16,
     )
-    .unwrap();
+    .unwrap()
   }
 }
 
@@ -125,16 +125,16 @@ impl CompressedGroup for PallasCompressedElementWrapper {
 
 //////////////////////////////////////Vesta////////////////////////////////////////////////
 
-///A wrapper for compressed group elements that come from the vesta curve
+/// A wrapper for compressed group elements that come from the vesta curve
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VestaCompressedElementWrapper {
   repr: [u8; 32],
 }
 
 impl VestaCompressedElementWrapper {
-  ///Wraps repr into the wrapper
+  /// Wraps repr into the wrapper
   pub fn new(repr: [u8; 32]) -> Self {
-    return Self { repr };
+    Self { repr }
   }
 }
 
@@ -210,11 +210,11 @@ impl PrimeField for vesta::Scalar {
   }
 
   fn get_order() -> Integer {
-    return Integer::from_str_radix(
+    Integer::from_str_radix(
       "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
       16,
     )
-    .unwrap();
+    .unwrap()
   }
 }
 
