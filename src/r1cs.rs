@@ -9,8 +9,8 @@ use rayon::prelude::*;
 /// Public parameters for a given R1CS
 #[derive(Debug)]
 pub struct R1CSGens<G: Group> {
-  gens_W: CommitGens<G>,
-  gens_E: CommitGens<G>,
+  pub(crate) gens_W: CommitGens<G>, // TODO: avoid pub(crate)
+  pub(crate) gens_E: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
@@ -47,10 +47,10 @@ pub struct RelaxedR1CSWitness<G: Group> {
 /// A type that holds a Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSInstance<G: Group> {
-  comm_W: Commitment<G>,
-  comm_E: Commitment<G>,
-  X: Vec<G::Scalar>,
-  u: G::Scalar,
+  pub(crate) comm_W: Commitment<G>,
+  pub(crate) comm_E: Commitment<G>,
+  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) u: G::Scalar,
   Y_last: Vec<G::Scalar>, // output of the last instance that was folded
   counter: usize,         // the number of folds thus far
 }

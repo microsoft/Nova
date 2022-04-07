@@ -14,7 +14,7 @@ pub struct CommitGens<G: Group> {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Commitment<G: Group> {
-  comm: G,
+  pub(crate) comm: G,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,9 +64,9 @@ pub trait CommitTrait<G: Group> {
 
 impl<G: Group> CommitTrait<G> for [G::Scalar] {
   fn commit(&self, gens: &CommitGens<G>) -> Commitment<G> {
-    assert_eq!(gens.gens.len(), self.len());
+    assert!(gens.gens.len() >= self.len());
     Commitment {
-      comm: G::vartime_multiscalar_mul(self, &gens.gens),
+      comm: G::vartime_multiscalar_mul(self, &gens.gens[..self.len()]),
     }
   }
 }
