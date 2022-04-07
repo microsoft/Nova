@@ -237,7 +237,7 @@ where
     )?;
 
     // Analyze Xr0 as limbs to use later
-    let Xr0_limbs = Xr0
+    let Xr0_bn = Xr0
       .as_limbs::<CS>()
       .iter()
       .enumerate()
@@ -255,7 +255,7 @@ where
     )?;
 
     // Analyze Xr1 as limbs to use later
-    let Xr1_limbs = Xr1
+    let Xr1_bn = Xr1
       .as_limbs::<CS>()
       .iter()
       .enumerate()
@@ -377,12 +377,12 @@ where
     ro.absorb(T_y);
     ro.absorb(T_inf);
     // absorb each of the limbs of X_r[0]
-    for limb in Xr0_limbs.clone().into_iter() {
+    for limb in Xr0_bn.clone().into_iter() {
       ro.absorb(limb);
     }
 
     // absorb each of the limbs of X_r[1]
-    for limb in Xr1_limbs.clone().into_iter() {
+    for limb in Xr1_bn.clone().into_iter() {
       ro.absorb(limb);
     }
 
@@ -470,7 +470,7 @@ where
     )?;
 
     // Analyze Xr0_new as limbs to use later
-    let Xr0_new_limbs = Xr0_new
+    let Xr0_new_bn = Xr0_new
       .as_limbs::<CS>()
       .iter()
       .enumerate()
@@ -489,7 +489,7 @@ where
     )?;
 
     // Analyze Xr1_new as limbs to use later
-    let Xr1_new_limbs = Xr1_new
+    let Xr1_new_bn = Xr1_new
       .as_limbs::<CS>()
       .iter()
       .enumerate()
@@ -562,12 +562,12 @@ where
       h1_hash.absorb(u_r.clone());
 
       // absorb each of the limbs of X_r[0]
-      for limb in Xr0_limbs.into_iter() {
+      for limb in Xr0_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
       // absorb each of the limbs of X_r[1]
-      for limb in Xr1_limbs.into_iter() {
+      for limb in Xr1_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
@@ -609,12 +609,12 @@ where
       h1_hash.absorb(u_new);
 
       // absorb each of the limbs of X_r_new[0]
-      for limb in Xr0_new_limbs.into_iter() {
+      for limb in Xr0_new_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
       // absorb each of the limbs of X_r_new[1]
-      for limb in Xr1_new_limbs.into_iter() {
+      for limb in Xr1_new_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
@@ -642,12 +642,12 @@ where
       h1_hash.absorb(i.clone());
 
       //absorb each of the limbs of X_r[0]
-      for limb in Xr0_limbs.into_iter() {
+      for limb in Xr0_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
       //absorb each of the limbs of X_r[1]
-      for limb in Xr1_limbs.into_iter() {
+      for limb in Xr1_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
@@ -677,12 +677,12 @@ where
       h1_hash.absorb(next_i.clone());
 
       // absorb each of the limbs of X_r_new[0]
-      for limb in Xr0_new_limbs.into_iter() {
+      for limb in Xr0_new_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
       // absorb each of the limbs of X_r_new[1]
-      for limb in Xr1_new_limbs.into_iter() {
+      for limb in Xr1_new_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
