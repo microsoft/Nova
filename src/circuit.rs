@@ -150,22 +150,22 @@ where
     /***********************************************************************/
 
     // Allocate h2 as a big number with 8 limbs
-    let h2_limbs = BigNat::alloc_from_nat(
+    let h2_bn = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate h2"),
       || Ok(f_to_nat(&self.inputs.get()?.h2)),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
 
-    let _ = h2_limbs.inputize(cs.namespace(|| "Output 1"))?;
+    let _ = h2_bn.inputize(cs.namespace(|| "Output 1"))?;
 
     /***********************************************************************/
     // Allocate h1
     /***********************************************************************/
 
     let h1 = AllocatedNum::alloc(cs.namespace(|| "allocate h1"), || Ok(self.inputs.get()?.h1))?;
-    let h1_limbs = BigNat::from_num(
-      cs.namespace(|| "allocate h1_limbs"),
+    let h1_bn = BigNat::from_num(
+      cs.namespace(|| "allocate h1_bn"),
       Num::from(h1.clone()),
       self.params.limb_width,
       self.params.n_limbs,
@@ -365,7 +365,7 @@ where
     ro.absorb(h1.clone());
     // absorb each of the limbs of h2
     // TODO: Check if it is more efficient to treat h2 as allocNum
-    for (i, limb) in h2_limbs.as_limbs::<CS>().iter().enumerate() {
+    for (i, limb) in h2_bn.as_limbs::<CS>().iter().enumerate() {
       let limb_num = limb
         .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of h2 to num", i)))?;
       ro.absorb(limb_num);
@@ -410,15 +410,15 @@ where
 
     // Fold the IO:
     // Analyze r into limbs
-    let r_limbs = BigNat::from_num(
-      cs.namespace(|| "allocate r_limbs"),
+    let r_bn = BigNat::from_num(
+      cs.namespace(|| "allocate r_bn"),
       Num::from(r.clone()),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
 
     // Allocate the order of the non-native field as a constant
-    let m_limbs = alloc_bignat_constant(
+    let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
       &G::Scalar::get_order(),
       self.params.limb_width,
@@ -426,18 +426,18 @@ where
     )?;
 
     // First the fold h1 with X_r[0];
-    let (_, r_0) = h1_limbs.mult_mod(cs.namespace(|| "r*h1"), &r_limbs, &m_limbs)?;
+    let (_, r_0) = h1_bn.mult_mod(cs.namespace(|| "r*h1"), &r_bn, &m_bn)?;
     // add X_r[0]
     let r_new_0 = Xr0.add::<CS>(&r_0)?;
     // Now reduce
-    let Xr0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X_r[0]"), &m_limbs)?;
+    let Xr0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X_r[0]"), &m_bn)?;
 
     // First the fold h2 with X_r[1];
-    let (_, r_1) = h2_limbs.mult_mod(cs.namespace(|| "r*h2"), &r_limbs, &m_limbs)?;
+    let (_, r_1) = h2_bn.mult_mod(cs.namespace(|| "r*h2"), &r_bn, &m_bn)?;
     // add X_r[1]
     let r_new_1 = Xr1.add::<CS>(&r_1)?;
     // Now reduce
-    let Xr1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X_r[1]"), &m_limbs)?;
+    let Xr1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X_r[1]"), &m_bn)?;
 
     // Now select the default values if i == 0 otherwise the fold values
     let base_case = Boolean::from(alloc_num_equals(
