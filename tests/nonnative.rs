@@ -17,22 +17,24 @@ fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<(), SynthesisError> {
-  let a_num = Num::alloc(cs.namespace(|| "alloc a num"), || {
-    Ok(nat_to_f(a_val).unwrap())
-  })?;
-  let a1 = BigNat::from_num(
-    cs.namespace(|| "allocate a1_limbs"),
-    a_num,
-    limb_width,
-    n_limbs,
-  )?;
-  let a2 = BigNat::alloc_from_nat(
+  let a1 = BigNat::alloc_from_nat(
     cs.namespace(|| "alloc a2"),
     || Ok(a_val.clone()),
     limb_width,
     n_limbs,
   )?;
-  let _ = a2.inputize(cs.namespace(|| "make a input"));
+  let _ = a1.inputize(cs.namespace(|| "make a input"));
+
+  let a_num = Num::alloc(cs.namespace(|| "alloc a num"), || {
+    Ok(nat_to_f(a_val).unwrap())
+  })?;
+  let a2 = BigNat::from_num(
+    cs.namespace(|| "allocate a1_limbs"),
+    a_num,
+    limb_width,
+    n_limbs,
+  )?;
+
   let _ = a1.equal_when_carried(cs.namespace(|| "check equal"), &a2)?;
   Ok(())
 }
@@ -51,6 +53,14 @@ fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   let a_num = Num::alloc(cs.namespace(|| "alloc a num"), || {
     Ok(nat_to_f(a_val).unwrap())
   })?;
+  let m = BigNat::alloc_from_nat(
+    cs.namespace(|| "m"),
+    || Ok(m_val.clone()),
+    limb_width,
+    n_limbs,
+  )?;
+  let _ = m.inputize(cs.namespace(|| "modulus m"))?;
+
   let a = BigNat::from_num(
     cs.namespace(|| "allocate a_limbs"),
     a_num,
@@ -60,12 +70,6 @@ fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   let b = BigNat::alloc_from_nat(
     cs.namespace(|| "b"),
     || Ok(b_val.clone()),
-    limb_width,
-    n_limbs,
-  )?;
-  let m = BigNat::alloc_from_nat(
-    cs.namespace(|| "m"),
-    || Ok(m_val.clone()),
     limb_width,
     n_limbs,
   )?;
@@ -81,7 +85,6 @@ fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
     limb_width,
     n_limbs,
   )?;
-  let _ = r.inputize(cs.namespace(|| "input r"))?;
   let (qa, ra) = a.mult_mod(cs.namespace(|| "prod"), &b, &m)?;
   qa.equal(cs.namespace(|| "qcheck"), &q)?;
   ra.equal(cs.namespace(|| "rcheck"), &r)?;
