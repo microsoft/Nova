@@ -1,6 +1,6 @@
 //! Support for generating R1CS witness using bellperson.
 
-use crate::traits::Group;
+use crate::traits::{Group, PrimeField as PF};
 use ff::PrimeField;
 
 use bellperson::{
@@ -91,14 +91,18 @@ where
   type Root = Self;
 
   fn new() -> Self {
+    let input_assignment = vec![G::Scalar::one()];
+    let mut d = DensityTracker::new();
+    d.add_element();
+
     Self {
       a_aux_density: DensityTracker::new(),
-      b_input_density: DensityTracker::new(),
+      b_input_density: d,
       b_aux_density: DensityTracker::new(),
       a: vec![],
       b: vec![],
       c: vec![],
-      input_assignment: vec![],
+      input_assignment,
       aux_assignment: vec![],
     }
   }
