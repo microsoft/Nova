@@ -38,7 +38,6 @@ fn synthesize_use_cs_one_after_inputize<Fr: PrimeField, CS: ConstraintSystem<Fr>
   Ok(())
 }
 
-
 #[test]
 fn test_use_cs_one() {
   type G = pasta_curves::pallas::Point;
