@@ -132,7 +132,7 @@ where
     Ok(Variable(Index::Input(self.input_assignment.len() - 1)))
   }
 
-  fn enforce<A, AR, LA, LB, LC>(&mut self, _: A, a: LA, b: LB, c: LC)
+  fn enforce<A, AR, LA, LB, LC>(&mut self, _: A, _a: LA, _b: LB, _c: LC)
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
