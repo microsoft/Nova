@@ -12,7 +12,7 @@
 
 use super::commitments::Commitment;
 use super::gadgets::{
-  ecc_circuit::AllocatedPoint,
+  ecc::AllocatedPoint,
   utils::{
     alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
     conditionally_select_bignat, le_bits_to_num,
