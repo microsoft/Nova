@@ -140,47 +140,7 @@ where
     LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
     LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
   {
-    let a = a(LinearCombination::zero());
-    let b = b(LinearCombination::zero());
-    let c = c(LinearCombination::zero());
-
-    let input_assignment = &self.input_assignment;
-    let aux_assignment = &self.aux_assignment;
-    let a_aux_density = &mut self.a_aux_density;
-    let b_input_density = &mut self.b_input_density;
-    let b_aux_density = &mut self.b_aux_density;
-
-    let a_res = a.eval(
-      // Inputs have full density in the A query
-      // because there are constraints of the
-      // form x * 0 = 0 for each input.
-      None,
-      Some(a_aux_density),
-      input_assignment,
-      aux_assignment,
-    );
-
-    let b_res = b.eval(
-      Some(b_input_density),
-      Some(b_aux_density),
-      input_assignment,
-      aux_assignment,
-    );
-
-    let c_res = c.eval(
-      // There is no C polynomial query,
-      // though there is an (beta)A + (alpha)B + C
-      // query for all aux variables.
-      // However, that query has full density.
-      None,
-      None,
-      input_assignment,
-      aux_assignment,
-    );
-
-    self.a.push(a_res);
-    self.b.push(b_res);
-    self.c.push(c_res);
+    // Do nothing: we don't care about linear-combination evaluations in this context.
   }
 
   fn push_namespace<NR, N>(&mut self, _: N)
