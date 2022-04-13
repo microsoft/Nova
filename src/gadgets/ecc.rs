@@ -619,12 +619,9 @@ mod tests {
     assert_eq!(e_pasta, e_pasta_2);
   }
 
-  use crate::bellperson::shape_cs::ShapeCS;
-  use crate::bellperson::solver::SatisfyingAssignment;
+  use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   use ff::{Field, PrimeFieldBits};
-  use pasta_curves::arithmetic::CurveAffine;
-  use pasta_curves::group::Curve;
-  use pasta_curves::EpAffine;
+  use pasta_curves::{arithmetic::CurveAffine, group::Curve, EpAffine};
   use std::ops::Mul;
   type G = pasta_curves::pallas::Point;
   type Fp = pasta_curves::pallas::Scalar;

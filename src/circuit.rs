@@ -10,18 +10,19 @@
 //! otherwise
 //! h1 = H(u2, i) and h2 = H(params = H(shape, gens), u1, i, z0, zi)
 
-use super::commitments::Commitment;
-use super::gadgets::{
-  ecc::AllocatedPoint,
-  utils::{
-    alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
-    conditionally_select_bignat, le_bits_to_num,
+use super::{
+  commitments::Commitment,
+  gadgets::{
+    ecc::AllocatedPoint,
+    utils::{
+      alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
+      conditionally_select_bignat, le_bits_to_num,
+    },
   },
+  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  r1cs::RelaxedR1CSInstance,
+  traits::{Group, PrimeField, StepCircuit},
 };
-use super::poseidon::NovaPoseidonConstants;
-use super::poseidon::PoseidonROGadget;
-use super::r1cs::RelaxedR1CSInstance;
-use super::traits::{Group, PrimeField, StepCircuit};
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
@@ -698,12 +699,13 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::shape_cs::ShapeCS;
-  use crate::bellperson::solver::SatisfyingAssignment;
+  use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
-  use crate::bellperson::r1cs::{NovaShape, NovaWitness};
-  use crate::commitments::CommitTrait;
+  use crate::{
+    bellperson::r1cs::{NovaShape, NovaWitness},
+    commitments::CommitTrait,
+  };
   use std::marker::PhantomData;
 
   struct TestCircuit<F>

@@ -1,8 +1,10 @@
 //! This module defines various traits required by the users of the library to implement.
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::borrow::Borrow;
-use core::fmt::Debug;
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::{
+  borrow::Borrow,
+  fmt::Debug,
+  ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 use merlin::Transcript;
 use rand::{CryptoRng, RngCore};
 use rug::Integer;

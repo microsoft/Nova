@@ -189,9 +189,9 @@ mod tests {
   use super::*;
   type S = pasta_curves::pallas::Scalar;
   type G = pasta_curves::pallas::Point;
-  use crate::bellperson::solver::SatisfyingAssignment;
-  use crate::gadgets::utils::le_bits_to_num;
-  use crate::traits::PrimeField;
+  use crate::{
+    bellperson::solver::SatisfyingAssignment, gadgets::utils::le_bits_to_num, traits::PrimeField,
+  };
   use rand::rngs::OsRng;
 
   #[test]

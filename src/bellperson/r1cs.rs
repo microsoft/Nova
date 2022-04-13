@@ -2,8 +2,7 @@
 
 #![allow(non_snake_case)]
 
-use super::shape_cs::ShapeCS;
-use super::solver::SatisfyingAssignment;
+use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
 use bellperson::{Index, LinearCombination};
 
 use ff::PrimeField;

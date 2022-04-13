@@ -1,7 +1,11 @@
-use super::errors::NovaError;
-use super::traits::{CompressedGroup, Group};
-use core::fmt::Debug;
-use core::ops::{Add, AddAssign, Mul, MulAssign};
+use super::{
+  errors::NovaError,
+  traits::{CompressedGroup, Group},
+};
+use core::{
+  fmt::Debug,
+  ops::{Add, AddAssign, Mul, MulAssign},
+};
 use digest::{ExtendableOutput, Input};
 use merlin::Transcript;
 use sha3::Shake256;
