@@ -33,12 +33,12 @@ use bellperson_nonnative::{
 use ff::PrimeFieldBits;
 
 #[derive(Debug, Clone)]
-pub struct VerificationCircuitParams {
+pub struct NIFSVerifierCircuitParams {
   limb_width: usize,
   n_limbs: usize,
 }
 
-impl VerificationCircuitParams {
+impl NIFSVerifierCircuitParams {
   #[allow(dead_code)]
   pub fn new(limb_width: usize, n_limbs: usize) -> Self {
     Self {
@@ -48,7 +48,7 @@ impl VerificationCircuitParams {
   }
 }
 
-pub struct VerificationCircuitInputs<G>
+pub struct NIFSVerifierCircuitInputs<G>
 where
   G: Group,
 {
@@ -63,7 +63,7 @@ where
   w: Commitment<G>, // The commitment to the witness of the fresh r1cs instance
 }
 
-impl<G> VerificationCircuitInputs<G>
+impl<G> NIFSVerifierCircuitInputs<G>
 where
   G: Group,
 {
@@ -95,19 +95,19 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct VerificationCircuit<G, IC>
+pub struct NIFSVerifierCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
   IC: InnerCircuit<G::Base>,
 {
-  params: VerificationCircuitParams,
-  inputs: Option<VerificationCircuitInputs<G>>,
+  params: NIFSVerifierCircuitParams,
+  inputs: Option<NIFSVerifierCircuitInputs<G>>,
   inner_circuit: Option<IC>, // The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
-impl<G, IC> VerificationCircuit<G, IC>
+impl<G, IC> NIFSVerifierCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
@@ -116,8 +116,8 @@ where
   /// Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
-    params: VerificationCircuitParams,
-    inputs: Option<VerificationCircuitInputs<G>>,
+    params: NIFSVerifierCircuitParams,
+    inputs: Option<NIFSVerifierCircuitInputs<G>>,
     inner_circuit: Option<IC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
@@ -133,7 +133,7 @@ where
   }
 }
 
-impl<G, IC> Circuit<<G as Group>::Base> for VerificationCircuit<G, IC>
+impl<G, IC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, IC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
@@ -729,12 +729,12 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     // We experiment with 8 limbs of 32 bits each
-    let params = VerificationCircuitParams::new(32, 8);
+    let params = NIFSVerifierCircuitParams::new(32, 8);
     // The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit1: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
-      VerificationCircuit::new(
+    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      NIFSVerifierCircuit::new(
         params.clone(),
         None,
         Some(TestCircuit {
@@ -755,8 +755,8 @@ mod tests {
     // The second circuit that verifies G1
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
-      VerificationCircuit::new(params.clone(), None, None, poseidon_constants2);
+    let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+      NIFSVerifierCircuit::new(params.clone(), None, None, poseidon_constants2);
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -776,7 +776,7 @@ mod tests {
     let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     // Now get an assignment
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs: VerificationCircuitInputs<G2> = VerificationCircuitInputs::new(
+    let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       default_hash,
       RelaxedR1CSInstance::default(&gens2, &shape2),
       <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
@@ -787,8 +787,8 @@ mod tests {
       T,                                           // TODO: provide real inputs
       w,
     );
-    let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
-      VerificationCircuit::new(
+    let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      NIFSVerifierCircuit::new(
         params,
         Some(inputs),
         Some(TestCircuit {
