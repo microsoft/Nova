@@ -21,7 +21,7 @@ use super::gadgets::{
 use super::poseidon::NovaPoseidonConstants;
 use super::poseidon::PoseidonROGadget;
 use super::r1cs::RelaxedR1CSInstance;
-use super::traits::{Group, InnerCircuit, PrimeField};
+use super::traits::{Group, PrimeField, StepCircuit};
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
@@ -95,30 +95,30 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G, IC>
+pub struct NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
-  inner_circuit: Option<IC>, // The function that is applied for each step. may be None.
+  inner_circuit: Option<SC>, // The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
-impl<G, IC> NIFSVerifierCircuit<G, IC>
+impl<G, SC> NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
-    inner_circuit: Option<IC>,
+    inner_circuit: Option<SC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
   where
@@ -133,12 +133,12 @@ where
   }
 }
 
-impl<G, IC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, IC>
+impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
@@ -713,7 +713,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> InnerCircuit<F> for TestCircuit<F>
+  impl<F> StepCircuit<F> for TestCircuit<F>
   where
     F: PrimeField + ff::PrimeField,
   {
