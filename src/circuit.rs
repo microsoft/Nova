@@ -305,7 +305,7 @@ where
     // Allocate W
     /***********************************************************************/
 
-    // T = (x, y, infinity)
+    // W = (x, y, infinity)
     let W_x = AllocatedNum::alloc(cs.namespace(|| "W.x"), || {
       Ok(self.inputs.get()?.w.comm.to_coordinates().0)
     })?;
@@ -337,7 +337,7 @@ where
     // Compute default values of U2':
     let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one);
 
-    //W_default and E_default are a commitment to zero
+    // W_default and E_default are a commitment to zero
     let W_default = zero_commitment.clone();
     let E_default = zero_commitment;
 
@@ -502,7 +502,7 @@ where
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     /***********************************************************************/
-    //Compute i + 1
+    // Compute i + 1
     /***********************************************************************/
 
     let next_i = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
@@ -642,12 +642,12 @@ where
       h1_hash.absorb(u_r);
       h1_hash.absorb(i.clone());
 
-      //absorb each of the limbs of X_r[0]
+      // absorb each of the limbs of X_r[0]
       for limb in Xr0_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
-      //absorb each of the limbs of X_r[1]
+      // absorb each of the limbs of X_r[1]
       for limb in Xr1_bn.into_iter() {
         h1_hash.absorb(limb);
       }
