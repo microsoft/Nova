@@ -747,8 +747,7 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let shape1 = cs.r1cs_shape();
-    let gens1 = cs.r1cs_gens();
+    let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
     println!(
       "Circuit1 -> Number of constraints: {}",
       cs.num_constraints()
@@ -762,20 +761,21 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let shape2 = cs.r1cs_shape();
-    let gens2 = cs.r1cs_gens();
+    let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
     println!(
       "Circuit2 -> Number of constraints: {}",
       cs.num_constraints()
     );
 
-    //TODO: We need to hardwire default hash or give it as input
+    // TODO: We need to hardwire default hash or give it as input
     let default_hash = <<G2 as Group>::Base as ff::PrimeField>::from_str_vartime(
       "332553638888022689042501686561503049809",
     )
     .unwrap();
+
     let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
+
     // Now get an assignment
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
@@ -789,6 +789,7 @@ mod tests {
       T,                                           // TODO: provide real inputs
       w,
     );
+
     let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params,
