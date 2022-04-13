@@ -103,7 +103,7 @@ where
 {
   params: NIFSVerifierCircuitParams,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
-  inner_circuit: Option<SC>, // The function that is applied for each step. may be None.
+  step_circuit: Option<SC>, // The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
@@ -118,7 +118,7 @@ where
   pub fn new(
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
-    inner_circuit: Option<SC>,
+    step_circuit: Option<SC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
   where
@@ -127,7 +127,7 @@ where
     Self {
       params,
       inputs,
-      inner_circuit,
+      step_circuit,
       poseidon_constants,
     }
   }
@@ -515,7 +515,7 @@ where
       |lc| lc + next_i.get_variable() - CS::one() - i.get_variable(),
     );
 
-    if self.inner_circuit.is_some() {
+    if self.step_circuit.is_some() {
       /***********************************************************************/
       //Allocate z0
       /***********************************************************************/
@@ -590,7 +590,7 @@ where
       /***********************************************************************/
 
       let z_next = self
-        .inner_circuit
+        .step_circuit
         .unwrap()
         .synthesize(&mut cs.namespace(|| "F"), z_i)?;
 
