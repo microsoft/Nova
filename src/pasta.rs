@@ -8,10 +8,10 @@ use pasta_curves::{
   group::{Curve, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rug::Integer;
 use std::{borrow::Borrow, ops::Mul};
-use rand::SeedableRng;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
