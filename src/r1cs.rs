@@ -3,8 +3,9 @@
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
   errors::NovaError,
-  traits::{Group, PrimeField},
+  traits::Group,
 };
+use ff::Field;
 use itertools::concat;
 use rayon::prelude::*;
 

@@ -1,13 +1,15 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
-use crate::traits::{ChallengeTrait, CompressedGroup, Group, PrimeField};
+use crate::traits::{ChallengeTrait, CompressedGroup, Group};
+use ff::Field;
 use merlin::Transcript;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt, FieldExt, Group as Grp},
+  arithmetic::{CurveAffine, CurveExt, Group as Grp},
   group::{Curve, GroupEncoding},
-  pallas, vesta, Ep, Eq, Fp, Fq,
+  pallas, vesta, Ep, Eq,
 };
-use rand::{CryptoRng, RngCore};
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use rug::Integer;
 use std::{borrow::Borrow, ops::Mul};
 
@@ -74,28 +76,6 @@ impl Group for pallas::Point {
       (Self::Base::zero(), Self::Base::zero(), true)
     }
   }
-}
-
-impl PrimeField for pallas::Scalar {
-  fn zero() -> Self {
-    Fq::zero()
-  }
-  fn one() -> Self {
-    Fq::one()
-  }
-  fn from_bytes_mod_order_wide(bytes: &[u8]) -> Option<Self> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 64];
-      arr.copy_from_slice(&bytes[0..64]);
-      Some(Fq::from_bytes_wide(&arr))
-    }
-  }
-
-  fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
-    <Fq as ff::Field>::random(rng)
-  }
 
   fn get_order() -> Integer {
     Integer::from_str_radix(
@@ -108,9 +88,10 @@ impl PrimeField for pallas::Scalar {
 
 impl ChallengeTrait for pallas::Scalar {
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
-    let mut buf = [0u8; 64];
-    transcript.challenge_bytes(label, &mut buf);
-    pallas::Scalar::from_bytes_mod_order_wide(&buf).unwrap()
+    let mut key: <ChaCha20Rng as SeedableRng>::Seed = Default::default();
+    transcript.challenge_bytes(label, &mut key);
+    let mut rng = ChaCha20Rng::from_seed(key);
+    pallas::Scalar::random(&mut rng)
   }
 }
 
@@ -188,28 +169,6 @@ impl Group for vesta::Point {
       (Self::Base::zero(), Self::Base::zero(), true)
     }
   }
-}
-
-impl PrimeField for vesta::Scalar {
-  fn zero() -> Self {
-    Fp::zero()
-  }
-  fn one() -> Self {
-    Fp::one()
-  }
-  fn from_bytes_mod_order_wide(bytes: &[u8]) -> Option<Self> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 64];
-      arr.copy_from_slice(&bytes[0..64]);
-      Some(Fp::from_bytes_wide(&arr))
-    }
-  }
-
-  fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self {
-    <Fp as ff::Field>::random(rng)
-  }
 
   fn get_order() -> Integer {
     Integer::from_str_radix(
@@ -222,9 +181,10 @@ impl PrimeField for vesta::Scalar {
 
 impl ChallengeTrait for vesta::Scalar {
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
-    let mut buf = [0u8; 64];
-    transcript.challenge_bytes(label, &mut buf);
-    vesta::Scalar::from_bytes_mod_order_wide(&buf).unwrap()
+    let mut key: <ChaCha20Rng as SeedableRng>::Seed = Default::default();
+    transcript.challenge_bytes(label, &mut key);
+    let mut rng = ChaCha20Rng::from_seed(key);
+    vesta::Scalar::random(&mut rng)
   }
 }
 

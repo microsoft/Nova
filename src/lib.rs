@@ -139,7 +139,7 @@ impl<G: Group> FinalSNARK<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::traits::PrimeField;
+  use ff::Field;
   use rand::rngs::OsRng;
 
   type S = pasta_curves::pallas::Scalar;
