@@ -21,7 +21,7 @@ use super::{
   },
   poseidon::{NovaPoseidonConstants, PoseidonROGadget},
   r1cs::RelaxedR1CSInstance,
-  traits::{Group, PrimeField, StepCircuit},
+  traits::{Group, StepCircuit},
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
@@ -31,7 +31,7 @@ use bellperson_nonnative::{
   mp::bignat::BigNat,
   util::{convert::f_to_nat, num::Num},
 };
-use ff::PrimeFieldBits;
+use ff::{Field, PrimeField, PrimeFieldBits};
 
 #[derive(Debug, Clone)]
 pub struct NIFSVerifierCircuitParams {
@@ -137,7 +137,7 @@ where
 impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
 where
   G: Group,
-  <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
+  <G as Group>::Base: PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
   SC: StepCircuit<G::Base>,
 {
@@ -421,7 +421,7 @@ where
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
-      &G::Scalar::get_order(),
+      &G::get_order(),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -781,12 +781,12 @@ mod tests {
     let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       default_hash,
       RelaxedR1CSInstance::default(&gens2, &shape2),
-      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
-      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
-      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
-      <<G2 as Group>::Scalar as PrimeField>::zero(), // TODO: provide real inputs
-      <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
-      T,                                           // TODO: provide real inputs
+      <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Scalar as Field>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
+      T,                                      // TODO: provide real inputs
       w,
     );
 
