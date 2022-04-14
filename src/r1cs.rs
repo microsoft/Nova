@@ -1,8 +1,10 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
-use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
-use super::errors::NovaError;
-use super::traits::{Group, PrimeField};
+use super::{
+  commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
+  errors::NovaError,
+  traits::{Group, PrimeField},
+};
 use itertools::concat;
 use rayon::prelude::*;
 

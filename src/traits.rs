@@ -1,8 +1,10 @@
 //! This module defines various traits required by the users of the library to implement.
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::borrow::Borrow;
-use core::fmt::Debug;
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::{
+  borrow::Borrow,
+  fmt::Debug,
+  ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 use merlin::Transcript;
 use rand::{CryptoRng, RngCore};
 use rug::Integer;
@@ -131,9 +133,10 @@ impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Out
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
-///A helper trait for the inner circuit F
-pub trait InnerCircuit<F: PrimeField + ff::PrimeField> {
-  ///Sythesize the circuit for a computation step and return variable that corresponds to z_{i+1}
+/// A helper trait for a step of the incremental computation (i.e., circuit for F)
+pub trait StepCircuit<F: PrimeField + ff::PrimeField> {
+  /// Sythesize the circuit for a computation step and return variable
+  /// that corresponds to the output of the step z_{i+1}
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,

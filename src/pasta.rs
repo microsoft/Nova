@@ -1,13 +1,15 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::traits::{ChallengeTrait, CompressedGroup, Group, PrimeField};
 use merlin::Transcript;
-use pasta_curves::arithmetic::{CurveAffine, CurveExt, FieldExt, Group as Grp};
-use pasta_curves::group::{Curve, GroupEncoding};
-use pasta_curves::{self, pallas, vesta, Ep, Eq, Fp, Fq};
+use pasta_curves::{
+  self,
+  arithmetic::{CurveAffine, CurveExt, FieldExt, Group as Grp},
+  group::{Curve, GroupEncoding},
+  pallas, vesta, Ep, Eq, Fp, Fq,
+};
 use rand::{CryptoRng, RngCore};
 use rug::Integer;
-use std::borrow::Borrow;
-use std::ops::Mul;
+use std::{borrow::Borrow, ops::Mul};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 

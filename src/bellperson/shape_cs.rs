@@ -1,7 +1,9 @@
 //! Support for generating R1CS shape using bellperson.
 
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::{
+  cmp::Ordering,
+  collections::{BTreeMap, HashMap},
+};
 
 use crate::traits::{Group, PrimeField as PF};
 use ff::{Field, PrimeField};

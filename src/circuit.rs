@@ -10,18 +10,19 @@
 //! otherwise
 //! h1 = H(u2, i) and h2 = H(params = H(shape, gens), u1, i, z0, zi)
 
-use super::commitments::Commitment;
-use super::gadgets::{
-  ecc::AllocatedPoint,
-  utils::{
-    alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
-    conditionally_select_bignat, le_bits_to_num,
+use super::{
+  commitments::Commitment,
+  gadgets::{
+    ecc::AllocatedPoint,
+    utils::{
+      alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
+      conditionally_select_bignat, le_bits_to_num,
+    },
   },
+  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  r1cs::RelaxedR1CSInstance,
+  traits::{Group, PrimeField, StepCircuit},
 };
-use super::poseidon::NovaPoseidonConstants;
-use super::poseidon::PoseidonROGadget;
-use super::r1cs::RelaxedR1CSInstance;
-use super::traits::{Group, InnerCircuit, PrimeField};
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   Circuit, ConstraintSystem, SynthesisError,
@@ -33,12 +34,12 @@ use bellperson_nonnative::{
 use ff::PrimeFieldBits;
 
 #[derive(Debug, Clone)]
-pub struct VerificationCircuitParams {
+pub struct NIFSVerifierCircuitParams {
   limb_width: usize,
   n_limbs: usize,
 }
 
-impl VerificationCircuitParams {
+impl NIFSVerifierCircuitParams {
   #[allow(dead_code)]
   pub fn new(limb_width: usize, n_limbs: usize) -> Self {
     Self {
@@ -48,7 +49,7 @@ impl VerificationCircuitParams {
   }
 }
 
-pub struct VerificationCircuitInputs<G>
+pub struct NIFSVerifierCircuitInputs<G>
 where
   G: Group,
 {
@@ -63,7 +64,7 @@ where
   w: Commitment<G>, // The commitment to the witness of the fresh r1cs instance
 }
 
-impl<G> VerificationCircuitInputs<G>
+impl<G> NIFSVerifierCircuitInputs<G>
 where
   G: Group,
 {
@@ -95,30 +96,30 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct VerificationCircuit<G, IC>
+pub struct NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
-  params: VerificationCircuitParams,
-  inputs: Option<VerificationCircuitInputs<G>>,
-  inner_circuit: Option<IC>, // The function that is applied for each step. may be None.
+  params: NIFSVerifierCircuitParams,
+  inputs: Option<NIFSVerifierCircuitInputs<G>>,
+  step_circuit: Option<SC>, // The function that is applied for each step. may be None.
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
-impl<G, IC> VerificationCircuit<G, IC>
+impl<G, SC> NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
   #[allow(dead_code)]
   pub fn new(
-    params: VerificationCircuitParams,
-    inputs: Option<VerificationCircuitInputs<G>>,
-    inner_circuit: Option<IC>,
+    params: NIFSVerifierCircuitParams,
+    inputs: Option<NIFSVerifierCircuitInputs<G>>,
+    step_circuit: Option<SC>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
   where
@@ -127,18 +128,18 @@ where
     Self {
       params,
       inputs,
-      inner_circuit,
+      step_circuit,
       poseidon_constants,
     }
   }
 }
 
-impl<G, IC> Circuit<<G as Group>::Base> for VerificationCircuit<G, IC>
+impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   <G as Group>::Base: ff::PrimeField + PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
-  IC: InnerCircuit<G::Base>,
+  SC: StepCircuit<G::Base>,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
@@ -304,7 +305,7 @@ where
     // Allocate W
     /***********************************************************************/
 
-    // T = (x, y, infinity)
+    // W = (x, y, infinity)
     let W_x = AllocatedNum::alloc(cs.namespace(|| "W.x"), || {
       Ok(self.inputs.get()?.w.comm.to_coordinates().0)
     })?;
@@ -336,7 +337,7 @@ where
     // Compute default values of U2':
     let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one);
 
-    //W_default and E_default are a commitment to zero
+    // W_default and E_default are a commitment to zero
     let W_default = zero_commitment.clone();
     let E_default = zero_commitment;
 
@@ -501,7 +502,7 @@ where
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     /***********************************************************************/
-    //Compute i + 1
+    // Compute i + 1
     /***********************************************************************/
 
     let next_i = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
@@ -515,7 +516,7 @@ where
       |lc| lc + next_i.get_variable() - CS::one() - i.get_variable(),
     );
 
-    if self.inner_circuit.is_some() {
+    if self.step_circuit.is_some() {
       /***********************************************************************/
       //Allocate z0
       /***********************************************************************/
@@ -590,7 +591,7 @@ where
       /***********************************************************************/
 
       let z_next = self
-        .inner_circuit
+        .step_circuit
         .unwrap()
         .synthesize(&mut cs.namespace(|| "F"), z_i)?;
 
@@ -641,12 +642,12 @@ where
       h1_hash.absorb(u_r);
       h1_hash.absorb(i.clone());
 
-      //absorb each of the limbs of X_r[0]
+      // absorb each of the limbs of X_r[0]
       for limb in Xr0_bn.into_iter() {
         h1_hash.absorb(limb);
       }
 
-      //absorb each of the limbs of X_r[1]
+      // absorb each of the limbs of X_r[1]
       for limb in Xr1_bn.into_iter() {
         h1_hash.absorb(limb);
       }
@@ -698,12 +699,13 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::shape_cs::ShapeCS;
-  use crate::bellperson::solver::SatisfyingAssignment;
+  use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
-  use crate::bellperson::r1cs::{NovaShape, NovaWitness};
-  use crate::commitments::CommitTrait;
+  use crate::{
+    bellperson::r1cs::{NovaShape, NovaWitness},
+    commitments::CommitTrait,
+  };
   use std::marker::PhantomData;
 
   struct TestCircuit<F>
@@ -713,7 +715,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> InnerCircuit<F> for TestCircuit<F>
+  impl<F> StepCircuit<F> for TestCircuit<F>
   where
     F: PrimeField + ff::PrimeField,
   {
@@ -729,12 +731,12 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     // We experiment with 8 limbs of 32 bits each
-    let params = VerificationCircuitParams::new(32, 8);
+    let params = NIFSVerifierCircuitParams::new(32, 8);
     // The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit1: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
-      VerificationCircuit::new(
+    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      NIFSVerifierCircuit::new(
         params.clone(),
         None,
         Some(TestCircuit {
@@ -745,8 +747,7 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let shape1 = cs.r1cs_shape();
-    let gens1 = cs.r1cs_gens();
+    let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
     println!(
       "Circuit1 -> Number of constraints: {}",
       cs.num_constraints()
@@ -755,28 +756,29 @@ mod tests {
     // The second circuit that verifies G1
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
-    let circuit2: VerificationCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
-      VerificationCircuit::new(params.clone(), None, None, poseidon_constants2);
+    let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+      NIFSVerifierCircuit::new(params.clone(), None, None, poseidon_constants2);
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let shape2 = cs.r1cs_shape();
-    let gens2 = cs.r1cs_gens();
+    let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
     println!(
       "Circuit2 -> Number of constraints: {}",
       cs.num_constraints()
     );
 
-    //TODO: We need to hardwire default hash or give it as input
+    // TODO: We need to hardwire default hash or give it as input
     let default_hash = <<G2 as Group>::Base as ff::PrimeField>::from_str_vartime(
       "332553638888022689042501686561503049809",
     )
     .unwrap();
+
     let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
+
     // Now get an assignment
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs: VerificationCircuitInputs<G2> = VerificationCircuitInputs::new(
+    let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       default_hash,
       RelaxedR1CSInstance::default(&gens2, &shape2),
       <<G2 as Group>::Base as PrimeField>::zero(), // TODO: provide real inputs
@@ -787,8 +789,9 @@ mod tests {
       T,                                           // TODO: provide real inputs
       w,
     );
-    let circuit: VerificationCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
-      VerificationCircuit::new(
+
+    let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+      NIFSVerifierCircuit::new(
         params,
         Some(inputs),
         Some(TestCircuit {
