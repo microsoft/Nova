@@ -324,7 +324,7 @@ where
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
 
     ro.absorb(h1.clone());
-    ro.absorb(h2.clone());
+    ro.absorb(h2);
     ro.absorb(W.x.clone());
     ro.absorb(W.y.clone());
     ro.absorb(W.is_infinity.clone());
