@@ -54,7 +54,7 @@ where
   G: Group,
 {
   h1: G::Base,
-  h2: G::Scalar,
+  h2: G::Base,
   u2: RelaxedR1CSInstance<G>,
   i: G::Base,
   z0: G::Base,
@@ -76,7 +76,7 @@ where
     i: G::Base,
     z0: G::Base,
     zi: G::Base,
-    h2: G::Scalar,
+    h2: G::Base,
     params: G::Base,
     T: Commitment<G>,
     w: Commitment<G>,
@@ -146,21 +146,6 @@ where
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     /***********************************************************************/
-    // This circuit does not modify h2 but it outputs it.
-    // Allocate it and output it.
-    /***********************************************************************/
-
-    // Allocate h2 as a big number with 8 limbs
-    let h2_bn = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate h2"),
-      || Ok(f_to_nat(&self.inputs.get()?.h2)),
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;
-
-    let _ = h2_bn.inputize(cs.namespace(|| "Output 1"))?;
-
-    /***********************************************************************/
     // Allocate h1
     /***********************************************************************/
 
@@ -171,6 +156,22 @@ where
       self.params.limb_width,
       self.params.n_limbs,
     )?;
+
+    /***********************************************************************/
+    // This circuit does not modify h2 but it outputs it.
+    // Allocate it and output it.
+    /***********************************************************************/
+
+    // Allocate h2 as a big number with 8 limbs
+    let h2 = AllocatedNum::alloc(cs.namespace(|| "allocate h2"), || Ok(self.inputs.get()?.h2))?;
+    let h2_bn = BigNat::from_num(
+      cs.namespace(|| "allocate h2_bn"),
+      Num::from(h2.clone()),
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
+
+    let _ = h2.inputize(cs.namespace(|| "Output 1"))?;
 
     /***********************************************************************/
     // Allocate u2 by allocating W_r, E_r, u_r, X_r
@@ -291,8 +292,6 @@ where
 
     // Allocate 0 and 1
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    // Hack: We just do this because the number of inputs must be even!!
-    zero.inputize(cs.namespace(|| "allocate zero as input"))?;
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     // Compute default values of U2':
@@ -325,13 +324,7 @@ where
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
 
     ro.absorb(h1.clone());
-    // absorb each of the limbs of h2
-    // TODO: Check if it is more efficient to treat h2 as allocNum
-    for (i, limb) in h2_bn.as_limbs::<CS>().iter().enumerate() {
-      let limb_num = limb
-        .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of h2 to num", i)))?;
-      ro.absorb(limb_num);
-    }
+    ro.absorb(h2.clone());
     ro.absorb(W.x.clone());
     ro.absorb(W.y.clone());
     ro.absorb(W.is_infinity.clone());
@@ -684,7 +677,7 @@ mod tests {
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
-      <<G2 as Group>::Scalar as Field>::zero(), // TODO: provide real inputs
+      <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
       T,                                      // TODO: provide real inputs
       w,
