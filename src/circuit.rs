@@ -177,42 +177,22 @@ where
     /***********************************************************************/
 
     // W_r = (x, y, infinity)
-    let W_r_x = AllocatedNum::alloc(cs.namespace(|| "W_r.x"), || {
-      Ok(self.inputs.get()?.u2.comm_W.comm.to_coordinates().0)
-    })?;
-    let W_r_y = AllocatedNum::alloc(cs.namespace(|| "W_r.y"), || {
-      Ok(self.inputs.get()?.u2.comm_W.comm.to_coordinates().1)
-    })?;
-    let W_r_inf = AllocatedNum::alloc(cs.namespace(|| "W_r.inf"), || {
-      let infty = self.inputs.get()?.u2.comm_W.comm.to_coordinates().2;
-      if infty {
-        Ok(G::Base::one())
-      } else {
-        Ok(G::Base::zero())
-      }
-    })?;
-
-    let W_r = AllocatedPoint::new(W_r_x.clone(), W_r_y.clone(), W_r_inf.clone());
-    let _ = W_r.check_is_infinity(cs.namespace(|| "W_r check is_infinity"))?;
+    let W_r = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate W_r"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.u2.comm_W.comm.to_coordinates())),
+    )?;
 
     // E_r = (x, y, infinity)
-    let E_r_x = AllocatedNum::alloc(cs.namespace(|| "E_r.x"), || {
-      Ok(self.inputs.get()?.u2.comm_E.comm.to_coordinates().0)
-    })?;
-    let E_r_y = AllocatedNum::alloc(cs.namespace(|| "E_r.y"), || {
-      Ok(self.inputs.get()?.u2.comm_E.comm.to_coordinates().1)
-    })?;
-    let E_r_inf = AllocatedNum::alloc(cs.namespace(|| "E_r.inf"), || {
-      let infty = self.inputs.get()?.u2.comm_E.comm.to_coordinates().2;
-      if infty {
-        Ok(G::Base::one())
-      } else {
-        Ok(G::Base::zero())
-      }
-    })?;
-
-    let E_r = AllocatedPoint::new(E_r_x.clone(), E_r_y.clone(), E_r_inf.clone());
-    let _ = E_r.check_is_infinity(cs.namespace(|| "E_r check is_infinity"));
+    let E_r = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate E_r"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.u2.comm_E.comm.to_coordinates())),
+    )?;
 
     // u_r << |G::Base| despite the fact that u_r is a scalar.
     // So we parse all of its bytes as a G::Base element
@@ -277,23 +257,14 @@ where
     /***********************************************************************/
 
     // T = (x, y, infinity)
-    let T_x = AllocatedNum::alloc(cs.namespace(|| "T.x"), || {
-      Ok(self.inputs.get()?.T.comm.to_coordinates().0)
-    })?;
-    let T_y = AllocatedNum::alloc(cs.namespace(|| "T.y"), || {
-      Ok(self.inputs.get()?.T.comm.to_coordinates().1)
-    })?;
-    let T_inf = AllocatedNum::alloc(cs.namespace(|| "T.inf"), || {
-      let infty = self.inputs.get()?.T.comm.to_coordinates().2;
-      if infty {
-        Ok(G::Base::one())
-      } else {
-        Ok(G::Base::zero())
-      }
-    })?;
 
-    let T = AllocatedPoint::new(T_x.clone(), T_y.clone(), T_inf.clone());
-    let _ = T.check_is_infinity(cs.namespace(|| "T check is_infinity"));
+    let T = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate T"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.T.comm.to_coordinates())),
+    )?;
 
     /***********************************************************************/
     // Allocate params
@@ -306,23 +277,13 @@ where
     /***********************************************************************/
 
     // W = (x, y, infinity)
-    let W_x = AllocatedNum::alloc(cs.namespace(|| "W.x"), || {
-      Ok(self.inputs.get()?.w.comm.to_coordinates().0)
-    })?;
-    let W_y = AllocatedNum::alloc(cs.namespace(|| "W.y"), || {
-      Ok(self.inputs.get()?.w.comm.to_coordinates().1)
-    })?;
-    let W_inf = AllocatedNum::alloc(cs.namespace(|| "w.inf"), || {
-      let infty = self.inputs.get()?.w.comm.to_coordinates().2;
-      if infty {
-        Ok(G::Base::one())
-      } else {
-        Ok(G::Base::zero())
-      }
-    })?;
-
-    let W = AllocatedPoint::new(W_x.clone(), W_y.clone(), W_inf.clone());
-    let _ = W.check_is_infinity(cs.namespace(|| "W check is_infinity"));
+    let W = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate W"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.w.comm.to_coordinates())),
+    )?;
 
     /***********************************************************************/
     // U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
@@ -371,12 +332,12 @@ where
         .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of h2 to num", i)))?;
       ro.absorb(limb_num);
     }
-    ro.absorb(W_x);
-    ro.absorb(W_y);
-    ro.absorb(W_inf);
-    ro.absorb(T_x);
-    ro.absorb(T_y);
-    ro.absorb(T_inf);
+    ro.absorb(W.x.clone());
+    ro.absorb(W.y.clone());
+    ro.absorb(W.is_infinity.clone());
+    ro.absorb(T.x.clone());
+    ro.absorb(T.y.clone());
+    ro.absorb(T.is_infinity.clone());
     // absorb each of the limbs of X_r[0]
     for limb in Xr0_bn.clone().into_iter() {
       ro.absorb(limb);
@@ -554,12 +515,12 @@ where
         PoseidonROGadget::new(self.poseidon_constants.clone());
 
       h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r_x);
-      h1_hash.absorb(W_r_y);
-      h1_hash.absorb(W_r_inf);
-      h1_hash.absorb(E_r_x);
-      h1_hash.absorb(E_r_y);
-      h1_hash.absorb(E_r_inf);
+      h1_hash.absorb(W_r.x);
+      h1_hash.absorb(W_r.y);
+      h1_hash.absorb(W_r.is_infinity);
+      h1_hash.absorb(E_r.x);
+      h1_hash.absorb(E_r.y);
+      h1_hash.absorb(E_r.is_infinity);
       h1_hash.absorb(u_r.clone());
 
       // absorb each of the limbs of X_r[0]
@@ -633,12 +594,12 @@ where
       let mut h1_hash: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants);
 
       h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r_x);
-      h1_hash.absorb(W_r_y);
-      h1_hash.absorb(W_r_inf);
-      h1_hash.absorb(E_r_x);
-      h1_hash.absorb(E_r_y);
-      h1_hash.absorb(E_r_inf);
+      h1_hash.absorb(W_r.x);
+      h1_hash.absorb(W_r.y);
+      h1_hash.absorb(W_r.is_infinity);
+      h1_hash.absorb(E_r.x);
+      h1_hash.absorb(E_r.y);
+      h1_hash.absorb(E_r.is_infinity);
       h1_hash.absorb(u_r);
       h1_hash.absorb(i.clone());
 

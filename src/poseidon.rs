@@ -22,9 +22,9 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
-  pub(crate) constants25: PoseidonConstants<F, U25>,
-  pub(crate) constants27: PoseidonConstants<F, U27>,
-  pub(crate) constants31: PoseidonConstants<F, U31>,
+  constants25: PoseidonConstants<F, U25>,
+  constants27: PoseidonConstants<F, U27>,
+  constants31: PoseidonConstants<F, U31>,
 }
 
 #[cfg(test)]

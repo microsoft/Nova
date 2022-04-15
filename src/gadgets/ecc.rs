@@ -26,24 +26,32 @@ impl<Fp> AllocatedPoint<Fp>
 where
   Fp: PrimeField,
 {
+  pub fn alloc<CS>(mut cs: CS, coords: Option<(Fp, Fp, bool)>) -> Result<Self, SynthesisError>
+  where
+    CS: ConstraintSystem<Fp>,
+  {
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(coords.unwrap().0))?;
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(coords.unwrap().1))?;
+    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
+      Ok(if coords.unwrap().2 {
+        Fp::one()
+      } else {
+        Fp::zero()
+      })
+    })?;
+    cs.enforce(
+      || "is_infinity is bit",
+      |lc| lc + is_infinity.get_variable(),
+      |lc| lc + CS::one() - is_infinity.get_variable(),
+      |lc| lc,
+    );
+
+    Ok(AllocatedPoint { x, y, is_infinity })
+  }
+
   // Creates a new allocated point from allocated nums.
   pub fn new(x: AllocatedNum<Fp>, y: AllocatedNum<Fp>, is_infinity: AllocatedNum<Fp>) -> Self {
     Self { x, y, is_infinity }
-  }
-
-  // Check that is infinity is 0/1
-  pub fn check_is_infinity<CS: ConstraintSystem<Fp>>(
-    &self,
-    mut cs: CS,
-  ) -> Result<(), SynthesisError> {
-    // Check that is_infinity * ( 1 - is_infinity ) = 0
-    cs.enforce(
-      || "is_infinity is bit",
-      |lc| lc + self.is_infinity.get_variable(),
-      |lc| lc + CS::one() - self.is_infinity.get_variable(),
-      |lc| lc,
-    );
-    Ok(())
   }
 
   // Allocate a random point. Only used for testing
