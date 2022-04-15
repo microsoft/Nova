@@ -104,7 +104,7 @@ where
 {
   params: NIFSVerifierCircuitParams,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
-  step_circuit: Option<SC>, // The function that is applied for each step. may be None.
+  step_circuit: SC, // The function that is applied for each step
   poseidon_constants: NovaPoseidonConstants<G::Base>,
 }
 
@@ -119,7 +119,7 @@ where
   pub fn new(
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
-    step_circuit: Option<SC>,
+    step_circuit: SC,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
   ) -> Self
   where
@@ -289,7 +289,7 @@ where
     // U2' = default if i == 0, otherwise NIFS.V(pp, u_new, U, T)
     /***********************************************************************/
 
-    //Allocate 0 and 1
+    // Allocate 0 and 1
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     // Hack: We just do this because the number of inputs must be even!!
     zero.inputize(cs.namespace(|| "allocate zero as input"))?;
@@ -477,181 +477,113 @@ where
       |lc| lc + next_i.get_variable() - CS::one() - i.get_variable(),
     );
 
-    if self.step_circuit.is_some() {
-      /***********************************************************************/
-      //Allocate z0
-      /***********************************************************************/
+    /***********************************************************************/
+    // Allocate z0
+    /***********************************************************************/
 
-      let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
+    let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
 
-      /***********************************************************************/
-      //Allocate zi
-      /***********************************************************************/
+    /***********************************************************************/
+    // Allocate zi
+    /***********************************************************************/
 
-      let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
+    let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
 
-      /***********************************************************************/
-      //Check that if i == 0, z0 = zi, that is (i == 0) AND (z0 != zi) = false
-      /***********************************************************************/
+    /***********************************************************************/
+    //Check that if i == 0, z0 = zi, that is (i == 0) AND (z0 != zi) = false
+    /***********************************************************************/
 
-      let z0_is_zi = Boolean::from(alloc_num_equals(
-        cs.namespace(|| "z0 = zi"),
-        z_0.clone(),
-        z_i.clone(),
-      )?);
+    let z0_is_zi = Boolean::from(alloc_num_equals(
+      cs.namespace(|| "z0 = zi"),
+      z_0.clone(),
+      z_i.clone(),
+    )?);
 
-      cs.enforce(
-        || "i == 0 and z0 != zi = false",
-        |_| base_case.lc(CS::one(), G::Base::one()),
-        |_| z0_is_zi.not().lc(CS::one(), G::Base::one()),
-        |lc| lc,
-      );
+    cs.enforce(
+      || "i == 0 and z0 != zi = false",
+      |_| base_case.lc(CS::one(), G::Base::one()),
+      |_| z0_is_zi.not().lc(CS::one(), G::Base::one()),
+      |lc| lc,
+    );
 
-      /***********************************************************************/
-      // Check that h1 = Hash(params, u2,i,z0,zi)
-      /***********************************************************************/
+    /***********************************************************************/
+    // Check that h1 = Hash(params, u2,i,z0,zi)
+    /***********************************************************************/
 
-      let mut h1_hash: PoseidonROGadget<G::Base> =
-        PoseidonROGadget::new(self.poseidon_constants.clone());
+    let mut h1_hash: PoseidonROGadget<G::Base> =
+      PoseidonROGadget::new(self.poseidon_constants.clone());
 
-      h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r.x);
-      h1_hash.absorb(W_r.y);
-      h1_hash.absorb(W_r.is_infinity);
-      h1_hash.absorb(E_r.x);
-      h1_hash.absorb(E_r.y);
-      h1_hash.absorb(E_r.is_infinity);
-      h1_hash.absorb(u_r.clone());
+    h1_hash.absorb(params.clone());
+    h1_hash.absorb(W_r.x);
+    h1_hash.absorb(W_r.y);
+    h1_hash.absorb(W_r.is_infinity);
+    h1_hash.absorb(E_r.x);
+    h1_hash.absorb(E_r.y);
+    h1_hash.absorb(E_r.is_infinity);
+    h1_hash.absorb(u_r.clone());
 
-      // absorb each of the limbs of X_r[0]
-      for limb in Xr0_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      // absorb each of the limbs of X_r[1]
-      for limb in Xr1_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      h1_hash.absorb(i.clone());
-      h1_hash.absorb(z_0.clone());
-      h1_hash.absorb(z_i.clone());
-
-      let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?;
-      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-
-      cs.enforce(
-        || "check h1",
-        |lc| lc,
-        |lc| lc,
-        |lc| lc + h1.get_variable() - hash.get_variable(),
-      );
-
-      /***********************************************************************/
-      // Compute z_{i+1}
-      /***********************************************************************/
-
-      let z_next = self
-        .step_circuit
-        .unwrap()
-        .synthesize(&mut cs.namespace(|| "F"), z_i)?;
-
-      /***********************************************************************/
-      // Compute the new hash H(params, u2_new, i+1, z0, z_{i+1})
-      /***********************************************************************/
-
-      h1_hash.flush_state();
-      h1_hash.absorb(params);
-      h1_hash.absorb(W_new.x.clone());
-      h1_hash.absorb(W_new.y.clone());
-      h1_hash.absorb(W_new.is_infinity);
-      h1_hash.absorb(E_new.x.clone());
-      h1_hash.absorb(E_new.y.clone());
-      h1_hash.absorb(E_new.is_infinity);
-      h1_hash.absorb(u_new);
-
-      // absorb each of the limbs of X_r_new[0]
-      for limb in Xr0_new_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      // absorb each of the limbs of X_r_new[1]
-      for limb in Xr1_new_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      h1_hash.absorb(next_i.clone());
-      h1_hash.absorb(z_0);
-      h1_hash.absorb(z_next);
-      let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
-      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits)?;
-      let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
-    } else {
-      /***********************************************************************/
-      // Check that h1 = Hash(params, u2, i)
-      /***********************************************************************/
-
-      let mut h1_hash: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants);
-
-      h1_hash.absorb(params.clone());
-      h1_hash.absorb(W_r.x);
-      h1_hash.absorb(W_r.y);
-      h1_hash.absorb(W_r.is_infinity);
-      h1_hash.absorb(E_r.x);
-      h1_hash.absorb(E_r.y);
-      h1_hash.absorb(E_r.is_infinity);
-      h1_hash.absorb(u_r);
-      h1_hash.absorb(i.clone());
-
-      // absorb each of the limbs of X_r[0]
-      for limb in Xr0_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      // absorb each of the limbs of X_r[1]
-      for limb in Xr1_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?;
-      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-
-      cs.enforce(
-        || "check h1",
-        |lc| lc,
-        |lc| lc,
-        |lc| lc + h1.get_variable() - hash.get_variable(),
-      );
-
-      /***********************************************************************/
-      // Compute the new hash H(params, u2')
-      /***********************************************************************/
-
-      h1_hash.flush_state();
-      h1_hash.absorb(params);
-      h1_hash.absorb(W_new.x.clone());
-      h1_hash.absorb(W_new.y.clone());
-      h1_hash.absorb(W_new.is_infinity);
-      h1_hash.absorb(E_new.x.clone());
-      h1_hash.absorb(E_new.y.clone());
-      h1_hash.absorb(E_new.is_infinity);
-      h1_hash.absorb(u_new);
-      h1_hash.absorb(next_i.clone());
-
-      // absorb each of the limbs of X_r_new[0]
-      for limb in Xr0_new_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      // absorb each of the limbs of X_r_new[1]
-      for limb in Xr1_new_bn.into_iter() {
-        h1_hash.absorb(limb);
-      }
-
-      let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?;
-      let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits)?;
-      let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
+    // absorb each of the limbs of X_r[0]
+    for limb in Xr0_bn.into_iter() {
+      h1_hash.absorb(limb);
     }
+
+    // absorb each of the limbs of X_r[1]
+    for limb in Xr1_bn.into_iter() {
+      h1_hash.absorb(limb);
+    }
+
+    h1_hash.absorb(i.clone());
+    h1_hash.absorb(z_0.clone());
+    h1_hash.absorb(z_i.clone());
+
+    let hash_bits = h1_hash.get_challenge(cs.namespace(|| "Input hash"))?; // TODO: use get_hash method
+    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+
+    cs.enforce(
+      || "check h1",
+      |lc| lc,
+      |lc| lc,
+      |lc| lc + h1.get_variable() - hash.get_variable(),
+    );
+
+    /***********************************************************************/
+    // Compute z_{i+1}
+    /***********************************************************************/
+
+    let z_next = self
+      .step_circuit
+      .synthesize(&mut cs.namespace(|| "F"), z_i)?;
+
+    /***********************************************************************/
+    // Compute the new hash H(params, u2_new, i+1, z0, z_{i+1})
+    /***********************************************************************/
+
+    h1_hash.flush_state();
+    h1_hash.absorb(params);
+    h1_hash.absorb(W_new.x.clone());
+    h1_hash.absorb(W_new.y.clone());
+    h1_hash.absorb(W_new.is_infinity);
+    h1_hash.absorb(E_new.x.clone());
+    h1_hash.absorb(E_new.y.clone());
+    h1_hash.absorb(E_new.is_infinity);
+    h1_hash.absorb(u_new);
+
+    // absorb each of the limbs of X_r_new[0]
+    for limb in Xr0_new_bn.into_iter() {
+      h1_hash.absorb(limb);
+    }
+
+    // absorb each of the limbs of X_r_new[1]
+    for limb in Xr1_new_bn.into_iter() {
+      h1_hash.absorb(limb);
+    }
+
+    h1_hash.absorb(next_i.clone());
+    h1_hash.absorb(z_0);
+    h1_hash.absorb(z_next);
+    let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?; // TODO: use get_hash method
+    let h1_new = le_bits_to_num(cs.namespace(|| "h1_new"), h1_new_bits)?;
+    let _ = h1_new.inputize(cs.namespace(|| "output h1_new"))?;
 
     Ok(())
   }
@@ -700,9 +632,9 @@ mod tests {
       NIFSVerifierCircuit::new(
         params.clone(),
         None,
-        Some(TestCircuit {
+        TestCircuit {
           _p: Default::default(),
-        }),
+        },
         poseidon_constants1.clone(),
       );
     // First create the shape
@@ -718,7 +650,14 @@ mod tests {
     let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
-      NIFSVerifierCircuit::new(params.clone(), None, None, poseidon_constants2);
+      NIFSVerifierCircuit::new(
+        params.clone(),
+        None,
+        TestCircuit {
+          _p: Default::default(),
+        },
+        poseidon_constants2,
+      );
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -755,9 +694,9 @@ mod tests {
       NIFSVerifierCircuit::new(
         params,
         Some(inputs),
-        Some(TestCircuit {
+        TestCircuit {
           _p: Default::default(),
-        }),
+        },
         poseidon_constants1,
       );
     let _ = circuit.synthesize(&mut cs);

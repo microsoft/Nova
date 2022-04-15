@@ -80,10 +80,8 @@ where
     self.state.push(e);
   }
 
-  /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
-  pub fn get_challenge(&mut self) -> Scalar {
-    let hash = match self.state.len() {
+  fn hash_inner(&mut self) -> Scalar {
+    match self.state.len() {
       25 => {
         Poseidon::<Scalar, U25>::new_with_preimage(&self.state, &self.constants.constants25).hash()
       }
@@ -96,12 +94,34 @@ where
       _ => {
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
       }
-    };
+    }
+  }
+
+  /// Compute a challenge by hashing the current state
+  #[allow(dead_code)]
+  pub fn get_challenge(&mut self) -> Scalar {
+    let hash = self.hash_inner();
     // Only keep 128 bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
     for bit in bits[0..128].into_iter() {
+      if *bit {
+        res += coeff;
+      }
+      coeff += coeff;
+    }
+    res
+  }
+
+  #[allow(dead_code)]
+  pub fn get_hash(&mut self) -> Scalar {
+    let hash = self.hash_inner();
+    // Only keep 250 bits
+    let bits = hash.to_le_bits();
+    let mut res = Scalar::zero();
+    let mut coeff = Scalar::one();
+    for bit in bits[0..250].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -145,9 +165,7 @@ where
     self.state.push(e);
   }
 
-  /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
-  pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  fn hash_inner<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
@@ -171,16 +189,39 @@ where
         panic!("Number of elements in the RO state does not match any of the arities used in Nova")
       }
     };
+
+    // return the hash as a vector of bits
+    Ok(
+      out
+        .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
+        .iter()
+        .map(|boolean| match boolean {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Wrong type of input. We should have never reached there"),
+        })
+        .collect(),
+    )
+  }
+
+  /// Compute a challenge by hashing the current state
+  #[allow(dead_code)]
+  pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Scalar>,
+  {
+    let bits = self.hash_inner(cs.namespace(|| "hash"))?;
     // Only keep 128 bits
-    let bits: Vec<AllocatedBit> = out
-      .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
-      .iter()
-      .map(|boolean| match boolean {
-        Boolean::Is(ref x) => x.clone(),
-        _ => panic!("Wrong type of input. We should have never reached there"),
-      })
-      .collect();
     Ok(bits[..128].into())
+  }
+
+  #[allow(dead_code)]
+  pub fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Scalar>,
+  {
+    let bits = self.hash_inner(cs.namespace(|| "hash"))?;
+    // Only keep 250 bits
+    Ok(bits[..250].into())
   }
 }
 
