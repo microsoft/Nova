@@ -7,7 +7,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U25, U27, U31};
+use generic_array::typenum::{U24, U25, U27, U31};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -22,6 +22,7 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
+  constants24: PoseidonConstants<F, U24>,
   constants25: PoseidonConstants<F, U25>,
   constants27: PoseidonConstants<F, U27>,
   constants31: PoseidonConstants<F, U31>,
@@ -34,10 +35,12 @@ where
 {
   /// Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
+    let constants24 = PoseidonConstants::<F, U24>::new_with_strength(Strength::Strengthened);
     let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
     let constants31 = PoseidonConstants::<F, U31>::new_with_strength(Strength::Strengthened);
     Self {
+      constants24,
       constants25,
       constants27,
       constants31,
@@ -82,6 +85,9 @@ where
 
   fn hash_inner(&mut self) -> Scalar {
     match self.state.len() {
+      24 => {
+        Poseidon::<Scalar, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
+      }
       25 => {
         Poseidon::<Scalar, U25>::new_with_preimage(&self.state, &self.constants.constants25).hash()
       }
@@ -170,6 +176,11 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
+      24 => poseidon_hash(
+        cs.namespace(|| "Posideon hash"),
+        self.state.clone(),
+        &self.constants.constants24,
+      )?,
       25 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
@@ -186,7 +197,10 @@ where
         &self.constants.constants31,
       )?,
       _ => {
-        panic!("Number of elements in the RO state does not match any of the arities used in Nova")
+        panic!(
+          "Number of elements in the RO state does not match any of the arities used in Nova {}",
+          self.state.len()
+        )
       }
     };
 
