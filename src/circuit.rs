@@ -295,11 +295,9 @@ where
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     // Compute default values of U2':
-    let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one);
-
     // W_default and E_default are a commitment to zero
-    let W_default = zero_commitment.clone();
-    let E_default = zero_commitment;
+    let W_default = AllocatedPoint::new(zero.clone(), zero.clone(), one);
+    let E_default = W_default.clone();
 
     // u_default = 0
     let u_default = zero.clone();
