@@ -295,11 +295,9 @@ where
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     // Compute default values of U2':
-    let zero_commitment = AllocatedPoint::new(zero.clone(), zero.clone(), one);
-
     // W_default and E_default are a commitment to zero
-    let W_default = zero_commitment.clone();
-    let E_default = zero_commitment;
+    let W_default = AllocatedPoint::new(zero.clone(), zero.clone(), one);
+    let E_default = W_default.clone();
 
     // u_default = 0
     let u_default = zero.clone();
@@ -395,7 +393,7 @@ where
     let Xr1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X_r[1]"), &m_bn)?;
 
     // Now select the default values if i == 0 otherwise the fold values
-    let base_case = Boolean::from(alloc_num_equals(
+    let is_base_case = Boolean::from(alloc_num_equals(
       cs.namespace(|| "Check if base case"),
       i.clone(),
       zero,
@@ -405,23 +403,23 @@ where
       cs.namespace(|| "W_new"),
       &W_default,
       &W_fold,
-      &base_case,
+      &is_base_case,
     )?;
 
     let E_new = AllocatedPoint::conditionally_select(
       cs.namespace(|| "E_new"),
       &E_default,
       &E_fold,
-      &base_case,
+      &is_base_case,
     )?;
 
-    let u_new = conditionally_select(cs.namespace(|| "u_new"), &u_default, &u_fold, &base_case)?;
+    let u_new = conditionally_select(cs.namespace(|| "u_new"), &u_default, &u_fold, &is_base_case)?;
 
     let Xr0_new = conditionally_select_bignat(
       cs.namespace(|| "X_r_new[0]"),
       &X0_default,
       &Xr0_fold,
-      &base_case,
+      &is_base_case,
     )?;
 
     // Analyze Xr0_new as limbs to use later
@@ -440,7 +438,7 @@ where
       cs.namespace(|| "X_r_new[1]"),
       &X1_default,
       &Xr1_fold,
-      &base_case,
+      &is_base_case,
     )?;
 
     // Analyze Xr1_new as limbs to use later
@@ -459,7 +457,7 @@ where
     // Compute i + 1
     /***********************************************************************/
 
-    let next_i = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
+    let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
       Ok(*i.get_value().get()? + G::Base::one())
     })?;
 
@@ -467,7 +465,7 @@ where
       || "check i + 1",
       |lc| lc,
       |lc| lc,
-      |lc| lc + next_i.get_variable() - CS::one() - i.get_variable(),
+      |lc| lc + i_new.get_variable() - CS::one() - i.get_variable(),
     );
 
     /***********************************************************************/
@@ -494,7 +492,7 @@ where
 
     cs.enforce(
       || "i == 0 and z0 != zi = false",
-      |_| base_case.lc(CS::one(), G::Base::one()),
+      |_| is_base_case.lc(CS::one(), G::Base::one()),
       |_| z0_is_zi.not().lc(CS::one(), G::Base::one()),
       |lc| lc,
     );
@@ -571,7 +569,7 @@ where
       h1_hash.absorb(limb);
     }
 
-    h1_hash.absorb(next_i.clone());
+    h1_hash.absorb(i_new.clone());
     h1_hash.absorb(z_0);
     h1_hash.absorb(z_next);
     let h1_new_bits = h1_hash.get_challenge(cs.namespace(|| "h1_new bits"))?; // TODO: use get_hash method
