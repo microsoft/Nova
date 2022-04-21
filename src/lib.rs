@@ -222,18 +222,18 @@ mod tests {
     W2: &R1CSWitness<G>,
   ) {
     // produce a default running instance
-    let mut r_W = RelaxedR1CSWitness::default(&shape);
-    let mut r_U = RelaxedR1CSInstance::default(&gens, &shape);
+    let mut r_W = RelaxedR1CSWitness::default(shape);
+    let mut r_U = RelaxedR1CSInstance::default(gens, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let mut prover_transcript = Transcript::new(b"StepSNARKExample");
-    let res = StepSNARK::prove(&gens, &shape, &r_U, &r_W, &U1, &W1, &mut prover_transcript);
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U1, W1, &mut prover_transcript);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
     let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
-    let res = step_snark.verify(&r_U, &U1, &mut verifier_transcript);
+    let res = step_snark.verify(&r_U, U1, &mut verifier_transcript);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -244,12 +244,12 @@ mod tests {
     r_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = StepSNARK::prove(&gens, &shape, &r_U, &r_W, &U2, &W2, &mut prover_transcript);
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U2, W2, &mut prover_transcript);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(&r_U, &U2, &mut verifier_transcript);
+    let res = step_snark.verify(&r_U, U2, &mut verifier_transcript);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -264,7 +264,7 @@ mod tests {
     assert!(res.is_ok());
     let final_snark = res.unwrap();
     // verify the final SNARK
-    let res = final_snark.verify(&gens, &shape, &r_U);
+    let res = final_snark.verify(gens, shape, &r_U);
     assert!(res.is_ok());
   }
 
