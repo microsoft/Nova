@@ -139,11 +139,134 @@ impl<G: Group> FinalSNARK<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use ff::Field;
+  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 
   type S = pasta_curves::pallas::Scalar;
   type G = pasta_curves::pallas::Point;
+
+  fn synthesize_tiny_r1cs_bellperson<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+    cs: &mut CS,
+    x_val: Option<Scalar>,
+  ) -> Result<(), SynthesisError> {
+    // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x_val.unwrap()))?;
+    let _ = x.inputize(cs.namespace(|| "x is input"));
+
+    let x_sq = x.square(cs.namespace(|| "x_sq"))?;
+    let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + Scalar::from(5u64))
+    })?;
+    let _ = y.inputize(cs.namespace(|| "y is output"));
+
+    cs.enforce(
+      || "y = x^3 + x + 5",
+      |lc| {
+        lc + x_cu.get_variable()
+          + x.get_variable()
+          + CS::one()
+          + CS::one()
+          + CS::one()
+          + CS::one()
+          + CS::one()
+      },
+      |lc| lc + CS::one(),
+      |lc| lc + y.get_variable(),
+    );
+
+    Ok(())
+  }
+
+  #[test]
+  fn test_tiny_r1cs_bellperson() {
+    use super::bellperson::{
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+    };
+
+    // First create the shape
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
+    let shape = cs.r1cs_shape();
+    let gens = cs.r1cs_gens();
+
+    // Now get the instance and assignment for one instance
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(5)));
+    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+
+    // Make sure that the first instance is satisfiable
+    assert!(shape.is_sat(&gens, &U1, &W1).is_ok());
+
+    // Now get the instance and assignment for second instance
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(135)));
+    let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+
+    // Make sure that the second instance is satisfiable
+    assert!(shape.is_sat(&gens, &U2, &W2).is_ok());
+
+    // execute a sequence of folds
+    execute_sequence(&gens, &shape, &U1, &W1, &U2, &W2);
+  }
+
+  fn execute_sequence(
+    gens: &R1CSGens<G>,
+    shape: &R1CSShape<G>,
+    U1: &R1CSInstance<G>,
+    W1: &R1CSWitness<G>,
+    U2: &R1CSInstance<G>,
+    W2: &R1CSWitness<G>,
+  ) {
+    // produce a default running instance
+    let mut r_W = RelaxedR1CSWitness::default(shape);
+    let mut r_U = RelaxedR1CSInstance::default(gens, shape);
+
+    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
+    let mut prover_transcript = Transcript::new(b"StepSNARKExample");
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U1, W1, &mut prover_transcript);
+    assert!(res.is_ok());
+    let (step_snark, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
+    let res = step_snark.verify(&r_U, U1, &mut verifier_transcript);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
+    // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U2, W2, &mut prover_transcript);
+    assert!(res.is_ok());
+    let (step_snark, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let res = step_snark.verify(&r_U, U2, &mut verifier_transcript);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
+    // produce a final SNARK
+    let res = FinalSNARK::prove(&r_W);
+    assert!(res.is_ok());
+    let final_snark = res.unwrap();
+    // verify the final SNARK
+    let res = final_snark.verify(gens, shape, &r_U);
+    assert!(res.is_ok());
+  }
 
   #[test]
   fn test_tiny_r1cs() {
@@ -247,50 +370,7 @@ mod tests {
     let (O, U1, W1) = rand_inst_witness_generator(&gens, &I);
     let (_O, U2, W2) = rand_inst_witness_generator(&gens, &O);
 
-    // produce a default running instance
-    let mut r_W = RelaxedR1CSWitness::default(&S);
-    let mut r_U = RelaxedR1CSInstance::default(&gens, &S);
-
-    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let mut prover_transcript = Transcript::new(b"StepSNARKExample");
-    let res = StepSNARK::prove(&gens, &S, &r_U, &r_W, &U1, &W1, &mut prover_transcript);
-    assert!(res.is_ok());
-    let (step_snark, (_U, W)) = res.unwrap();
-
-    // verify the step SNARK with U1 as the first incoming instance
-    let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
-    let res = step_snark.verify(&r_U, &U1, &mut verifier_transcript);
-    assert!(res.is_ok());
-    let U = res.unwrap();
-
-    assert_eq!(U, _U);
-
-    // update the running witness and instance
-    r_W = W;
-    r_U = U;
-
-    // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = StepSNARK::prove(&gens, &S, &r_U, &r_W, &U2, &W2, &mut prover_transcript);
-    assert!(res.is_ok());
-    let (step_snark, (_U, W)) = res.unwrap();
-
-    // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(&r_U, &U2, &mut verifier_transcript);
-    assert!(res.is_ok());
-    let U = res.unwrap();
-
-    assert_eq!(U, _U);
-
-    // update the running witness and instance
-    r_W = W;
-    r_U = U;
-
-    // produce a final SNARK
-    let res = FinalSNARK::prove(&r_W);
-    assert!(res.is_ok());
-    let final_snark = res.unwrap();
-    // verify the final SNARK
-    let res = final_snark.verify(&gens, &S, &r_U);
-    assert!(res.is_ok());
+    // execute a sequence of folds
+    execute_sequence(&gens, &S, &U1, &W1, &U2, &W2);
   }
 }
