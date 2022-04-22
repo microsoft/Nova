@@ -28,9 +28,6 @@ impl PallasCompressedElementWrapper {
   }
 }
 
-unsafe impl Send for PallasCompressedElementWrapper {}
-unsafe impl Sync for PallasCompressedElementWrapper {}
-
 impl Group for pallas::Point {
   type Base = pallas::Base;
   type Scalar = pallas::Scalar;
@@ -120,9 +117,6 @@ impl VestaCompressedElementWrapper {
     Self { repr }
   }
 }
-
-unsafe impl Send for VestaCompressedElementWrapper {}
-unsafe impl Sync for VestaCompressedElementWrapper {}
 
 impl Group for vesta::Point {
   type Base = vesta::Base;
