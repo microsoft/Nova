@@ -32,13 +32,14 @@ impl Group for pallas::Point {
   type Base = pallas::Base;
   type Scalar = pallas::Scalar;
   type CompressedGroupElement = PallasCompressedElementWrapper;
+  type PreprocessedGroupElement = pallas::Affine;
 
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
     I: IntoIterator,
     I::Item: Borrow<Self::Scalar>,
     J: IntoIterator,
-    J::Item: Borrow<Self>,
+    J::Item: Borrow<Self::PreprocessedGroupElement>,
     Self: Clone,
   {
     // Unoptimized.
@@ -53,7 +54,7 @@ impl Group for pallas::Point {
     PallasCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
     if bytes.len() != 64 {
       None
     } else {
@@ -61,7 +62,7 @@ impl Group for pallas::Point {
       arr.copy_from_slice(&bytes[0..32]);
 
       let hash = Ep::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr))
+      Some(hash(&arr).to_affine())
     }
   }
 
@@ -122,13 +123,14 @@ impl Group for vesta::Point {
   type Base = vesta::Base;
   type Scalar = vesta::Scalar;
   type CompressedGroupElement = VestaCompressedElementWrapper;
+  type PreprocessedGroupElement = vesta::Affine;
 
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
     I: IntoIterator,
     I::Item: Borrow<Self::Scalar>,
     J: IntoIterator,
-    J::Item: Borrow<Self>,
+    J::Item: Borrow<Self::PreprocessedGroupElement>,
     Self: Clone,
   {
     // Unoptimized.
@@ -143,7 +145,7 @@ impl Group for vesta::Point {
     VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
     if bytes.len() != 64 {
       None
     } else {
@@ -151,7 +153,7 @@ impl Group for vesta::Point {
       arr.copy_from_slice(&bytes[0..32]);
 
       let hash = Eq::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr))
+      Some(hash(&arr).to_affine())
     }
   }
 

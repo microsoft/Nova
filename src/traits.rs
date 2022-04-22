@@ -30,13 +30,16 @@ pub trait Group:
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
+  /// A type representing preprocessed group element
+  type PreprocessedGroupElement;
+
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
   where
     I: IntoIterator,
     I::Item: Borrow<Self::Scalar>,
     J: IntoIterator,
-    J::Item: Borrow<Self>,
+    J::Item: Borrow<Self::PreprocessedGroupElement>,
     Self: Clone;
 
   /// Compresses the group element
@@ -44,7 +47,7 @@ pub trait Group:
 
   /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
