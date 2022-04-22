@@ -11,7 +11,7 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson = { git = "https://github.com/lurk-lang/bellperson", branch = "acs/wasm-support", version = "0.19", default-features = false, optional = true }
+bellperson = { version = "0.20", default-features = false, optional = true }
 ff = "0.11.0"
 merlin = "2.0.0"
 rand = "0.8.4"
