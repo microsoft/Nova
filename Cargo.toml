@@ -11,7 +11,7 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson = { version = "0.20", default-features = false, optional = true }
+bellperson = { version = "0.20", default-features = false }
 ff = { version = "0.11.0", features = ["derive"] }
 merlin = "2.0.0"
 rand = "0.8.4"
