@@ -25,9 +25,9 @@ subtle = "2.4"
 pasta_curves = "0.3.0"
 neptune = "6.1"
 generic-array = "0.14.4"
-bellperson-nonnative = "0.2.0"
+bellperson-nonnative = { git = "https://github.com/lurk-lang/bellperson-nonnative", branch = "sb/wasm-support", default-features = false }
 rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
 
 [features]
-default = [ "bellperson/default" ]
-wasm = [ "bellperson/wasm" ]
+default = [ "bellperson/default", "bellperson-nonnative/default" ]
+wasm = [ "bellperson/wasm", "bellperson-nonnative/wasm" ]
