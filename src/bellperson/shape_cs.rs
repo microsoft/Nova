@@ -1,9 +1,11 @@
 //! Support for generating R1CS shape using bellperson.
 
-use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap};
+use std::{
+  cmp::Ordering,
+  collections::{BTreeMap, HashMap},
+};
 
-use crate::traits::{Group, PrimeField as PF};
+use crate::traits::Group;
 use ff::{Field, PrimeField};
 
 use bellperson::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
@@ -140,7 +142,7 @@ where
       s.push_str(&format!("INPUT {}\n", &input))
     }
 
-    let negone = -<G::Scalar as PF>::one();
+    let negone = -<G::Scalar>::one();
 
     let powers_of_two = (0..G::Scalar::NUM_BITS)
       .map(|i| G::Scalar::from(2u64).pow_vartime(&[u64::from(i)]))
@@ -157,7 +159,7 @@ where
         }
         is_first = false;
 
-        if coeff != <G::Scalar as PF>::one() && coeff != negone {
+        if coeff != <G::Scalar>::one() && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
               s.push_str(&format!("2^{} . ", i));

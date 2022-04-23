@@ -1,46 +1,13 @@
 //! This module defines various traits required by the users of the library to implement.
-use core::borrow::Borrow;
-use core::fmt::Debug;
-use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use core::{
+  borrow::Borrow,
+  fmt::Debug,
+  ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
+};
+use ff::PrimeField;
 use merlin::Transcript;
-use rand::{CryptoRng, RngCore};
-
-/// Represents an element of a prime field
-pub trait PrimeField:
-  Sized
-  + Eq
-  + Copy
-  + Clone
-  + Default
-  + Send
-  + Sync
-  + Debug
-  + Add<Output = Self>
-  + Sub<Output = Self>
-  + Mul<Output = Self>
-  + Neg<Output = Self>
-  + for<'a> Add<&'a Self, Output = Self>
-  + for<'a> Mul<&'a Self, Output = Self>
-  + for<'a> Sub<&'a Self, Output = Self>
-  + AddAssign
-  + MulAssign
-  + SubAssign
-  + for<'a> AddAssign<&'a Self>
-  + for<'a> MulAssign<&'a Self>
-  + for<'a> SubAssign<&'a Self>
-{
-  /// returns the additive identity of the field
-  fn zero() -> Self;
-
-  /// returns the multiplicative identity of the field
-  fn one() -> Self;
-
-  /// converts the supplied bytes into an element of the field
-  fn from_bytes_mod_order_wide(bytes: &[u8]) -> Option<Self>;
-
-  /// returns an uniformly random element from the finite field
-  fn random(rng: &mut (impl RngCore + CryptoRng)) -> Self;
-}
+use rug::Integer;
 
 /// Represents an element of a group
 pub trait Group:
@@ -54,6 +21,9 @@ pub trait Group:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
+  /// A type representing an element of the base field of the group
+  type Base: PrimeField;
+
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeField + ChallengeTrait;
 
@@ -75,6 +45,12 @@ pub trait Group:
   /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
   fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
+
+  /// Returns the affine coordinates (x, y, infinty) for the point
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+
+  /// Returns the order of the group as a big integer
+  fn get_order() -> Integer;
 }
 
 /// Represents a compressed version of a group element
@@ -119,3 +95,14 @@ impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Out
 /// A helper trait for references implementing group scalar multiplication.
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
+
+/// A helper trait for a step of the incremental computation (i.e., circuit for F)
+pub trait StepCircuit<F: PrimeField> {
+  /// Sythesize the circuit for a computation step and return variable
+  /// that corresponds to the output of the step z_{i+1}
+  fn synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    cs: &mut CS,
+    z: AllocatedNum<F>,
+  ) -> Result<AllocatedNum<F>, SynthesisError>;
+}

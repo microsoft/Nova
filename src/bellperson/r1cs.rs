@@ -2,8 +2,7 @@
 
 #![allow(non_snake_case)]
 
-use super::shape_cs::ShapeCS;
-use super::solver::SatisfyingAssignment;
+use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
 use bellperson::{Index, LinearCombination};
 
 use ff::PrimeField;
@@ -42,7 +41,7 @@ where
     gens: &R1CSGens<G>,
   ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError> {
     let W = R1CSWitness::<G>::new(shape, &self.aux_assignment)?;
-    let X = &self.input_assignment;
+    let X = &self.input_assignment[1..];
 
     let comm_W = W.commit(gens);
 

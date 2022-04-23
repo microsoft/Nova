@@ -1,7 +1,7 @@
 //! Support for generating R1CS witness using bellperson.
 
 use crate::traits::Group;
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 
 use bellperson::{
   multiexp::DensityTracker, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
@@ -91,14 +91,18 @@ where
   type Root = Self;
 
   fn new() -> Self {
+    let input_assignment = vec![G::Scalar::one()];
+    let mut d = DensityTracker::new();
+    d.add_element();
+
     Self {
       a_aux_density: DensityTracker::new(),
-      b_input_density: DensityTracker::new(),
+      b_input_density: d,
       b_aux_density: DensityTracker::new(),
       a: vec![],
       b: vec![],
       c: vec![],
-      input_assignment: vec![],
+      input_assignment,
       aux_assignment: vec![],
     }
   }
@@ -128,7 +132,7 @@ where
     Ok(Variable(Index::Input(self.input_assignment.len() - 1)))
   }
 
-  fn enforce<A, AR, LA, LB, LC>(&mut self, _: A, a: LA, b: LB, c: LC)
+  fn enforce<A, AR, LA, LB, LC>(&mut self, _: A, _a: LA, _b: LB, _c: LC)
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
@@ -136,47 +140,7 @@ where
     LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
     LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
   {
-    let a = a(LinearCombination::zero());
-    let b = b(LinearCombination::zero());
-    let c = c(LinearCombination::zero());
-
-    let input_assignment = &self.input_assignment;
-    let aux_assignment = &self.aux_assignment;
-    let a_aux_density = &mut self.a_aux_density;
-    let b_input_density = &mut self.b_input_density;
-    let b_aux_density = &mut self.b_aux_density;
-
-    let a_res = a.eval(
-      // Inputs have full density in the A query
-      // because there are constraints of the
-      // form x * 0 = 0 for each input.
-      None,
-      Some(a_aux_density),
-      input_assignment,
-      aux_assignment,
-    );
-
-    let b_res = b.eval(
-      Some(b_input_density),
-      Some(b_aux_density),
-      input_assignment,
-      aux_assignment,
-    );
-
-    let c_res = c.eval(
-      // There is no C polynomial query,
-      // though there is an (beta)A + (alpha)B + C
-      // query for all aux variables.
-      // However, that query has full density.
-      None,
-      None,
-      input_assignment,
-      aux_assignment,
-    );
-
-    self.a.push(a_res);
-    self.b.push(b_res);
-    self.c.push(c_res);
+    // Do nothing: we don't care about linear-combination evaluations in this context.
   }
 
   fn push_namespace<NR, N>(&mut self, _: N)
