@@ -1,3 +1,4 @@
+use crate::traits::Group;
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -7,7 +8,7 @@ use bellperson::{
   ConstraintSystem, LinearCombination, SynthesisError,
 };
 use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
-use ff::{PrimeField, PrimeFieldBits};
+use ff::{Field, PrimeField, PrimeFieldBits};
 use rug::Integer;
 
 /// Gets as input the little indian representation of a number and spits out the number
@@ -73,6 +74,29 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(one)
 }
 
+//Allocate a scalar as a base. Only to be used is the scalar fits in base!
+pub fn alloc_scalar_as_base<G, CS>(
+  mut cs: CS,
+  input: Option<G::Scalar>,
+) -> Result<AllocatedNum<G::Base>, SynthesisError>
+where
+  G: Group,
+  <G as Group>::Scalar: PrimeFieldBits,
+  CS: ConstraintSystem<<G as Group>::Base>,
+{
+  AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
+    let input_bits = input.get()?.clone().to_le_bits();
+    let mut mult = G::Base::one();
+    let mut val = G::Base::zero();
+    for bit in input_bits {
+      if bit {
+        val += mult;
+      }
+      mult = mult + mult;
+    }
+    Ok(val)
+  })
+}
 /// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

@@ -36,8 +36,8 @@ pub struct R1CSWitness<G: Group> {
 /// A type that holds an R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSInstance<G: Group> {
-  comm_W: Commitment<G>,
-  X: Vec<G::Scalar>,
+  pub(crate) comm_W: Commitment<G>,
+  pub(crate) X: Vec<G::Scalar>,
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
