@@ -18,7 +18,7 @@ use bellperson_nonnative::{
   mp::bignat::BigNat,
   util::{convert::f_to_nat, num::Num},
 };
-use ff::{Field, PrimeField, PrimeFieldBits};
+use ff::Field;
 
 /// An Allocated R1CS Instance
 #[derive(Clone)]
@@ -34,8 +34,6 @@ where
 impl<G> AllocatedR1CSInstance<G>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
-  <G as Group>::Scalar: PrimeFieldBits,
 {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -74,8 +72,6 @@ where
 pub struct AllocatedRelaxedR1CSInstance<G>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
-  <G as Group>::Scalar: PrimeFieldBits,
 {
   pub(crate) W: AllocatedPoint<G::Base>,
   pub(crate) E: AllocatedPoint<G::Base>,
@@ -87,8 +83,6 @@ where
 impl<G> AllocatedRelaxedR1CSInstance<G>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
-  <G as Group>::Scalar: PrimeFieldBits,
 {
   /// Allocates the given RelaxedR1CSInstance as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
