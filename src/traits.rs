@@ -5,7 +5,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
 };
-use ff::PrimeField;
+use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
 use rug::Integer;
 
@@ -22,10 +22,10 @@ pub trait Group:
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
   /// A type representing an element of the base field of the group
-  type Base: PrimeField;
+  type Base: PrimeField + PrimeFieldBits;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField + ChallengeTrait;
+  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait;
 
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;

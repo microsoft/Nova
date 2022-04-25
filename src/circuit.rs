@@ -26,7 +26,7 @@ use bellperson::{
   },
   Circuit, ConstraintSystem, SynthesisError,
 };
-use ff::{Field, PrimeField, PrimeFieldBits};
+use ff::Field;
 
 #[derive(Debug, Clone)]
 pub struct NIFSVerifierCircuitParams {
@@ -44,10 +44,7 @@ impl NIFSVerifierCircuitParams {
   }
 }
 
-pub struct NIFSVerifierCircuitInputs<G>
-where
-  G: Group,
-{
+pub struct NIFSVerifierCircuitInputs<G: Group> {
   params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   i: G::Base,
   z0: G::Base,
@@ -85,10 +82,9 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G, SC>
+pub struct NIFSVerifierCircuit<G: Group, SC>
 where
   G: Group,
-  <G as Group>::Base: ff::PrimeField,
   SC: StepCircuit<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
@@ -100,8 +96,6 @@ where
 impl<G, SC> NIFSVerifierCircuit<G, SC>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
-  <G as Group>::Scalar: PrimeField + PrimeFieldBits,
   SC: StepCircuit<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
@@ -111,10 +105,7 @@ where
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
     step_circuit: SC,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
-  ) -> Self
-  where
-    <G as Group>::Base: ff::PrimeField,
-  {
+  ) -> Self {
     Self {
       params,
       inputs,
@@ -243,8 +234,6 @@ where
 impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
 where
   G: Group,
-  <G as Group>::Base: PrimeField + PrimeFieldBits,
-  <G as Group>::Scalar: PrimeFieldBits,
   SC: StepCircuit<G::Base>,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -347,18 +336,16 @@ mod tests {
     bellperson::r1cs::{NovaShape, NovaWitness},
     commitments::CommitTrait,
   };
+  use ff::PrimeField;
   use std::marker::PhantomData;
 
-  struct TestCircuit<F>
-  where
-    F: PrimeField + ff::PrimeField,
-  {
+  struct TestCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
 
   impl<F> StepCircuit<F> for TestCircuit<F>
   where
-    F: PrimeField + ff::PrimeField,
+    F: PrimeField,
   {
     fn synthesize<CS: ConstraintSystem<F>>(
       &self,
