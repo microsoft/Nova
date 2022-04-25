@@ -169,7 +169,7 @@ fn synthesize_add_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
 fn test_mult_mod() {
   type G = pasta_curves::pallas::Point;
 
-  //Set the inputs
+  // Set the inputs
   let a_val = Integer::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
@@ -196,19 +196,19 @@ fn test_mult_mod() {
   )
   .unwrap();
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
   println!("Mult mod constraint no: {}", cs.num_constraints());
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }
 
@@ -216,7 +216,7 @@ fn test_mult_mod() {
 fn test_add() {
   type G = pasta_curves::pallas::Point;
 
-  //Set the inputs
+  // Set the inputs
   let a_val = Integer::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
@@ -229,19 +229,19 @@ fn test_add() {
   )
   .unwrap();
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 32, 8);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
   println!("Add mod constraint no: {}", cs.num_constraints());
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 32, 8);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }
 
@@ -249,7 +249,7 @@ fn test_add() {
 fn test_add_mod() {
   type G = pasta_curves::pallas::Point;
 
-  //Set the inputs
+  // Set the inputs
   let a_val = Integer::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
@@ -267,19 +267,19 @@ fn test_add_mod() {
   )
   .unwrap();
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
   println!("Add mod constraint no: {}", cs.num_constraints());
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }
 
@@ -287,21 +287,21 @@ fn test_add_mod() {
 fn test_equal() {
   type G = pasta_curves::pallas::Point;
 
-  //Set the inputs
+  // Set the inputs
   let a_val = Integer::from_str_radix("1157233675242885698197099479540877", 10).unwrap();
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
   println!("Equal constraint no: {}", cs.num_constraints());
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }

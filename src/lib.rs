@@ -57,7 +57,6 @@ impl<G: Group> StepSNARK<G> {
     NovaError,
   > {
     // append the protocol name to the transcript
-    //transcript.append_protocol_name(StepSNARK::protocol_name());
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
 
     // compute a commitment to the cross-term

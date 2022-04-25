@@ -9,7 +9,7 @@ use nova_snark::bellperson::{
 fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
 ) -> Result<(), SynthesisError> {
-  //get two bits as input and check that they are indeed bits
+  // get two bits as input and check that they are indeed bits
   let a = AllocatedNum::alloc(cs.namespace(|| "a"), || Ok(Fr::one()))?;
   let _ = a.inputize(cs.namespace(|| "a is input"));
   cs.enforce(
@@ -33,18 +33,18 @@ fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
 fn test_alloc_bit() {
   type G = pasta_curves::pallas::Point;
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_alloc_bit(&mut cs);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
   println!("Mult mod constraint no: {}", cs.num_constraints());
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_alloc_bit(&mut cs);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }

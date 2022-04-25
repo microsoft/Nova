@@ -20,7 +20,7 @@ use bellperson_nonnative::{
 };
 use ff::{Field, PrimeField, PrimeFieldBits};
 
-///An Allocated R1CS Instance
+/// An Allocated R1CS Instance
 #[derive(Clone)]
 pub struct AllocatedR1CSInstance<G>
 where
@@ -37,12 +37,12 @@ where
   <G as Group>::Base: PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
 {
-  ///Takes the r1cs instance and creates a new allocated r1cs instance
+  /// Takes the r1cs instance and creates a new allocated r1cs instance
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
     u: Option<R1CSInstance<G>>,
   ) -> Result<Self, SynthesisError> {
-    //Check that the incoming instance has exactly 2 io
+    // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
       u.get()
@@ -74,7 +74,7 @@ where
   }
 }
 
-///An Allocated Relaxed R1CS Instance
+/// An Allocated Relaxed R1CS Instance
 pub struct AllocatedRelaxedR1CSInstance<G>
 where
   G: Group,
@@ -94,7 +94,7 @@ where
   <G as Group>::Base: PrimeField + PrimeFieldBits,
   <G as Group>::Scalar: PrimeFieldBits,
 {
-  ///Allocates the given RelaxedR1CSInstance as a witness of the circuit
+  /// Allocates the given RelaxedR1CSInstance as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
     inst: Option<RelaxedR1CSInstance<G>>,
@@ -145,8 +145,8 @@ where
     })
   }
 
-  ///Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
-  ///W = E = 0, u = 1, X0 = X1 = 2
+  /// Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
+  /// W = E = 0, u = 1, X0 = X1 = 0
   pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
     limb_width: usize,
@@ -232,7 +232,7 @@ where
     Ok(())
   }
 
-  ///Folds self with a relaxed r1cs instance and returns the result
+  /// Folds self with a relaxed r1cs instance and returns the result
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -287,7 +287,7 @@ where
       n_limbs,
     )?;
 
-    //Analyze X0 to bignat
+    // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(
       cs.namespace(|| "allocate X0_bn"),
       Num::from(u.X0.clone()),
@@ -302,7 +302,7 @@ where
     // Now reduce
     let X0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X[0]"), &m_bn)?;
 
-    //Analyze X1 to bignat
+    // Analyze X1 to bignat
     let X1_bn = BigNat::from_num(
       cs.namespace(|| "allocate X1_bn"),
       Num::from(u.X1.clone()),
@@ -326,7 +326,7 @@ where
     })
   }
 
-  ///If the condition is true then returns this otherwise it returns the other
+  /// If the condition is true then returns this otherwise it returns the other
   pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,

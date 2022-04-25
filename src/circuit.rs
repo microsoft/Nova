@@ -123,7 +123,7 @@ where
     }
   }
 
-  ///Allocate all witnesses and return
+  /// Allocate all witnesses and return
   fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -139,7 +139,7 @@ where
     ),
     SynthesisError,
   > {
-    //Allocate the params
+    // Allocate the params
     let params = AllocatedNum::alloc(cs.namespace(|| "params"), || Ok(self.inputs.get()?.params))?;
 
     // Allocate i
@@ -151,7 +151,7 @@ where
     // Allocate zi
     let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
 
-    //Allocate the running instance
+    // Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate U"),
       self
@@ -162,7 +162,7 @@ where
       self.params.n_limbs,
     )?;
 
-    //Allocate the instance to be folded in
+    // Allocate the instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
       self
@@ -183,7 +183,7 @@ where
     Ok((params, i, z_0, z_i, U, u, T))
   }
 
-  ///Synthesizes base case and returns the new relaxed R1CSInstance
+  /// Synthesizes base case and returns the new relaxed R1CSInstance
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -196,8 +196,8 @@ where
     Ok(U_default)
   }
 
-  ///Synthesizes non base case and returns the new relaxed R1CSInstance
-  ///And a boolean indicating if all checks pass
+  /// Synthesizes non base case and returns the new relaxed R1CSInstance
+  /// And a boolean indicating if all checks pass
   fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -225,7 +225,7 @@ where
       hash.clone(),
     )?;
 
-    //Run NIFS
+    // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
       u.clone(),
@@ -250,19 +250,19 @@ where
     self,
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
-    //Allocate all witnesses
+    // Allocate all witnesses
     let (params, i, z_0, z_i, U, u, T) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
-    //Compute variable indicating if this is the base case
+    // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), i.clone(), zero)?; //TODO: maybe optimize this?
 
-    //Synthesize the circuit for the base case and get the new running instance
+    // Synthesize the circuit for the base case and get the new running instance
     let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"))?;
 
-    //Synthesize the circuit for the non-base case and get the new running
-    //instance along with a boolean indicating if all checks have passed
+    // Synthesize the circuit for the non-base case and get the new running
+    // instance along with a boolean indicating if all checks have passed
     let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
       params.clone(),
@@ -274,7 +274,7 @@ where
       T.clone(),
     )?;
 
-    //Either check_non_base_pass=true or we are in the base case
+    // Either check_non_base_pass=true or we are in the base case
     let should_be_false = AllocatedBit::nor(
       cs.namespace(|| "check_non_base_pass nor base_case"),
       &check_non_base_pass,
@@ -287,7 +287,7 @@ where
       |lc| lc,
     );
 
-    //Compute the U_new
+    // Compute the U_new
     let Unew = Unew_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
       Unew_non_base,
@@ -326,7 +326,7 @@ where
     let hash_bits = ro.get_hash(cs.namespace(|| "output hash bits"))?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
-    //Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
+    // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     let _ = hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
     let _ = u
       .X1
