@@ -71,12 +71,6 @@ where
     }
   }
 
-  #[allow(dead_code)]
-  /// Flush the state of the RO
-  pub fn flush_state(&mut self) {
-    self.state = Vec::new();
-  }
-
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: Scalar) {
@@ -158,13 +152,6 @@ where
       state: Vec::new(),
       constants,
     }
-  }
-
-  //TODO: Maybe we want to get rid of this?
-  #[allow(dead_code)]
-  /// Flush the state of the RO
-  pub fn flush_state(&mut self) {
-    self.state = Vec::new();
   }
 
   /// Absorb a new number into the state of the oracle
