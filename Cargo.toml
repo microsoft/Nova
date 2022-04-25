@@ -11,8 +11,8 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson =  "0.20"
-ff = {version = "0.11.0", features = ["derive"]}
+bellperson = { version = "0.20", default-features = false }
+ff = { version = "0.11.0", features = ["derive"] }
 merlin = "2.0.0"
 rand = "0.8.4"
 digest = "0.8.1"
@@ -25,5 +25,9 @@ subtle = "2.4"
 pasta_curves = "0.3.0"
 neptune = "6.1"
 generic-array = "0.14.4"
-bellperson-nonnative = "0.2.1" 
+bellperson-nonnative = { version = "0.2.1", default-features = false, features = ["wasm"] }
 rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
+
+[features]
+default = [ "bellperson/default", "bellperson-nonnative/default" ]
+wasm = [ "bellperson/wasm", "bellperson-nonnative/wasm" ]
