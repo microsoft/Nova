@@ -58,11 +58,7 @@ where
       u.get().map_or(None, |u| Some(u.X[1])),
     )?;
 
-    Ok(AllocatedR1CSInstance {
-      W: W,
-      X0: X0,
-      X1: X1,
-    })
+    Ok(AllocatedR1CSInstance { W, X0, X1 })
   }
 
   pub fn absorb_in_ro(&self, ro: &mut PoseidonROGadget<G::Base>) {
@@ -136,13 +132,7 @@ where
       n_limbs,
     )?;
 
-    Ok(AllocatedRelaxedR1CSInstance {
-      W: W,
-      E: E,
-      u: u,
-      X0: X0,
-      X1: X1,
-    })
+    Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
   }
 
   /// Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
@@ -158,7 +148,7 @@ where
     let W_default = AllocatedPoint::new(zero.clone(), zero.clone(), one);
     let E_default = W_default.clone();
 
-    let u_default = zero.clone();
+    let u_default = zero;
 
     let X0_default = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
@@ -243,7 +233,7 @@ where
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants.clone());
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants);
     u.absorb_in_ro(&mut ro);
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
@@ -368,12 +358,6 @@ where
       condition,
     )?;
 
-    Ok(AllocatedRelaxedR1CSInstance {
-      W: W,
-      E: E,
-      u: u,
-      X0: X0,
-      X1: X1,
-    })
+    Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
   }
 }

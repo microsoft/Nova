@@ -198,6 +198,7 @@ where
 
   /// Synthesizes non base case and returns the new relaxed R1CSInstance
   /// And a boolean indicating if all checks pass
+  #[allow(clippy::too_many_arguments)]
   fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -211,10 +212,10 @@ where
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U,i,z0,zi)
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
-    ro.absorb(params.clone());
-    ro.absorb(i.clone());
-    ro.absorb(z_0.clone());
-    ro.absorb(z_i.clone());
+    ro.absorb(params);
+    ro.absorb(i);
+    ro.absorb(z_0);
+    ro.absorb(z_i);
     let _ = U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
     let hash_bits = ro.get_hash(cs.namespace(|| "Input hash"))?;
@@ -222,13 +223,13 @@ where
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       u.X0.clone(),
-      hash.clone(),
+      hash,
     )?;
 
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
-      u.clone(),
+      u,
       T,
       self.poseidon_constants.clone(),
       self.params.limb_width,
@@ -271,7 +272,7 @@ where
       z_i.clone(),
       U,
       u.clone(),
-      T.clone(),
+      T,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -317,7 +318,7 @@ where
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
@@ -384,6 +385,7 @@ mod tests {
         },
         poseidon_constants1.clone(),
       );
+
     // First create the shape
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -422,11 +424,11 @@ mod tests {
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
-      zero.clone(),                           // TODO: provide real inputs
-      zero.clone(),                           // TODO: provide real inputs
-      zero.clone(),                           // TODO: provide real inputs
+      zero,                                   // TODO: provide real inputs
+      zero,                                   // TODO: provide real inputs
+      zero,                                   // TODO: provide real inputs
       RelaxedR1CSInstance::default(&gens2, &shape2),
-      R1CSInstance::new(&shape2, &w, &[zero_fq.clone(), zero_fq.clone()]).unwrap(),
+      R1CSInstance::new(&shape2, &w, &[zero_fq, zero_fq]).unwrap(),
       T, // TODO: provide real inputs
     );
 
