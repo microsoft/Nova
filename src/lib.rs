@@ -8,7 +8,7 @@ mod commitments;
 pub mod bellperson;
 mod circuit;
 pub mod errors;
-mod gadgets;
+pub mod gadgets;
 pub mod pasta;
 mod poseidon;
 pub mod r1cs;

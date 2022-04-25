@@ -1,3 +1,4 @@
+//! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
 use crate::gadgets::utils::{
   alloc_one, alloc_zero, conditionally_select, conditionally_select2, select_one_or, select_zero_or,
@@ -12,6 +13,7 @@ use bellperson::{
 };
 use ff::PrimeField;
 
+/// AllocatedPoint provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
 pub struct AllocatedPoint<Fp>
 where
@@ -26,6 +28,7 @@ impl<Fp> AllocatedPoint<Fp>
 where
   Fp: PrimeField,
 {
+  /// Allocates a new point on the curve using coordinates provided by `coords`.
   pub fn alloc<CS>(mut cs: CS, coords: Option<(Fp, Fp, bool)>) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Fp>,
@@ -49,9 +52,24 @@ where
     Ok(AllocatedPoint { x, y, is_infinity })
   }
 
-  // Creates a new allocated point from allocated nums.
-  pub fn new(x: AllocatedNum<Fp>, y: AllocatedNum<Fp>, is_infinity: AllocatedNum<Fp>) -> Self {
-    Self { x, y, is_infinity }
+  /// Allocates a default point on the curve.
+  pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
+  where
+    CS: ConstraintSystem<Fp>,
+  {
+    let zero = alloc_zero(cs.namespace(|| "zero"))?;
+    let one = alloc_one(cs.namespace(|| "one"))?;
+
+    Ok(AllocatedPoint {
+      x: zero.clone(),
+      y: zero,
+      is_infinity: one,
+    })
+  }
+
+  /// Returns coordinates associated with the point.
+  pub fn get_coordinates(&self) -> (&AllocatedNum<Fp>, &AllocatedNum<Fp>, &AllocatedNum<Fp>) {
+    (&self.x, &self.y, &self.is_infinity)
   }
 
   // Allocate a random point. Only used for testing
@@ -64,7 +82,11 @@ where
         let x_alloc = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x))?;
         let y_alloc = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(y.unwrap()))?;
         let is_infinity = alloc_zero(cs.namespace(|| "Is Infinity"))?;
-        return Ok(Self::new(x_alloc, y_alloc, is_infinity));
+        return Ok(Self {
+          x: x_alloc,
+          y: y_alloc,
+          is_infinity,
+        });
       }
     }
   }
@@ -80,8 +102,8 @@ where
     Ok(())
   }
 
-  // Adds other point to this point and returns the result
-  // Assumes that both other.is_infinity and this.is_infinty are bits
+  /// Adds other point to this point and returns the result
+  /// Assumes that both other.is_infinity and this.is_infinty are bits
   pub fn add<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
@@ -208,7 +230,7 @@ where
       &x,
       &other.is_infinity,
     )?;
-    let final_x = conditionally_select2(
+    let x = conditionally_select2(
       cs.namespace(|| "final x: outer if"),
       &other.x,
       &inner_x,
@@ -222,7 +244,7 @@ where
       &y,
       &other.is_infinity,
     )?;
-    let final_y = conditionally_select2(
+    let y = conditionally_select2(
       cs.namespace(|| "final y: outer if"),
       &other.y,
       &inner_y,
@@ -236,15 +258,16 @@ where
       &is_infinity,
       &other.is_infinity,
     )?;
-    let final_is_infinity = conditionally_select2(
+    let is_infinity = conditionally_select2(
       cs.namespace(|| "final is infinity: outer if"),
       &other.is_infinity,
       &inner_is_infinity,
       &self.is_infinity,
     )?;
-    Ok(Self::new(final_x, final_y, final_is_infinity))
+    Ok(Self { x, y, is_infinity })
   }
 
+  /// Doubles the supplied point.
   pub fn double<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     //*************************************************************/
     // lambda = (Fp::one() + Fp::one() + Fp::one())
@@ -359,35 +382,24 @@ where
     /*************************************************************/
 
     // x
-    let final_x = select_zero_or(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
+    let x = select_zero_or(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
 
     // y
-    let final_y = select_zero_or(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
+    let y = select_zero_or(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
 
     // is_infinity
-    let final_is_infinity = self.is_infinity.clone();
+    let is_infinity = self.is_infinity.clone();
 
-    Ok(Self::new(final_x, final_y, final_is_infinity))
+    Ok(Self { x, y, is_infinity })
   }
 
+  /// A gadget for scalar multiplication.
   pub fn scalar_mul<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
     scalar: Vec<AllocatedBit>,
   ) -> Result<Self, SynthesisError> {
-    /*************************************************************/
-    // Initialize res = Self {
-    //  x: Fp::zero(),
-    //  y: Fp::zero(),
-    //  is_infinity: true,
-    //  _p: Default::default(),
-    //};
-    /*************************************************************/
-
-    let zero = alloc_zero(cs.namespace(|| "Allocate zero"))?;
-    let one = alloc_one(cs.namespace(|| "Allocate one"))?;
-    let mut res = Self::new(zero.clone(), zero, one);
-
+    let mut res = Self::default(cs.namespace(|| "res"))?;
     for i in (0..scalar.len()).rev() {
       /*************************************************************/
       //  res = res.double();
@@ -430,7 +442,7 @@ where
       condition,
     )?;
 
-    Ok(Self::new(x, y, is_infinity))
+    Ok(Self { x, y, is_infinity })
   }
 }
 

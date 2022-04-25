@@ -1,8 +1,9 @@
+//! This module implements various gadgets necessary for folding R1CS types.
 use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
-      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, alloc_zero, conditionally_select,
+      alloc_bignat_constant, alloc_scalar_as_base, conditionally_select,
       conditionally_select_bignat, le_bits_to_num,
     },
   },
@@ -59,6 +60,7 @@ where
     Ok(AllocatedR1CSInstance { W, X0, X1 })
   }
 
+  /// Absorb the provided instance in the RO
   pub fn absorb_in_ro(&self, ro: &mut PoseidonROGadget<G::Base>) {
     ro.absorb(self.W.x.clone());
     ro.absorb(self.W.y.clone());
@@ -136,36 +138,29 @@ where
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
-    let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let one = alloc_one(cs.namespace(|| "one"))?;
+    let W = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
+    let E = W.clone();
 
-    let W_default = AllocatedPoint::new(zero.clone(), zero.clone(), one);
-    let E_default = W_default.clone();
+    let u = W.x.clone(); // In the default case, W.x = u = 0
 
-    let u_default = zero;
-
-    let X0_default = BigNat::alloc_from_nat(
+    let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&G::Scalar::zero())),
       limb_width,
       n_limbs,
     )?;
 
-    let X1_default = BigNat::alloc_from_nat(
+    let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[1]"),
       || Ok(f_to_nat(&G::Scalar::zero())),
       limb_width,
       n_limbs,
     )?;
-    Ok(AllocatedRelaxedR1CSInstance {
-      W: W_default,
-      E: E_default,
-      u: u_default,
-      X0: X0_default,
-      X1: X1_default,
-    })
+
+    Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
   }
 
+  /// Absorb the provided instance in the RO
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,

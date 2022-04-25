@@ -34,6 +34,7 @@ where
   F: PrimeField,
 {
   /// Generate Poseidon constants for the arities that Nova uses
+  #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
     let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);

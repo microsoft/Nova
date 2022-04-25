@@ -1,3 +1,4 @@
+//! This module implements various low-level gadgets
 use crate::traits::Group;
 use bellperson::{
   gadgets::{
