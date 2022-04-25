@@ -7,7 +7,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U24, U25, U27, U31};
+use generic_array::typenum::{U25, U27, U31, U8};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -22,7 +22,7 @@ pub struct NovaPoseidonConstants<F>
 where
   F: PrimeField,
 {
-  constants24: PoseidonConstants<F, U24>,
+  constants8: PoseidonConstants<F, U8>,
   constants25: PoseidonConstants<F, U25>,
   constants27: PoseidonConstants<F, U27>,
   constants31: PoseidonConstants<F, U31>,
@@ -35,12 +35,12 @@ where
 {
   /// Generate Poseidon constants for the arities that Nova uses
   pub fn new() -> Self {
-    let constants24 = PoseidonConstants::<F, U24>::new_with_strength(Strength::Strengthened);
+    let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
     let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
     let constants31 = PoseidonConstants::<F, U31>::new_with_strength(Strength::Strengthened);
     Self {
-      constants24,
+      constants8,
       constants25,
       constants27,
       constants31,
@@ -71,12 +71,6 @@ where
     }
   }
 
-  #[allow(dead_code)]
-  /// Flush the state of the RO
-  pub fn flush_state(&mut self) {
-    self.state = Vec::new();
-  }
-
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: Scalar) {
@@ -85,8 +79,8 @@ where
 
   fn hash_inner(&mut self) -> Scalar {
     match self.state.len() {
-      24 => {
-        Poseidon::<Scalar, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
+      8 => {
+        Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
       }
       25 => {
         Poseidon::<Scalar, U25>::new_with_preimage(&self.state, &self.constants.constants25).hash()
@@ -160,11 +154,6 @@ where
     }
   }
 
-  /// Flush the state of the RO
-  pub fn flush_state(&mut self) {
-    self.state = Vec::new();
-  }
-
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
   pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
@@ -176,10 +165,10 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      24 => poseidon_hash(
+      8 => poseidon_hash(
         cs.namespace(|| "Posideon hash"),
         self.state.clone(),
-        &self.constants.constants24,
+        &self.constants.constants8,
       )?,
       25 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
