@@ -1,3 +1,4 @@
+use crate::traits::Group;
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -7,7 +8,7 @@ use bellperson::{
   ConstraintSystem, LinearCombination, SynthesisError,
 };
 use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
-use ff::{PrimeField, PrimeFieldBits};
+use ff::{Field, PrimeField, PrimeFieldBits};
 use rug::Integer;
 
 /// Gets as input the little indian representation of a number and spits out the number
@@ -73,6 +74,30 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(one)
 }
 
+/// Allocate a scalar as a base. Only to be used is the scalar fits in base!
+pub fn alloc_scalar_as_base<G, CS>(
+  mut cs: CS,
+  input: Option<G::Scalar>,
+) -> Result<AllocatedNum<G::Base>, SynthesisError>
+where
+  G: Group,
+  <G as Group>::Scalar: PrimeFieldBits,
+  CS: ConstraintSystem<<G as Group>::Base>,
+{
+  AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
+    let input_bits = input.get()?.clone().to_le_bits();
+    let mut mult = G::Base::one();
+    let mut val = G::Base::zero();
+    for bit in input_bits {
+      if bit {
+        val += mult;
+      }
+      mult = mult + mult;
+    }
+    Ok(val)
+  })
+}
+
 /// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
@@ -109,7 +134,6 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
 ) -> Result<AllocatedBit, SynthesisError> {
   // Allocate and constrain `r`: result boolean bit.
   // It equals `true` if `a` equals `b`, `false` otherwise
-
   let r_value = match (a.get_value(), b.get_value()) {
     (Some(a), Some(b)) => Some(a == b),
     _ => None,
@@ -147,7 +171,6 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   // Allocate `t = delta * delta_inv`
   // If `delta` is non-zero (a != b), `t` will equal 1
   // If `delta` is zero (a == b), `t` cannot equal 1
-
   let t = AllocatedNum::alloc(cs.namespace(|| "t"), || {
     let mut tmp = *delta.get_value().get()?;
     tmp.mul_assign(&(*delta_inv.get_value().get()?));
@@ -215,7 +238,6 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
 
   // a * condition + b*(1-condition) = c ->
   // a * condition - b*condition = c - b
-
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable() - b.get_variable(),
@@ -278,7 +300,6 @@ pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
 
   // a * condition + b*(1-condition) = c ->
   // a * condition - b*condition = c - b
-
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable() - b.get_variable(),

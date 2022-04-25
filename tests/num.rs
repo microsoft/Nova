@@ -42,18 +42,18 @@ fn synthesize_use_cs_one_after_inputize<Fr: PrimeField, CS: ConstraintSystem<Fr>
 fn test_use_cs_one() {
   type G = pasta_curves::pallas::Point;
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_use_cs_one(&mut cs);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_use_cs_one(&mut cs);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }
 
@@ -61,17 +61,17 @@ fn test_use_cs_one() {
 fn test_use_cs_one_after_inputize() {
   type G = pasta_curves::pallas::Point;
 
-  //First create the shape
+  // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();
   let _ = synthesize_use_cs_one_after_inputize(&mut cs);
   let shape = cs.r1cs_shape();
   let gens = cs.r1cs_gens();
 
-  //Now get the assignment
+  // Now get the assignment
   let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
   let _ = synthesize_use_cs_one_after_inputize(&mut cs);
   let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
-  //Make sure that this is satisfiable
+  // Make sure that this is satisfiable
   assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
 }
