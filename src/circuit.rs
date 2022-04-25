@@ -180,7 +180,6 @@ where
         .map_or(None, |inputs| Some(inputs.T.comm.to_coordinates())),
     )?;
 
-
     Ok((params, i, z_0, z_i, U, u, T))
   }
 
@@ -423,12 +422,12 @@ mod tests {
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
+      zero.clone(),                           // TODO: provide real inputs
+      zero.clone(),                           // TODO: provide real inputs
+      zero.clone(),                           // TODO: provide real inputs
       RelaxedR1CSInstance::default(&gens2, &shape2),
       R1CSInstance::new(&shape2, &w, &[zero_fq.clone(), zero_fq.clone()]).unwrap(),
-      T,            // TODO: provide real inputs
+      T, // TODO: provide real inputs
     );
 
     let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
