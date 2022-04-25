@@ -3,8 +3,8 @@
 //! only the primary executes the next step of the computation.
 //! TODO: The base case is different for the primary and the secondary.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
-//! of the running instances. Each of them this hashes is
-//! H(params = H(shape, gens), U, i, z0, zi). Each circuits folds the last invocation of
+//! of the running instances. Each of these hashes is
+//! H(params = H(shape, gens), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
 
 use super::{
@@ -49,12 +49,12 @@ where
   G: Group,
 {
   params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-  u: R1CSInstance<G>,
-  U: RelaxedR1CSInstance<G>,
-  T: Commitment<G>,
   i: G::Base,
   z0: G::Base,
   zi: G::Base,
+  U: RelaxedR1CSInstance<G>,
+  u: R1CSInstance<G>,
+  T: Commitment<G>,
 }
 
 impl<G> NIFSVerifierCircuitInputs<G>
@@ -65,21 +65,21 @@ where
   #[allow(dead_code, clippy::too_many_arguments)]
   pub fn new(
     params: G::Base,
-    u: R1CSInstance<G>,
-    U: RelaxedR1CSInstance<G>,
-    T: Commitment<G>,
     i: G::Base,
     z0: G::Base,
     zi: G::Base,
+    U: RelaxedR1CSInstance<G>,
+    u: R1CSInstance<G>,
+    T: Commitment<G>,
   ) -> Self {
     Self {
       params,
-      u,
-      U,
-      T,
       i,
       z0,
       zi,
+      U,
+      u,
+      T,
     }
   }
 }
@@ -130,26 +130,26 @@ where
   ) -> Result<
     (
       AllocatedNum<G::Base>,
-      AllocatedR1CSInstance<G>,
+      AllocatedNum<G::Base>,
+      AllocatedNum<G::Base>,
+      AllocatedNum<G::Base>,
       AllocatedRelaxedR1CSInstance<G>,
+      AllocatedR1CSInstance<G>,
       AllocatedPoint<G::Base>,
-      AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
     ),
     SynthesisError,
   > {
     //Allocate the params
     let params = AllocatedNum::alloc(cs.namespace(|| "params"), || Ok(self.inputs.get()?.params))?;
 
-    //Allocate the running instance
-    let u = AllocatedR1CSInstance::alloc(
-      cs.namespace(|| "allocate instance u to fold"),
-      self
-        .inputs
-        .get()
-        .map_or(None, |inputs| Some(inputs.u.clone())),
-    )?;
+    // Allocate i
+    let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
+
+    // Allocate z0
+    let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
+
+    // Allocate zi
+    let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
 
     //Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
@@ -162,6 +162,15 @@ where
       self.params.n_limbs,
     )?;
 
+    //Allocate the instance to be folded in
+    let u = AllocatedR1CSInstance::alloc(
+      cs.namespace(|| "allocate instance u to fold"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.u.clone())),
+    )?;
+
     // Allocate T
     let T = AllocatedPoint::alloc(
       cs.namespace(|| "allocate T"),
@@ -171,16 +180,8 @@ where
         .map_or(None, |inputs| Some(inputs.T.comm.to_coordinates())),
     )?;
 
-    // Allocate i
-    let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
-    // Allocate z0
-    let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
-
-    // Allocate zi
-    let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || Ok(self.inputs.get()?.zi))?;
-
-    Ok((params, u, U, T, i, z_0, z_i))
+    Ok((params, i, z_0, z_i, U, u, T))
   }
 
   ///Synthesizes base case and returns the new relaxed R1CSInstance
@@ -202,12 +203,12 @@ where
     &self,
     mut cs: CS,
     params: AllocatedNum<G::Base>,
-    u: AllocatedR1CSInstance<G>,
-    U: AllocatedRelaxedR1CSInstance<G>,
-    T: AllocatedPoint<G::Base>,
     i: AllocatedNum<G::Base>,
     z_0: AllocatedNum<G::Base>,
     z_i: AllocatedNum<G::Base>,
+    U: AllocatedRelaxedR1CSInstance<G>,
+    u: AllocatedR1CSInstance<G>,
+    T: AllocatedPoint<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U,i,z0,zi)
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
@@ -251,12 +252,12 @@ where
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     //Allocate all witnesses
-    let (params, u, U, T, i, z_0, z_i) =
+    let (params, i, z_0, z_i, U, u, T) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
     //Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), i.clone(), zero)?;
+    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), i.clone(), zero)?; //TODO: maybe optimize this?
 
     //Synthesize the circuit for the base case and get the new running instance
     let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"))?;
@@ -266,12 +267,12 @@ where
     let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
       params.clone(),
-      u.clone(),
-      U,
-      T.clone(),
       i.clone(),
       z_0.clone(),
       z_i.clone(),
+      U,
+      u.clone(),
+      T.clone(),
     )?;
 
     //Either check_non_base_pass=true or we are in the base case
@@ -281,7 +282,7 @@ where
       &is_base_case,
     )?;
     cs.enforce(
-      || "chek_non_base_pass nor base_case = false",
+      || "check_non_base_pass nor base_case = false",
       |lc| lc + should_be_false.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc,
@@ -422,12 +423,12 @@ mod tests {
     let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
-      R1CSInstance::new(&shape2, &w, &[zero_fq.clone(), zero_fq.clone()]).unwrap(),
+      zero.clone(), // TODO: provide real inputs
+      zero.clone(), // TODO: provide real inputs
+      zero.clone(), // TODO: provide real inputs
       RelaxedR1CSInstance::default(&gens2, &shape2),
+      R1CSInstance::new(&shape2, &w, &[zero_fq.clone(), zero_fq.clone()]).unwrap(),
       T,            // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
-      zero.clone(), // TODO: provide real inputs
     );
 
     let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
