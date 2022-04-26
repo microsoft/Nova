@@ -40,7 +40,7 @@ impl Group for pallas::Point {
   ) -> Self {
     // Unoptimized.
     scalars
-      .into_iter()
+      .iter()
       .zip(bases)
       .map(|(scalar, base)| base.mul(scalar))
       .fold(Ep::group_zero(), |acc, x| acc + x)
@@ -127,7 +127,7 @@ impl Group for vesta::Point {
   ) -> Self {
     // Unoptimized.
     scalars
-      .into_iter()
+      .iter()
       .zip(bases)
       .map(|(scalar, base)| base.mul(scalar))
       .fold(Eq::group_zero(), |acc, x| acc + x)
