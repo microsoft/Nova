@@ -70,6 +70,30 @@ pub trait ChallengeTrait {
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self;
 }
 
+/// A helper trait that defines the behavior of a hash function that we use as an RO
+pub trait HashFuncTrait<Scalar> {
+  /// A type representing constants/parameters associated with the hash function
+  type Constants: HashFuncConstantsTrait<Scalar>;
+
+  /// Initializes the hash function
+  fn new(constants: Self::Constants) -> Self;
+
+  /// Adds a scalar to the internal state
+  fn absorb(&mut self, scalar: Scalar);
+
+  /// Returns a random challenge by hashing the internal state
+  fn get_challenge(&self) -> Scalar;
+
+  /// Returns a hash of the internal state
+  fn get_hash(&self) -> Scalar;
+}
+
+/// A helper trait that defines the constants associated with a hash function
+pub trait HashFuncConstantsTrait<Scalar> {
+  /// produces constants/parameters associated with the hash function
+  fn new() -> Self;
+}
+
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:
   Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>

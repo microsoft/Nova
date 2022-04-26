@@ -1,4 +1,5 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
+use crate::traits::{HashFuncConstantsTrait, HashFuncTrait};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -13,29 +14,27 @@ use neptune::{
   poseidon::{Poseidon, PoseidonConstants},
 };
 
-#[cfg(test)]
 use neptune::Strength;
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
-pub struct NovaPoseidonConstants<F>
+pub struct NovaPoseidonConstants<Scalar>
 where
-  F: PrimeField,
+  Scalar: PrimeField,
 {
-  constants8: PoseidonConstants<F, U8>,
-  constants27: PoseidonConstants<F, U27>,
+  constants8: PoseidonConstants<Scalar, U8>,
+  constants27: PoseidonConstants<Scalar, U27>,
 }
 
-#[cfg(test)]
-impl<F> NovaPoseidonConstants<F>
+impl<Scalar> HashFuncConstantsTrait<Scalar> for NovaPoseidonConstants<Scalar>
 where
-  F: PrimeField,
+  Scalar: PrimeField + PrimeFieldBits,
 {
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
-  pub fn new() -> Self {
-    let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
-    let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
+  fn new() -> Self {
+    let constants8 = PoseidonConstants::<Scalar, U8>::new_with_strength(Strength::Strengthened);
+    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
     Self {
       constants8,
       constants27,
@@ -58,21 +57,7 @@ impl<Scalar> PoseidonRO<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  #[allow(dead_code)]
-  pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
-    Self {
-      state: Vec::new(),
-      constants,
-    }
-  }
-
-  /// Absorb a new number into the state of the oracle
-  #[allow(dead_code)]
-  pub fn absorb(&mut self, e: Scalar) {
-    self.state.push(e);
-  }
-
-  fn hash_inner(&mut self) -> Scalar {
+  fn hash_inner(&self) -> Scalar {
     match self.state.len() {
       8 => {
         Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
@@ -88,10 +73,31 @@ where
       }
     }
   }
+}
+
+impl<Scalar> HashFuncTrait<Scalar> for PoseidonRO<Scalar>
+where
+  Scalar: PrimeField + PrimeFieldBits,
+{
+  type Constants = NovaPoseidonConstants<Scalar>;
+
+  #[allow(dead_code)]
+  fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
+    Self {
+      state: Vec::new(),
+      constants,
+    }
+  }
+
+  /// Absorb a new number into the state of the oracle
+  #[allow(dead_code)]
+  fn absorb(&mut self, e: Scalar) {
+    self.state.push(e);
+  }
 
   /// Compute a challenge by hashing the current state
   #[allow(dead_code)]
-  pub fn get_challenge(&mut self) -> Scalar {
+  fn get_challenge(&self) -> Scalar {
     let hash = self.hash_inner();
     // Only keep 128 bits
     let bits = hash.to_le_bits();
@@ -107,7 +113,7 @@ where
   }
 
   #[allow(dead_code)]
-  pub fn get_hash(&mut self) -> Scalar {
+  fn get_hash(&self) -> Scalar {
     let hash = self.hash_inner();
     // Only keep 250 bits
     let bits = hash.to_le_bits();
