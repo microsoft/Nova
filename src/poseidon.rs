@@ -7,7 +7,7 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U25, U27, U31, U8};
+use generic_array::typenum::{U27, U8};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -23,9 +23,7 @@ where
   F: PrimeField,
 {
   constants8: PoseidonConstants<F, U8>,
-  constants25: PoseidonConstants<F, U25>,
   constants27: PoseidonConstants<F, U27>,
-  constants31: PoseidonConstants<F, U31>,
 }
 
 #[cfg(test)]
@@ -37,14 +35,10 @@ where
   #[allow(clippy::new_without_default)]
   pub fn new() -> Self {
     let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
-    let constants25 = PoseidonConstants::<F, U25>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
-    let constants31 = PoseidonConstants::<F, U31>::new_with_strength(Strength::Strengthened);
     Self {
       constants8,
-      constants25,
       constants27,
-      constants31,
     }
   }
 }
@@ -83,17 +77,14 @@ where
       8 => {
         Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
       }
-      25 => {
-        Poseidon::<Scalar, U25>::new_with_preimage(&self.state, &self.constants.constants25).hash()
-      }
       27 => {
         Poseidon::<Scalar, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
       }
-      31 => {
-        Poseidon::<Scalar, U31>::new_with_preimage(&self.state, &self.constants.constants31).hash()
-      }
       _ => {
-        panic!("Number of elements in the RO state does not match any of the arities used in Nova")
+        panic!(
+          "Number of elements in the RO state does not match any of the arities used in Nova: {:?}",
+          self.state.len()
+        );
       }
     }
   }
@@ -171,24 +162,14 @@ where
         self.state.clone(),
         &self.constants.constants8,
       )?,
-      25 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants25,
-      )?,
       27 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
         &self.constants.constants27,
       )?,
-      31 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants31,
-      )?,
       _ => {
         panic!(
-          "Number of elements in the RO state does not match any of the arities used in Nova {}",
+          "Number of elements in the RO state does not match any of the arities used in Nova: {}",
           self.state.len()
         )
       }
@@ -246,7 +227,7 @@ mod tests {
     let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    for i in 0..31 {
+    for i in 0..27 {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
