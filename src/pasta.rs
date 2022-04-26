@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::traits::{ChallengeTrait, CompressedGroup, Group};
+use core::ops::Mul;
 use ff::Field;
 use merlin::Transcript;
 use pasta_curves::{
@@ -11,7 +12,6 @@ use pasta_curves::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rug::Integer;
-use std::{borrow::Borrow, ops::Mul};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -34,19 +34,15 @@ impl Group for pallas::Point {
   type CompressedGroupElement = PallasCompressedElementWrapper;
   type PreprocessedGroupElement = pallas::Affine;
 
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self::PreprocessedGroupElement>,
-    Self: Clone,
-  {
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
     // Unoptimized.
     scalars
       .into_iter()
-      .zip(points)
-      .map(|(scalar, point)| (*point.borrow()).mul(*scalar.borrow()))
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
       .fold(Ep::group_zero(), |acc, x| acc + x)
   }
 
@@ -125,19 +121,15 @@ impl Group for vesta::Point {
   type CompressedGroupElement = VestaCompressedElementWrapper;
   type PreprocessedGroupElement = vesta::Affine;
 
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self::PreprocessedGroupElement>,
-    Self: Clone,
-  {
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
     // Unoptimized.
     scalars
       .into_iter()
-      .zip(points)
-      .map(|(scalar, point)| (*point.borrow()).mul(*scalar.borrow()))
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
       .fold(Eq::group_zero(), |acc, x| acc + x)
   }
 

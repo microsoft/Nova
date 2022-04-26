@@ -1,7 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::{
-  borrow::Borrow,
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
 };
@@ -34,13 +33,10 @@ pub trait Group:
   type PreprocessedGroupElement;
 
   /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self::PreprocessedGroupElement>,
-    Self: Clone;
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self;
 
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
