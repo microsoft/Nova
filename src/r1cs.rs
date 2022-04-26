@@ -10,7 +10,6 @@ use itertools::concat;
 use rayon::prelude::*;
 
 /// Public parameters for a given R1CS
-#[derive(Debug)]
 pub struct R1CSGens<G: Group> {
   pub(crate) gens_W: CommitGens<G>, // TODO: avoid pub(crate)
   pub(crate) gens_E: CommitGens<G>,

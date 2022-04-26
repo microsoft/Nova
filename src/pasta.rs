@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::traits::{ChallengeTrait, CompressedGroup, Group};
+use core::ops::Mul;
 use ff::Field;
 use merlin::Transcript;
 use pasta_curves::{
@@ -11,7 +12,6 @@ use pasta_curves::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rug::Integer;
-use std::{borrow::Borrow, ops::Mul};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -28,27 +28,21 @@ impl PallasCompressedElementWrapper {
   }
 }
 
-unsafe impl Send for PallasCompressedElementWrapper {}
-unsafe impl Sync for PallasCompressedElementWrapper {}
-
 impl Group for pallas::Point {
   type Base = pallas::Base;
   type Scalar = pallas::Scalar;
   type CompressedGroupElement = PallasCompressedElementWrapper;
+  type PreprocessedGroupElement = pallas::Affine;
 
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self>,
-    Self: Clone,
-  {
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
     // Unoptimized.
     scalars
-      .into_iter()
-      .zip(points)
-      .map(|(scalar, point)| (*point.borrow()).mul(*scalar.borrow()))
+      .iter()
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
       .fold(Ep::group_zero(), |acc, x| acc + x)
   }
 
@@ -56,7 +50,7 @@ impl Group for pallas::Point {
     PallasCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
     if bytes.len() != 64 {
       None
     } else {
@@ -64,7 +58,7 @@ impl Group for pallas::Point {
       arr.copy_from_slice(&bytes[0..32]);
 
       let hash = Ep::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr))
+      Some(hash(&arr).to_affine())
     }
   }
 
@@ -121,27 +115,21 @@ impl VestaCompressedElementWrapper {
   }
 }
 
-unsafe impl Send for VestaCompressedElementWrapper {}
-unsafe impl Sync for VestaCompressedElementWrapper {}
-
 impl Group for vesta::Point {
   type Base = vesta::Base;
   type Scalar = vesta::Scalar;
   type CompressedGroupElement = VestaCompressedElementWrapper;
+  type PreprocessedGroupElement = vesta::Affine;
 
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self>,
-    Self: Clone,
-  {
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
     // Unoptimized.
     scalars
-      .into_iter()
-      .zip(points)
-      .map(|(scalar, point)| (*point.borrow()).mul(*scalar.borrow()))
+      .iter()
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
       .fold(Eq::group_zero(), |acc, x| acc + x)
   }
 
@@ -149,7 +137,7 @@ impl Group for vesta::Point {
     VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self> {
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
     if bytes.len() != 64 {
       None
     } else {
@@ -157,7 +145,7 @@ impl Group for vesta::Point {
       arr.copy_from_slice(&bytes[0..32]);
 
       let hash = Eq::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr))
+      Some(hash(&arr).to_affine())
     }
   }
 

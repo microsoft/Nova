@@ -1,7 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::{
-  borrow::Borrow,
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
 };
@@ -30,21 +29,21 @@ pub trait Group:
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
+  /// A type representing preprocessed group element
+  type PreprocessedGroupElement;
+
   /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul<I, J>(scalars: I, points: J) -> Self
-  where
-    I: IntoIterator,
-    I::Item: Borrow<Self::Scalar>,
-    J: IntoIterator,
-    J::Item: Borrow<Self>,
-    Self: Clone;
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self;
 
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
   /// Attempts to create a group element from a sequence of bytes,
   /// failing with a `None` if the supplied bytes do not encode the group element
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self>;
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);

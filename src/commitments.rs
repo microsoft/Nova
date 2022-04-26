@@ -4,6 +4,7 @@ use super::{
 };
 use core::{
   fmt::Debug,
+  marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
 use digest::{ExtendableOutput, Input};
@@ -13,7 +14,8 @@ use std::io::Read;
 
 #[derive(Debug)]
 pub struct CommitGens<G: Group> {
-  gens: Vec<G>,
+  gens: Vec<G::PreprocessedGroupElement>,
+  _p: PhantomData<G>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,14 +33,17 @@ impl<G: Group> CommitGens<G> {
     let mut shake = Shake256::default();
     shake.input(label);
     let mut reader = shake.xof_result();
-    let mut gens: Vec<G> = Vec::new();
+    let mut gens: Vec<G::PreprocessedGroupElement> = Vec::new();
     let mut uniform_bytes = [0u8; 64];
     for _ in 0..n {
       reader.read_exact(&mut uniform_bytes).unwrap();
       gens.push(G::from_uniform_bytes(&uniform_bytes).unwrap());
     }
 
-    CommitGens { gens }
+    CommitGens {
+      gens,
+      _p: PhantomData::default(),
+    }
   }
 }
 
