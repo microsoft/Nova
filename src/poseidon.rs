@@ -7,14 +7,14 @@ use bellperson::{
   },
   ConstraintSystem, SynthesisError,
 };
+use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
 use generic_array::typenum::{U27, U8};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
+  Strength,
 };
-
-use neptune::Strength;
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
@@ -43,27 +43,28 @@ where
 }
 
 /// A Poseidon-based RO to use outside circuits
-pub struct PoseidonRO<Scalar>
+pub struct PoseidonRO<Base, Scalar>
 where
+  Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
   // Internal State
-  state: Vec<Scalar>,
+  state: Vec<Base>,
   // Constants for Poseidon
-  constants: NovaPoseidonConstants<Scalar>,
+  constants: NovaPoseidonConstants<Base>,
+  _p: PhantomData<Scalar>,
 }
 
-impl<Scalar> PoseidonRO<Scalar>
+impl<Base, Scalar> PoseidonRO<Base, Scalar>
 where
+  Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
-  fn hash_inner(&self) -> Scalar {
+  fn hash_inner(&self) -> Base {
     match self.state.len() {
-      8 => {
-        Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
-      }
+      8 => Poseidon::<Base, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash(),
       27 => {
-        Poseidon::<Scalar, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
+        Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
       }
       _ => {
         panic!(
@@ -75,23 +76,25 @@ where
   }
 }
 
-impl<Scalar> HashFuncTrait<Scalar> for PoseidonRO<Scalar>
+impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
+  Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
-  type Constants = NovaPoseidonConstants<Scalar>;
+  type Constants = NovaPoseidonConstants<Base>;
 
   #[allow(dead_code)]
-  fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
+  fn new(constants: NovaPoseidonConstants<Base>) -> Self {
     Self {
       state: Vec::new(),
       constants,
+      _p: PhantomData::default(),
     }
   }
 
   /// Absorb a new number into the state of the oracle
   #[allow(dead_code)]
-  fn absorb(&mut self, e: Scalar) {
+  fn absorb(&mut self, e: Base) {
     self.state.push(e);
   }
 
@@ -220,6 +223,7 @@ where
 mod tests {
   use super::*;
   type S = pasta_curves::pallas::Scalar;
+  type B = pasta_curves::vesta::Scalar;
   type G = pasta_curves::pallas::Point;
   use crate::{bellperson::solver::SatisfyingAssignment, gadgets::utils::le_bits_to_num};
   use ff::Field;
@@ -230,7 +234,7 @@ mod tests {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = NovaPoseidonConstants::new();
-    let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());
+    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
@@ -246,6 +250,6 @@ mod tests {
     let num = ro.get_challenge();
     let num2_bits = ro_gadget.get_challenge(&mut cs).unwrap();
     let num2 = le_bits_to_num(&mut cs, num2_bits).unwrap();
-    assert_eq!(num, num2.get_value().unwrap());
+    assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
   }
 }

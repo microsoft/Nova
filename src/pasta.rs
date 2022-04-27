@@ -1,5 +1,8 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
-use crate::traits::{ChallengeTrait, CompressedGroup, Group};
+use crate::{
+  poseidon::PoseidonRO,
+  traits::{ChallengeTrait, CompressedGroup, Group},
+};
 use core::ops::Mul;
 use ff::Field;
 use merlin::Transcript;
@@ -33,6 +36,7 @@ impl Group for pallas::Point {
   type Scalar = pallas::Scalar;
   type CompressedGroupElement = PallasCompressedElementWrapper;
   type PreprocessedGroupElement = pallas::Affine;
+  type HashFunc = PoseidonRO<Self::Base, Self::Scalar>;
 
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
@@ -120,6 +124,7 @@ impl Group for vesta::Point {
   type Scalar = vesta::Scalar;
   type CompressedGroupElement = VestaCompressedElementWrapper;
   type PreprocessedGroupElement = vesta::Affine;
+  type HashFunc = PoseidonRO<Self::Base, Self::Scalar>;
 
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],

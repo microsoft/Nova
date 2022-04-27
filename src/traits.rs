@@ -32,6 +32,10 @@ pub trait Group:
   /// A type representing preprocessed group element
   type PreprocessedGroupElement;
 
+  /// A type that represents a hash function that consumes elements
+  /// from the base field and squeezes out elements of the scalar field
+  type HashFunc: HashFuncTrait<Self::Base, Self::Scalar>;
+
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
@@ -71,15 +75,15 @@ pub trait ChallengeTrait {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait HashFuncTrait<Scalar> {
+pub trait HashFuncTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Scalar>;
+  type Constants: HashFuncConstantsTrait<Base>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
 
   /// Adds a scalar to the internal state
-  fn absorb(&mut self, scalar: Scalar);
+  fn absorb(&mut self, e: Base);
 
   /// Returns a random challenge by hashing the internal state
   fn get_challenge(&self) -> Scalar;
@@ -89,7 +93,7 @@ pub trait HashFuncTrait<Scalar> {
 }
 
 /// A helper trait that defines the constants associated with a hash function
-pub trait HashFuncConstantsTrait<Scalar> {
+pub trait HashFuncConstantsTrait<Base> {
   /// produces constants/parameters associated with the hash function
   fn new() -> Self;
 }
