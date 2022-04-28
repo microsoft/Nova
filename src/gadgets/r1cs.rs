@@ -3,7 +3,7 @@ use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
-      alloc_bignat_constant, alloc_scalar_as_base, conditionally_select,
+      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
       conditionally_select_bignat, le_bits_to_num,
     },
   },
@@ -158,6 +158,41 @@ where
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
+  }
+
+  /// Allocates the R1CS Instance as a RelaxedR1CSInstance in the circuit.
+  /// E = 0, u = 1
+  pub fn from_r1cs_instance<CS: ConstraintSystem<<G as Group>::Base>>(
+    mut cs: CS,
+    inst: AllocatedR1CSInstance<G>,
+    limb_width: usize,
+    n_limbs: usize,
+  ) -> Result<Self, SynthesisError> {
+    let E = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
+
+    let u = alloc_one(cs.namespace(|| "one"))?;
+
+    let X0 = BigNat::from_num(
+      cs.namespace(|| "allocate X0 from relaxed r1cs"),
+      Num::from(inst.X0.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+
+    let X1 = BigNat::from_num(
+      cs.namespace(|| "allocate X1 from relaxed r1cs"),
+      Num::from(inst.X1.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+
+    Ok(AllocatedRelaxedR1CSInstance {
+      W: inst.W,
+      E,
+      u,
+      X0,
+      X1,
+    })
   }
 
   /// Absorb the provided instance in the RO

@@ -32,14 +32,16 @@ use ff::Field;
 pub struct NIFSVerifierCircuitParams {
   limb_width: usize,
   n_limbs: usize,
+  is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
 impl NIFSVerifierCircuitParams {
   #[allow(dead_code)]
-  pub fn new(limb_width: usize, n_limbs: usize) -> Self {
+  pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
       n_limbs,
+      is_primary_circuit,
     }
   }
 }
@@ -178,12 +180,24 @@ where
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
+    u: AllocatedR1CSInstance<G>,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
-    let U_default: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::default(
-      cs.namespace(|| "Allocate U_default"),
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;
+    let U_default: AllocatedRelaxedR1CSInstance<G> = if self.params.is_primary_circuit {
+      // The primary circuit just returns the default R1CS instance
+      AllocatedRelaxedR1CSInstance::default(
+        cs.namespace(|| "Allocate U_default"),
+        self.params.limb_width,
+        self.params.n_limbs,
+      )?
+    } else {
+      // The secondary circuit returns the incoming R1CS instance
+      AllocatedRelaxedR1CSInstance::from_r1cs_instance(
+        cs.namespace(|| "Allocate U_default"),
+        u,
+        self.params.limb_width,
+        self.params.n_limbs,
+      )?
+    };
     Ok(U_default)
   }
 
@@ -250,7 +264,7 @@ where
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?; //TODO: maybe optimize this?
 
     // Synthesize the circuit for the base case and get the new running instance
-    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"))?;
+    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
@@ -362,13 +376,14 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     // We experiment with 8 limbs of 32 bits each
-    let params = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS);
+    let params_primary = NIFSVerifierCircuitParams::new(32, 8, true);
+    let params_secondary = NIFSVerifierCircuitParams::new(32, 8, false);
     // The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
-        params.clone(),
+        params_primary.clone(),
         None,
         TestCircuit {
           _p: Default::default(),
@@ -390,12 +405,12 @@ mod tests {
       NovaPoseidonConstants::new();
     let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
       NIFSVerifierCircuit::new(
-        params.clone(),
+        params_secondary.clone(),
         None,
         TestCircuit {
           _p: Default::default(),
         },
-        poseidon_constants2,
+        poseidon_constants2.clone(),
       );
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -406,35 +421,64 @@ mod tests {
       cs.num_constraints()
     );
 
-    let zero = <<G2 as Group>::Base as Field>::zero();
-    let zero_fq = <<G2 as Group>::Scalar as Field>::zero();
-    let T = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
+    let zero1 = <<G2 as Group>::Base as Field>::zero();
+    let zero1_fq = <<G2 as Group>::Scalar as Field>::zero();
+    let T1 = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
     let w = vec![<G2 as Group>::Scalar::zero()].commit(&gens2.gens_E);
-    // Now get an assignment
-    let mut cs: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+    // Now execute the first fold!
+    let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let inputs1: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       <<G2 as Group>::Base as Field>::zero(), // TODO: provide real inputs
-      zero,                                   // TODO: provide real inputs
-      zero,                                   // TODO: provide real inputs
-      zero,                                   // TODO: provide real inputs
+      zero1,                                  // TODO: provide real inputs
+      zero1,                                  // TODO: provide real inputs
+      zero1,                                  // TODO: provide real inputs
       RelaxedR1CSInstance::default(&gens2, &shape2),
-      R1CSInstance::new(&shape2, &w, &[zero_fq, zero_fq]).unwrap(),
-      T, // TODO: provide real inputs
+      R1CSInstance::new(&shape2, &w, &[zero1_fq, zero1_fq]).unwrap(),
+      T1, // TODO: provide real inputs
     );
 
-    let circuit: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
-        params,
-        Some(inputs),
+        params_primary,
+        Some(inputs1),
         TestCircuit {
           _p: Default::default(),
         },
         poseidon_constants1,
       );
-    let _ = circuit.synthesize(&mut cs);
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
+    let _ = circuit1.synthesize(&mut cs1);
+    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
 
     // Make sure that this is satisfiable
-    assert!(shape1.is_sat(&gens1, &inst, &witness).is_ok());
+    assert!(shape1.is_sat(&gens1, &inst1, &witness1).is_ok());
+
+    // Execute the second fold
+    let zero2 = <<G1 as Group>::Base as Field>::zero();
+    let T2 = vec![<G1 as Group>::Scalar::zero()].commit(&gens1.gens_E);
+    let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let inputs2: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+      <<G1 as Group>::Base as Field>::zero(), // TODO: provide real inputs
+      zero2,                                  // TODO: provide real inputs
+      zero2,                                  // TODO: provide real inputs
+      zero2,                                  // TODO: provide real inputs
+      RelaxedR1CSInstance::default(&gens1, &shape1),
+      inst1,
+      T2, // TODO: provide real inputs
+    );
+
+    let circuit: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+      NIFSVerifierCircuit::new(
+        params_secondary,
+        Some(inputs2),
+        TestCircuit {
+          _p: Default::default(),
+        },
+        poseidon_constants2,
+      );
+    let _ = circuit.synthesize(&mut cs2);
+    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &gens2).unwrap();
+
+    // Make sure that this is satisfiable
+    assert!(shape2.is_sat(&gens2, &inst2, &witness2).is_ok());
   }
 }
