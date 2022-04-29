@@ -213,8 +213,8 @@ where
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
-      u.X0.clone(),
-      hash,
+      &u.X0,
+      &hash,
     )?;
 
     // Run NIFS Verifier
@@ -246,7 +246,7 @@ where
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), i.clone(), zero)?; //TODO: maybe optimize this?
+    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?; //TODO: maybe optimize this?
 
     // Synthesize the circuit for the base case and get the new running instance
     let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"))?;
