@@ -130,8 +130,8 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
 /// Check that two numbers are equal and return a bit
 pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
-  a: AllocatedNum<F>,
-  b: AllocatedNum<F>,
+  a: &AllocatedNum<F>,
+  b: &AllocatedNum<F>,
 ) -> Result<AllocatedBit, SynthesisError> {
   // Allocate and constrain `r`: result boolean bit.
   // It equals `true` if `a` equals `b`, `false` otherwise
