@@ -24,7 +24,15 @@ use r1cs::{
 };
 use traits::{ChallengeTrait, Group};
 
+#[cfg(feature = "serde-derive")]
+use serde::{Deserialize, Serialize};
+
 /// A SNARK that holds the proof of a step of an incremental computation
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 pub struct StepSNARK<G: Group> {
   comm_T: CompressedCommitment<G::CompressedGroupElement>,
   _p: PhantomData<G>,
@@ -113,6 +121,11 @@ impl<G: Group> StepSNARK<G> {
 }
 
 /// A SNARK that holds the proof of the final step of an incremental computation
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 pub struct FinalSNARK<G: Group> {
   W: RelaxedR1CSWitness<G>,
 }

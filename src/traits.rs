@@ -8,7 +8,11 @@ use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
 use rug::Integer;
 
+#[cfg(feature = "serde-derive")]
+use serde::{Deserialize, Serialize};
+
 /// Represents an element of a group
+#[cfg(not(feature = "serde-derive"))]
 pub trait Group:
   Clone
   + Copy
@@ -52,10 +56,75 @@ pub trait Group:
   fn get_order() -> Integer;
 }
 
+/// Represents an element of a group
+#[cfg(feature = "serde-derive")]
+pub trait Group:
+  Clone
+  + Copy
+  + Debug
+  + Eq
+  + Sized
+  + GroupOps
+  + GroupOpsOwned
+  + ScalarMul<<Self as Group>::Scalar>
+  + ScalarMulOwned<<Self as Group>::Scalar>
+  + Serialize
+  + for<'de> Deserialize<'de>
+{
+  /// A type representing an element of the base field of the group
+  type Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type representing an element of the scalar field of the group
+  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type representing the compressed version of the group element
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self>
+    + Serialize
+    + for<'de> Deserialize<'de>;
+
+  /// A type representing preprocessed group element
+  type PreprocessedGroupElement: Serialize + for<'de> Deserialize<'de>;
+
+  /// A method to compute a multiexponentation
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self;
+
+  /// Compresses the group element
+  fn compress(&self) -> Self::CompressedGroupElement;
+
+  /// Attempts to create a group element from a sequence of bytes,
+  /// failing with a `None` if the supplied bytes do not encode the group element
+  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
+
+  /// Returns the affine coordinates (x, y, infinty) for the point
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+
+  /// Returns the order of the group as a big integer
+  fn get_order() -> Integer;
+}
+
 /// Represents a compressed version of a group element
+#[cfg(not(feature = "serde-derive"))]
 pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + 'static {
   /// A type that holds the decompressed version of the compressed group element
   type GroupElement: Group;
+
+  /// Decompresses the compressed group element
+  fn decompress(&self) -> Option<Self::GroupElement>;
+
+  /// Returns a byte array representing the compressed group element
+  fn as_bytes(&self) -> &[u8];
+}
+
+/// Represents a compressed version of a group element
+#[cfg(feature = "serde-derive")]
+pub trait CompressedGroup:
+  Clone + Copy + Debug + Eq + Sized + Send + Sync + 'static + Serialize + for<'de> Deserialize<'de>
+{
+  /// A type that holds the decompressed version of the compressed group element
+  type GroupElement: Group + Serialize + for<'de> Deserialize<'de>;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;

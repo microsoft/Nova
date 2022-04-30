@@ -12,17 +12,35 @@ use merlin::Transcript;
 use sha3::Shake256;
 use std::io::Read;
 
+#[cfg(feature = "serde-derive")]
+use serde::{Deserialize, Serialize};
+
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 #[derive(Debug)]
 pub struct CommitGens<G: Group> {
   gens: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
 }
 
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Commitment<G: Group> {
   pub(crate) comm: G,
 }
 
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompressedCommitment<C: CompressedGroup> {
   comm: C,

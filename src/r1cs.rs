@@ -9,13 +9,22 @@ use ff::Field;
 use itertools::concat;
 use rayon::prelude::*;
 
+#[cfg(feature = "serde-derive")]
+use serde::{Deserialize, Serialize};
+
 /// Public parameters for a given R1CS
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 pub struct R1CSGens<G: Group> {
   pub(crate) gens_W: CommitGens<G>, // TODO: avoid pub(crate)
   pub(crate) gens_E: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
+#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSShape<G: Group> {
   num_cons: usize,
@@ -27,12 +36,18 @@ pub struct R1CSShape<G: Group> {
 }
 
 /// A type that holds a witness for a given R1CS instance
+#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
 
 /// A type that holds an R1CS instance
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
@@ -40,6 +55,7 @@ pub struct R1CSInstance<G: Group> {
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
+#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
@@ -47,6 +63,11 @@ pub struct RelaxedR1CSWitness<G: Group> {
 }
 
 /// A type that holds a Relaxed R1CS instance
+#[cfg_attr(
+  feature = "serde-derive",
+  derive(Serialize, Deserialize),
+  serde(bound = "")
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,

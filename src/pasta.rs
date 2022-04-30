@@ -13,9 +13,13 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rug::Integer;
 
+#[cfg(feature = "serde-derive")]
+use serde::{Deserialize, Serialize};
+
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the pallas curve
+#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PallasCompressedElementWrapper {
   repr: [u8; 32],
@@ -103,6 +107,7 @@ impl CompressedGroup for PallasCompressedElementWrapper {
 //////////////////////////////////////Vesta////////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the vesta curve
+#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VestaCompressedElementWrapper {
   repr: [u8; 32],
