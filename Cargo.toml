@@ -25,7 +25,7 @@ subtle = "2.4"
 pasta_curves = "0.3.1"
 neptune = "6.1"
 generic-array = "0.14.4"
-bellperson-nonnative = { version = "0.2.1", default-features = false, features = ["wasm"] }
+bellperson-nonnative = { version = "0.2.1", default-features = false }
 rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
 
 [features]
