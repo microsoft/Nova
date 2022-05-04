@@ -6,7 +6,7 @@ use core::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
-use rug::Integer;
+use num_bigint::BigInt;
 
 /// Represents an element of a group
 pub trait Group:
@@ -49,7 +49,7 @@ pub trait Group:
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
 
   /// Returns the order of the group as a big integer
-  fn get_order() -> Integer;
+  fn get_order() -> BigInt;
 }
 
 /// Represents a compressed version of a group element
