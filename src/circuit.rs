@@ -335,6 +335,7 @@ mod tests {
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     commitments::CommitTrait,
+    traits::HashFuncConstantsTrait,
   };
   use ff::PrimeField;
   use std::marker::PhantomData;
