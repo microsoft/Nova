@@ -59,6 +59,9 @@ impl<G: Group> StepSNARK<G> {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
 
+    // append S to the transcript
+    S.append_to_transcript(b"S", transcript);
+
     // append U1 and U2 to transcript
     U1.append_to_transcript(b"U1", transcript);
     U2.append_to_transcript(b"U2", transcript);
@@ -95,12 +98,16 @@ impl<G: Group> StepSNARK<G> {
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
+    S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
     transcript: &mut Transcript,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
+
+    // append S to the transcript
+    S.append_to_transcript(b"S", transcript);
 
     // append U1 and U2 to transcript
     U1.append_to_transcript(b"U1", transcript);
@@ -240,7 +247,7 @@ mod tests {
 
     // verify the step SNARK with U1 as the first incoming instance
     let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
-    let res = step_snark.verify(&r_U, U1, &mut verifier_transcript);
+    let res = step_snark.verify(shape, &r_U, U1, &mut verifier_transcript);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -256,7 +263,7 @@ mod tests {
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(&r_U, U2, &mut verifier_transcript);
+    let res = step_snark.verify(shape, &r_U, U2, &mut verifier_transcript);
     assert!(res.is_ok());
     let U = res.unwrap();
 

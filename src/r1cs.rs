@@ -5,10 +5,12 @@ use super::{
   errors::NovaError,
   traits::{AppendToTranscriptTrait, Group},
 };
-use ff::Field;
+use ff::{Field, PrimeField};
+use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
@@ -290,6 +292,46 @@ impl<G: Group> R1CSShape<G> {
     let comm_T = T.commit(&gens.gens_E).compress();
 
     Ok((T, comm_T))
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct R1CSShapeSerialized {
+  num_cons: usize,
+  num_vars: usize,
+  num_io: usize,
+  A: Vec<(usize, usize, Vec<u8>)>,
+  B: Vec<(usize, usize, Vec<u8>)>,
+  C: Vec<(usize, usize, Vec<u8>)>,
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    let shape_serialized = R1CSShapeSerialized {
+      num_cons: self.num_cons,
+      num_vars: self.num_vars,
+      num_io: self.num_io,
+      A: self
+        .A
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      B: self
+        .B
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      C: self
+        .C
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+    };
+
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
+    let shape_bytes = encoder.finish().unwrap();
+    transcript.append_message(b"R1CSShape", &shape_bytes);
   }
 }
 
