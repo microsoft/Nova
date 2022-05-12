@@ -11,6 +11,7 @@ use itertools::concat;
 use merlin::Transcript;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
@@ -328,10 +329,17 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
         .collect(),
     };
 
+    // obtain a vector of bytes representing the R1CS shape
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
     let shape_bytes = encoder.finish().unwrap();
-    transcript.append_message(b"R1CSShape", &shape_bytes);
+
+    // convert shape_bytes into a short digest
+    let mut hasher = Sha3_256::new();
+    hasher.input(&shape_bytes);
+    let shape_digest = hasher.result();
+
+    transcript.append_message(b"R1CSShape", &shape_digest);
   }
 }
 
