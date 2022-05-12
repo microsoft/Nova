@@ -3,10 +3,11 @@
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
   errors::NovaError,
-  traits::Group,
+  traits::{AppendToTranscriptTrait, Group},
 };
 use ff::Field;
 use itertools::concat;
+use merlin::Transcript;
 use rayon::prelude::*;
 
 /// Public parameters for a given R1CS
@@ -326,6 +327,13 @@ impl<G: Group> R1CSInstance<G> {
   }
 }
 
+impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+  }
+}
+
 impl<G: Group> RelaxedR1CSWitness<G> {
   /// Produces a default RelaxedR1CSWitness given an R1CSShape
   pub fn default(S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
@@ -425,5 +433,14 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       Y_last: U2.X[U2.X.len() / 2..].to_owned(),
       counter: self.counter + 1,
     })
+  }
+}
+
+impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.comm_E.append_to_transcript(b"comm_E", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+    self.u.append_to_transcript(b"u", transcript);
   }
 }

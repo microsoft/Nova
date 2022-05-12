@@ -16,13 +16,13 @@ pub mod traits;
 
 use std::marker::PhantomData;
 
-use commitments::{AppendToTranscriptTrait, CompressedCommitment};
+use commitments::CompressedCommitment;
 use errors::NovaError;
 use merlin::Transcript;
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
-use traits::{ChallengeTrait, Group};
+use traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 
 /// A SNARK that holds the proof of a step of an incremental computation
 pub struct StepSNARK<G: Group> {
@@ -58,6 +58,10 @@ impl<G: Group> StepSNARK<G> {
   > {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
+
+    // append U1 and U2 to transcript
+    U1.append_to_transcript(b"U1", transcript);
+    U2.append_to_transcript(b"U2", transcript);
 
     // compute a commitment to the cross-term
     let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
@@ -97,6 +101,10 @@ impl<G: Group> StepSNARK<G> {
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
+
+    // append U1 and U2 to transcript
+    U1.append_to_transcript(b"U1", transcript);
+    U2.append_to_transcript(b"U2", transcript);
 
     // append `comm_T` to the transcript and obtain a challenge
     self.comm_T.append_to_transcript(b"comm_T", transcript);

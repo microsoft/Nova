@@ -1,6 +1,6 @@
 use super::{
   errors::NovaError,
-  traits::{CompressedGroup, Group},
+  traits::{AppendToTranscriptTrait, CompressedGroup, Group},
 };
 use core::{
   fmt::Debug,
@@ -78,10 +78,6 @@ impl<G: Group> CommitTrait<G> for [G::Scalar] {
       comm: G::vartime_multiscalar_mul(self, &gens.gens[..self.len()]),
     }
   }
-}
-
-pub trait AppendToTranscriptTrait {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
 }
 
 impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
