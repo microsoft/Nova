@@ -140,16 +140,16 @@ pub trait StepCircuit<F: PrimeField> {
   ) -> Result<AllocatedNum<F>, SynthesisError>;
 }
 
-impl<F: PrimeField> AppendToTranscriptTrait for [F] {
+impl<F: PrimeField> AppendToTranscriptTrait for F {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
-    for i in 0..self.len() {
-      transcript.append_message(label, &self[i].to_repr().as_ref());
-    }
+    transcript.append_message(label, self.to_repr().as_ref());
   }
 }
 
-impl<F: PrimeField> AppendToTranscriptTrait for F {
+impl<F: PrimeField> AppendToTranscriptTrait for [F] {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
-    transcript.append_message(label, &self.to_repr().as_ref());
+    for s in self {
+      s.append_to_transcript(label, transcript);
+    }
   }
 }
