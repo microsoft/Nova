@@ -3,11 +3,14 @@
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
   errors::NovaError,
-  traits::Group,
+  traits::{AppendToTranscriptTrait, Group},
 };
-use ff::Field;
+use ff::{Field, PrimeField};
+use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
+use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
@@ -292,6 +295,46 @@ impl<G: Group> R1CSShape<G> {
   }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct R1CSShapeSerialized {
+  num_cons: usize,
+  num_vars: usize,
+  num_io: usize,
+  A: Vec<(usize, usize, Vec<u8>)>,
+  B: Vec<(usize, usize, Vec<u8>)>,
+  C: Vec<(usize, usize, Vec<u8>)>,
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    let shape_serialized = R1CSShapeSerialized {
+      num_cons: self.num_cons,
+      num_vars: self.num_vars,
+      num_io: self.num_io,
+      A: self
+        .A
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      B: self
+        .B
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      C: self
+        .C
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+    };
+
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
+    let shape_bytes = encoder.finish().unwrap();
+    transcript.append_message(b"R1CSShape", &shape_bytes);
+  }
+}
+
 impl<G: Group> R1CSWitness<G> {
   /// A method to create a witness object using a vector of scalars
   pub fn new(S: &R1CSShape<G>, W: &[G::Scalar]) -> Result<R1CSWitness<G>, NovaError> {
@@ -323,6 +366,13 @@ impl<G: Group> R1CSInstance<G> {
         X: X.to_owned(),
       })
     }
+  }
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.X.append_to_transcript(b"X", transcript);
   }
 }
 
@@ -425,5 +475,14 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       Y_last: U2.X[U2.X.len() / 2..].to_owned(),
       counter: self.counter + 1,
     })
+  }
+}
+
+impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.comm_E.append_to_transcript(b"comm_E", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+    self.u.append_to_transcript(b"u", transcript);
   }
 }

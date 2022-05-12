@@ -68,6 +68,12 @@ pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + 'st
   fn as_bytes(&self) -> &[u8];
 }
 
+/// A helper trait to append different types to the transcript
+pub trait AppendToTranscriptTrait {
+  /// appends the value to the transcript under the provided label
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
+}
+
 /// A helper trait to generate challenges using a transcript object
 pub trait ChallengeTrait {
   /// Returns a Scalar representing the challenge using the transcript
@@ -132,4 +138,18 @@ pub trait StepCircuit<F: PrimeField> {
     cs: &mut CS,
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError>;
+}
+
+impl<F: PrimeField> AppendToTranscriptTrait for F {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    transcript.append_message(label, self.to_repr().as_ref());
+  }
+}
+
+impl<F: PrimeField> AppendToTranscriptTrait for [F] {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    for s in self {
+      s.append_to_transcript(label, transcript);
+    }
+  }
 }

@@ -27,6 +27,9 @@ neptune = "6.1"
 generic-array = "0.14.4"
 bellperson-nonnative = { version = "0.2.1", default-features = false, features = ["wasm"] }
 rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.2.1"
+flate2 = "1.0"
 
 [features]
 default = [ "bellperson/default", "bellperson-nonnative/default" ]
