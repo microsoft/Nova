@@ -203,7 +203,7 @@ where
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
-    ro.absorb(params);
+    ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(z_0);
     ro.absorb(z_i);
@@ -220,7 +220,7 @@ where
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
-      hash, // hash of the (params, U, i, z0, zi)
+      params,
       u,
       T,
       self.poseidon_constants.clone(),

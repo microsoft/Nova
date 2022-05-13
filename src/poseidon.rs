@@ -12,7 +12,7 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U27, U9};
+use generic_array::typenum::{U27, U32};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -25,8 +25,8 @@ pub struct NovaPoseidonConstants<Scalar>
 where
   Scalar: PrimeField,
 {
-  constants9: PoseidonConstants<Scalar, U9>,
   constants27: PoseidonConstants<Scalar, U27>,
+  constants32: PoseidonConstants<Scalar, U32>,
 }
 
 impl<Scalar> HashFuncConstantsTrait<Scalar> for NovaPoseidonConstants<Scalar>
@@ -36,11 +36,11 @@ where
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants9 = PoseidonConstants::<Scalar, U9>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
+    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Strengthened);
     Self {
-      constants9,
       constants27,
+      constants32,
     }
   }
 }
@@ -65,9 +65,11 @@ where
 {
   fn hash_inner(&self) -> Base {
     match self.state.len() {
-      9 => Poseidon::<Base, U9>::new_with_preimage(&self.state, &self.constants.constants9).hash(),
       27 => {
         Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
+      }
+      32 => {
+        Poseidon::<Base, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
       }
       _ => {
         panic!(
@@ -169,15 +171,15 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      9 => poseidon_hash(
-        cs.namespace(|| "Posideon hash"),
-        self.state.clone(),
-        &self.constants.constants9,
-      )?,
       27 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
         &self.constants.constants27,
+      )?,
+      32 => poseidon_hash(
+        cs.namespace(|| "Posideon hash"),
+        self.state.clone(),
+        &self.constants.constants32,
       )?,
       _ => {
         panic!(
