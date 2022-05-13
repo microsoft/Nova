@@ -10,7 +10,7 @@ use bellperson::{
 };
 use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
 use ff::{Field, PrimeField, PrimeFieldBits};
-use rug::Integer;
+use num_bigint::BigInt;
 
 /// Gets as input the little indian representation of a number and spits out the number
 #[allow(dead_code)]
@@ -102,7 +102,7 @@ where
 /// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
-  val: &Integer,
+  val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<BigNat<F>, SynthesisError> {
