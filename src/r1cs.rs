@@ -2,6 +2,7 @@
 #![allow(clippy::type_complexity)]
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
+  constants::NUM_HASH_BITS,
   errors::NovaError,
   traits::{AppendToTranscriptTrait, Group},
 };
@@ -339,7 +340,29 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
     hasher.input(&shape_bytes);
     let shape_digest = hasher.result();
 
-    transcript.append_message(b"R1CSShape", &shape_digest);
+    let shape_digest_trun = {
+      // truncate the digest to 250 bits
+      let bv = (0..NUM_HASH_BITS)
+        .map(|i| {
+          let (byte_pos, bit_pos) = (i / 8, i % 8);
+          let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
+          bit == 1
+        })
+        .collect::<Vec<bool>>();
+
+      // turn the bit vector into a scalar
+      let mut res = G::Scalar::zero();
+      let mut coeff = G::Scalar::one();
+      for bit in bv.into_iter() {
+        if bit {
+          res += coeff;
+        }
+        coeff += coeff;
+      }
+      res
+    };
+
+    shape_digest_trun.append_to_transcript(b"R1CSShape", transcript);
   }
 }
 

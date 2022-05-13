@@ -3,10 +3,10 @@
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
 
-mod commitments;
-
 pub mod bellperson;
 mod circuit;
+mod commitments;
+mod constants;
 pub mod errors;
 pub mod gadgets;
 pub mod pasta;
@@ -14,14 +14,13 @@ mod poseidon;
 pub mod r1cs;
 pub mod traits;
 
-use std::marker::PhantomData;
-
 use commitments::CompressedCommitment;
 use errors::NovaError;
 use merlin::Transcript;
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use std::marker::PhantomData;
 use traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 
 /// A SNARK that holds the proof of a step of an incremental computation

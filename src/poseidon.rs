@@ -1,5 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use crate::traits::{HashFuncConstantsTrait, HashFuncTrait};
+use super::{
+  constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS},
+  traits::{HashFuncConstantsTrait, HashFuncTrait},
+};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -102,11 +105,11 @@ where
   #[allow(dead_code)]
   fn get_challenge(&self) -> Scalar {
     let hash = self.hash_inner();
-    // Only keep 128 bits
+    // Only keep NUM_CHALLENGE_BITS bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
-    for bit in bits[0..128].into_iter() {
+    for bit in bits[0..NUM_CHALLENGE_BITS].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -118,11 +121,11 @@ where
   #[allow(dead_code)]
   fn get_hash(&self) -> Scalar {
     let hash = self.hash_inner();
-    // Only keep 250 bits
+    // Only keep NUM_HASH_BITS bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
-    for bit in bits[0..250].into_iter() {
+    for bit in bits[0..NUM_HASH_BITS].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -204,8 +207,7 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    // Only keep 128 bits
-    Ok(bits[..128].into())
+    Ok(bits[..NUM_CHALLENGE_BITS].into())
   }
 
   #[allow(dead_code)]
@@ -214,8 +216,7 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    // Only keep 250 bits
-    Ok(bits[..250].into())
+    Ok(bits[..NUM_HASH_BITS].into())
   }
 }
 
