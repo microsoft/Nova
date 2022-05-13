@@ -99,6 +99,20 @@ where
   })
 }
 
+/// interepret scalar as base
+pub fn scalar_as_base<G: Group>(input: G::Scalar) -> G::Base {
+  let input_bits = input.to_le_bits();
+  let mut mult = G::Base::one();
+  let mut val = G::Base::zero();
+  for bit in input_bits {
+    if bit {
+      val += mult;
+    }
+    mult = mult + mult;
+  }
+  val
+}
+
 /// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

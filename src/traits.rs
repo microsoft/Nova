@@ -74,6 +74,12 @@ pub trait AppendToTranscriptTrait {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
 }
 
+/// A helper trait to absorb different objects in RO
+pub trait AbsorbInROTrait<G: Group> {
+  /// Absorbs the value in the provided RO
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc);
+}
+
 /// A helper trait to generate challenges using a transcript object
 pub trait ChallengeTrait {
   /// Returns a Scalar representing the challenge using the transcript
