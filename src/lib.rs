@@ -66,7 +66,7 @@ impl<G: Group> StepSNARK<G> {
     let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
 
     // append `comm_T` to the transcript and obtain a challenge
-    comm_T.decompress()?.absorb_in_ro(&mut ro);
+    comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
     let r = ro.get_challenge();
@@ -80,7 +80,7 @@ impl<G: Group> StepSNARK<G> {
     // return the folded instance and witness
     Ok((
       StepSNARK {
-        comm_T,
+        comm_T: comm_T.compress(),
         _p: Default::default(),
       },
       (U, W),
@@ -112,13 +112,14 @@ impl<G: Group> StepSNARK<G> {
     U2.absorb_in_ro(&mut ro);
 
     // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.decompress()?.absorb_in_ro(&mut ro);
+    let comm_T = self.comm_T.decompress()?;
+    comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
     let r = ro.get_challenge();
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r)?;
 
     // return the folded instance
     Ok(U)

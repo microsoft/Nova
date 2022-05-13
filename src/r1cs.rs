@@ -1,7 +1,7 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
 use super::{
-  commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
+  commitments::{CommitGens, CommitTrait, Commitment},
   constants::NUM_HASH_BITS,
   errors::NovaError,
   gadgets::utils::scalar_as_base,
@@ -256,13 +256,7 @@ impl<G: Group> R1CSShape<G> {
     W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-  ) -> Result<
-    (
-      Vec<G::Scalar>,
-      CompressedCommitment<G::CompressedGroupElement>,
-    ),
-    NovaError,
-  > {
+  ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
     let (AZ_1, BZ_1, CZ_1) = {
       let Z1 = concat(vec![W1.W.clone(), vec![U1.u], U1.X.clone()]);
       self.multiply_vec(&Z1)?
@@ -292,7 +286,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens_E).compress();
+    let comm_T = T.commit(&gens.gens_E);
 
     Ok((T, comm_T))
   }
@@ -487,10 +481,9 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   pub fn fold(
     &self,
     U2: &R1CSInstance<G>,
-    comm_T: &CompressedCommitment<G::CompressedGroupElement>,
+    comm_T: &Commitment<G>,
     r: &G::Scalar,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
-    let comm_T_unwrapped = comm_T.decompress()?;
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
     let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
@@ -515,7 +508,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
     let comm_W = comm_W_1 + comm_W_2 * r;
-    let comm_E = *comm_E_1 + comm_T_unwrapped * *r;
+    let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
 
     Ok(RelaxedR1CSInstance {
