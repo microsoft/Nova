@@ -342,12 +342,11 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
 
     let shape_digest_trun = {
       // truncate the digest to 250 bits
-      let bv = (0..NUM_HASH_BITS)
-        .map(|i| {
-          let (byte_pos, bit_pos) = (i / 8, i % 8);
-          let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
-          bit == 1
-        });
+      let bv = (0..NUM_HASH_BITS).map(|i| {
+        let (byte_pos, bit_pos) = (i / 8, i % 8);
+        let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
+        bit == 1
+      });
 
       // turn the bit vector into a scalar
       let mut res = G::Scalar::zero();
