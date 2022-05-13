@@ -12,7 +12,7 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U27, U8};
+use generic_array::typenum::{U27, U9};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -25,7 +25,7 @@ pub struct NovaPoseidonConstants<Scalar>
 where
   Scalar: PrimeField,
 {
-  constants8: PoseidonConstants<Scalar, U8>,
+  constants9: PoseidonConstants<Scalar, U9>,
   constants27: PoseidonConstants<Scalar, U27>,
 }
 
@@ -36,10 +36,10 @@ where
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants8 = PoseidonConstants::<Scalar, U8>::new_with_strength(Strength::Strengthened);
+    let constants9 = PoseidonConstants::<Scalar, U9>::new_with_strength(Strength::Strengthened);
     let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
     Self {
-      constants8,
+      constants9,
       constants27,
     }
   }
@@ -65,7 +65,7 @@ where
 {
   fn hash_inner(&self) -> Base {
     match self.state.len() {
-      8 => Poseidon::<Base, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash(),
+      9 => Poseidon::<Base, U9>::new_with_preimage(&self.state, &self.constants.constants9).hash(),
       27 => {
         Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
       }
@@ -169,10 +169,10 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      8 => poseidon_hash(
+      9 => poseidon_hash(
         cs.namespace(|| "Posideon hash"),
         self.state.clone(),
-        &self.constants.constants8,
+        &self.constants.constants9,
       )?,
       27 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),

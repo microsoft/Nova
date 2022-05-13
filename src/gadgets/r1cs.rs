@@ -212,9 +212,11 @@ where
   }
 
   /// Folds self with a relaxed r1cs instance and returns the result
+  #[allow(clippy::too_many_arguments)]
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
+    hash: AllocatedNum<G::Base>, // hash of (params, running_instance, i, z0, zi)
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
@@ -223,6 +225,7 @@ where
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants);
+    ro.absorb(hash);
     u.absorb_in_ro(&mut ro);
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
