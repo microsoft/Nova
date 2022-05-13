@@ -9,11 +9,12 @@ use nova_snark::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use rug::Integer;
+use num_bigint::BigInt;
+use num_traits::Num as OtherNum;
 
 fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
-  a_val: &Integer,
+  a_val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<(), SynthesisError> {
@@ -42,11 +43,11 @@ fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
 #[allow(clippy::too_many_arguments)]
 fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
-  a_val: &Integer,
-  b_val: &Integer,
-  m_val: &Integer,
-  q_val: &Integer,
-  r_val: &Integer,
+  a_val: &BigInt,
+  b_val: &BigInt,
+  m_val: &BigInt,
+  q_val: &BigInt,
+  r_val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<(), SynthesisError> {
@@ -93,9 +94,9 @@ fn synthesize_mult_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
 
 fn synthesize_add<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
-  a_val: &Integer,
-  b_val: &Integer,
-  c_val: &Integer,
+  a_val: &BigInt,
+  b_val: &BigInt,
+  c_val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<(), SynthesisError> {
@@ -126,10 +127,10 @@ fn synthesize_add<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
 
 fn synthesize_add_mod<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,
-  a_val: &Integer,
-  b_val: &Integer,
-  c_val: &Integer,
-  m_val: &Integer,
+  a_val: &BigInt,
+  b_val: &BigInt,
+  c_val: &BigInt,
+  m_val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<(), SynthesisError> {
@@ -170,27 +171,27 @@ fn test_mult_mod() {
   type G = pasta_curves::pallas::Point;
 
   // Set the inputs
-  let a_val = Integer::from_str_radix(
+  let a_val = BigInt::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
   )
   .unwrap();
-  let b_val = Integer::from_str_radix(
+  let b_val = BigInt::from_str_radix(
     "87673389408848523602668121701204553693362841135953267897017930941776218798802",
     10,
   )
   .unwrap();
-  let m_val = Integer::from_str_radix(
+  let m_val = BigInt::from_str_radix(
     "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
     16,
   )
   .unwrap();
-  let q_val = Integer::from_str_radix(
+  let q_val = BigInt::from_str_radix(
     "35048542371029440058224000662033175648615707461806414787901284501179083518342",
     10,
   )
   .unwrap();
-  let r_val = Integer::from_str_radix(
+  let r_val = BigInt::from_str_radix(
     "26362617993085418618858432307761590013874563896298265114483698919121453084730",
     10,
   )
@@ -217,13 +218,13 @@ fn test_add() {
   type G = pasta_curves::pallas::Point;
 
   // Set the inputs
-  let a_val = Integer::from_str_radix(
+  let a_val = BigInt::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
   )
   .unwrap();
-  let b_val = Integer::from_str_radix("1", 10).unwrap();
-  let c_val = Integer::from_str_radix(
+  let b_val = BigInt::from_str_radix("1", 10).unwrap();
+  let c_val = BigInt::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228193",
     10,
   )
@@ -250,18 +251,18 @@ fn test_add_mod() {
   type G = pasta_curves::pallas::Point;
 
   // Set the inputs
-  let a_val = Integer::from_str_radix(
+  let a_val = BigInt::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228192",
     10,
   )
   .unwrap();
-  let b_val = Integer::from_str_radix("1", 10).unwrap();
-  let c_val = Integer::from_str_radix(
+  let b_val = BigInt::from_str_radix("1", 10).unwrap();
+  let c_val = BigInt::from_str_radix(
     "11572336752428856981970994795408771577024165681374400871001196932361466228193",
     10,
   )
   .unwrap();
-  let m_val = Integer::from_str_radix(
+  let m_val = BigInt::from_str_radix(
     "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
     16,
   )
@@ -288,7 +289,7 @@ fn test_equal() {
   type G = pasta_curves::pallas::Point;
 
   // Set the inputs
-  let a_val = Integer::from_str_radix("1157233675242885698197099479540877", 10).unwrap();
+  let a_val = BigInt::from_str_radix("1157233675242885698197099479540877", 10).unwrap();
 
   // First create the shape
   let mut cs: ShapeCS<G> = ShapeCS::new();

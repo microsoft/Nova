@@ -1,8 +1,8 @@
 [package]
 name = "nova-snark"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
-edition = "2018"
+edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
 documentation = "https://docs.rs/nova-snark/"
 readme = "README.md"
@@ -25,8 +25,9 @@ subtle = "2.4"
 pasta_curves = "0.3.1"
 neptune = "6.1"
 generic-array = "0.14.4"
-bellperson-nonnative = { version = "0.2.1", default-features = false, features = ["wasm"] }
-rug = { version = "1.10", default-features = false, features = ["integer", "serde", "rand"] }
+bellperson-nonnative = { version = "0.3.0", default-features = false, features = ["wasm"] }
+num-bigint = { version = "0.4", features = ["serde", "rand"] }
+num-traits = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.2.1"
 flate2 = "1.0"
