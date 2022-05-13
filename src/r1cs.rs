@@ -31,6 +31,7 @@ pub struct R1CSShape<G: Group> {
   A: Vec<(usize, usize, G::Scalar)>,
   B: Vec<(usize, usize, G::Scalar)>,
   C: Vec<(usize, usize, G::Scalar)>,
+  digest: G::Scalar, // digest of the rest of R1CSShape
 }
 
 /// A type that holds a witness for a given R1CS instance
@@ -121,6 +122,8 @@ impl<G: Group> R1CSShape<G> {
       return Err(NovaError::OddInputLength);
     }
 
+    let digest = Self::compute_digest(num_cons, num_vars, num_io, A, B, C);
+
     let shape = R1CSShape {
       num_cons,
       num_vars,
@@ -128,6 +131,7 @@ impl<G: Group> R1CSShape<G> {
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
+      digest,
     };
 
     Ok(shape)
@@ -291,23 +295,31 @@ impl<G: Group> R1CSShape<G> {
   }
 
   /// returns the digest of R1CSShape
-  fn get_digest(&self) -> G::Scalar {
+  pub fn get_digest(&self) -> G::Scalar {
+    self.digest
+  }
+
+  fn compute_digest(
+    num_cons: usize,
+    num_vars: usize,
+    num_io: usize,
+    A: &[(usize, usize, G::Scalar)],
+    B: &[(usize, usize, G::Scalar)],
+    C: &[(usize, usize, G::Scalar)],
+  ) -> G::Scalar {
     let shape_serialized = R1CSShapeSerialized {
-      num_cons: self.num_cons,
-      num_vars: self.num_vars,
-      num_io: self.num_io,
-      A: self
-        .A
+      num_cons,
+      num_vars,
+      num_io,
+      A: A
         .iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
-      B: self
-        .B
+      B: B
         .iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
-      C: self
-        .C
+      C: C
         .iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
@@ -321,12 +333,12 @@ impl<G: Group> R1CSShape<G> {
     // convert shape_bytes into a short digest
     let mut hasher = Sha3_256::new();
     hasher.input(&shape_bytes);
-    let shape_digest = hasher.result();
+    let digest = hasher.result();
 
     // truncate the digest to 250 bits
     let bv = (0..NUM_HASH_BITS).map(|i| {
       let (byte_pos, bit_pos) = (i / 8, i % 8);
-      let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
+      let bit = (digest[byte_pos] >> bit_pos) & 1;
       bit == 1
     });
 
