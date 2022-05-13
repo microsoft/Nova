@@ -60,8 +60,6 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_E: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
   pub(crate) u: G::Scalar,
-  Y_last: Vec<G::Scalar>, // output of the last instance that was folded
-  counter: usize,         // the number of folds thus far
 }
 
 impl<G: Group> R1CSGens<G> {
@@ -470,8 +468,6 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       comm_E,
       u: G::Scalar::zero(),
       X: vec![G::Scalar::zero(); S.num_io],
-      Y_last: vec![G::Scalar::zero(); S.num_io / 2],
-      counter: 0,
     }
   }
 
@@ -485,19 +481,6 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
     let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
-
-    // check if the input of the incoming instance matches the output
-    // of the incremental computation thus far if counter > 0
-    if self.counter > 0 {
-      if self.Y_last.len() != U2.X.len() / 2 {
-        return Err(NovaError::InvalidInputLength);
-      }
-      for i in 0..self.Y_last.len() {
-        if self.Y_last[i] != U2.X[i] {
-          return Err(NovaError::InputOutputMismatch);
-        }
-      }
-    }
 
     // weighted sum of X, comm_W, comm_E, and u
     let X = X1
@@ -514,8 +497,6 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       comm_E,
       X,
       u,
-      Y_last: U2.X[U2.X.len() / 2..].to_owned(),
-      counter: self.counter + 1,
     })
   }
 }
