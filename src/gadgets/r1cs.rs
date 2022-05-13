@@ -212,6 +212,7 @@ where
   }
 
   /// Folds self with a relaxed r1cs instance and returns the result
+  #[allow(clippy::too_many_arguments)]
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
