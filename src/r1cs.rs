@@ -4,7 +4,8 @@ use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
   constants::NUM_HASH_BITS,
   errors::NovaError,
-  traits::{AppendToTranscriptTrait, Group},
+  gadgets::utils::scalar_as_base,
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, HashFuncTrait},
 };
 use ff::{Field, PrimeField};
 use flate2::{write::ZlibEncoder, Compression};
@@ -295,20 +296,9 @@ impl<G: Group> R1CSShape<G> {
 
     Ok((T, comm_T))
   }
-}
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct R1CSShapeSerialized {
-  num_cons: usize,
-  num_vars: usize,
-  num_io: usize,
-  A: Vec<(usize, usize, Vec<u8>)>,
-  B: Vec<(usize, usize, Vec<u8>)>,
-  C: Vec<(usize, usize, Vec<u8>)>,
-}
-
-impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+  /// returns the digest of R1CSShape
+  fn get_digest(&self) -> G::Scalar {
     let shape_serialized = R1CSShapeSerialized {
       num_cons: self.num_cons,
       num_vars: self.num_vars,
@@ -340,8 +330,8 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
     hasher.input(&shape_bytes);
     let shape_digest = hasher.result();
 
+    // truncate the digest to 250 bits
     let shape_digest_trun = {
-      // truncate the digest to 250 bits
       let bv = (0..NUM_HASH_BITS).map(|i| {
         let (byte_pos, bit_pos) = (i / 8, i % 8);
         let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
@@ -359,8 +349,31 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
       }
       res
     };
+    shape_digest_trun
+  }
+}
 
-    shape_digest_trun.append_to_transcript(b"R1CSShape", transcript);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct R1CSShapeSerialized {
+  num_cons: usize,
+  num_vars: usize,
+  num_io: usize,
+  A: Vec<(usize, usize, Vec<u8>)>,
+  B: Vec<(usize, usize, Vec<u8>)>,
+  C: Vec<(usize, usize, Vec<u8>)>,
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self
+      .get_digest()
+      .append_to_transcript(b"R1CSShape", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for R1CSShape<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    ro.absorb(scalar_as_base::<G>(self.get_digest()));
   }
 }
 
@@ -402,6 +415,15 @@ impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
   fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
     self.comm_W.append_to_transcript(b"comm_W", transcript);
     self.X.append_to_transcript(b"X", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    self.comm_W.absorb_in_ro(ro);
+    for x in &self.X {
+      ro.absorb(scalar_as_base::<G>(*x));
+    }
   }
 }
 
@@ -511,7 +533,20 @@ impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
   fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
     self.comm_W.append_to_transcript(b"comm_W", transcript);
     self.comm_E.append_to_transcript(b"comm_E", transcript);
-    self.X.append_to_transcript(b"X", transcript);
     self.u.append_to_transcript(b"u", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    self.comm_W.absorb_in_ro(ro);
+    self.comm_E.absorb_in_ro(ro);
+    ro.absorb(scalar_as_base::<G>(self.u));
+
+    // TODO: absorb each element of self.X in bignum format
+    for x in &self.X {
+      ro.absorb(scalar_as_base::<G>(*x));
+    }
   }
 }

@@ -16,12 +16,11 @@ pub mod traits;
 
 use commitments::CompressedCommitment;
 use errors::NovaError;
-use merlin::Transcript;
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use std::marker::PhantomData;
-use traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait};
 
 /// A SNARK that holds the proof of a step of an incremental computation
 pub struct StepSNARK<G: Group> {
@@ -30,10 +29,6 @@ pub struct StepSNARK<G: Group> {
 }
 
 impl<G: Group> StepSNARK<G> {
-  fn protocol_name() -> &'static [u8] {
-    b"NovaStepSNARK"
-  }
-
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
   /// an R1CS instance-witness tuple `(U2, W2)` with the same structure `shape`
   /// and defined with respect to the same `gens`, and outputs
@@ -47,7 +42,6 @@ impl<G: Group> StepSNARK<G> {
     W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-    transcript: &mut Transcript,
   ) -> Result<
     (
       StepSNARK<G>,
@@ -55,24 +49,27 @@ impl<G: Group> StepSNARK<G> {
     ),
     NovaError,
   > {
-    // append the protocol name to the transcript
-    transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
+    // initialize a new RO
+    let mut ro = G::HashFunc::new(<<G as traits::Group>::HashFunc as HashFuncTrait<
+      G::Base,
+      G::Scalar,
+    >>::Constants::new());
 
     // append S to the transcript
-    S.append_to_transcript(b"S", transcript);
+    S.absorb_in_ro(&mut ro);
 
     // append U1 and U2 to transcript
-    U1.append_to_transcript(b"U1", transcript);
-    U2.append_to_transcript(b"U2", transcript);
+    U1.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
     let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
 
     // append `comm_T` to the transcript and obtain a challenge
-    comm_T.append_to_transcript(b"comm_T", transcript);
+    comm_T.decompress()?.absorb_in_ro(&mut ro);
 
-    // compute a challenge from the transcript
-    let r = G::Scalar::challenge(b"r", transcript);
+    // compute a challenge from the RO
+    let r = ro.get_challenge();
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r)?;
@@ -100,23 +97,25 @@ impl<G: Group> StepSNARK<G> {
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
-    transcript: &mut Transcript,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
-    // append the protocol name to the transcript
-    transcript.append_message(b"protocol-name", StepSNARK::<G>::protocol_name());
+    // initialize a new RO
+    let mut ro = G::HashFunc::new(<<G as traits::Group>::HashFunc as HashFuncTrait<
+      G::Base,
+      G::Scalar,
+    >>::Constants::new());
 
     // append S to the transcript
-    S.append_to_transcript(b"S", transcript);
+    S.absorb_in_ro(&mut ro);
 
     // append U1 and U2 to transcript
-    U1.append_to_transcript(b"U1", transcript);
-    U2.append_to_transcript(b"U2", transcript);
+    U1.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro(&mut ro);
 
     // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.append_to_transcript(b"comm_T", transcript);
+    self.comm_T.decompress()?.absorb_in_ro(&mut ro);
 
-    // compute a challenge from the transcript
-    let r = G::Scalar::challenge(b"r", transcript);
+    // compute a challenge from the RO
+    let r = ro.get_challenge();
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &self.comm_T, &r)?;
@@ -239,14 +238,12 @@ mod tests {
     let mut r_U = RelaxedR1CSInstance::default(gens, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let mut prover_transcript = Transcript::new(b"StepSNARKExample");
-    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U1, W1, &mut prover_transcript);
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U1, W1);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let mut verifier_transcript = Transcript::new(b"StepSNARKExample");
-    let res = step_snark.verify(shape, &r_U, U1, &mut verifier_transcript);
+    let res = step_snark.verify(shape, &r_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -257,12 +254,12 @@ mod tests {
     r_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U2, W2, &mut prover_transcript);
+    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U2, W2);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(shape, &r_U, U2, &mut verifier_transcript);
+    let res = step_snark.verify(shape, &r_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 

@@ -1,6 +1,6 @@
 use super::{
   errors::NovaError,
-  traits::{AppendToTranscriptTrait, CompressedGroup, Group},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, HashFuncTrait},
 };
 use core::{
   fmt::Debug,
@@ -8,6 +8,7 @@ use core::{
   ops::{Add, AddAssign, Mul, MulAssign},
 };
 use digest::{ExtendableOutput, Input};
+use ff::Field;
 use merlin::Transcript;
 use sha3::Shake256;
 use std::io::Read;
@@ -83,6 +84,19 @@ impl<G: Group> CommitTrait<G> for [G::Scalar] {
 impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
     transcript.append_message(label, self.comm.compress().as_bytes());
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+    ro.absorb(x);
+    ro.absorb(y);
+    ro.absorb(if is_infinity {
+      G::Base::one()
+    } else {
+      G::Base::zero()
+    });
   }
 }
 
