@@ -333,6 +333,7 @@ mod tests {
   use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
+  use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     commitments::CommitTrait,
@@ -361,7 +362,7 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     // We experiment with 8 limbs of 32 bits each
-    let params = NIFSVerifierCircuitParams::new(32, 8);
+    let params = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS);
     // The first circuit that verifies G2
     let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
       NovaPoseidonConstants::new();
