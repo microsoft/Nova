@@ -216,7 +216,7 @@ where
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    hash: AllocatedNum<G::Base>, // hash of (params, running_instance, i, z0, zi)
+    params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
     poseidon_constants: NovaPoseidonConstants<G::Base>,
@@ -225,7 +225,8 @@ where
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants);
-    ro.absorb(hash);
+    ro.absorb(params);
+    self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
