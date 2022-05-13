@@ -2,6 +2,7 @@
 #![allow(clippy::type_complexity)]
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
+  constants::NUM_HASH_BITS,
   errors::NovaError,
   traits::{AppendToTranscriptTrait, Group},
 };
@@ -11,6 +12,7 @@ use itertools::concat;
 use merlin::Transcript;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
@@ -328,10 +330,37 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
         .collect(),
     };
 
+    // obtain a vector of bytes representing the R1CS shape
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
     let shape_bytes = encoder.finish().unwrap();
-    transcript.append_message(b"R1CSShape", &shape_bytes);
+
+    // convert shape_bytes into a short digest
+    let mut hasher = Sha3_256::new();
+    hasher.input(&shape_bytes);
+    let shape_digest = hasher.result();
+
+    let shape_digest_trun = {
+      // truncate the digest to 250 bits
+      let bv = (0..NUM_HASH_BITS).map(|i| {
+        let (byte_pos, bit_pos) = (i / 8, i % 8);
+        let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
+        bit == 1
+      });
+
+      // turn the bit vector into a scalar
+      let mut res = G::Scalar::zero();
+      let mut coeff = G::Scalar::one();
+      for bit in bv {
+        if bit {
+          res += coeff;
+        }
+        coeff += coeff;
+      }
+      res
+    };
+
+    shape_digest_trun.append_to_transcript(b"R1CSShape", transcript);
   }
 }
 
