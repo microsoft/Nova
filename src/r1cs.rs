@@ -347,13 +347,12 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
           let (byte_pos, bit_pos) = (i / 8, i % 8);
           let bit = (shape_digest[byte_pos] >> bit_pos) & 1;
           bit == 1
-        })
-        .collect::<Vec<bool>>();
+        });
 
       // turn the bit vector into a scalar
       let mut res = G::Scalar::zero();
       let mut coeff = G::Scalar::one();
-      for bit in bv.into_iter() {
+      for bit in bv {
         if bit {
           res += coeff;
         }
