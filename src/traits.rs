@@ -45,9 +45,8 @@ pub trait Group:
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
-  /// Attempts to create a group element from a sequence of bytes,
-  /// failing with a `None` if the supplied bytes do not encode the group element
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
+  /// Produce a vector of group elements using a static label
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);

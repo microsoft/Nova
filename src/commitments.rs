@@ -7,11 +7,8 @@ use core::{
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use digest::{ExtendableOutput, Input};
 use ff::Field;
 use merlin::Transcript;
-use sha3::Shake256;
-use std::io::Read;
 
 #[derive(Debug)]
 pub struct CommitGens<G: Group> {
@@ -30,16 +27,8 @@ pub struct CompressedCommitment<C: CompressedGroup> {
 }
 
 impl<G: Group> CommitGens<G> {
-  pub fn new(label: &[u8], n: usize) -> Self {
-    let mut shake = Shake256::default();
-    shake.input(label);
-    let mut reader = shake.xof_result();
-    let mut gens: Vec<G::PreprocessedGroupElement> = Vec::new();
-    let mut uniform_bytes = [0u8; 64];
-    for _ in 0..n {
-      reader.read_exact(&mut uniform_bytes).unwrap();
-      gens.push(G::from_uniform_bytes(&uniform_bytes).unwrap());
-    }
+  pub fn new(label: &'static [u8], n: usize) -> Self {
+    let gens = G::from_label(label, n);
 
     CommitGens {
       gens,
