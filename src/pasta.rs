@@ -4,6 +4,7 @@ use crate::{
   traits::{ChallengeTrait, CompressedGroup, Group},
 };
 use core::ops::Mul;
+use digest::{ExtendableOutput, Input};
 use ff::Field;
 use merlin::Transcript;
 use num_bigint::BigInt;
@@ -16,6 +17,8 @@ use pasta_curves::{
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use sha3::Shake256;
+use std::io::Read;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -55,16 +58,18 @@ impl Group for pallas::Point {
     PallasCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 32];
-      arr.copy_from_slice(&bytes[0..32]);
-
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+    let mut shake = Shake256::default();
+    shake.input(label);
+    let mut reader = shake.xof_result();
+    let mut gens: Vec<Self::PreprocessedGroupElement> = Vec::new();
+    let mut uniform_bytes = [0u8; 32];
+    for _ in 0..n {
+      reader.read_exact(&mut uniform_bytes).unwrap();
       let hash = Ep::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr).to_affine())
+      gens.push(hash(&uniform_bytes).to_affine());
     }
+    gens
   }
 
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
@@ -143,16 +148,18 @@ impl Group for vesta::Point {
     VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 32];
-      arr.copy_from_slice(&bytes[0..32]);
-
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+    let mut shake = Shake256::default();
+    shake.input(label);
+    let mut reader = shake.xof_result();
+    let mut gens: Vec<Self::PreprocessedGroupElement> = Vec::new();
+    let mut uniform_bytes = [0u8; 32];
+    for _ in 0..n {
+      reader.read_exact(&mut uniform_bytes).unwrap();
       let hash = Eq::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr).to_affine())
+      gens.push(hash(&uniform_bytes).to_affine());
     }
+    gens
   }
 
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
