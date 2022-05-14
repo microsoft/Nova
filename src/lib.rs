@@ -20,13 +20,16 @@ use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use std::marker::PhantomData;
-use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait};
+use traits::{AbsorbInROTrait, Group, HashFuncTrait};
 
 /// A SNARK that holds the proof of a step of an incremental computation
 pub struct StepSNARK<G: Group> {
   comm_T: CompressedCommitment<G::CompressedGroupElement>,
   _p: PhantomData<G>,
 }
+
+type ROConstants<G> =
+  <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
 impl<G: Group> StepSNARK<G> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
@@ -37,6 +40,7 @@ impl<G: Group> StepSNARK<G> {
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
     gens: &R1CSGens<G>,
+    ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
@@ -50,10 +54,7 @@ impl<G: Group> StepSNARK<G> {
     NovaError,
   > {
     // initialize a new RO
-    let mut ro = G::HashFunc::new(<<G as traits::Group>::HashFunc as HashFuncTrait<
-      G::Base,
-      G::Scalar,
-    >>::Constants::new());
+    let mut ro = G::HashFunc::new(ro_consts.clone());
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);
@@ -94,15 +95,13 @@ impl<G: Group> StepSNARK<G> {
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
+    ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
-    let mut ro = G::HashFunc::new(<<G as traits::Group>::HashFunc as HashFuncTrait<
-      G::Base,
-      G::Scalar,
-    >>::Constants::new());
+    let mut ro = G::HashFunc::new(ro_consts.clone());
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);
@@ -152,6 +151,7 @@ impl<G: Group> FinalSNARK<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::traits::HashFuncConstantsTrait;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -205,6 +205,10 @@ mod tests {
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
+    let ro_consts = <<G as Group>::HashFunc as HashFuncTrait<
+      <G as Group>::Base,
+      <G as Group>::Scalar,
+    >>::Constants::new();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
@@ -223,11 +227,15 @@ mod tests {
     assert!(shape.is_sat(&gens, &U2, &W2).is_ok());
 
     // execute a sequence of folds
-    execute_sequence(&gens, &shape, &U1, &W1, &U2, &W2);
+    execute_sequence(&gens, &ro_consts, &shape, &U1, &W1, &U2, &W2);
   }
 
   fn execute_sequence(
     gens: &R1CSGens<G>,
+    ro_consts: &<<G as traits::Group>::HashFunc as HashFuncTrait<
+      <G as traits::Group>::Base,
+      <G as traits::Group>::Scalar,
+    >>::Constants,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
     W1: &R1CSWitness<G>,
@@ -239,12 +247,12 @@ mod tests {
     let mut r_U = RelaxedR1CSInstance::default(gens, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U1, W1);
+    let res = StepSNARK::prove(gens, ro_consts, shape, &r_U, &r_W, U1, W1);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(shape, &r_U, U1);
+    let res = step_snark.verify(ro_consts, shape, &r_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -255,12 +263,12 @@ mod tests {
     r_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = StepSNARK::prove(gens, shape, &r_U, &r_W, U2, W2);
+    let res = StepSNARK::prove(gens, ro_consts, shape, &r_U, &r_W, U2, W2);
     assert!(res.is_ok());
     let (step_snark, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = step_snark.verify(shape, &r_U, U2);
+    let res = step_snark.verify(ro_consts, shape, &r_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -338,8 +346,12 @@ mod tests {
       res.unwrap()
     };
 
-    // generate generators
+    // generate generators and ro constants
     let gens = R1CSGens::new(num_cons, num_vars);
+    let ro_consts = <<G as Group>::HashFunc as HashFuncTrait<
+      <G as Group>::Base,
+      <G as Group>::Scalar,
+    >>::Constants::new();
 
     let rand_inst_witness_generator =
       |gens: &R1CSGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
@@ -382,6 +394,6 @@ mod tests {
     let (_O, U2, W2) = rand_inst_witness_generator(&gens, &O);
 
     // execute a sequence of folds
-    execute_sequence(&gens, &S, &U1, &W1, &U2, &W2);
+    execute_sequence(&gens, &ro_consts, &S, &U1, &W1, &U2, &W2);
   }
 }
