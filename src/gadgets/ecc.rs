@@ -29,14 +29,19 @@ where
   Fp: PrimeField,
 {
   /// Allocates a new point on the curve using coordinates provided by `coords`.
+  /// If coords = None, it allocates the default infinity point
   pub fn alloc<CS>(mut cs: CS, coords: Option<(Fp, Fp, bool)>) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Fp>,
   {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(coords.unwrap().0))?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(coords.unwrap().1))?;
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+      Ok(coords.map_or(Fp::zero(), |c| c.0))
+    })?;
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      Ok(coords.map_or(Fp::zero(), |c| c.0))
+    })?;
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
-      Ok(if coords.unwrap().2 {
+      Ok(if coords.map_or(true, |c| c.2) {
         Fp::one()
       } else {
         Fp::zero()

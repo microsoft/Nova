@@ -86,7 +86,7 @@ where
   CS: ConstraintSystem<<G as Group>::Base>,
 {
   AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
-    let input_bits = input.get()?.clone().to_le_bits();
+    let input_bits = input.unwrap_or_else(G::Scalar::zero).clone().to_le_bits();
     let mut mult = G::Base::one();
     let mut val = G::Base::zero();
     for bit in input_bits {

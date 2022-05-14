@@ -114,16 +114,25 @@ where
       inst.get().map_or(None, |inst| Some(inst.u)),
     )?;
 
+    // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[0]"),
-      || Ok(f_to_nat(&inst.get()?.X[0])),
+      || {
+        Ok(f_to_nat(
+          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[0]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[1]"),
-      || Ok(f_to_nat(&inst.get()?.X[1])),
+      || {
+        Ok(f_to_nat(
+          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[1]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
