@@ -89,7 +89,7 @@ pub trait ChallengeTrait {
 /// A helper trait that defines the behavior of a hash function that we use as an RO
 pub trait HashFuncTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Base>;
+  type Constants: HashFuncConstantsTrait<Base> + Clone;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
