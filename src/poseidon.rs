@@ -21,7 +21,7 @@ use neptune::{
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
-pub struct NovaPoseidonConstants<Scalar>
+pub struct ROConstantsCircuit<Scalar>
 where
   Scalar: PrimeField,
 {
@@ -29,7 +29,7 @@ where
   constants32: PoseidonConstants<Scalar, U32>,
 }
 
-impl<Scalar> HashFuncConstantsTrait<Scalar> for NovaPoseidonConstants<Scalar>
+impl<Scalar> HashFuncConstantsTrait<Scalar> for ROConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -54,7 +54,7 @@ where
   // Internal State
   state: Vec<Base>,
   // Constants for Poseidon
-  constants: NovaPoseidonConstants<Base>,
+  constants: ROConstantsCircuit<Base>,
   _p: PhantomData<Scalar>,
 }
 
@@ -86,10 +86,10 @@ where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
-  type Constants = NovaPoseidonConstants<Base>;
+  type Constants = ROConstantsCircuit<Base>;
 
   #[allow(dead_code)]
-  fn new(constants: NovaPoseidonConstants<Base>) -> Self {
+  fn new(constants: ROConstantsCircuit<Base>) -> Self {
     Self {
       state: Vec::new(),
       constants,
@@ -144,7 +144,7 @@ where
 {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
-  constants: NovaPoseidonConstants<Scalar>,
+  constants: ROConstantsCircuit<Scalar>,
 }
 
 impl<Scalar> PoseidonROGadget<Scalar>
@@ -153,7 +153,7 @@ where
 {
   /// Initialize the internal state and set the poseidon constants
   #[allow(dead_code)]
-  pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
+  pub fn new(constants: ROConstantsCircuit<Scalar>) -> Self {
     Self {
       state: Vec::new(),
       constants,
@@ -236,7 +236,7 @@ mod tests {
   fn test_poseidon_ro() {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = NovaPoseidonConstants::new();
+    let constants = ROConstantsCircuit::new();
     let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();

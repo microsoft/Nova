@@ -16,7 +16,7 @@ use super::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select, le_bits_to_num,
     },
   },
-  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{Group, StepCircuit},
 };
@@ -87,7 +87,7 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G: Group, SC>
+pub struct NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   SC: StepCircuit<G::Base>,
@@ -95,7 +95,7 @@ where
   params: NIFSVerifierCircuitParams,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
-  poseidon_constants: NovaPoseidonConstants<G::Base>,
+  ro_consts: ROConstantsCircuit<G::Base>,
 }
 
 impl<G, SC> NIFSVerifierCircuit<G, SC>
@@ -109,13 +109,13 @@ where
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
     step_circuit: SC,
-    poseidon_constants: NovaPoseidonConstants<G::Base>,
+    ro_consts: ROConstantsCircuit<G::Base>,
   ) -> Self {
     Self {
       params,
       inputs,
       step_circuit,
-      poseidon_constants,
+      ro_consts,
     }
   }
 
@@ -219,7 +219,7 @@ where
     T: AllocatedPoint<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants.clone());
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts.clone());
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(z_0);
@@ -240,7 +240,7 @@ where
       params,
       u,
       T,
-      self.poseidon_constants.clone(),
+      self.ro_consts.clone(),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -325,7 +325,7 @@ where
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.poseidon_constants);
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
@@ -380,10 +380,8 @@ mod tests {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
-      NovaPoseidonConstants::new();
-    let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
-      NovaPoseidonConstants::new();
+    let ro_consts1: ROConstantsCircuit<<G2 as Group>::Base> = ROConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<<G1 as Group>::Base> = ROConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
@@ -393,7 +391,7 @@ mod tests {
         TestCircuit {
           _p: Default::default(),
         },
-        poseidon_constants1.clone(),
+        ro_consts1.clone(),
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -411,7 +409,7 @@ mod tests {
         TestCircuit {
           _p: Default::default(),
         },
-        poseidon_constants2.clone(),
+        ro_consts2.clone(),
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -440,7 +438,7 @@ mod tests {
         TestCircuit {
           _p: Default::default(),
         },
-        poseidon_constants1,
+        ro_consts1,
       );
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
@@ -466,7 +464,7 @@ mod tests {
         TestCircuit {
           _p: Default::default(),
         },
-        poseidon_constants2,
+        ro_consts2,
       );
     let _ = circuit.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &gens2).unwrap();

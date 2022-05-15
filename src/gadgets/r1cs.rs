@@ -7,7 +7,7 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::Group,
 };
@@ -263,12 +263,12 @@ where
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
-    poseidon_constants: NovaPoseidonConstants<G::Base>,
+    ro_consts: ROConstantsCircuit<G::Base>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants);
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(ro_consts);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
