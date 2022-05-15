@@ -16,6 +16,7 @@ pub mod r1cs;
 pub mod traits;
 
 use crate::bellperson::{r1cs::NovaShape, shape_cs::ShapeCS};
+use crate::poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use ::bellperson::Circuit;
 use circuit::{NIFSVerifierCircuit, NIFSVerifierCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
@@ -29,51 +30,68 @@ type ROConstants<G> =
   <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
 /// A type that holds public parameters of Nova
-pub struct PublicParams<G1: Group, G2: Group> {
+pub struct PublicParams<G1, G2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+{
   ro_consts_primary: ROConstants<G1>,
+  ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
   r1cs_gens_primary: R1CSGens<G1>,
   ro_consts_secondary: ROConstants<G2>,
+  ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
   r1cs_gens_secondary: R1CSGens<G2>,
 }
 
-impl<G1: Group, G2: Group> PublicParams<G1, G2> {
+impl<G1, G2> PublicParams<G1, G2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+{
   /// Create a new `PublicParams`
   pub fn new<SC1: StepCircuit<G2::Base>, SC2: StepCircuit<G1::Base>>(
     sc_primary: SC1,
     sc_secondary: SC2,
-  ) -> Result<Self, NovaError> {
+  ) -> Self {
     let params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
 
-    // Initialize the shape and gens for the primary
-    let circuit_primary: NIFSVerifierCircuit<G2, SC1> =
-      NIFSVerifierCircuit::new(params_primary, None, sc_primary, ro_consts_primary);
+    let ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base> =
+      ROConstantsCircuit::new();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base> =
+      ROConstantsCircuit::new();
+
+    // Initialize gens for the primary
+    let circuit_primary: NIFSVerifierCircuit<G2, SC1> = NIFSVerifierCircuit::new(
+      params_primary,
+      None,
+      sc_primary,
+      ro_consts_circuit_primary.clone(),
+    );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let (shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
-    println!(
-      "circuit_primary -> Number of constraints: {}",
-      cs.num_constraints()
-    );
+    let r1cs_gens_primary = cs.r1cs_gens();
 
-    // Initialize the shape and gens for the secondary
-    let circuit_secondary: NIFSVerifierCircuit<G1, SC2> =
-      NIFSVerifierCircuit::new(params_secondary, None, sc_secondary, ro_consts_secondary);
+    // Initialize gens for the secondary
+    let circuit_secondary: NIFSVerifierCircuit<G1, SC2> = NIFSVerifierCircuit::new(
+      params_secondary,
+      None,
+      sc_secondary,
+      ro_consts_circuit_secondary.clone(),
+    );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let (shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
-    println!(
-      "circuit_secondary -> Number of constraints: {}",
-      cs.num_constraints()
-    );
+    let r1cs_gens_secondary = cs.r1cs_gens();
 
     Self {
       ro_consts_primary,
+      ro_consts_circuit_primary,
       r1cs_gens_primary,
       ro_consts_secondary,
+      ro_consts_circuit_secondary,
       r1cs_gens_secondary,
     }
   }

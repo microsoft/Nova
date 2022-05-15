@@ -16,7 +16,7 @@ use super::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select, le_bits_to_num,
     },
   },
-  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{Group, StepCircuit},
 };
@@ -95,7 +95,7 @@ where
   params: NIFSVerifierCircuitParams,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
-  poseidon_constants: NovaPoseidonConstants<G::Base>,
+  poseidon_constants: ROConstantsCircuit<G::Base>,
 }
 
 impl<G, SC> NIFSVerifierCircuit<G, SC>
@@ -109,7 +109,7 @@ where
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
     step_circuit: SC,
-    poseidon_constants: NovaPoseidonConstants<G::Base>,
+    poseidon_constants: ROConstantsCircuit<G::Base>,
   ) -> Self {
     Self {
       params,
@@ -380,10 +380,8 @@ mod tests {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let poseidon_constants1: NovaPoseidonConstants<<G2 as Group>::Base> =
-      NovaPoseidonConstants::new();
-    let poseidon_constants2: NovaPoseidonConstants<<G1 as Group>::Base> =
-      NovaPoseidonConstants::new();
+    let poseidon_constants1: ROConstantsCircuit<<G2 as Group>::Base> = ROConstantsCircuit::new();
+    let poseidon_constants2: ROConstantsCircuit<<G1 as Group>::Base> = ROConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
