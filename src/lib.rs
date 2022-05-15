@@ -38,9 +38,11 @@ where
   ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
   r1cs_gens_primary: R1CSGens<G1>,
+  r1cs_shape_digest_primary: G1::Scalar,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
   r1cs_gens_secondary: R1CSGens<G2>,
+  r1cs_shape_digest_secondary: G2::Scalar,
 }
 
 impl<G1, G2> PublicParams<G1, G2>
@@ -73,7 +75,8 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let r1cs_gens_primary = cs.r1cs_gens();
+    let (r1cs_shape_digest_primary, r1cs_gens_primary) =
+      (cs.r1cs_shape().get_digest(), cs.r1cs_gens());
 
     // Initialize gens for the secondary
     let circuit_secondary: NIFSVerifierCircuit<G1, SC2> = NIFSVerifierCircuit::new(
@@ -84,15 +87,18 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let r1cs_gens_secondary = cs.r1cs_gens();
+    let (r1cs_shape_digest_secondary, r1cs_gens_secondary) =
+      (cs.r1cs_shape().get_digest(), cs.r1cs_gens());
 
     Self {
       ro_consts_primary,
       ro_consts_circuit_primary,
       r1cs_gens_primary,
+      r1cs_shape_digest_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       r1cs_gens_secondary,
+      r1cs_shape_digest_secondary,
     }
   }
 }
@@ -149,5 +155,44 @@ impl<G: Group> CompressedSNARKTrivial<G> {
   ) -> Result<(), NovaError> {
     // check that the witness is a valid witness to the folded instance `U`
     S.is_sat_relaxed(gens, U, &self.W)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  type G1 = pasta_curves::pallas::Point;
+  type G2 = pasta_curves::vesta::Point;
+  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use ff::PrimeField;
+  use std::marker::PhantomData;
+
+  struct TestCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F> StepCircuit<F> for TestCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      _cs: &mut CS,
+      z: AllocatedNum<F>,
+    ) -> Result<AllocatedNum<F>, SynthesisError> {
+      Ok(z)
+    }
+  }
+
+  #[test]
+  fn test_base_case() {
+    let pp = PublicParams::<G1, G2>::setup(
+      TestCircuit {
+        _p: Default::default(),
+      },
+      TestCircuit {
+        _p: Default::default(),
+      },
+    );
   }
 }
