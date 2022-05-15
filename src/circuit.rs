@@ -87,7 +87,7 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G: Group, SC>
+pub struct NIFSVerifierCircuit<G, SC>
 where
   G: Group,
   SC: StepCircuit<G::Base>,
