@@ -238,7 +238,7 @@ mod tests {
     r_U = U;
 
     // check if the running instance is satisfiable
-    assert!(shape.is_sat_relaxed(&gens, &r_U, &r_W).is_ok());
+    assert!(shape.is_sat_relaxed(gens, &r_U, &r_W).is_ok());
   }
 
   #[test]
