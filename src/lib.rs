@@ -198,7 +198,7 @@ where
     // execute the remaining steps, alternating between G1 and G2
     let mut r_W_primary = RelaxedR1CSWitness::<G1>::default(&pp.r1cs_shape_primary);
     let mut r_U_primary =
-      RelaxedR1CSInstance::<G1>::default(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary).clone();
+      RelaxedR1CSInstance::<G1>::default(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary);
     let mut l_w_primary = w_primary;
     let mut l_u_primary = u_primary;
     let mut r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
