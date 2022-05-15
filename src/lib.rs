@@ -49,7 +49,7 @@ where
   G2: Group<Base = <G1 as Group>::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn new<SC1: StepCircuit<G2::Base>, SC2: StepCircuit<G1::Base>>(
+  pub fn setup<SC1: StepCircuit<G2::Base>, SC2: StepCircuit<G1::Base>>(
     sc_primary: SC1,
     sc_secondary: SC2,
   ) -> Self {
@@ -98,7 +98,11 @@ where
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
-pub struct RecursiveSNARK<G1: Group, G2: Group> {
+pub struct RecursiveSNARK<G1, G2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+{
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_W_primary: RelaxedR1CSWitness<G1>,
@@ -107,6 +111,22 @@ pub struct RecursiveSNARK<G1: Group, G2: Group> {
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_W_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
+}
+
+impl<G1, G2> RecursiveSNARK<G1, G2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+{
+  /// Create a new `RecursiveSNARK`
+  pub fn prove() -> Result<Self, NovaError> {
+    Err(NovaError::UnSat)
+  }
+
+  /// Verify the correctness of the `RecursiveSNARK`
+  pub fn verify(&self) -> Result<(), NovaError> {
+    Ok(())
+  }
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
