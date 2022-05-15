@@ -247,29 +247,6 @@ where
   }
 }
 
-/// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
-pub struct CompressedSNARKTrivial<G: Group> {
-  W: RelaxedR1CSWitness<G>,
-}
-
-impl<G: Group> CompressedSNARKTrivial<G> {
-  /// Produces a proof of a instance given its satisfying witness `W`.
-  pub fn prove(W: &RelaxedR1CSWitness<G>) -> Result<CompressedSNARKTrivial<G>, NovaError> {
-    Ok(Self { W: W.clone() })
-  }
-
-  /// Verifies the proof of a folded instance `U` given its shape `S` public parameters `gens`
-  pub fn verify(
-    &self,
-    gens: &R1CSGens<G>,
-    S: &R1CSShape<G>,
-    U: &RelaxedR1CSInstance<G>,
-  ) -> Result<(), NovaError> {
-    // check that the witness is a valid witness to the folded instance `U`
-    S.is_sat_relaxed(gens, U, &self.W)
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
