@@ -20,6 +20,7 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
+use crate::nifs::NIFS;
 use crate::poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NIFSVerifierCircuit, NIFSVerifierCircuitInputs, NIFSVerifierCircuitParams};
@@ -148,6 +149,7 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     z0_primary: G1::Scalar,
     z0_secondary: G2::Scalar,
+    num_steps: usize,
   ) -> Result<Self, NovaError> {
     // Execute the base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
@@ -169,11 +171,6 @@ where
     let _ = circuit_primary.synthesize(&mut cs_primary);
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
-      .map_err(|_e| NovaError::UnSat)?;
-
-    // check if the base case is satisfied
-    pp.r1cs_shape_primary
-      .is_sat(&pp.r1cs_gens_primary, &u_primary, &w_primary)
       .map_err(|_e| NovaError::UnSat)?;
 
     // Execute the base case for the secondary
@@ -198,26 +195,105 @@ where
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
       .map_err(|_e| NovaError::UnSat)?;
 
-    // check if the base case is satisfied
-    pp.r1cs_shape_secondary
-      .is_sat(&pp.r1cs_gens_secondary, &u_secondary, &w_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
+    // execute the remaining steps, alternating between G1 and G2
+    let mut r_W_primary = RelaxedR1CSWitness::<G1>::default(&pp.r1cs_shape_primary);
+    let mut r_U_primary =
+      RelaxedR1CSInstance::<G1>::default(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary).clone();
+    let mut l_w_primary = w_primary;
+    let mut l_u_primary = u_primary;
+    let mut r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
+    let mut r_U_secondary =
+      RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
+    let mut l_w_secondary = w_secondary;
+    let mut l_u_secondary = u_secondary;
+
+    for i in 1..num_steps {
+      // fold the secondary circuit's instance into r_W_primary
+      let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
+        &pp.r1cs_gens_secondary,
+        &pp._ro_consts_secondary,
+        &pp.r1cs_shape_secondary,
+        &r_U_secondary,
+        &r_W_secondary,
+        &l_u_secondary,
+        &l_w_secondary,
+      )?;
+
+      let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+      let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+        pp.r1cs_shape_secondary.get_digest(),
+        <G2 as Group>::Base::from(i as u64),
+        z0_primary,
+        Some(z0_primary),
+        Some(r_U_secondary),
+        Some(l_u_secondary),
+        Some(nifs_secondary.comm_T.decompress()?),
+      );
+
+      let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
+        pp.params_primary.clone(),
+        Some(inputs_primary),
+        pp.c_primary.clone(),
+        pp.ro_consts_circuit_primary.clone(),
+      );
+      let _ = circuit_primary.synthesize(&mut cs_primary);
+
+      (l_u_primary, l_w_primary) = cs_primary
+        .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
+        .map_err(|_e| NovaError::UnSat)?;
+
+      // update the running instance and witness of the primary circuit
+      r_U_secondary = r_U_next_secondary;
+      r_W_secondary = r_W_next_secondary;
+
+      // fold the secondary circuit's instance into r_W_primary
+      let (nifs_primary, (r_U_next_primary, r_W_next_primary)) = NIFS::prove(
+        &pp.r1cs_gens_primary,
+        &pp._ro_consts_primary,
+        &pp.r1cs_shape_primary,
+        &r_U_primary.clone(),
+        &r_W_primary.clone(),
+        &l_u_primary.clone(),
+        &l_w_primary.clone(),
+      )?;
+
+      let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+      let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+        pp.r1cs_shape_primary.get_digest(),
+        <G1 as Group>::Base::from(i as u64),
+        z0_secondary,
+        Some(z0_secondary),
+        Some(r_U_primary.clone()),
+        Some(l_u_primary.clone()),
+        Some(nifs_primary.comm_T.decompress()?),
+      );
+
+      let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
+        pp.params_secondary.clone(),
+        Some(inputs_secondary),
+        pp.c_secondary.clone(),
+        pp.ro_consts_circuit_secondary.clone(),
+      );
+      let _ = circuit_secondary.synthesize(&mut cs_secondary);
+
+      (l_u_secondary, l_w_secondary) = cs_secondary
+        .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
+        .map_err(|_e| NovaError::UnSat)?;
+
+      // update the running instance and witness of the primary circuit
+      r_U_primary = r_U_next_primary.clone();
+      r_W_primary = r_W_next_primary.clone();
+    }
 
     Ok(Self {
-      r_W_primary: RelaxedR1CSWitness::<G1>::default(&pp.r1cs_shape_primary),
-      r_U_primary: RelaxedR1CSInstance::<G1>::default(
-        &pp.r1cs_gens_primary,
-        &pp.r1cs_shape_primary,
-      ),
-      l_w_primary: w_primary,
-      l_u_primary: u_primary,
-      r_W_secondary: RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary),
-      r_U_secondary: RelaxedR1CSInstance::<G2>::default(
-        &pp.r1cs_gens_secondary,
-        &pp.r1cs_shape_secondary,
-      ),
-      l_w_secondary: w_secondary,
-      l_u_secondary: u_secondary,
+      r_W_primary,
+      r_U_primary,
+      l_w_primary,
+      l_u_primary,
+      r_W_secondary,
+      r_U_secondary,
+      l_w_secondary,
+      l_u_secondary,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
     })
@@ -296,6 +372,7 @@ mod tests {
       &pp,
       <G2 as Group>::Base::zero(),
       <G1 as Group>::Base::zero(),
+      3,
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
