@@ -438,6 +438,14 @@ impl<G: Group> RelaxedR1CSWitness<G> {
     }
   }
 
+  /// Initializes a new RelaxedR1CSWitness from an R1CSWitness
+  pub fn from_r1cs_witness(S: &R1CSShape<G>, witness: &R1CSWitness<G>) -> RelaxedR1CSWitness<G> {
+    RelaxedR1CSWitness {
+      W: witness.W.clone(),
+      E: vec![G::Scalar::zero(); S.num_cons],
+    }
+  }
+
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
     (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
@@ -481,6 +489,19 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       u: G::Scalar::zero(),
       X: vec![G::Scalar::zero(); S.num_io],
     }
+  }
+
+  /// Initializes a new RelaxedR1CSInstance from an R1CSInstance
+  pub fn from_r1cs_instance(
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    instance: &R1CSInstance<G>,
+  ) -> RelaxedR1CSInstance<G> {
+    let mut r_instance = RelaxedR1CSInstance::default(gens, S);
+    r_instance.comm_W = instance.comm_W;
+    r_instance.u = G::Scalar::one();
+    r_instance.X = instance.X.clone();
+    r_instance
   }
 
   /// Folds an incoming RelaxedR1CSInstance into the current one

@@ -196,17 +196,23 @@ where
       .map_err(|_e| NovaError::UnSat)?;
 
     // execute the remaining steps, alternating between G1 and G2
-    let mut r_W_primary = RelaxedR1CSWitness::<G1>::default(&pp.r1cs_shape_primary);
-    let mut r_U_primary =
-      RelaxedR1CSInstance::<G1>::default(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary);
     let mut l_w_primary = w_primary;
     let mut l_u_primary = u_primary;
+    let mut r_W_primary =
+      RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+    let mut r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
+      &pp.r1cs_gens_primary,
+      &pp.r1cs_shape_primary,
+      &l_u_primary,
+    );
+
     let mut r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
     let mut r_U_secondary =
       RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
     let mut l_w_secondary = w_secondary;
     let mut l_u_secondary = u_secondary;
 
+    // TODO: execute the provided step circuit(s) to feed real z_i into the verifier circuit
     for i in 1..num_steps {
       // fold the secondary circuit's instance into r_W_primary
       let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
