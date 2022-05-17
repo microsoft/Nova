@@ -212,17 +212,8 @@ where
     let mut l_w_secondary = w_secondary;
     let mut l_u_secondary = u_secondary;
 
-    pp.r1cs_shape_primary
-      .is_sat_relaxed(&pp.r1cs_gens_primary, &r_U_primary, &r_W_primary)?;
-    pp.r1cs_shape_primary
-      .is_sat(&pp.r1cs_gens_primary, &l_u_primary, &l_w_primary)?;
-    pp.r1cs_shape_secondary.is_sat_relaxed(
-      &pp.r1cs_gens_secondary,
-      &r_U_secondary,
-      &r_W_secondary,
-    )?;
-    pp.r1cs_shape_secondary
-      .is_sat(&pp.r1cs_gens_secondary, &l_u_secondary, &l_w_secondary)?;
+    let mut z_next_primary = z0_primary;
+    let mut z_next_secondary = z0_secondary;
 
     // TODO: execute the provided step circuit(s) to feed real z_i into the verifier circuit
     for i in 1..num_steps {
@@ -237,12 +228,15 @@ where
         &l_w_secondary,
       )?;
 
+      z_next_primary = pp.c_primary.compute(&z_next_primary);
+      z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
+
       let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
       let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_secondary.get_digest(),
         <G2 as Group>::Base::from(i as u64),
         z0_primary,
-        Some(z0_primary),
+        Some(z_next_primary),
         Some(r_U_secondary),
         Some(l_u_secondary),
         Some(nifs_secondary.comm_T.decompress()?),
@@ -276,7 +270,7 @@ where
         pp.r1cs_shape_primary.get_digest(),
         <G1 as Group>::Base::from(i as u64),
         z0_secondary,
-        Some(z0_secondary),
+        Some(z_next_secondary),
         Some(r_U_primary.clone()),
         Some(l_u_primary.clone()),
         Some(nifs_primary.comm_T.decompress()?),
@@ -317,18 +311,23 @@ where
 
   /// Verify the correctness of the `RecursiveSNARK`
   pub fn verify(&self, pp: &PublicParams<G1, G2, C1, C2>) -> Result<(), NovaError> {
+    // TODO: perform additional checks on whether (shape_digest, z_0, z_i, i) are correct
+
     pp.r1cs_shape_primary.is_sat_relaxed(
       &pp.r1cs_gens_primary,
       &self.r_U_primary,
       &self.r_W_primary,
     )?;
+
     pp.r1cs_shape_primary
       .is_sat(&pp.r1cs_gens_primary, &self.l_u_primary, &self.l_w_primary)?;
+
     pp.r1cs_shape_secondary.is_sat_relaxed(
       &pp.r1cs_gens_secondary,
       &self.r_U_secondary,
       &self.r_W_secondary,
     )?;
+
     pp.r1cs_shape_secondary.is_sat(
       &pp.r1cs_gens_secondary,
       &self.l_u_secondary,
@@ -363,6 +362,10 @@ mod tests {
       z: AllocatedNum<F>,
     ) -> Result<AllocatedNum<F>, SynthesisError> {
       Ok(z)
+    }
+
+    fn compute(&self, z: &F) -> F {
+      *z
     }
   }
 

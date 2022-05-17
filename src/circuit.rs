@@ -373,6 +373,10 @@ mod tests {
     ) -> Result<AllocatedNum<F>, SynthesisError> {
       Ok(z)
     }
+
+    fn compute(&self, z: &F) -> F {
+      *z
+    }
   }
 
   #[test]

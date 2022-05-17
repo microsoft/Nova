@@ -143,6 +143,9 @@ pub trait StepCircuit<F: PrimeField> {
     cs: &mut CS,
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError>;
+
+  /// Execute the circuit for a computation step and return output
+  fn compute(&self, z: &F) -> F;
 }
 
 impl<F: PrimeField> AppendToTranscriptTrait for F {
