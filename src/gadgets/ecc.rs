@@ -38,7 +38,7 @@ where
       Ok(coords.map_or(Fp::zero(), |c| c.0))
     })?;
     let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-      Ok(coords.map_or(Fp::zero(), |c| c.0))
+      Ok(coords.map_or(Fp::zero(), |c| c.1))
     })?;
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
       Ok(if coords.map_or(true, |c| c.2) {

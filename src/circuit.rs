@@ -93,9 +93,9 @@ where
   SC: StepCircuit<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
+  ro_consts: ROConstantsCircuit<G::Base>,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
-  ro_consts: ROConstantsCircuit<G::Base>,
 }
 
 impl<G, SC> NIFSVerifierCircuit<G, SC>
@@ -335,10 +335,10 @@ where
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-    let _ = hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
     let _ = u
       .X1
       .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
+    let _ = hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
 
     Ok(())
   }
@@ -372,6 +372,10 @@ mod tests {
       z: AllocatedNum<F>,
     ) -> Result<AllocatedNum<F>, SynthesisError> {
       Ok(z)
+    }
+
+    fn compute(&self, z: &F) -> F {
+      *z
     }
   }
 
