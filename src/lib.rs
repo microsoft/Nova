@@ -348,11 +348,11 @@ mod tests {
   use std::marker::PhantomData;
 
   #[derive(Clone, Debug)]
-  struct TestCircuit<F: PrimeField> {
+  struct TrivialTestCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
 
-  impl<F> StepCircuit<F> for TestCircuit<F>
+  impl<F> StepCircuit<F> for TrivialTestCircuit<F>
   where
     F: PrimeField,
   {
@@ -369,19 +369,96 @@ mod tests {
     }
   }
 
+  #[derive(Clone, Debug)]
+  struct CubicCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F> StepCircuit<F> for CubicCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      cs: &mut CS,
+      z: AllocatedNum<F>,
+    ) -> Result<AllocatedNum<F>, SynthesisError> {
+      // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      let x = z;
+      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
+      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
+      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+        Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
+      })?;
+
+      cs.enforce(
+        || "y = x^3 + x + 5",
+        |lc| {
+          lc + x_cu.get_variable()
+            + x.get_variable()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+        },
+        |lc| lc + CS::one(),
+        |lc| lc + y.get_variable(),
+      );
+
+      Ok(y)
+    }
+
+    fn compute(&self, z: &F) -> F {
+      *z * *z * *z + z + F::from(5u64)
+    }
+  }
+
+  #[test]
+  fn test_ivc_trivial() {
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G2 as Group>::Base>,
+      TrivialTestCircuit<<G1 as Group>::Base>,
+    >::setup(
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+    );
+
+    // produce a recursive SNARK
+    let res = RecursiveSNARK::prove(
+      &pp,
+      <G2 as Group>::Base::zero(),
+      <G1 as Group>::Base::zero(),
+      3,
+    );
+    assert!(res.is_ok());
+    let recursive_snark = res.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(&pp);
+    assert!(res.is_ok());
+  }
+
   #[test]
   fn test_ivc() {
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TestCircuit<<G2 as Group>::Base>,
-      TestCircuit<<G1 as Group>::Base>,
+      TrivialTestCircuit<<G2 as Group>::Base>,
+      CubicCircuit<<G1 as Group>::Base>,
     >::setup(
-      TestCircuit {
+      TrivialTestCircuit {
         _p: Default::default(),
       },
-      TestCircuit {
+      CubicCircuit {
         _p: Default::default(),
       },
     );
