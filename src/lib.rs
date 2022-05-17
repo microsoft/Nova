@@ -212,6 +212,18 @@ where
     let mut l_w_secondary = w_secondary;
     let mut l_u_secondary = u_secondary;
 
+    pp.r1cs_shape_primary
+      .is_sat_relaxed(&pp.r1cs_gens_primary, &r_U_primary, &r_W_primary)?;
+    pp.r1cs_shape_primary
+      .is_sat(&pp.r1cs_gens_primary, &l_u_primary, &l_w_primary)?;
+    pp.r1cs_shape_secondary.is_sat_relaxed(
+      &pp.r1cs_gens_secondary,
+      &r_U_secondary,
+      &r_W_secondary,
+    )?;
+    pp.r1cs_shape_secondary
+      .is_sat(&pp.r1cs_gens_secondary, &l_u_secondary, &l_w_secondary)?;
+
     // TODO: execute the provided step circuit(s) to feed real z_i into the verifier circuit
     for i in 1..num_steps {
       // fold the secondary circuit's instance into r_W_primary
@@ -248,10 +260,6 @@ where
         .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
         .map_err(|_e| NovaError::UnSat)?;
 
-      // update the running instance and witness of the primary circuit
-      r_U_secondary = r_U_next_secondary;
-      r_W_secondary = r_W_next_secondary;
-
       // fold the secondary circuit's instance into r_W_primary
       let (nifs_primary, (r_U_next_primary, r_W_next_primary)) = NIFS::prove(
         &pp.r1cs_gens_primary,
@@ -286,9 +294,31 @@ where
         .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
         .map_err(|_e| NovaError::UnSat)?;
 
-      // update the running instance and witness of the primary circuit
+      // update the running instances and witnesses
+      r_U_secondary = r_U_next_secondary;
+      r_W_secondary = r_W_next_secondary;
       r_U_primary = r_U_next_primary.clone();
       r_W_primary = r_W_next_primary.clone();
+
+      println!("Checking if the folded instances are satisfiable {:?}", i);
+      assert!(pp
+        .r1cs_shape_primary
+        .is_sat(&pp.r1cs_gens_primary, &l_u_primary, &l_w_primary)
+        .is_ok());
+      assert!(pp
+        .r1cs_shape_secondary
+        .is_sat(&pp.r1cs_gens_secondary, &l_u_secondary, &l_w_secondary,)
+        .is_ok());
+      assert!(pp
+        .r1cs_shape_primary
+        .is_sat_relaxed(&pp.r1cs_gens_primary, &r_U_primary, &r_W_primary,)
+        .is_ok());
+      assert!(pp
+        .r1cs_shape_secondary
+        .is_sat_relaxed(&pp.r1cs_gens_secondary, &r_U_secondary, &r_W_secondary,)
+        .is_ok());
+
+      println!("Done");
     }
 
     Ok(Self {

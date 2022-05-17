@@ -31,6 +31,7 @@ num-traits = "0.2"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.2.1"
 flate2 = "1.0"
+pasta-msm = {git = "https://github.com/supranational/pasta-msm"}
 
 [features]
 default = [ "bellperson/default", "bellperson-nonnative/default" ]
