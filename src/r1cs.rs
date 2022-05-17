@@ -1,13 +1,20 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
 use super::{
-  commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment},
+  commitments::{CommitGens, CommitTrait, Commitment},
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
-  traits::Group,
+  gadgets::utils::scalar_as_base,
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, HashFuncTrait},
 };
-use ff::Field;
+use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
+use ff::{Field, PrimeField};
+use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
+use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
@@ -24,6 +31,7 @@ pub struct R1CSShape<G: Group> {
   A: Vec<(usize, usize, G::Scalar)>,
   B: Vec<(usize, usize, G::Scalar)>,
   C: Vec<(usize, usize, G::Scalar)>,
+  digest: G::Scalar, // digest of the rest of R1CSShape
 }
 
 /// A type that holds a witness for a given R1CS instance
@@ -53,8 +61,6 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_E: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
   pub(crate) u: G::Scalar,
-  Y_last: Vec<G::Scalar>, // output of the last instance that was folded
-  counter: usize,         // the number of folds thus far
 }
 
 impl<G: Group> R1CSGens<G> {
@@ -116,6 +122,8 @@ impl<G: Group> R1CSShape<G> {
       return Err(NovaError::OddInputLength);
     }
 
+    let digest = Self::compute_digest(num_cons, num_vars, num_io, A, B, C);
+
     let shape = R1CSShape {
       num_cons,
       num_vars,
@@ -123,6 +131,7 @@ impl<G: Group> R1CSShape<G> {
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
+      digest,
     };
 
     Ok(shape)
@@ -250,13 +259,7 @@ impl<G: Group> R1CSShape<G> {
     W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-  ) -> Result<
-    (
-      Vec<G::Scalar>,
-      CompressedCommitment<G::CompressedGroupElement>,
-    ),
-    NovaError,
-  > {
+  ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
     let (AZ_1, BZ_1, CZ_1) = {
       let Z1 = concat(vec![W1.W.clone(), vec![U1.u], U1.X.clone()]);
       self.multiply_vec(&Z1)?
@@ -286,9 +289,93 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens_E).compress();
+    let comm_T = T.commit(&gens.gens_E);
 
     Ok((T, comm_T))
+  }
+
+  /// returns the digest of R1CSShape
+  pub fn get_digest(&self) -> G::Scalar {
+    self.digest
+  }
+
+  fn compute_digest(
+    num_cons: usize,
+    num_vars: usize,
+    num_io: usize,
+    A: &[(usize, usize, G::Scalar)],
+    B: &[(usize, usize, G::Scalar)],
+    C: &[(usize, usize, G::Scalar)],
+  ) -> G::Scalar {
+    let shape_serialized = R1CSShapeSerialized {
+      num_cons,
+      num_vars,
+      num_io,
+      A: A
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      B: B
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+      C: C
+        .iter()
+        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
+        .collect(),
+    };
+
+    // obtain a vector of bytes representing the R1CS shape
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
+    let shape_bytes = encoder.finish().unwrap();
+
+    // convert shape_bytes into a short digest
+    let mut hasher = Sha3_256::new();
+    hasher.input(&shape_bytes);
+    let digest = hasher.result();
+
+    // truncate the digest to 250 bits
+    let bv = (0..NUM_HASH_BITS).map(|i| {
+      let (byte_pos, bit_pos) = (i / 8, i % 8);
+      let bit = (digest[byte_pos] >> bit_pos) & 1;
+      bit == 1
+    });
+
+    // turn the bit vector into a scalar
+    let mut res = G::Scalar::zero();
+    let mut coeff = G::Scalar::one();
+    for bit in bv {
+      if bit {
+        res += coeff;
+      }
+      coeff += coeff;
+    }
+    res
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct R1CSShapeSerialized {
+  num_cons: usize,
+  num_vars: usize,
+  num_io: usize,
+  A: Vec<(usize, usize, Vec<u8>)>,
+  B: Vec<(usize, usize, Vec<u8>)>,
+  C: Vec<(usize, usize, Vec<u8>)>,
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self
+      .get_digest()
+      .append_to_transcript(b"R1CSShape", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for R1CSShape<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    ro.absorb(scalar_as_base::<G>(self.get_digest()));
   }
 }
 
@@ -322,6 +409,22 @@ impl<G: Group> R1CSInstance<G> {
         comm_W: *comm_W,
         X: X.to_owned(),
       })
+    }
+  }
+}
+
+impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    self.comm_W.absorb_in_ro(ro);
+    for x in &self.X {
+      ro.absorb(scalar_as_base::<G>(*x));
     }
   }
 }
@@ -377,8 +480,6 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       comm_E,
       u: G::Scalar::zero(),
       X: vec![G::Scalar::zero(); S.num_io],
-      Y_last: vec![G::Scalar::zero(); S.num_io / 2],
-      counter: 0,
     }
   }
 
@@ -386,26 +487,12 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   pub fn fold(
     &self,
     U2: &R1CSInstance<G>,
-    comm_T: &CompressedCommitment<G::CompressedGroupElement>,
+    comm_T: &Commitment<G>,
     r: &G::Scalar,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
-    let comm_T_unwrapped = comm_T.decompress()?;
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
     let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
-
-    // check if the input of the incoming instance matches the output
-    // of the incremental computation thus far if counter > 0
-    if self.counter > 0 {
-      if self.Y_last.len() != U2.X.len() / 2 {
-        return Err(NovaError::InvalidInputLength);
-      }
-      for i in 0..self.Y_last.len() {
-        if self.Y_last[i] != U2.X[i] {
-          return Err(NovaError::InputOutputMismatch);
-        }
-      }
-    }
 
     // weighted sum of X, comm_W, comm_E, and u
     let X = X1
@@ -414,7 +501,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
     let comm_W = comm_W_1 + comm_W_2 * r;
-    let comm_E = *comm_E_1 + comm_T_unwrapped * *r;
+    let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
 
     Ok(RelaxedR1CSInstance {
@@ -422,8 +509,31 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       comm_E,
       X,
       u,
-      Y_last: U2.X[U2.X.len() / 2..].to_owned(),
-      counter: self.counter + 1,
     })
+  }
+}
+
+impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+    self.comm_W.append_to_transcript(b"comm_W", transcript);
+    self.comm_E.append_to_transcript(b"comm_E", transcript);
+    self.u.append_to_transcript(b"u", transcript);
+    self.X.append_to_transcript(b"X", transcript);
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    self.comm_W.absorb_in_ro(ro);
+    self.comm_E.absorb_in_ro(ro);
+    ro.absorb(scalar_as_base::<G>(self.u));
+
+    // absorb each element of self.X in bignum format
+    for x in &self.X {
+      let limbs: Vec<G::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      for limb in limbs {
+        ro.absorb(scalar_as_base::<G>(limb));
+      }
+    }
   }
 }

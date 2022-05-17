@@ -1,16 +1,14 @@
 use super::{
   errors::NovaError,
-  traits::{CompressedGroup, Group},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, HashFuncTrait},
 };
 use core::{
   fmt::Debug,
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use digest::{ExtendableOutput, Input};
+use ff::Field;
 use merlin::Transcript;
-use sha3::Shake256;
-use std::io::Read;
 
 #[derive(Debug)]
 pub struct CommitGens<G: Group> {
@@ -29,16 +27,8 @@ pub struct CompressedCommitment<C: CompressedGroup> {
 }
 
 impl<G: Group> CommitGens<G> {
-  pub fn new(label: &[u8], n: usize) -> Self {
-    let mut shake = Shake256::default();
-    shake.input(label);
-    let mut reader = shake.xof_result();
-    let mut gens: Vec<G::PreprocessedGroupElement> = Vec::new();
-    let mut uniform_bytes = [0u8; 64];
-    for _ in 0..n {
-      reader.read_exact(&mut uniform_bytes).unwrap();
-      gens.push(G::from_uniform_bytes(&uniform_bytes).unwrap());
-    }
+  pub fn new(label: &'static [u8], n: usize) -> Self {
+    let gens = G::from_label(label, n);
 
     CommitGens {
       gens,
@@ -80,13 +70,22 @@ impl<G: Group> CommitTrait<G> for [G::Scalar] {
   }
 }
 
-pub trait AppendToTranscriptTrait {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
-}
-
 impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
     transcript.append_message(label, self.comm.compress().as_bytes());
+  }
+}
+
+impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+    ro.absorb(x);
+    ro.absorb(y);
+    ro.absorb(if is_infinity {
+      G::Base::one()
+    } else {
+      G::Base::zero()
+    });
   }
 }
 

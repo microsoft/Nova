@@ -10,7 +10,7 @@ use nova_snark::bellperson::{
   solver::SatisfyingAssignment,
 };
 use num_bigint::BigInt;
-use num_traits::Num as BigNum;
+use num_traits::Num as OtherNum;
 
 fn synthesize_is_equal<Fr: PrimeField, CS: ConstraintSystem<Fr>>(
   cs: &mut CS,

@@ -2,4 +2,3 @@ edition = "2018"
 tab_spaces = 2
 newline_style = "Unix"
 use_try_shorthand = true
-imports_granularity = "crate"

@@ -29,14 +29,19 @@ where
   Fp: PrimeField,
 {
   /// Allocates a new point on the curve using coordinates provided by `coords`.
+  /// If coords = None, it allocates the default infinity point
   pub fn alloc<CS>(mut cs: CS, coords: Option<(Fp, Fp, bool)>) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Fp>,
   {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(coords.unwrap().0))?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(coords.unwrap().1))?;
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+      Ok(coords.map_or(Fp::zero(), |c| c.0))
+    })?;
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      Ok(coords.map_or(Fp::zero(), |c| c.0))
+    })?;
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
-      Ok(if coords.unwrap().2 {
+      Ok(if coords.map_or(true, |c| c.2) {
         Fp::one()
       } else {
         Fp::zero()
@@ -560,36 +565,13 @@ where
 }
 
 #[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-mod fp {
-  use ff::PrimeField;
-
-  #[derive(PrimeField)]
-  #[PrimeFieldModulus = "28948022309329048855892746252171976963363056481941560715954676764349967630337"]
-  #[PrimeFieldGenerator = "5"]
-  #[PrimeFieldReprEndianness = "little"]
-  pub struct Fp([u64; 4]);
-}
-
-#[cfg(test)]
-#[allow(clippy::too_many_arguments)]
-mod fq {
-  use ff::PrimeField;
-
-  #[derive(PrimeField)]
-  #[PrimeFieldModulus = "28948022309329048855892746252171976963363056481941647379679742748393362948097"]
-  #[PrimeFieldGenerator = "5"]
-  #[PrimeFieldReprEndianness = "little"]
-  pub struct Fq([u64; 4]);
-}
-
-#[cfg(test)]
 mod tests {
   use super::*;
 
   #[test]
   fn test_ecc_ops() {
-    use super::{fp::Fp, fq::Fq};
+    type Fp = pasta_curves::pallas::Base;
+    type Fq = pasta_curves::pallas::Scalar;
 
     // perform some curve arithmetic
     let a = Point::<Fp, Fq>::random_vartime();
@@ -601,35 +583,35 @@ mod tests {
 
     // perform the same computation by translating to pasta_curve types
     let a_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(a.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(a.y.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(a.x.to_repr()).unwrap(),
+      pasta_curves::Fp::from_repr(a.y.to_repr()).unwrap(),
     )
     .unwrap();
     let b_pasta = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(b.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(b.y.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(b.x.to_repr()).unwrap(),
+      pasta_curves::Fp::from_repr(b.y.to_repr()).unwrap(),
     )
     .unwrap();
     let c_pasta = (a_pasta + b_pasta).to_affine();
     let d_pasta = (a_pasta + a_pasta).to_affine();
     let e_pasta = a_pasta
-      .mul(pasta_curves::Fq::from_repr(s.to_repr().0).unwrap())
+      .mul(pasta_curves::Fq::from_repr(s.to_repr()).unwrap())
       .to_affine();
 
     // transform c, d, and e into pasta_curve types
     let c_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(c.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(c.y.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(c.x.to_repr()).unwrap(),
+      pasta_curves::Fp::from_repr(c.y.to_repr()).unwrap(),
     )
     .unwrap();
     let d_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(d.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(d.y.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(d.x.to_repr()).unwrap(),
+      pasta_curves::Fp::from_repr(d.y.to_repr()).unwrap(),
     )
     .unwrap();
     let e_pasta_2 = EpAffine::from_xy(
-      pasta_curves::Fp::from_repr(e.x.to_repr().0).unwrap(),
-      pasta_curves::Fp::from_repr(e.y.to_repr().0).unwrap(),
+      pasta_curves::Fp::from_repr(e.x.to_repr()).unwrap(),
+      pasta_curves::Fp::from_repr(e.y.to_repr()).unwrap(),
     )
     .unwrap();
 

@@ -1,8 +1,8 @@
 [package]
 name = "nova-snark"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
-edition = "2018"
+edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
 documentation = "https://docs.rs/nova-snark/"
 readme = "README.md"
@@ -12,7 +12,7 @@ keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
 bellperson = { version = "0.20", default-features = false }
-ff = { version = "0.11.0", features = ["derive"] }
+ff = "0.11.0"
 merlin = "2.0.0"
 rand = "0.8.4"
 digest = "0.8.1"
@@ -25,10 +25,12 @@ subtle = "2.4"
 pasta_curves = "0.3.1"
 neptune = { version = "6.1", default-features = false }
 generic-array = "0.14.4"
-#bellperson-nonnative = { version = "0.2.1", default-features = false }
-bellperson-nonnative = { version = "0.2.1", git = "https://github.com/yatima-inc/bellperson-nonnative", branch = "sb/wasm", default-features = false }
+bellperson-nonnative = { version = "0.3.0", default-features = false, features = ["wasm"] }
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "1.2.1"
+flate2 = "1.0"
 
 [features]
 default = [ "bellperson/default", "bellperson-nonnative/default", "neptune/default" ]

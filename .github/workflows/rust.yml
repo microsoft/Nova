@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install
-      run: rustup default nightly
+      run: rustup default stable
     - name: Install rustfmt Components
       run: rustup component add rustfmt
     - name: Install clippy
