@@ -47,14 +47,12 @@ impl<G: Group> NIFS<G> {
 
     // compute a commitment to the cross-term
     let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
-    println!("comm_T is {:?}", comm_T.comm);
 
     // append `comm_T` to the transcript and obtain a challenge
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
     let r = ro.get_challenge();
-    println!("RO's r in non-circuit is: {:?}", r);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r)?;

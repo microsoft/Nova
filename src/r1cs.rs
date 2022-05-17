@@ -375,7 +375,6 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSShape<G> {
   fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
-    println!("Absorbing shape digest");
     ro.absorb(scalar_as_base::<G>(self.get_digest()));
   }
 }
@@ -423,7 +422,6 @@ impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
   fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
-    println!("Absorbing u");
     self.comm_W.absorb_in_ro(ro);
     for x in &self.X {
       ro.absorb(scalar_as_base::<G>(*x));
@@ -547,7 +545,6 @@ impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
 
 impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
   fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
-    println!("Absorb U");
     self.comm_W.absorb_in_ro(ro);
     self.comm_E.absorb_in_ro(ro);
     ro.absorb(scalar_as_base::<G>(self.u));
