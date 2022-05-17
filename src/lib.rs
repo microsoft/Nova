@@ -20,14 +20,14 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use crate::nifs::NIFS;
-use crate::poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NIFSVerifierCircuit, NIFSVerifierCircuitInputs, NIFSVerifierCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
+use nifs::NIFS;
+use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
