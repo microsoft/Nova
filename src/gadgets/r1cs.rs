@@ -269,14 +269,20 @@ where
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(ro_consts);
+    println!("Absorbing circuit hash");
     ro.absorb(params);
+    println!("Absorbing U");
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
+    println!("Absorbing u");
     u.absorb_in_ro(&mut ro);
+    println!("Absorbing T");
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
     ro.absorb(T.is_infinity.clone());
     let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
+
+    println!("r in circuit is {:?}", r.get_value());
 
     // W_fold = self.W + r * u.W
     let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), r_bits.clone())?;

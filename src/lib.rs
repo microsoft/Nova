@@ -226,6 +226,8 @@ where
 
     // TODO: execute the provided step circuit(s) to feed real z_i into the verifier circuit
     for i in 1..num_steps {
+      println!("Iteration {:?}", i);
+      println!("Folding outside the circuit");
       // fold the secondary circuit's instance into r_W_primary
       let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
         &pp.r1cs_gens_secondary,
@@ -237,6 +239,16 @@ where
         &l_w_secondary,
       )?;
 
+      println!("Checking if the secondary non-circuit folded instance is satisfiable");
+      assert!(pp
+        .r1cs_shape_secondary
+        .is_sat_relaxed(&pp.r1cs_gens_secondary, &r_U_next_secondary, &r_W_next_secondary)
+        .is_ok());
+      println!("Yes");
+
+      println!("T is {:?}", nifs_secondary.comm_T.decompress()?.comm.to_coordinates());
+
+      println!("Folding inside the circuit");
       let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
       let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_secondary.get_digest(),
@@ -260,6 +272,13 @@ where
         .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
         .map_err(|_e| NovaError::UnSat)?;
 
+        println!("Checking if the primary circuit folded instance is satisfiable");
+        assert!(pp
+          .r1cs_shape_primary
+          .is_sat(&pp.r1cs_gens_primary, &l_u_primary, &l_w_primary)
+          .is_ok());
+        println!("Yes");
+
       // fold the secondary circuit's instance into r_W_primary
       let (nifs_primary, (r_U_next_primary, r_W_next_primary)) = NIFS::prove(
         &pp.r1cs_gens_primary,
@@ -270,6 +289,13 @@ where
         &l_u_primary.clone(),
         &l_w_primary.clone(),
       )?;
+
+      println!("Checking if the primary non-circuit folded instance is satisfiable");
+      assert!(pp
+        .r1cs_shape_primary
+        .is_sat_relaxed(&pp.r1cs_gens_primary, &r_U_next_primary, &r_W_next_primary)
+        .is_ok());
+      println!("Yes");
 
       let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
       let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
@@ -297,8 +323,8 @@ where
       // update the running instances and witnesses
       r_U_secondary = r_U_next_secondary;
       r_W_secondary = r_W_next_secondary;
-      r_U_primary = r_U_next_primary.clone();
-      r_W_primary = r_W_next_primary.clone();
+      r_U_primary = r_U_next_primary;
+      r_W_primary = r_W_next_primary;
 
       println!("Checking if the folded instances are satisfiable {:?}", i);
       assert!(pp
