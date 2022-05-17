@@ -367,7 +367,7 @@ mod tests {
   }
 
   #[test]
-  fn test_base_case() {
+  fn test_ivc() {
     // produce public parameters
     let pp = PublicParams::<
       G1,
