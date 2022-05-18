@@ -38,7 +38,6 @@ pub struct NIFSVerifierCircuitParams {
 }
 
 impl NIFSVerifierCircuitParams {
-  #[allow(dead_code)]
   pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
@@ -64,7 +63,7 @@ where
   G: Group,
 {
   /// Create new inputs/witness for the verification circuit
-  #[allow(dead_code, clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     params: G::Scalar,
     i: G::Base,
@@ -104,7 +103,6 @@ where
   SC: StepCircuit<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
-  #[allow(dead_code)]
   pub fn new(
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
