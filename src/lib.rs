@@ -41,14 +41,14 @@ pub struct PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G2::Base> + Clone,
-  C2: StepCircuit<G1::Base> + Clone,
+  C1: StepCircuit<G1::Scalar> + Clone,
+  C2: StepCircuit<G2::Scalar> + Clone,
 {
-  _ro_consts_primary: ROConstants<G1>,
+  ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
-  _ro_consts_secondary: ROConstants<G2>,
+  ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
@@ -62,16 +62,16 @@ impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G2::Base> + Clone,
-  C2: StepCircuit<G1::Base> + Clone,
+  C1: StepCircuit<G1::Scalar> + Clone,
+  C2: StepCircuit<G2::Scalar> + Clone,
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
     let params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
-    let _ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
-    let _ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
+    let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
+    let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
 
     let ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base> =
       ROConstantsCircuit::new();
@@ -101,11 +101,11 @@ where
     let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
 
     Self {
-      _ro_consts_primary,
+      ro_consts_primary,
       ro_consts_circuit_primary,
       r1cs_gens_primary,
       r1cs_shape_primary,
-      _ro_consts_secondary,
+      ro_consts_secondary,
       ro_consts_circuit_secondary,
       r1cs_gens_secondary,
       r1cs_shape_secondary,
@@ -122,8 +122,8 @@ pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G2::Base> + Clone,
-  C2: StepCircuit<G1::Base> + Clone,
+  C1: StepCircuit<G1::Scalar> + Clone,
+  C2: StepCircuit<G2::Scalar> + Clone,
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
@@ -141,8 +141,8 @@ impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G2::Base> + Clone,
-  C2: StepCircuit<G1::Base> + Clone,
+  C1: StepCircuit<G1::Scalar> + Clone,
+  C2: StepCircuit<G2::Scalar> + Clone,
 {
   /// Create a new `RecursiveSNARK`
   pub fn prove(
@@ -155,7 +155,7 @@ where
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_secondary.get_digest(),
-      <G2 as Group>::Base::zero(),
+      <G1 as Group>::Scalar::zero(),
       z0_primary,
       None,
       None,
@@ -177,7 +177,7 @@ where
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_primary.get_digest(),
-      <G1 as Group>::Base::zero(),
+      <G2 as Group>::Scalar::zero(),
       z0_secondary,
       None,
       None,
@@ -215,12 +215,11 @@ where
     let mut z_next_primary = z0_primary;
     let mut z_next_secondary = z0_secondary;
 
-    // TODO: execute the provided step circuit(s) to feed real z_i into the verifier circuit
     for i in 1..num_steps {
-      // fold the secondary circuit's instance into r_W_primary
+      // fold the secondary circuit's instance
       let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
         &pp.r1cs_gens_secondary,
-        &pp._ro_consts_secondary,
+        &pp.ro_consts_secondary,
         &pp.r1cs_shape_secondary,
         &r_U_secondary,
         &r_W_secondary,
@@ -234,7 +233,7 @@ where
       let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
       let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_secondary.get_digest(),
-        <G2 as Group>::Base::from(i as u64),
+        <G1 as Group>::Scalar::from(i as u64),
         z0_primary,
         Some(z_next_primary),
         Some(r_U_secondary),
@@ -254,10 +253,10 @@ where
         .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
         .map_err(|_e| NovaError::UnSat)?;
 
-      // fold the secondary circuit's instance into r_W_primary
+      // fold the primary circuit's instance
       let (nifs_primary, (r_U_next_primary, r_W_next_primary)) = NIFS::prove(
         &pp.r1cs_gens_primary,
-        &pp._ro_consts_primary,
+        &pp.ro_consts_primary,
         &pp.r1cs_shape_primary,
         &r_U_primary.clone(),
         &r_W_primary.clone(),
@@ -268,7 +267,7 @@ where
       let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
       let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_primary.get_digest(),
-        <G1 as Group>::Base::from(i as u64),
+        <G2 as Group>::Scalar::from(i as u64),
         z0_secondary,
         Some(z_next_secondary),
         Some(r_U_primary.clone()),
@@ -420,8 +419,8 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G2 as Group>::Base>,
-      TrivialTestCircuit<<G1 as Group>::Base>,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::setup(
       TrivialTestCircuit {
         _p: Default::default(),
@@ -434,8 +433,8 @@ mod tests {
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
-      <G2 as Group>::Base::zero(),
-      <G1 as Group>::Base::zero(),
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
       3,
     );
     assert!(res.is_ok());
@@ -452,8 +451,8 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G2 as Group>::Base>,
-      CubicCircuit<<G1 as Group>::Base>,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(
       TrivialTestCircuit {
         _p: Default::default(),
@@ -466,8 +465,8 @@ mod tests {
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
-      <G2 as Group>::Base::zero(),
-      <G1 as Group>::Base::zero(),
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
       3,
     );
     assert!(res.is_ok());
