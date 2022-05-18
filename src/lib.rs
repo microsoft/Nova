@@ -133,6 +133,8 @@ where
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
+  zn_primary: G1::Scalar,
+  zn_secondary: G2::Scalar,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -147,15 +149,15 @@ where
   /// Create a new `RecursiveSNARK`
   pub fn prove(
     pp: &PublicParams<G1, G2, C1, C2>,
+    num_steps: usize,
     z0_primary: G1::Scalar,
     z0_secondary: G2::Scalar,
-    num_steps: usize,
   ) -> Result<Self, NovaError> {
     // Execute the base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_secondary.get_digest(),
-      <G1 as Group>::Scalar::zero(),
+      G1::Scalar::zero(),
       z0_primary,
       None,
       None,
@@ -177,7 +179,7 @@ where
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_primary.get_digest(),
-      <G2 as Group>::Scalar::zero(),
+      G2::Scalar::zero(),
       z0_secondary,
       None,
       None,
@@ -233,7 +235,7 @@ where
       let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
       let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_secondary.get_digest(),
-        <G1 as Group>::Scalar::from(i as u64),
+        G1::Scalar::from(i as u64),
         z0_primary,
         Some(z_next_primary),
         Some(r_U_secondary),
@@ -267,7 +269,7 @@ where
       let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
       let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_primary.get_digest(),
-        <G2 as Group>::Scalar::from(i as u64),
+        G2::Scalar::from(i as u64),
         z0_secondary,
         Some(z_next_secondary),
         Some(r_U_primary.clone()),
@@ -303,15 +305,41 @@ where
       r_U_secondary,
       l_w_secondary,
       l_u_secondary,
+      zn_primary: z_next_primary,
+      zn_secondary: z_next_secondary,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
     })
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
-  pub fn verify(&self, pp: &PublicParams<G1, G2, C1, C2>) -> Result<(), NovaError> {
+  pub fn verify(
+    &self,
+    pp: &PublicParams<G1, G2, C1, C2>,
+    num_steps: usize,
+    z0_primary: G1::Scalar,
+    z0_secondary: G2::Scalar,
+  ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
+    // check if the R1CS instances have two public outputs
+    if self.l_u_primary.X.len() != 2 || self.l_u_secondary.X.len() != 2 {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the Relaxed R1CS instances have 2 * NUM_LIMBS public outputs
+    if self.r_U_primary.X.len() != 2 * BN_N_LIMBS || self.r_U_secondary.X.len() != 2 * BN_N_LIMBS {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // if the number of executed steps is zero, then zn_primery == z0_primary and zn_secondary == z0_secondary
+    if num_steps == 0 {
+      if self.zn_primary != z0_primary || self.zn_secondary != z0_secondary {
+        return Err(NovaError::ProofVerifyError);
+      }
+    }
+
     // TODO: perform additional checks on whether (shape_digest, z_0, z_i, i) are correct
 
+    // check the satisfiability of the provided instances
     pp.r1cs_shape_primary.is_sat_relaxed(
       &pp.r1cs_gens_primary,
       &self.r_U_primary,
@@ -333,7 +361,7 @@ where
       &self.l_w_secondary,
     )?;
 
-    Ok(())
+    Ok((self.zn_primary, self.zn_secondary))
   }
 }
 
@@ -433,15 +461,20 @@ mod tests {
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
+      3,
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
-      3,
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify(
+      &pp,
+      3,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
     assert!(res.is_ok());
   }
 
@@ -465,15 +498,20 @@ mod tests {
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
+      3,
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
-      3,
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify(
+      &pp,
+      3,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
     assert!(res.is_ok());
   }
 }

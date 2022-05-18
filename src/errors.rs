@@ -16,4 +16,6 @@ pub enum NovaError {
   UnSat,
   /// returned when the supplied compressed commitment cannot be decompressed
   DecompressionError,
+  /// returned if proof verification fails
+  ProofVerifyError,
 }
