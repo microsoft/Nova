@@ -143,12 +143,15 @@ where
 
     // Allocate i
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
+
     // Allocate z0
     let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
+
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
     let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || {
       Ok(self.inputs.get()?.zi.unwrap_or_else(G::Base::zero))
     })?;
+
     // Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate U"),
@@ -158,6 +161,7 @@ where
       self.params.limb_width,
       self.params.n_limbs,
     )?;
+
     // Allocate the instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
@@ -176,6 +180,7 @@ where
           .map_or(None, |T| Some(T.comm.to_coordinates()))
       }),
     )?;
+
     Ok((params, i, z_0, z_i, U, u, T))
   }
 
@@ -320,6 +325,7 @@ where
       &z_i,
       &Boolean::from(is_base_case),
     )?;
+
     let z_next = self
       .step_circuit
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;

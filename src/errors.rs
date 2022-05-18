@@ -18,4 +18,6 @@ pub enum NovaError {
   DecompressionError,
   /// returned if proof verification fails
   ProofVerifyError,
+  /// returned if the provided number of steps is zero
+  InvalidNumSteps,
 }
