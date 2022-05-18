@@ -26,12 +26,13 @@ use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
+use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
-use traits::{Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
+use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
 
 type ROConstants<G> =
   <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
@@ -133,6 +134,8 @@ where
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
+  zn_primary: G1::Scalar,
+  zn_secondary: G2::Scalar,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -147,15 +150,19 @@ where
   /// Create a new `RecursiveSNARK`
   pub fn prove(
     pp: &PublicParams<G1, G2, C1, C2>,
+    num_steps: usize,
     z0_primary: G1::Scalar,
     z0_secondary: G2::Scalar,
-    num_steps: usize,
   ) -> Result<Self, NovaError> {
+    if num_steps == 0 {
+      return Err(NovaError::InvalidNumSteps);
+    }
+
     // Execute the base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_secondary.get_digest(),
-      <G1 as Group>::Scalar::zero(),
+      G1::Scalar::zero(),
       z0_primary,
       None,
       None,
@@ -177,7 +184,7 @@ where
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
       pp.r1cs_shape_primary.get_digest(),
-      <G2 as Group>::Scalar::zero(),
+      G2::Scalar::zero(),
       z0_secondary,
       None,
       None,
@@ -214,6 +221,8 @@ where
 
     let mut z_next_primary = z0_primary;
     let mut z_next_secondary = z0_secondary;
+    z_next_primary = pp.c_primary.compute(&z_next_primary);
+    z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
 
     for i in 1..num_steps {
       // fold the secondary circuit's instance
@@ -227,13 +236,10 @@ where
         &l_w_secondary,
       )?;
 
-      z_next_primary = pp.c_primary.compute(&z_next_primary);
-      z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
-
       let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
       let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_secondary.get_digest(),
-        <G1 as Group>::Scalar::from(i as u64),
+        G1::Scalar::from(i as u64),
         z0_primary,
         Some(z_next_primary),
         Some(r_U_secondary),
@@ -267,7 +273,7 @@ where
       let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
       let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
         pp.r1cs_shape_primary.get_digest(),
-        <G2 as Group>::Scalar::from(i as u64),
+        G2::Scalar::from(i as u64),
         z0_secondary,
         Some(z_next_secondary),
         Some(r_U_primary.clone()),
@@ -292,6 +298,8 @@ where
       r_W_secondary = r_W_next_secondary;
       r_U_primary = r_U_next_primary;
       r_W_primary = r_W_next_primary;
+      z_next_primary = pp.c_primary.compute(&z_next_primary);
+      z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
     }
 
     Ok(Self {
@@ -303,15 +311,61 @@ where
       r_U_secondary,
       l_w_secondary,
       l_u_secondary,
+      zn_primary: z_next_primary,
+      zn_secondary: z_next_secondary,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
     })
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
-  pub fn verify(&self, pp: &PublicParams<G1, G2, C1, C2>) -> Result<(), NovaError> {
-    // TODO: perform additional checks on whether (shape_digest, z_0, z_i, i) are correct
+  pub fn verify(
+    &self,
+    pp: &PublicParams<G1, G2, C1, C2>,
+    num_steps: usize,
+    z0_primary: G1::Scalar,
+    z0_secondary: G2::Scalar,
+  ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
+    // number of steps cannot be zero
+    if num_steps == 0 {
+      return Err(NovaError::ProofVerifyError);
+    }
 
+    // check if the (relaxed) R1CS instances have two public outputs
+    if self.l_u_primary.X.len() != 2
+      || self.l_u_secondary.X.len() != 2
+      || self.r_U_primary.X.len() != 2
+      || self.r_U_secondary.X.len() != 2
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the output hashes in R1CS instances point to the right running instances
+    let (hash_primary, hash_secondary) = {
+      let mut hasher = <G2 as Group>::HashFunc::new(pp.ro_consts_secondary.clone());
+      hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
+      hasher.absorb(G1::Scalar::from(num_steps as u64));
+      hasher.absorb(z0_primary);
+      hasher.absorb(self.zn_primary);
+      self.r_U_secondary.absorb_in_ro(&mut hasher);
+
+      let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
+      hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
+      hasher2.absorb(G2::Scalar::from(num_steps as u64));
+      hasher2.absorb(z0_secondary);
+      hasher2.absorb(self.zn_secondary);
+      self.r_U_primary.absorb_in_ro(&mut hasher2);
+
+      (hasher.get_hash(), hasher2.get_hash())
+    };
+
+    if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
+      || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check the satisfiability of the provided instances
     pp.r1cs_shape_primary.is_sat_relaxed(
       &pp.r1cs_gens_primary,
       &self.r_U_primary,
@@ -333,7 +387,7 @@ where
       &self.l_w_secondary,
     )?;
 
-    Ok(())
+    Ok((self.zn_primary, self.zn_secondary))
   }
 }
 
@@ -433,20 +487,25 @@ mod tests {
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
+      3,
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
-      3,
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify(
+      &pp,
+      3,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
     assert!(res.is_ok());
   }
 
   #[test]
-  fn test_ivc() {
+  fn test_ivc_nontrivial() {
     // produce public parameters
     let pp = PublicParams::<
       G1,
@@ -462,18 +521,83 @@ mod tests {
       },
     );
 
+    let num_steps = 3;
+
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove(
       &pp,
-      <G1 as Group>::Scalar::zero(),
+      num_steps,
+      <G1 as Group>::Scalar::one(),
       <G2 as Group>::Scalar::zero(),
-      3,
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
     assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
+    let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
+    for _i in 0..num_steps {
+      zn_secondary_direct = CubicCircuit {
+        _p: Default::default(),
+      }
+      .compute(&zn_secondary_direct);
+    }
+    assert_eq!(zn_secondary, zn_secondary_direct);
+    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
+  }
+
+  #[test]
+  fn test_ivc_base() {
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      CubicCircuit {
+        _p: Default::default(),
+      },
+    );
+
+    let num_steps = 1;
+
+    // produce a recursive SNARK
+    let res = RecursiveSNARK::prove(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+    let recursive_snark = res.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
+    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(5u64));
   }
 }

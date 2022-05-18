@@ -88,7 +88,6 @@ where
 {
   type Constants = ROConstantsCircuit<Base>;
 
-  #[allow(dead_code)]
   fn new(constants: ROConstantsCircuit<Base>) -> Self {
     Self {
       state: Vec::new(),
@@ -98,13 +97,11 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  #[allow(dead_code)]
   fn absorb(&mut self, e: Base) {
     self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
   fn get_challenge(&self) -> Scalar {
     let hash = self.hash_inner();
     // Only keep NUM_CHALLENGE_BITS bits
@@ -120,7 +117,6 @@ where
     res
   }
 
-  #[allow(dead_code)]
   fn get_hash(&self) -> Scalar {
     let hash = self.hash_inner();
     // Only keep NUM_HASH_BITS bits
@@ -152,7 +148,6 @@ where
   Scalar: PrimeField + PrimeFieldBits,
 {
   /// Initialize the internal state and set the poseidon constants
-  #[allow(dead_code)]
   pub fn new(constants: ROConstantsCircuit<Scalar>) -> Self {
     Self {
       state: Vec::new(),
@@ -161,7 +156,6 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  #[allow(dead_code)]
   pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
     self.state.push(e);
   }
@@ -203,7 +197,6 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
   pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
@@ -212,7 +205,6 @@ where
     Ok(bits[..NUM_CHALLENGE_BITS].into())
   }
 
-  #[allow(dead_code)]
   pub fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
