@@ -10,10 +10,9 @@ use bellperson::{
 };
 use bellperson_nonnative::mp::bignat::{nat_to_limbs, BigNat};
 use ff::{Field, PrimeField, PrimeFieldBits};
-use rug::Integer;
+use num_bigint::BigInt;
 
 /// Gets as input the little indian representation of a number and spits out the number
-#[allow(dead_code)]
 pub fn le_bits_to_num<Scalar, CS>(
   mut cs: CS,
   bits: Vec<AllocatedBit>,
@@ -86,7 +85,7 @@ where
   CS: ConstraintSystem<<G as Group>::Base>,
 {
   AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
-    let input_bits = input.get()?.clone().to_le_bits();
+    let input_bits = input.unwrap_or_else(G::Scalar::zero).clone().to_le_bits();
     let mut mult = G::Base::one();
     let mut val = G::Base::zero();
     for bit in input_bits {
@@ -99,10 +98,24 @@ where
   })
 }
 
+/// interepret scalar as base
+pub fn scalar_as_base<G: Group>(input: G::Scalar) -> G::Base {
+  let input_bits = input.to_le_bits();
+  let mut mult = G::Base::one();
+  let mut val = G::Base::zero();
+  for bit in input_bits {
+    if bit {
+      val += mult;
+    }
+    mult = mult + mult;
+  }
+  val
+}
+
 /// Allocate bignat a constant
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
-  val: &Integer,
+  val: &BigInt,
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<BigNat<F>, SynthesisError> {

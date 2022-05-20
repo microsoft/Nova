@@ -6,58 +6,10 @@ use core::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
-use rug::Integer;
-
-#[cfg(feature = "serde-derive")]
+use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 /// Represents an element of a group
-#[cfg(not(feature = "serde-derive"))]
-pub trait Group:
-  Clone
-  + Copy
-  + Debug
-  + Eq
-  + Sized
-  + GroupOps
-  + GroupOpsOwned
-  + ScalarMul<<Self as Group>::Scalar>
-  + ScalarMulOwned<<Self as Group>::Scalar>
-{
-  /// A type representing an element of the base field of the group
-  type Base: PrimeField + PrimeFieldBits;
-
-  /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait;
-
-  /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
-
-  /// A type representing preprocessed group element
-  type PreprocessedGroupElement;
-
-  /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self;
-
-  /// Compresses the group element
-  fn compress(&self) -> Self::CompressedGroupElement;
-
-  /// Attempts to create a group element from a sequence of bytes,
-  /// failing with a `None` if the supplied bytes do not encode the group element
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
-
-  /// Returns the affine coordinates (x, y, infinty) for the point
-  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
-
-  /// Returns the order of the group as a big integer
-  fn get_order() -> Integer;
-}
-
-/// Represents an element of a group
-#[cfg(feature = "serde-derive")]
 pub trait Group:
   Clone
   + Copy
@@ -78,12 +30,14 @@ pub trait Group:
   type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing preprocessed group element
   type PreprocessedGroupElement: Serialize + for<'de> Deserialize<'de>;
+
+  /// A type that represents a hash function that consumes elements
+  /// from the base field and squeezes out elements of the scalar field
+  type HashFunc: HashFuncTrait<Self::Base, Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -94,35 +48,18 @@ pub trait Group:
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
-  /// Attempts to create a group element from a sequence of bytes,
-  /// failing with a `None` if the supplied bytes do not encode the group element
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement>;
+  /// Produce a vector of group elements using a static label
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
 
   /// Returns the order of the group as a big integer
-  fn get_order() -> Integer;
+  fn get_order() -> BigInt;
 }
 
 /// Represents a compressed version of a group element
-#[cfg(not(feature = "serde-derive"))]
-pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + 'static {
-  /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
-
-  /// Decompresses the compressed group element
-  fn decompress(&self) -> Option<Self::GroupElement>;
-
-  /// Returns a byte array representing the compressed group element
-  fn as_bytes(&self) -> &[u8];
-}
-
-/// Represents a compressed version of a group element
-#[cfg(feature = "serde-derive")]
-pub trait CompressedGroup:
-  Clone + Copy + Debug + Eq + Sized + Send + Sync + 'static + Serialize + for<'de> Deserialize<'de>
-{
+pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static {
   /// A type that holds the decompressed version of the compressed group element
   type GroupElement: Group + Serialize + for<'de> Deserialize<'de>;
 
@@ -133,10 +70,46 @@ pub trait CompressedGroup:
   fn as_bytes(&self) -> &[u8];
 }
 
+/// A helper trait to append different types to the transcript
+pub trait AppendToTranscriptTrait {
+  /// appends the value to the transcript under the provided label
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript);
+}
+
+/// A helper trait to absorb different objects in RO
+pub trait AbsorbInROTrait<G: Group> {
+  /// Absorbs the value in the provided RO
+  fn absorb_in_ro(&self, ro: &mut G::HashFunc);
+}
+
 /// A helper trait to generate challenges using a transcript object
 pub trait ChallengeTrait {
   /// Returns a Scalar representing the challenge using the transcript
   fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self;
+}
+
+/// A helper trait that defines the behavior of a hash function that we use as an RO
+pub trait HashFuncTrait<Base, Scalar> {
+  /// A type representing constants/parameters associated with the hash function
+  type Constants: HashFuncConstantsTrait<Base> + Clone;
+
+  /// Initializes the hash function
+  fn new(constants: Self::Constants) -> Self;
+
+  /// Adds a scalar to the internal state
+  fn absorb(&mut self, e: Base);
+
+  /// Returns a random challenge by hashing the internal state
+  fn get_challenge(&self) -> Scalar;
+
+  /// Returns a hash of the internal state
+  fn get_hash(&self) -> Scalar;
+}
+
+/// A helper trait that defines the constants associated with a hash function
+pub trait HashFuncConstantsTrait<Base> {
+  /// produces constants/parameters associated with the hash function
+  fn new() -> Self;
 }
 
 /// A helper trait for types with a group operation.
@@ -173,4 +146,21 @@ pub trait StepCircuit<F: PrimeField> {
     cs: &mut CS,
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError>;
+
+  /// Execute the circuit for a computation step and return output
+  fn compute(&self, z: &F) -> F;
+}
+
+impl<F: PrimeField> AppendToTranscriptTrait for F {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    transcript.append_message(label, self.to_repr().as_ref());
+  }
+}
+
+impl<F: PrimeField> AppendToTranscriptTrait for [F] {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
+    for s in self {
+      s.append_to_transcript(label, transcript);
+    }
+  }
 }

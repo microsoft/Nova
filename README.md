@@ -2,9 +2,9 @@
 
 Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). The details of Nova are described in our [paper](https://eprint.iacr.org/2021/370). Recursive SNARKs including Nova have a wide variety of applications such as constructions of verifiable delay functions (VDFs), succinct blockchains, and incrementally verifiable versions of [verifiable state machines](https://eprint.iacr.org/2020/758.pdf). A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is dominated by two group scalar multiplications.
 
-This repository provides `libnova,` a Rust library library implementation of Nova. The current release implements the core building blocks in Nova, and future releases will use cycles of elliptic curves to support recursive composition of proofs.
+This repository provides `nova-snark,` a Rust library implementation of Nova.
 
-To run tests, run:
+To run tests:
 ```text
 cargo test
 ```

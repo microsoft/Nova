@@ -3,11 +3,11 @@ use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
-      alloc_bignat_constant, alloc_scalar_as_base, conditionally_select,
+      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  poseidon::{NovaPoseidonConstants, PoseidonROGadget},
+  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::Group,
 };
@@ -114,16 +114,25 @@ where
       inst.get().map_or(None, |inst| Some(inst.u)),
     )?;
 
+    // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[0]"),
-      || Ok(f_to_nat(&inst.get()?.X[0])),
+      || {
+        Ok(f_to_nat(
+          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[0]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[1]"),
-      || Ok(f_to_nat(&inst.get()?.X[1])),
+      || {
+        Ok(f_to_nat(
+          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[1]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
@@ -158,6 +167,41 @@ where
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
+  }
+
+  /// Allocates the R1CS Instance as a RelaxedR1CSInstance in the circuit.
+  /// E = 0, u = 1
+  pub fn from_r1cs_instance<CS: ConstraintSystem<<G as Group>::Base>>(
+    mut cs: CS,
+    inst: AllocatedR1CSInstance<G>,
+    limb_width: usize,
+    n_limbs: usize,
+  ) -> Result<Self, SynthesisError> {
+    let E = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
+
+    let u = alloc_one(cs.namespace(|| "one"))?;
+
+    let X0 = BigNat::from_num(
+      cs.namespace(|| "allocate X0 from relaxed r1cs"),
+      Num::from(inst.X0.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+
+    let X1 = BigNat::from_num(
+      cs.namespace(|| "allocate X1 from relaxed r1cs"),
+      Num::from(inst.X1.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+
+    Ok(AllocatedRelaxedR1CSInstance {
+      W: inst.W,
+      E,
+      u,
+      X0,
+      X1,
+    })
   }
 
   /// Absorb the provided instance in the RO
@@ -212,17 +256,21 @@ where
   }
 
   /// Folds self with a relaxed r1cs instance and returns the result
+  #[allow(clippy::too_many_arguments)]
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
+    params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
-    poseidon_constants: NovaPoseidonConstants<G::Base>,
+    ro_consts: ROConstantsCircuit<G::Base>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(poseidon_constants);
+    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(ro_consts);
+    ro.absorb(params);
+    self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());

@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install
-      run: rustup default nightly
+      run: rustup default stable
     - name: Install rustfmt Components
       run: rustup component add rustfmt
     - name: Install clippy
@@ -20,7 +20,7 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --release --verbose
     - name: Check Rustfmt Code Style
       run: cargo fmt --all -- --check
     - name: Check clippy warnings

@@ -1,4 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
+use super::{
+  constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS},
+  traits::{HashFuncConstantsTrait, HashFuncTrait},
+};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -6,79 +10,66 @@ use bellperson::{
   },
   ConstraintSystem, SynthesisError,
 };
+use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U27, U8};
+use generic_array::typenum::{U27, U32};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
+  Strength,
 };
-
-#[cfg(test)]
-use neptune::Strength;
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
-pub struct NovaPoseidonConstants<F>
+pub struct ROConstantsCircuit<Scalar>
 where
-  F: PrimeField,
+  Scalar: PrimeField,
 {
-  constants8: PoseidonConstants<F, U8>,
-  constants27: PoseidonConstants<F, U27>,
+  constants27: PoseidonConstants<Scalar, U27>,
+  constants32: PoseidonConstants<Scalar, U32>,
 }
 
-#[cfg(test)]
-impl<F> NovaPoseidonConstants<F>
+impl<Scalar> HashFuncConstantsTrait<Scalar> for ROConstantsCircuit<Scalar>
 where
-  F: PrimeField,
+  Scalar: PrimeField + PrimeFieldBits,
 {
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
-  pub fn new() -> Self {
-    let constants8 = PoseidonConstants::<F, U8>::new_with_strength(Strength::Strengthened);
-    let constants27 = PoseidonConstants::<F, U27>::new_with_strength(Strength::Strengthened);
+  fn new() -> Self {
+    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
+    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Strengthened);
     Self {
-      constants8,
       constants27,
+      constants32,
     }
   }
 }
 
 /// A Poseidon-based RO to use outside circuits
-pub struct PoseidonRO<Scalar>
+pub struct PoseidonRO<Base, Scalar>
 where
+  Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
   // Internal State
-  state: Vec<Scalar>,
+  state: Vec<Base>,
   // Constants for Poseidon
-  constants: NovaPoseidonConstants<Scalar>,
+  constants: ROConstantsCircuit<Base>,
+  _p: PhantomData<Scalar>,
 }
 
-impl<Scalar> PoseidonRO<Scalar>
+impl<Base, Scalar> PoseidonRO<Base, Scalar>
 where
+  Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
-  #[allow(dead_code)]
-  pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
-    Self {
-      state: Vec::new(),
-      constants,
-    }
-  }
-
-  /// Absorb a new number into the state of the oracle
-  #[allow(dead_code)]
-  pub fn absorb(&mut self, e: Scalar) {
-    self.state.push(e);
-  }
-
-  fn hash_inner(&mut self) -> Scalar {
+  fn hash_inner(&self) -> Base {
     match self.state.len() {
-      8 => {
-        Poseidon::<Scalar, U8>::new_with_preimage(&self.state, &self.constants.constants8).hash()
-      }
       27 => {
-        Poseidon::<Scalar, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
+        Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
+      }
+      32 => {
+        Poseidon::<Base, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
       }
       _ => {
         panic!(
@@ -88,16 +79,36 @@ where
       }
     }
   }
+}
+
+impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
+where
+  Base: PrimeField + PrimeFieldBits,
+  Scalar: PrimeField + PrimeFieldBits,
+{
+  type Constants = ROConstantsCircuit<Base>;
+
+  fn new(constants: ROConstantsCircuit<Base>) -> Self {
+    Self {
+      state: Vec::new(),
+      constants,
+      _p: PhantomData::default(),
+    }
+  }
+
+  /// Absorb a new number into the state of the oracle
+  fn absorb(&mut self, e: Base) {
+    self.state.push(e);
+  }
 
   /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
-  pub fn get_challenge(&mut self) -> Scalar {
+  fn get_challenge(&self) -> Scalar {
     let hash = self.hash_inner();
-    // Only keep 128 bits
+    // Only keep NUM_CHALLENGE_BITS bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
-    for bit in bits[0..128].into_iter() {
+    for bit in bits[0..NUM_CHALLENGE_BITS].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -106,14 +117,13 @@ where
     res
   }
 
-  #[allow(dead_code)]
-  pub fn get_hash(&mut self) -> Scalar {
+  fn get_hash(&self) -> Scalar {
     let hash = self.hash_inner();
-    // Only keep 250 bits
+    // Only keep NUM_HASH_BITS bits
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
-    for bit in bits[0..250].into_iter() {
+    for bit in bits[0..NUM_HASH_BITS].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -130,7 +140,7 @@ where
 {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
-  constants: NovaPoseidonConstants<Scalar>,
+  constants: ROConstantsCircuit<Scalar>,
 }
 
 impl<Scalar> PoseidonROGadget<Scalar>
@@ -138,8 +148,7 @@ where
   Scalar: PrimeField + PrimeFieldBits,
 {
   /// Initialize the internal state and set the poseidon constants
-  #[allow(dead_code)]
-  pub fn new(constants: NovaPoseidonConstants<Scalar>) -> Self {
+  pub fn new(constants: ROConstantsCircuit<Scalar>) -> Self {
     Self {
       state: Vec::new(),
       constants,
@@ -147,7 +156,6 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  #[allow(dead_code)]
   pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
     self.state.push(e);
   }
@@ -157,15 +165,15 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let out = match self.state.len() {
-      8 => poseidon_hash(
-        cs.namespace(|| "Posideon hash"),
-        self.state.clone(),
-        &self.constants.constants8,
-      )?,
       27 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
         &self.constants.constants27,
+      )?,
+      32 => poseidon_hash(
+        cs.namespace(|| "Posideon hash"),
+        self.state.clone(),
+        &self.constants.constants32,
       )?,
       _ => {
         panic!(
@@ -189,24 +197,20 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  #[allow(dead_code)]
   pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
     let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    // Only keep 128 bits
-    Ok(bits[..128].into())
+    Ok(bits[..NUM_CHALLENGE_BITS].into())
   }
 
-  #[allow(dead_code)]
   pub fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
     let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    // Only keep 250 bits
-    Ok(bits[..250].into())
+    Ok(bits[..NUM_HASH_BITS].into())
   }
 }
 
@@ -214,6 +218,7 @@ where
 mod tests {
   use super::*;
   type S = pasta_curves::pallas::Scalar;
+  type B = pasta_curves::vesta::Scalar;
   type G = pasta_curves::pallas::Point;
   use crate::{bellperson::solver::SatisfyingAssignment, gadgets::utils::le_bits_to_num};
   use ff::Field;
@@ -223,8 +228,8 @@ mod tests {
   fn test_poseidon_ro() {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = NovaPoseidonConstants::new();
-    let mut ro: PoseidonRO<S> = PoseidonRO::new(constants.clone());
+    let constants = ROConstantsCircuit::new();
+    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
@@ -240,6 +245,6 @@ mod tests {
     let num = ro.get_challenge();
     let num2_bits = ro_gadget.get_challenge(&mut cs).unwrap();
     let num2 = le_bits_to_num(&mut cs, num2_bits).unwrap();
-    assert_eq!(num, num2.get_value().unwrap());
+    assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
   }
 }

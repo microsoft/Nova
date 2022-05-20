@@ -12,10 +12,12 @@ pub enum NovaError {
   InvalidInputLength,
   /// returned if the supplied witness is not of the right length
   InvalidWitnessLength,
-  /// returned if the supplied instance input does not match the previous instance output
-  InputOutputMismatch,
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance
   UnSat,
   /// returned when the supplied compressed commitment cannot be decompressed
   DecompressionError,
+  /// returned if proof verification fails
+  ProofVerifyError,
+  /// returned if the provided number of steps is zero
+  InvalidNumSteps,
 }

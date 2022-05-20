@@ -1,8 +1,14 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
-use crate::traits::{ChallengeTrait, CompressedGroup, Group};
+use crate::{
+  poseidon::PoseidonRO,
+  traits::{ChallengeTrait, CompressedGroup, Group},
+};
 use core::ops::Mul;
+use digest::{ExtendableOutput, Input};
 use ff::Field;
 use merlin::Transcript;
+use num_bigint::BigInt;
+use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt, Group as Grp},
@@ -11,16 +17,15 @@ use pasta_curves::{
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use rug::Integer;
+use sha3::Shake256;
+use std::io::Read;
 
-#[cfg(feature = "serde-derive")]
 use serde::{Deserialize, Serialize};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the pallas curve
-#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PallasCompressedElementWrapper {
   repr: [u8; 32],
 }
@@ -37,6 +42,7 @@ impl Group for pallas::Point {
   type Scalar = pallas::Scalar;
   type CompressedGroupElement = PallasCompressedElementWrapper;
   type PreprocessedGroupElement = pallas::Affine;
+  type HashFunc = PoseidonRO<Self::Base, Self::Scalar>;
 
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
@@ -54,16 +60,18 @@ impl Group for pallas::Point {
     PallasCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 32];
-      arr.copy_from_slice(&bytes[0..32]);
-
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+    let mut shake = Shake256::default();
+    shake.input(label);
+    let mut reader = shake.xof_result();
+    let mut gens: Vec<Self::PreprocessedGroupElement> = Vec::new();
+    let mut uniform_bytes = [0u8; 32];
+    for _ in 0..n {
+      reader.read_exact(&mut uniform_bytes).unwrap();
       let hash = Ep::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr).to_affine())
+      gens.push(hash(&uniform_bytes).to_affine());
     }
+    gens
   }
 
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
@@ -75,8 +83,8 @@ impl Group for pallas::Point {
     }
   }
 
-  fn get_order() -> Integer {
-    Integer::from_str_radix(
+  fn get_order() -> BigInt {
+    BigInt::from_str_radix(
       "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
       16,
     )
@@ -107,8 +115,7 @@ impl CompressedGroup for PallasCompressedElementWrapper {
 //////////////////////////////////////Vesta////////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the vesta curve
-#[cfg_attr(feature = "serde-derive", derive(Serialize, Deserialize))]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VestaCompressedElementWrapper {
   repr: [u8; 32],
 }
@@ -125,6 +132,7 @@ impl Group for vesta::Point {
   type Scalar = vesta::Scalar;
   type CompressedGroupElement = VestaCompressedElementWrapper;
   type PreprocessedGroupElement = vesta::Affine;
+  type HashFunc = PoseidonRO<Self::Base, Self::Scalar>;
 
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
@@ -142,16 +150,18 @@ impl Group for vesta::Point {
     VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
-  fn from_uniform_bytes(bytes: &[u8]) -> Option<Self::PreprocessedGroupElement> {
-    if bytes.len() != 64 {
-      None
-    } else {
-      let mut arr = [0; 32];
-      arr.copy_from_slice(&bytes[0..32]);
-
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+    let mut shake = Shake256::default();
+    shake.input(label);
+    let mut reader = shake.xof_result();
+    let mut gens: Vec<Self::PreprocessedGroupElement> = Vec::new();
+    let mut uniform_bytes = [0u8; 32];
+    for _ in 0..n {
+      reader.read_exact(&mut uniform_bytes).unwrap();
       let hash = Eq::hash_to_curve("from_uniform_bytes");
-      Some(hash(&arr).to_affine())
+      gens.push(hash(&uniform_bytes).to_affine());
     }
+    gens
   }
 
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
@@ -163,8 +173,8 @@ impl Group for vesta::Point {
     }
   }
 
-  fn get_order() -> Integer {
-    Integer::from_str_radix(
+  fn get_order() -> BigInt {
+    BigInt::from_str_radix(
       "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
       16,
     )
