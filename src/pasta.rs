@@ -3,7 +3,6 @@ use crate::{
   poseidon::PoseidonRO,
   traits::{ChallengeTrait, CompressedGroup, Group},
 };
-use core::ops::Mul;
 use digest::{ExtendableOutput, Input};
 use ff::Field;
 use merlin::Transcript;
@@ -11,7 +10,7 @@ use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt, Group as Grp},
+  arithmetic::{CurveAffine, CurveExt},
   group::{Curve, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
@@ -46,12 +45,7 @@ impl Group for pallas::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    // Unoptimized.
-    scalars
-      .iter()
-      .zip(bases)
-      .map(|(scalar, base)| base.mul(scalar))
-      .fold(Ep::group_zero(), |acc, x| acc + x)
+    pasta_msm::pallas(bases, scalars)
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
@@ -136,12 +130,7 @@ impl Group for vesta::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    // Unoptimized.
-    scalars
-      .iter()
-      .zip(bases)
-      .map(|(scalar, base)| base.mul(scalar))
-      .fold(Eq::group_zero(), |acc, x| acc + x)
+    pasta_msm::vesta(bases, scalars)
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
