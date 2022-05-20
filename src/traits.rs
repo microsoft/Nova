@@ -134,18 +134,21 @@ impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Out
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
-/// A helper trait for a step of the incremental computation (i.e., circuit for F)
-pub trait StepCircuit<F: PrimeField> {
+/// A helper trait for synthesizing a step of the incremental computation (i.e., circuit for F)
+pub trait StepCircuit<F: PrimeField>: Sized {
   /// Sythesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step z_{i+1}
-  fn synthesize<CS: ConstraintSystem<F>>(
+  fn synthesize_step<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError>;
+}
 
-  /// Execute the circuit for a computation step and return output
-  fn compute(&self, z: &F) -> F;
+/// A helper trait for computing a step of the incremental computation (i.e., F itself)
+pub trait ComputeStep<F: PrimeField>: Sized {
+  /// Execute the circuit for a computation, returning a new circuit and output
+  fn compute(&self, z: &F) -> (Self, F);
 }
 
 impl<F: PrimeField> AppendToTranscriptTrait for F {

@@ -326,7 +326,7 @@ where
 
     let z_next = self
       .step_circuit
-      .synthesize(&mut cs.namespace(|| "F"), z_input)?;
+      .synthesize_step(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts);
@@ -357,11 +357,12 @@ mod tests {
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
-    traits::HashFuncConstantsTrait,
+    traits::{ComputeStep, HashFuncConstantsTrait},
   };
   use ff::PrimeField;
   use std::marker::PhantomData;
 
+  #[derive(Clone)]
   struct TestCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
@@ -370,16 +371,20 @@ mod tests {
   where
     F: PrimeField,
   {
-    fn synthesize<CS: ConstraintSystem<F>>(
+    fn synthesize_step<CS: ConstraintSystem<F>>(
       &self,
       _cs: &mut CS,
       z: AllocatedNum<F>,
     ) -> Result<AllocatedNum<F>, SynthesisError> {
       Ok(z)
     }
-
-    fn compute(&self, z: &F) -> F {
-      *z
+  }
+  impl<F> ComputeStep<F> for TestCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn compute(&self, z: &F) -> (Self, F) {
+      (self.clone(), *z)
     }
   }
 
