@@ -485,6 +485,9 @@ where
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
     }
+    if num_steps != self.num_steps {
+      return Err(NovaError::ProofVerifyError);
+    }
 
     // check if the (relaxed) R1CS instances have two public outputs
     if self.l_u_primary.X.len() != 2
@@ -667,6 +670,15 @@ mod tests {
       <G2 as Group>::Scalar::zero(),
     );
     assert!(res.is_ok());
+
+    // verification fails when num_steps is incorrect
+    let bad_res = recursive_snark.verify(
+      &pp,
+      2,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(!bad_res.is_ok());
   }
 
   #[test]
@@ -698,8 +710,6 @@ mod tests {
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
-    assert_eq!(num_steps, recursive_snark.num_steps);
-
     // verify the recursive SNARK
     let res = recursive_snark.verify(
       &pp,
@@ -708,6 +718,15 @@ mod tests {
       <G2 as Group>::Scalar::zero(),
     );
     assert!(res.is_ok());
+
+    // verification fails when num_steps is incorrect
+    let bad_res = recursive_snark.verify(
+      &pp,
+      num_steps + 1,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(!bad_res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
@@ -754,8 +773,6 @@ mod tests {
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
 
-    assert_eq!(num_steps, recursive_snark.num_steps);
-
     // verify the recursive SNARK
     let res = recursive_snark.verify(
       &pp,
@@ -764,6 +781,15 @@ mod tests {
       <G2 as Group>::Scalar::zero(),
     );
     assert!(res.is_ok());
+
+    // verification fails when num_steps is incorrect
+    let bad_res = recursive_snark.verify(
+      &pp,
+      0,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(!bad_res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
