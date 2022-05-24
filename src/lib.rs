@@ -32,7 +32,7 @@ use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use traits::{
-  AbsorbInROTrait, StepCompute, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit,
+  AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit, StepCompute,
 };
 
 type ROConstants<G> =
