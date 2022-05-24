@@ -678,7 +678,7 @@ mod tests {
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
-    assert!(!bad_res.is_ok());
+    assert!(bad_res.is_err());
   }
 
   #[test]
@@ -726,7 +726,7 @@ mod tests {
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
-    assert!(!bad_res.is_ok());
+    assert!(bad_res.is_err());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
@@ -789,7 +789,7 @@ mod tests {
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
-    assert!(!bad_res.is_ok());
+    assert!(bad_res.is_err());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
