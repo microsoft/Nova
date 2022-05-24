@@ -146,7 +146,7 @@ pub trait StepCircuit<F: PrimeField>: Sized {
 }
 
 /// A helper trait for computing a step of the incremental computation (i.e., F itself)
-pub trait ComputeStep<F: PrimeField>: Sized {
+pub trait StepCompute<F: PrimeField>: Sized {
   /// Execute the circuit for a computation, returning a new circuit and output
   fn compute(&self, z: &F) -> (Self, F);
 }

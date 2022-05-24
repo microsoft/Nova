@@ -32,7 +32,7 @@ use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use traits::{
-  AbsorbInROTrait, ComputeStep, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit,
+  AbsorbInROTrait, StepCompute, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit,
 };
 
 type ROConstants<G> =
@@ -120,12 +120,12 @@ where
 }
 
 /// State of iteration over ComputeStep
-pub struct ComputeState<S: ComputeStep<F> + StepCircuit<F>, F: PrimeField> {
+pub struct ComputeState<S: StepCompute<F> + StepCircuit<F>, F: PrimeField> {
   circuit: S,
   val: F,
 }
 
-impl<F: PrimeField, S: ComputeStep<F> + StepCircuit<F> + Clone> Iterator for ComputeState<S, F> {
+impl<F: PrimeField, S: StepCompute<F> + StepCircuit<F> + Clone> Iterator for ComputeState<S, F> {
   type Item = (S, F);
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -248,7 +248,7 @@ where
     Ok(state)
   }
 
-  /// create a new `RecursiveSNARK` for circuits implementing ComputeStep
+  /// create a new `RecursiveSNARK` for circuits implementing StepCompute
   pub fn prove(
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: Option<usize>,
@@ -256,8 +256,8 @@ where
     z0_secondary: G2::Scalar,
   ) -> Result<Self, NovaError>
   where
-    C1: ComputeStep<G1::Scalar>,
-    C2: ComputeStep<G2::Scalar>,
+    C1: StepCompute<G1::Scalar>,
+    C2: StepCompute<G2::Scalar>,
   {
     if let Some(num_steps) = num_steps {
       let mut primary_iterator = ComputeState {
@@ -576,7 +576,7 @@ mod tests {
     }
   }
 
-  impl<F> ComputeStep<F> for TrivialTestCircuit<F>
+  impl<F> StepCompute<F> for TrivialTestCircuit<F>
   where
     F: PrimeField,
   {
@@ -626,7 +626,7 @@ mod tests {
     }
   }
 
-  impl<F> ComputeStep<F> for CubicCircuit<F>
+  impl<F> StepCompute<F> for CubicCircuit<F>
   where
     F: PrimeField,
   {

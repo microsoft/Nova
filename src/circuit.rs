@@ -357,7 +357,7 @@ mod tests {
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
-    traits::{ComputeStep, HashFuncConstantsTrait},
+    traits::{HashFuncConstantsTrait, StepCompute},
   };
   use ff::PrimeField;
   use std::marker::PhantomData;
@@ -379,7 +379,7 @@ mod tests {
       Ok(z)
     }
   }
-  impl<F> ComputeStep<F> for TestCircuit<F>
+  impl<F> StepCompute<F> for TestCircuit<F>
   where
     F: PrimeField,
   {
