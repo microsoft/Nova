@@ -31,6 +31,7 @@ use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it wi
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use std::marker::PhantomData;
 use traits::{
   AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit, StepCompute,
 };
@@ -129,12 +130,13 @@ impl<F: PrimeField, S: StepCompute<F> + StepCircuit<F> + Clone> Iterator for Com
   type Item = (S, F);
 
   fn next(&mut self) -> Option<Self::Item> {
-    let (new_circuit, output) = self.circuit.compute(&self.val);
-
-    self.circuit = new_circuit.clone();
-    self.val = output;
-
-    Some((new_circuit, output))
+    if let Some((new_circuit, output)) = self.circuit.compute(&self.val) {
+      self.circuit = new_circuit.clone();
+      self.val = output;
+      Some((new_circuit, output))
+    } else {
+      None
+    }
   }
 }
 
@@ -156,8 +158,8 @@ where
   l_u_secondary: R1CSInstance<G2>,
   zn_primary: G1::Scalar,
   zn_secondary: G2::Scalar,
-  c1: C1,
-  c2: C2,
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
   num_steps: usize,
 }
 
@@ -240,8 +242,8 @@ where
       l_u_secondary: u_secondary,
       zn_primary: z1_primary,
       zn_secondary: z1_secondary,
-      c1: first_primary_circuit.clone(),
-      c2: first_secondary_circuit.clone(),
+      _p_c1: Default::default(),
+      _p_c2: Default::default(),
       num_steps: 1,
     };
 
@@ -383,7 +385,7 @@ where
     let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
       pp.params_primary.clone(),
       Some(inputs_primary),
-      self.c1.clone(),
+      new_primary_circuit.clone(),
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -417,7 +419,7 @@ where
     let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
       pp.params_secondary.clone(),
       Some(inputs_secondary),
-      self.c2.clone(),
+      new_secondary_circuit.clone(),
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -432,8 +434,6 @@ where
     self.r_U_primary = r_U_next_primary;
     self.r_W_primary = r_W_next_primary;
 
-    self.c1 = new_primary_circuit;
-    self.c2 = new_secondary_circuit;
     self.zn_primary = zn_primary;
     self.zn_secondary = zn_secondary;
     self.num_steps += 1;
@@ -580,8 +580,8 @@ mod tests {
   where
     F: PrimeField,
   {
-    fn compute(&self, z: &F) -> (Self, F) {
-      (self.clone(), *z)
+    fn compute(&self, z: &F) -> Option<(Self, F)> {
+      Some((self.clone(), *z))
     }
   }
 
@@ -630,8 +630,102 @@ mod tests {
   where
     F: PrimeField,
   {
-    fn compute(&self, z: &F) -> (Self, F) {
-      (self.clone(), *z * *z * *z + z + F::from(5u64))
+    fn compute(&self, z: &F) -> Option<(Self, F)> {
+      Some((self.clone(), *z * *z * *z + z + F::from(5u64)))
+    }
+  }
+
+  #[derive(Clone, Debug)]
+  struct NondeterministicCircuit<F: PrimeField> {
+    roots: Vec<F>,
+    _p: PhantomData<F>,
+  }
+
+  impl<F: PrimeField> NondeterministicCircuit<F> {
+    fn create(output: F, num_steps: usize) -> Self {
+      // Create a vector of successive roots, whose first element is the input and last is the output.
+      // The vector's size is one more than the number of steps.
+      let size = num_steps + 1;
+      let mut roots = Vec::with_capacity(size);
+      let mut last = output;
+
+      // Assemble in reverse order by pushing.
+      roots.push(output);
+
+      for _ in 0..num_steps {
+        let next = last * last;
+        // Each element is the square of the last.
+        roots.push(next);
+        last = next;
+      }
+
+      // So the last shall be first, and the first last: for many be called, but few chosen.
+      // Now each element is the square root of its predecessor.
+      roots.reverse();
+
+      Self {
+        roots,
+        _p: Default::default(),
+      }
+    }
+  }
+
+  impl<F> StepCircuit<F> for NondeterministicCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn synthesize_step<CS: ConstraintSystem<F>>(
+      &self,
+      cs: &mut CS,
+      z: AllocatedNum<F>,
+    ) -> Result<AllocatedNum<F>, SynthesisError> {
+      // The output, x, is the square root of the input, z.
+      // This is non-deterministic insofar as we are not calculating the square root directly.
+      // Rather, we take advantage of the hint precomputed in self.roots.
+      let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(self.roots[0]))?;
+
+      match (z.get_value(), x.get_value()) {
+        (Some(z), Some(x)) => {
+          // Sanity check
+          assert_eq!(z, x * x)
+        }
+        _ => (),
+      };
+
+      cs.enforce(
+        || "z = x * x",
+        |lc| lc + x.get_variable(),
+        |lc| lc + x.get_variable(),
+        |lc| lc + z.get_variable(),
+      );
+
+      Ok(x)
+    }
+  }
+
+  impl<F> StepCompute<F> for NondeterministicCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn compute(&self, z: &F) -> Option<(Self, F)> {
+      if self.roots.len() > 1 {
+        // First in the sequence of roots is the square.
+        let square = self.roots[0];
+        // This is the input to the circuit
+        assert_eq!(*z, square);
+
+        let next = Self {
+          roots: self.roots[1..].to_vec().clone(),
+          _p: Default::default(),
+        };
+
+        let root = self.roots[1].clone();
+        assert_eq!(square, root * root);
+
+        Some((next, root))
+      } else {
+        None
+      }
     }
   }
 
@@ -738,6 +832,7 @@ mod tests {
         _p: Default::default(),
       }
       .compute(&zn_secondary_direct)
+      .unwrap()
       .1;
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
@@ -795,5 +890,53 @@ mod tests {
 
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(5u64));
+  }
+
+  #[test]
+  fn test_ivc_nondeterministic() {
+    // Private parameters for nondeterministic function
+    let num_steps = 3;
+    let output = <G2 as Group>::Scalar::from(123);
+
+    // Create the nondeterministic circuit
+    let ndc = NondeterministicCircuit::<<G2 as Group>::Scalar>::create(output, num_steps);
+    let input = ndc.roots[0].clone();
+
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      NondeterministicCircuit<<G2 as Group>::Scalar>,
+    >::setup(
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      ndc,
+    );
+
+    // produce a recursive SNARK
+    let res = RecursiveSNARK::prove(&pp, None, <G1 as Group>::Scalar::one(), input);
+    assert!(res.is_ok());
+    let recursive_snark = res.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(&pp, num_steps, <G1 as Group>::Scalar::one(), input);
+    assert!(res.is_ok());
+
+    // // verification fails when num_steps is incorrect
+    let bad_res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::zero(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(bad_res.is_err());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
+    assert_eq!(zn_secondary, output);
   }
 }

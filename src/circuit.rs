@@ -383,8 +383,8 @@ mod tests {
   where
     F: PrimeField,
   {
-    fn compute(&self, z: &F) -> (Self, F) {
-      (self.clone(), *z)
+    fn compute(&self, z: &F) -> Option<(Self, F)> {
+      Some((self.clone(), *z))
     }
   }
 
