@@ -385,7 +385,7 @@ where
     let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
       pp.params_primary.clone(),
       Some(inputs_primary),
-      new_primary_circuit.clone(),
+      new_primary_circuit,
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -419,7 +419,7 @@ where
     let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
       pp.params_secondary.clone(),
       Some(inputs_secondary),
-      new_secondary_circuit.clone(),
+      new_secondary_circuit,
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -684,12 +684,9 @@ mod tests {
       // Rather, we take advantage of the hint precomputed in self.roots.
       let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(self.roots[0]))?;
 
-      match (z.get_value(), x.get_value()) {
-        (Some(z), Some(x)) => {
-          // Sanity check
-          assert_eq!(z, x * x)
-        }
-        _ => (),
+      if let (Some(z), Some(x)) = (z.get_value(), x.get_value()) {
+        // Sanity check
+        assert_eq!(z, x * x)
       };
 
       cs.enforce(
@@ -715,11 +712,11 @@ mod tests {
         assert_eq!(*z, square);
 
         let next = Self {
-          roots: self.roots[1..].to_vec().clone(),
+          roots: self.roots[1..].to_vec(),
           _p: Default::default(),
         };
 
-        let root = self.roots[1].clone();
+        let root = self.roots[1];
         assert_eq!(square, root * root);
 
         Some((next, root))
@@ -900,7 +897,7 @@ mod tests {
 
     // Create the nondeterministic circuit
     let ndc = NondeterministicCircuit::<<G2 as Group>::Scalar>::create(output, num_steps);
-    let input = ndc.roots[0].clone();
+    let input = ndc.roots[0];
 
     // produce public parameters
     let pp = PublicParams::<
