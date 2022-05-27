@@ -140,40 +140,34 @@ where
   }
 
   /// Create new IO::Val for primary circuit
-  pub fn new_primary_val<'a>(
-    &'a self,
-    val: <G1 as Group>::Scalar,
-  ) -> IO<'a, <G1 as Group>::Scalar, A1> {
+  pub fn new_primary_val(&self, val: <G1 as Group>::Scalar) -> IO<'_, <G1 as Group>::Scalar, A1> {
     assert_eq!(1, A1::to_usize());
     IO::Val(val)
   }
   /// Create new IO::Val for secondary circuit
-  pub fn new_secondary_val<'a>(
-    &'a self,
-    val: <G2 as Group>::Scalar,
-  ) -> IO<'a, <G2 as Group>::Scalar, A2> {
+  pub fn new_secondary_val(&self, val: <G2 as Group>::Scalar) -> IO<<G2 as Group>::Scalar, A2> {
     assert_eq!(1, A2::to_usize());
     IO::Val(val)
   }
 
   /// Create new IO::Vals for primary circuit, including allocated poseidon constants
-  pub fn new_primary_vals<'a>(
-    &'a self,
+  pub fn new_primary_vals(
+    &self,
     vals: Vec<<G1 as Group>::Scalar>,
-  ) -> IO<'a, <G1 as Group>::Scalar, A1> {
+  ) -> IO<<G1 as Group>::Scalar, A1> {
     assert!(A1::to_usize() != 1);
     let poseidon_constants = self.a1.as_ref().expect("poseidon constants missing");
-    IO::Vals(vals, &poseidon_constants)
+    IO::Vals(vals, poseidon_constants)
   }
 
   /// Create new IO::vals for secondary circuit, including allocated poseidon constants
-  pub fn new_secondary_vals<'a>(
-    &'a self,
+  pub fn new_secondary_vals(
+    &self,
     vals: Vec<<G2 as Group>::Scalar>,
-  ) -> IO<'a, <G2 as Group>::Scalar, A2> {
+  ) -> IO<<G2 as Group>::Scalar, A2> {
     assert!(A2::to_usize() != 1);
     let poseidon_constants = self.a2.as_ref().expect("poseidon constants missing");
-    IO::Vals(vals, &poseidon_constants)
+    IO::Vals(vals, poseidon_constants)
   }
 }
 
@@ -196,7 +190,7 @@ impl<'a, F: PrimeField, S: StepCompute<'a, F, A> + StepCircuit<F, A> + Clone, A:
   fn next(&mut self) -> Option<Self::Item> {
     let current_circuit = self.circuit.clone();
     if let Some((new_circuit, output)) = self.circuit.compute_io(&self.val) {
-      self.circuit = new_circuit.clone();
+      self.circuit = new_circuit;
 
       self.val = output.clone();
 
@@ -371,12 +365,12 @@ where
       )
     } else {
       let mut primary_iterator = ComputeState {
-        circuit: c_primary.clone(),
+        circuit: c_primary,
         val: z0_primary.clone(),
       };
 
       let mut secondary_iterator = ComputeState {
-        circuit: c_secondary.clone(),
+        circuit: c_secondary,
         val: z0_secondary.clone(),
       };
       Self::prove_with_iterators(
@@ -760,7 +754,7 @@ mod tests {
       let (x, y) = (&z_vec[0], &z_vec[1]);
 
       let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
+      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), x)?;
       let x_next = AllocatedNum::alloc(cs.namespace(|| "x_next"), || {
         Ok(x_cu.get_value().unwrap() + y.get_value().unwrap())
       })?;
@@ -795,7 +789,7 @@ mod tests {
   {
     fn compute_inner(
       &self,
-      z_vec: &Vec<F>,
+      z_vec: &[F],
       p: &'a PoseidonConstants<F, U2>,
     ) -> Option<(Self, Vec<F>)> {
       let (x, y) = (z_vec[0], z_vec[1]);

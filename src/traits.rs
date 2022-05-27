@@ -156,7 +156,7 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
           z_vec.push(allocated);
         }
 
-        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), &p)?;
+        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), p)?;
 
         cs.enforce(
           || "hash = z",
@@ -167,7 +167,7 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
 
         let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
 
-        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, &p)?;
+        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, p)?;
 
         Ok(output_hash)
       }
@@ -182,7 +182,7 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
           z_vec.push(allocated);
         }
 
-        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), &p)?;
+        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), p)?;
 
         cs.enforce(
           || "hash = z",
@@ -193,7 +193,7 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
 
         let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
 
-        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, &p)?;
+        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, p)?;
 
         Ok(output_hash)
       }
@@ -233,7 +233,7 @@ impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
     match self {
       Self::Val(val) => *val,
       Self::Vals(vals, p) => {
-        let mut hasher = Poseidon::<F, A>::new_with_preimage(&vals, &p);
+        let mut hasher = Poseidon::<F, A>::new_with_preimage(vals, p);
         hasher.hash()
       }
       Self::Empty(_) => unreachable!(),
@@ -278,7 +278,7 @@ pub trait StepCompute<'a, F: PrimeField, A: Arity<F>>: Sized {
 
   /// Compute F for a non-unary computation, returning a new circuit and output
   /// This method must be implemented for non-unary F
-  fn compute_inner(&self, _z: &Vec<F>, _p: &'a PoseidonConstants<F, A>) -> Option<(Self, Vec<F>)> {
+  fn compute_inner(&self, _z: &[F], _p: &'a PoseidonConstants<F, A>) -> Option<(Self, Vec<F>)> {
     unimplemented!();
   }
 }
