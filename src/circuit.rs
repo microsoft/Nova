@@ -28,7 +28,7 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::Field;
-use neptune::Arity;
+use neptune::{poseidon::PoseidonConstants, Arity, Strength};
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
@@ -95,6 +95,7 @@ where
 {
   params: NIFSVerifierCircuitParams,
   ro_consts: ROConstantsCircuit<G::Base>,
+  arity_consts: Option<PoseidonConstants<G::Base, A>>,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
   _a: PhantomData<A>,
@@ -113,13 +114,23 @@ where
     step_circuit: SC,
     ro_consts: ROConstantsCircuit<G::Base>,
   ) -> Self {
+    let arity_consts = if A::to_usize() == 1 {
+      None
+    } else {
+      Some(PoseidonConstants::new_with_strength(Strength::Standard))
+    };
     Self {
       params,
       inputs,
       step_circuit,
       ro_consts,
+      arity_consts,
       _a: Default::default(),
     }
+  }
+
+  pub fn arity_consts(&self) -> Option<PoseidonConstants<G::Base, A>> {
+    self.arity_consts.clone()
   }
 
   /// Allocate all witnesses and return
@@ -329,9 +340,11 @@ where
       &z_i,
       &Boolean::from(is_base_case),
     )?;
-    let z_next = self
-      .step_circuit
-      .synthesize_step(&mut cs.namespace(|| "F"), z_input)?;
+    let z_next = self.step_circuit.synthesize_step_outer(
+      &mut cs.namespace(|| "F"),
+      z_input,
+      self.arity_consts.as_ref(),
+    )?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
     let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts);

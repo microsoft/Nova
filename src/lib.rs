@@ -95,6 +95,12 @@ where
       c_primary.clone(),
       ro_consts_circuit_primary.clone(),
     );
+    let a1 = if A1::to_usize() == 1 {
+      None
+    } else {
+      circuit_primary.arity_consts()
+    };
+
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
@@ -106,20 +112,15 @@ where
       c_secondary.clone(),
       ro_consts_circuit_secondary.clone(),
     );
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
-    let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
-
-    let a1 = if A1::to_usize() == 1 {
-      None
-    } else {
-      Some(PoseidonConstants::<<G1 as Group>::Scalar, A1>::new())
-    };
     let a2 = if A2::to_usize() == 1 {
       None
     } else {
-      Some(PoseidonConstants::<<G2 as Group>::Scalar, A2>::new())
+      circuit_secondary.arity_consts()
     };
+
+    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let _ = circuit_secondary.synthesize(&mut cs);
+    let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
 
     Self {
       ro_consts_primary,
@@ -726,15 +727,11 @@ mod tests {
   #[derive(Clone)]
   struct CubicIncrementingCircuit<'a, F: PrimeField> {
     z_n: IO<'a, F, U2>,
-    _p: PhantomData<F>,
   }
 
   impl<'a, F: PrimeField> CubicIncrementingCircuit<'a, F> {
     fn new(z_n: IO<'a, F, U2>) -> Self {
-      Self {
-        z_n,
-        _p: Default::default(),
-      }
+      Self { z_n }
     }
   }
 
@@ -797,10 +794,7 @@ mod tests {
       let y_next = y + F::one();
       let z_vec_next = vec![x_next, y_next];
       let z_n = IO::Vals(z_vec_next.clone(), p);
-      let next = Self {
-        z_n,
-        _p: Default::default(),
-      };
+      let next = Self { z_n };
 
       Some((next, z_vec_next))
     }
@@ -977,12 +971,10 @@ mod tests {
   #[test]
   fn test_ivc_binary() {
     // produce public parameters
-    let p = PoseidonConstants::<S2, U2>::new();
-
     let pp =
       PublicParams::<G1, G2, TrivialTestCircuit<S1>, CubicIncrementingCircuit<S2>, U1, U2>::setup(
         TrivialTestCircuit::default(),
-        CubicIncrementingCircuit::new(IO::Empty(&p)),
+        CubicIncrementingCircuit::new(IO::Blank),
       );
 
     let num_steps = 1;
@@ -1013,7 +1005,6 @@ mod tests {
     for _i in 0..num_steps {
       zn_secondary_direct = CubicIncrementingCircuit {
         z_n: zn_secondary_direct.clone(),
-        _p: Default::default(),
       }
       .compute_io(&zn_secondary_direct)
       .unwrap()

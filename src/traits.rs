@@ -137,18 +137,32 @@ impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMu
 
 /// A helper trait for synthesizing a step of the incremental computation (i.e., circuit for F)
 pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
+  /// Sythesize the circuit for a unary computation step and return variable
+  /// that corresponds to the output of the step z_{i+1}
+  /// An implementation must be provided if F is unary, and should not be otherwise.
+  fn synthesize_step<CS: ConstraintSystem<F>>(
+    &self,
+    _cs: &mut CS,
+    _z: AllocatedNum<F>,
+  ) -> Result<AllocatedNum<F>, SynthesisError> {
+    unimplemented!();
+  }
+
   /// Sythesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step z_{i+1}
   /// The default implementation wraps a call to `synthesize_step_inner`, hashing input and output.
-  /// A more specific implementation must be provided if F is unary.
-  fn synthesize_step<CS: ConstraintSystem<F>>(
+  fn synthesize_step_outer<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
     z: AllocatedNum<F>,
+    p: Option<&PoseidonConstants<F, A>>,
   ) -> Result<AllocatedNum<F>, SynthesisError> {
+    if p.is_none() {
+      return self.synthesize_step(cs, z);
+    }
     match self.io() {
       IO::Val(_) => unreachable!(),
-      IO::Vals(vals, p) => {
+      IO::Vals(vals, _) => {
         let mut z_vec = Vec::with_capacity(vals.len());
 
         for (i, v) in vals.iter().enumerate() {
@@ -156,7 +170,11 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
           z_vec.push(allocated);
         }
 
-        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), p)?;
+        let hash = poseidon_hash(
+          &mut cs.namespace(|| "hash"),
+          z_vec.clone(),
+          p.expect("PoseidonConstants missing"),
+        )?;
 
         cs.enforce(
           || "hash = z",
@@ -167,11 +185,15 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
 
         let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
 
-        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, p)?;
+        let output_hash = poseidon_hash(
+          &mut cs.namespace(|| "output"),
+          inner_output,
+          p.expect("PoseidonConstants missing"),
+        )?;
 
         Ok(output_hash)
       }
-      IO::Empty(p) => {
+      IO::Blank => {
         let arity = A::to_usize();
         let mut z_vec = Vec::with_capacity(arity);
 
@@ -182,7 +204,11 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
           z_vec.push(allocated);
         }
 
-        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), p)?;
+        let hash = poseidon_hash(
+          &mut cs.namespace(|| "hash"),
+          z_vec.clone(),
+          p.expect("PoseidonConstants missing"),
+        )?;
 
         cs.enforce(
           || "hash = z",
@@ -193,7 +219,11 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
 
         let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
 
-        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, p)?;
+        let output_hash = poseidon_hash(
+          &mut cs.namespace(|| "output"),
+          inner_output,
+          p.expect("PoseidonConstants missing"),
+        )?;
 
         Ok(output_hash)
       }
@@ -224,7 +254,7 @@ pub enum IO<'a, F: PrimeField, A: Arity<F>> {
   /// Non-unary input/output values
   Vals(Vec<F>, &'a PoseidonConstants<F, A>),
   /// Placeholder for constructing R1CS shape
-  Empty(&'a PoseidonConstants<F, A>),
+  Blank,
 }
 
 impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
@@ -236,7 +266,7 @@ impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
         let mut hasher = Poseidon::<F, A>::new_with_preimage(vals, p);
         hasher.hash()
       }
-      Self::Empty(_) => unreachable!(),
+      Self::Blank => unreachable!(),
     }
   }
 
@@ -245,7 +275,7 @@ impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
     match self {
       IO::Val(_) => unreachable!(),
       IO::Vals(_, p) => IO::Vals(vals, p),
-      IO::Empty(_) => unreachable!(),
+      IO::Blank => unreachable!(),
     }
   }
 }
@@ -272,7 +302,7 @@ pub trait StepCompute<'a, F: PrimeField, A: Arity<F>>: Sized {
           .compute_inner(vals, p)
           .map(|(new, new_vals)| (new, z.new_vals(new_vals)))
       }
-      IO::Empty(_) => unreachable!(),
+      IO::Blank => unreachable!(),
     }
   }
 
