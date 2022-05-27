@@ -384,7 +384,7 @@ where
   }
 
   /// create a new `RecursiveSNARK` from primary and secondary iterators
-  pub fn prove_with_iterators(
+  fn prove_with_iterators(
     pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
     z0_primary: &IO<G1::Scalar, A1>,
     z0_secondary: &IO<G2::Scalar, A2>,
@@ -430,7 +430,7 @@ where
   }
 
   /// Prove one step of an iterative computation, mutating the RecursiveSNARK
-  pub fn prove_step(
+  fn prove_step(
     &mut self,
     pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
     i: usize,
@@ -524,7 +524,7 @@ where
   }
 
   /// Prove one step of an iterative computation, mutating the RecursiveSNARK
-  pub fn prove_step_with_iterators(
+  fn prove_step_with_iterators(
     &mut self,
     pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
     i: usize,
