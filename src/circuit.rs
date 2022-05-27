@@ -6,7 +6,6 @@
 //! of the running instances. Each of these hashes is
 //! H(params = H(shape, gens), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
-
 use super::{
   commitments::Commitment,
   gadgets::{
@@ -29,6 +28,8 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::Field;
+use neptune::Arity;
+use std::marker::PhantomData;
 
 #[derive(Debug, Clone)]
 pub struct NIFSVerifierCircuitParams {
@@ -86,21 +87,24 @@ where
 }
 
 /// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G, SC>
+pub struct NIFSVerifierCircuit<G, SC, A>
 where
   G: Group,
-  SC: StepCircuit<G::Base>,
+  SC: StepCircuit<G::Base, A>,
+  A: Arity<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
   ro_consts: ROConstantsCircuit<G::Base>,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
+  _a: PhantomData<A>,
 }
 
-impl<G, SC> NIFSVerifierCircuit<G, SC>
+impl<G, SC, A> NIFSVerifierCircuit<G, SC, A>
 where
   G: Group,
-  SC: StepCircuit<G::Base>,
+  SC: StepCircuit<G::Base, A>,
+  A: Arity<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
@@ -114,6 +118,7 @@ where
       inputs,
       step_circuit,
       ro_consts,
+      _a: Default::default(),
     }
   }
 
@@ -252,10 +257,11 @@ where
   }
 }
 
-impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
+impl<G, SC, A> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC, A>
 where
   G: Group,
-  SC: StepCircuit<G::Base>,
+  SC: StepCircuit<G::Base, A>,
+  A: Arity<G::Base>,
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
@@ -323,7 +329,6 @@ where
       &z_i,
       &Boolean::from(is_base_case),
     )?;
-
     let z_next = self
       .step_circuit
       .synthesize_step(&mut cs.namespace(|| "F"), z_input)?;
@@ -360,6 +365,7 @@ mod tests {
     traits::{HashFuncConstantsTrait, StepCompute},
   };
   use ff::PrimeField;
+  use generic_array::typenum::U1;
   use std::marker::PhantomData;
 
   #[derive(Clone)]
@@ -367,7 +373,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> StepCircuit<F> for TestCircuit<F>
+  impl<F> StepCircuit<F, U1> for TestCircuit<F>
   where
     F: PrimeField,
   {
@@ -379,7 +385,7 @@ mod tests {
       Ok(z)
     }
   }
-  impl<F> StepCompute<F> for TestCircuit<F>
+  impl<'a, F> StepCompute<'a, F, U1> for TestCircuit<F>
   where
     F: PrimeField,
   {
@@ -397,7 +403,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<<G1 as Group>::Base> = ROConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
-    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>, U1> =
       NIFSVerifierCircuit::new(
         params1.clone(),
         None,
@@ -409,13 +415,14 @@ mod tests {
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
+    assert_eq!(14914, cs.num_constraints());
     println!(
       "Circuit1 -> Number of constraints: {}",
       cs.num_constraints()
     );
 
     // Initialize the shape and gens for the secondary
-    let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+    let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>, U1> =
       NIFSVerifierCircuit::new(
         params2.clone(),
         None,
@@ -427,6 +434,7 @@ mod tests {
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
+    assert_eq!(15454, cs.num_constraints());
     println!(
       "Circuit2 -> Number of constraints: {}",
       cs.num_constraints()
@@ -444,7 +452,7 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>, U1> =
       NIFSVerifierCircuit::new(
         params1,
         Some(inputs1),
@@ -470,7 +478,7 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+    let circuit: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>, U1> =
       NIFSVerifierCircuit::new(
         params2,
         Some(inputs2),

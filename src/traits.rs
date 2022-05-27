@@ -6,6 +6,7 @@ use core::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
+use neptune::{circuit::poseidon_hash, poseidon::PoseidonConstants, Arity, Poseidon};
 use num_bigint::BigInt;
 
 /// Represents an element of a group
@@ -135,20 +136,151 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A helper trait for synthesizing a step of the incremental computation (i.e., circuit for F)
-pub trait StepCircuit<F: PrimeField>: Sized {
+pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
   /// Sythesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step z_{i+1}
+  /// The default implementation wraps a call to `synthesize_step_inner`, hashing input and output.
+  /// A more specific implementation must be provided if F is unary.
   fn synthesize_step<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
     z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError>;
+  ) -> Result<AllocatedNum<F>, SynthesisError> {
+    match self.io() {
+      IO::Val(_) => unreachable!(),
+      IO::Vals(vals, p) => {
+        let mut z_vec = Vec::with_capacity(vals.len());
+
+        for (i, v) in vals.iter().enumerate() {
+          let allocated = AllocatedNum::alloc(cs.namespace(|| format!("z[{}]", i)), || Ok(*v))?;
+          z_vec.push(allocated);
+        }
+
+        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), &p)?;
+
+        cs.enforce(
+          || "hash = z",
+          |lc| lc + z.get_variable(),
+          |lc| lc + CS::one(),
+          |lc| lc + hash.get_variable(),
+        );
+
+        let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
+
+        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, &p)?;
+
+        Ok(output_hash)
+      }
+      IO::Empty(p) => {
+        let arity = A::to_usize();
+        let mut z_vec = Vec::with_capacity(arity);
+
+        for i in 0..arity {
+          let allocated = AllocatedNum::alloc(cs.namespace(|| format!("z[{}]", i)), || {
+            Err(SynthesisError::AssignmentMissing)
+          })?;
+          z_vec.push(allocated);
+        }
+
+        let hash = poseidon_hash(&mut cs.namespace(|| "hash"), z_vec.clone(), &p)?;
+
+        cs.enforce(
+          || "hash = z",
+          |lc| lc + z.get_variable(),
+          |lc| lc + CS::one(),
+          |lc| lc + hash.get_variable(),
+        );
+
+        let inner_output = self.synthesize_step_inner(&mut cs.namespace(|| "inner"), z_vec)?;
+
+        let output_hash = poseidon_hash(&mut cs.namespace(|| "output"), inner_output, &p)?;
+
+        Ok(output_hash)
+      }
+    }
+  }
+
+  /// Synthesize the circuit for a computation step with multiple inputs and outputs.
+  /// This method must be implemented if F is a non-unary function.
+  fn synthesize_step_inner<CS: ConstraintSystem<F>>(
+    &self,
+    _cs: &mut CS,
+    _z_vec: Vec<AllocatedNum<F>>,
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    unimplemented!()
+  }
+
+  /// Return the IO value
+  fn io<'a>(&'a self) -> &'a IO<F, A> {
+    unimplemented!()
+  }
+}
+
+/// Enum for holding the computation F's input/output value(s).
+#[derive(Clone)]
+pub enum IO<'a, F: PrimeField, A: Arity<F>> {
+  /// Unary input/output value
+  Val(F),
+  /// Non-unary input/output values
+  Vals(Vec<F>, &'a PoseidonConstants<F, A>),
+  /// Placeholder for constructing R1CS shape
+  Empty(&'a PoseidonConstants<F, A>),
+}
+
+impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
+  /// Return a single F corresponding to this `IO`.
+  pub fn output(&self) -> F {
+    match self {
+      Self::Val(val) => *val,
+      Self::Vals(vals, p) => {
+        let mut hasher = Poseidon::<F, A>::new_with_preimage(&vals, &p);
+        hasher.hash()
+      }
+      Self::Empty(_) => unreachable!(),
+    }
+  }
+
+  /// Return a new `IO::Vals`, sharing this `IO`'s poseidon constants
+  pub fn new_vals(&self, vals: Vec<F>) -> Self {
+    match self {
+      IO::Val(_) => unreachable!(),
+      IO::Vals(_, p) => IO::Vals(vals, p),
+      IO::Empty(_) => unreachable!(),
+    }
+  }
 }
 
 /// A helper trait for computing a step of the incremental computation (i.e., F itself)
-pub trait StepCompute<F: PrimeField>: Sized {
-  /// Execute the circuit for a computation, returning a new circuit and output
-  fn compute(&self, z: &F) -> Option<(Self, F)>;
+pub trait StepCompute<'a, F: PrimeField, A: Arity<F>>: Sized {
+  /// Compute F for a unary computation, returning a new circuit and output
+  fn compute(&self, _z: &F) -> Option<(Self, F)> {
+    unimplemented!();
+  }
+
+  /// Compute F, delegating to `compute` or `compute_inner` depending on whether F is unary
+  fn compute_io(&self, z: &IO<'a, F, A>) -> Option<(Self, IO<'a, F, A>)> {
+    match z {
+      IO::Val(val) => self
+        .compute(val)
+        .map(|(new, new_val)| (new, IO::Val(new_val))),
+      IO::Vals(vals, p) => {
+        assert!(
+          A::to_usize() != 1,
+          "Unary step functions must use IO::Val to avoid superfluous hashing."
+        );
+        self
+          .compute_inner(vals, p)
+          .map(|(new, new_vals)| (new, z.new_vals(new_vals)))
+      }
+      IO::Empty(_) => unreachable!(),
+    }
+  }
+
+  /// Compute F for a non-unary computation, returning a new circuit and output
+  /// This method must be implemented for non-unary F
+  fn compute_inner(&self, _z: &Vec<F>, _p: &'a PoseidonConstants<F, A>) -> Option<(Self, Vec<F>)> {
+    unimplemented!();
+  }
 }
 
 impl<F: PrimeField> AppendToTranscriptTrait for F {

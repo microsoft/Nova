@@ -12,14 +12,14 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U27, U32};
+use generic_array::typenum::{U2, U27, U32};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
   Strength,
 };
 
-/// All Poseidon Constants that are used in Nova
+/// All Poseidon Constants that are used in Nova random oracle
 #[derive(Clone)]
 pub struct ROConstantsCircuit<Scalar>
 where
@@ -36,12 +36,32 @@ where
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
-    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Strengthened);
+    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Standard);
+    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Standard);
     Self {
       constants27,
       constants32,
     }
+  }
+}
+
+#[derive(Clone)]
+pub struct ArityConstants<Scalar>
+where
+  Scalar: PrimeField,
+{
+  pub arity_2: PoseidonConstants<Scalar, U2>,
+}
+
+impl<Scalar> HashFuncConstantsTrait<Scalar> for ArityConstants<Scalar>
+where
+  Scalar: PrimeField,
+{
+  /// Generate Poseidon constants for the arities that Nova uses
+  #[allow(clippy::new_without_default)]
+  fn new() -> Self {
+    let arity_2 = PoseidonConstants::<Scalar, U2>::new_with_strength(Strength::Standard);
+    Self { arity_2 }
   }
 }
 
