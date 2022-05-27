@@ -244,8 +244,8 @@ where
     z0_secondary: G2::Scalar,
     z1_primary: G1::Scalar,
     z1_secondary: G2::Scalar,
-    first_primary_circuit: &C1,
-    first_secondary_circuit: &C2,
+    first_circuit_primary: &C1,
+    first_circuit_secondary: &C2,
   ) -> Result<Self, NovaError> {
     // Execute the base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
@@ -261,7 +261,7 @@ where
     let circuit_primary: NIFSVerifierCircuit<G2, C1, A1> = NIFSVerifierCircuit::new(
       pp.params_primary.clone(),
       Some(inputs_primary),
-      first_primary_circuit.clone(),
+      first_circuit_primary.clone(),
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -283,7 +283,7 @@ where
     let circuit_secondary: NIFSVerifierCircuit<G1, C2, A2> = NIFSVerifierCircuit::new(
       pp.params_secondary.clone(),
       Some(inputs_secondary),
-      first_secondary_circuit.clone(),
+      first_circuit_secondary.clone(),
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -391,11 +391,11 @@ where
     primary_iterator: &mut dyn Iterator<Item = (C1, G1::Scalar)>,
     secondary_iterator: &mut dyn Iterator<Item = (C2, G2::Scalar)>,
   ) -> Result<Self, NovaError> {
-    let (first_primary_circuit, z1_primary) = match primary_iterator.next() {
+    let (first_circuit_primary, z1_primary) = match primary_iterator.next() {
       Some(next) => next,
       None => return Err(NovaError::InvalidNumSteps),
     };
-    let (first_secondary_circuit, z1_secondary) = match secondary_iterator.next() {
+    let (first_circuit_secondary, z1_secondary) = match secondary_iterator.next() {
       Some(next) => next,
       None => return Err(NovaError::InvalidNumSteps),
     };
@@ -406,8 +406,8 @@ where
       z0_secondary.output(),
       z1_primary,
       z1_secondary,
-      &first_primary_circuit,
-      &first_secondary_circuit,
+      &first_circuit_primary,
+      &first_circuit_secondary,
     )?;
 
     // execute the remaining steps, alternating between G1 and G2
@@ -439,8 +439,8 @@ where
     next_primary: (G1::Scalar, C1),
     next_secondary: (G2::Scalar, C2),
   ) -> Result<(), NovaError> {
-    let (zn_primary, new_primary_circuit) = next_primary;
-    let (zn_secondary, new_secondary_circuit) = next_secondary;
+    let (zn_primary, new_circuit_primary) = next_primary;
+    let (zn_secondary, new_circuit_secondary) = next_secondary;
 
     // fold the secondary circuit's instance
     let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
@@ -467,7 +467,7 @@ where
     let circuit_primary: NIFSVerifierCircuit<G2, C1, A1> = NIFSVerifierCircuit::new(
       pp.params_primary.clone(),
       Some(inputs_primary),
-      new_primary_circuit,
+      new_circuit_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -501,7 +501,7 @@ where
     let circuit_secondary: NIFSVerifierCircuit<G1, C2, A2> = NIFSVerifierCircuit::new(
       pp.params_secondary.clone(),
       Some(inputs_secondary),
-      new_secondary_circuit,
+      new_circuit_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -533,12 +533,12 @@ where
     primary_iterator: &mut dyn Iterator<Item = (C1, G1::Scalar)>,
     secondary_iterator: &mut dyn Iterator<Item = (C2, G2::Scalar)>,
   ) -> Result<Option<()>, NovaError> {
-    let (next_primary_circuit, zn_primary) = if let Some(next) = primary_iterator.next() {
+    let (next_circuit_primary, zn_primary) = if let Some(next) = primary_iterator.next() {
       next
     } else {
       return Ok(None);
     };
-    let (next_secondary_circuit, zn_secondary) = if let Some(next) = secondary_iterator.next() {
+    let (next_circuit_secondary, zn_secondary) = if let Some(next) = secondary_iterator.next() {
       next
     } else {
       return Ok(None);
@@ -549,8 +549,8 @@ where
         i,
         z0_primary,
         z0_secondary,
-        (zn_primary, next_primary_circuit),
-        (zn_secondary, next_secondary_circuit),
+        (zn_primary, next_circuit_primary),
+        (zn_secondary, next_circuit_secondary),
       )
       .map(Some)
   }
