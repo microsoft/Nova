@@ -384,7 +384,7 @@ where
   }
 
   /// create a new `RecursiveSNARK` from primary and secondary iterators
-  fn prove_with_iterators(
+  pub fn prove_with_iterators(
     pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
     z0_primary: &IO<G1::Scalar, A1>,
     z0_secondary: &IO<G2::Scalar, A2>,
