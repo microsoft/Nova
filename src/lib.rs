@@ -632,6 +632,169 @@ where
   }
 }
 
+/// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
+/// For now, it implements a constant factor compression.
+/// In the future, we will implement an exponential reduction in proof sizes
+pub struct CompressedSNARK<G1, G2, C1, C2, A1, A2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar, A1> + Clone,
+  C2: StepCircuit<G2::Scalar, A2> + Clone,
+  A1: Arity<<G1 as Group>::Scalar>,
+  A2: Arity<<G2 as Group>::Scalar>,
+{
+  r_U_primary: RelaxedR1CSInstance<G1>,
+  l_u_primary: R1CSInstance<G1>,
+  nifs_primary: NIFS<G1>,
+  f_W_primary: RelaxedR1CSWitness<G1>,
+
+  r_U_secondary: RelaxedR1CSInstance<G2>,
+  l_u_secondary: R1CSInstance<G2>,
+  nifs_secondary: NIFS<G2>,
+  f_W_secondary: RelaxedR1CSWitness<G2>,
+
+  zn_primary: G1::Scalar,
+  zn_secondary: G2::Scalar,
+
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
+  _p_a1: PhantomData<A1>,
+  _p_a2: PhantomData<A2>,
+}
+
+impl<G1, G2, C1, C2, A1, A2> CompressedSNARK<G1, G2, C1, C2, A1, A2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar, A1> + Clone,
+  C2: StepCircuit<G2::Scalar, A2> + Clone,
+  A1: Arity<<G1 as Group>::Scalar>,
+  A2: Arity<<G2 as Group>::Scalar>,
+{
+  /// Create a new `CompressedSNARK`
+  pub fn prove(
+    pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
+    recursive_snark: &RecursiveSNARK<G1, G2, C1, C2, A1, A2>,
+  ) -> Result<Self, NovaError> {
+    // fold the primary circuit's instance
+    let (nifs_primary, (_f_U_primary, f_W_primary)) = NIFS::prove(
+      &pp.r1cs_gens_primary,
+      &pp.ro_consts_primary,
+      &pp.r1cs_shape_primary,
+      &recursive_snark.r_U_primary,
+      &recursive_snark.r_W_primary,
+      &recursive_snark.l_u_primary,
+      &recursive_snark.l_w_primary,
+    )?;
+
+    // fold the secondary circuit's instance
+    let (nifs_secondary, (_f_U_secondary, f_W_secondary)) = NIFS::prove(
+      &pp.r1cs_gens_secondary,
+      &pp.ro_consts_secondary,
+      &pp.r1cs_shape_secondary,
+      &recursive_snark.r_U_secondary,
+      &recursive_snark.r_W_secondary,
+      &recursive_snark.l_u_secondary,
+      &recursive_snark.l_w_secondary,
+    )?;
+
+    Ok(Self {
+      r_U_primary: recursive_snark.r_U_primary.clone(),
+      l_u_primary: recursive_snark.l_u_primary.clone(),
+      nifs_primary,
+      f_W_primary,
+
+      r_U_secondary: recursive_snark.r_U_secondary.clone(),
+      l_u_secondary: recursive_snark.l_u_secondary.clone(),
+      nifs_secondary,
+      f_W_secondary,
+
+      zn_primary: recursive_snark.zn_primary,
+      zn_secondary: recursive_snark.zn_secondary,
+
+      _p_c1: Default::default(),
+      _p_c2: Default::default(),
+      _p_a1: Default::default(),
+      _p_a2: Default::default(),
+    })
+  }
+
+  /// Verify the correctness of the `CompressedSNARK`
+  pub fn verify(
+    &self,
+    pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
+    num_steps: usize,
+    z0_primary: G1::Scalar,
+    z0_secondary: G2::Scalar,
+  ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
+    // number of steps cannot be zero
+    if num_steps == 0 {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the (relaxed) R1CS instances have two public outputs
+    if self.l_u_primary.X.len() != 2
+      || self.l_u_secondary.X.len() != 2
+      || self.r_U_primary.X.len() != 2
+      || self.r_U_secondary.X.len() != 2
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the output hashes in R1CS instances point to the right running instances
+    let (hash_primary, hash_secondary) = {
+      let mut hasher = <G2 as Group>::HashFunc::new(pp.ro_consts_secondary.clone());
+      hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
+      hasher.absorb(G1::Scalar::from(num_steps as u64));
+      hasher.absorb(z0_primary);
+      hasher.absorb(self.zn_primary);
+      self.r_U_secondary.absorb_in_ro(&mut hasher);
+
+      let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
+      hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
+      hasher2.absorb(G2::Scalar::from(num_steps as u64));
+      hasher2.absorb(z0_secondary);
+      hasher2.absorb(self.zn_secondary);
+      self.r_U_primary.absorb_in_ro(&mut hasher2);
+
+      (hasher.get_hash(), hasher2.get_hash())
+    };
+
+    if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
+      || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // fold the running instance and last instance to get a folded instance
+    let f_U_primary = self.nifs_primary.verify(
+      &pp.ro_consts_primary,
+      &pp.r1cs_shape_primary,
+      &self.r_U_primary,
+      &self.l_u_primary,
+    )?;
+    let f_U_secondary = self.nifs_secondary.verify(
+      &pp.ro_consts_secondary,
+      &pp.r1cs_shape_secondary,
+      &self.r_U_secondary,
+      &self.l_u_secondary,
+    )?;
+
+    // check the satisfiability of the folded instances using the purported folded witnesses
+    pp.r1cs_shape_primary
+      .is_sat_relaxed(&pp.r1cs_gens_primary, &f_U_primary, &self.f_W_primary)?;
+
+    pp.r1cs_shape_secondary.is_sat_relaxed(
+      &pp.r1cs_gens_secondary,
+      &f_U_secondary,
+      &self.f_W_secondary,
+    )?;
+
+    Ok((self.zn_primary, self.zn_secondary))
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -966,6 +1129,20 @@ mod tests {
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, S2::from(2460515u64));
+
+    // produce a compressed SNARK
+    let res = CompressedSNARK::prove(&pp, &recursive_snark);
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+
+    // verify the compressed SNARK
+    let res = compressed_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
   }
 
   #[test]
