@@ -725,8 +725,8 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2, A1, A2>,
     num_steps: usize,
-    z0_primary: G1::Scalar,
-    z0_secondary: G2::Scalar,
+    z0_primary: &IO<G1::Scalar, A1>,
+    z0_secondary: &IO<G2::Scalar, A2>,
   ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
@@ -747,14 +747,14 @@ where
       let mut hasher = <G2 as Group>::HashFunc::new(pp.ro_consts_secondary.clone());
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
-      hasher.absorb(z0_primary);
+      hasher.absorb(z0_primary.output());
       hasher.absorb(self.zn_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
-      hasher2.absorb(z0_secondary);
+      hasher2.absorb(z0_secondary.output());
       hasher2.absorb(self.zn_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
@@ -1136,12 +1136,7 @@ mod tests {
     let compressed_snark = res.unwrap();
 
     // verify the compressed SNARK
-    let res = compressed_snark.verify(
-      &pp,
-      num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
-    );
+    let res = compressed_snark.verify(&pp, num_steps, &v1, &v2);
     assert!(res.is_ok());
   }
 
@@ -1178,7 +1173,7 @@ mod tests {
 
     // sanity: check the claimed output with a direct computation of the same
     assert_eq!(zn_primary, S1::one());
-    let mut zn_secondary_direct = v2;
+    let mut zn_secondary_direct = v2.clone();
     for _i in 0..num_steps {
       zn_secondary_direct = CubicIncrementingCircuit {
         z_n: zn_secondary_direct.clone(),
@@ -1188,6 +1183,15 @@ mod tests {
       .1;
     }
     assert_eq!(zn_secondary, zn_secondary_direct.output());
+
+    // produce a compressed SNARK
+    let res = CompressedSNARK::prove(&pp, &recursive_snark);
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+
+    // verify the compressed SNARK
+    let res = compressed_snark.verify(&pp, num_steps, &v1, &v2);
+    assert!(res.is_ok());
   }
 
   #[test]
