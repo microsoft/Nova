@@ -247,7 +247,7 @@ pub trait StepCircuit<F: PrimeField, A: Arity<F>>: Sized {
 }
 
 /// Enum for holding the computation F's input/output value(s).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum IO<'a, F: PrimeField, A: Arity<F>> {
   /// Unary input/output value
   Val(F),
