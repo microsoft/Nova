@@ -278,6 +278,15 @@ impl<'a, F: PrimeField, A: Arity<F>> IO<'a, F, A> {
       IO::Blank => unreachable!(),
     }
   }
+
+  /// Return `Vals` as a slice. Correct programs will not call `as_slice` except on `Vals`.
+  pub fn as_slice(&'a self) -> &'a [F] {
+    match self {
+      IO::Val(_) => unreachable!(),
+      IO::Vals(vals, _) => vals,
+      IO::Blank => unreachable!(),
+    }
+  }
 }
 
 /// A helper trait for computing a step of the incremental computation (i.e., F itself)
@@ -293,13 +302,13 @@ pub trait StepCompute<'a, F: PrimeField, A: Arity<F>>: Sized {
       IO::Val(val) => self
         .compute(val)
         .map(|(new, new_val)| (new, IO::Val(new_val))),
-      IO::Vals(vals, p) => {
+      IO::Vals(vals, _) => {
         assert!(
           A::to_usize() != 1,
           "Unary step functions must use IO::Val to avoid superfluous hashing."
         );
         self
-          .compute_inner(vals, p)
+          .compute_inner(vals)
           .map(|(new, new_vals)| (new, z.new_vals(new_vals)))
       }
       IO::Blank => unreachable!(),
@@ -308,7 +317,7 @@ pub trait StepCompute<'a, F: PrimeField, A: Arity<F>>: Sized {
 
   /// Compute F for a non-unary computation, returning a new circuit and output
   /// This method must be implemented for non-unary F
-  fn compute_inner(&self, _z: &[F], _p: &'a PoseidonConstants<F, A>) -> Option<(Self, Vec<F>)> {
+  fn compute_inner(&self, _z: &[F]) -> Option<(Self, Vec<F>)> {
     unimplemented!();
   }
 }

@@ -799,7 +799,6 @@ where
 mod tests {
   use super::*;
   use generic_array::typenum::{U1, U2};
-  use neptune::poseidon::PoseidonConstants;
 
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
@@ -947,19 +946,21 @@ mod tests {
   where
     F: PrimeField,
   {
-    fn compute_inner(
-      &self,
-      z_vec: &[F],
-      p: &'a PoseidonConstants<F, U2>,
-    ) -> Option<(Self, Vec<F>)> {
-      let (x, y) = (z_vec[0], z_vec[1]);
-      let x_next = x * x * x + y;
-      let y_next = y + F::one();
-      let z_vec_next = vec![x_next, y_next];
-      let z_n = IO::Vals(z_vec_next.clone(), p);
-      let next = Self { z_n };
+    fn compute_io(&self, z_vals: &IO<'a, F, U2>) -> Option<(Self, IO<'a, F, U2>)> {
+      let (x, y) = {
+        let z = z_vals.as_slice();
+        (z[0], z[1])
+      };
 
-      Some((next, z_vec_next))
+      let z_n = {
+        let x_next = x * x * x + y;
+        let y_next = y + F::one();
+        self.z_n.new_vals(vec![x_next, y_next])
+      };
+
+      let next = Self { z_n: z_n.clone() };
+
+      Some((next, z_n))
     }
   }
 
