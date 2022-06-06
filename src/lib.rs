@@ -20,12 +20,13 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::{Circuit, ConstraintSystem};
+use ::bellperson::{gadgets::num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use circuit::{NIFSVerifierCircuit, NIFSVerifierCircuitInputs, NIFSVerifierCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use errors::NovaError;
 use ff::{Field, PrimeField};
 use gadgets::utils::scalar_as_base;
+use generic_array::typenum::U1;
 use neptune::{poseidon::PoseidonConstants, Arity};
 use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
@@ -792,6 +793,34 @@ where
     )?;
 
     Ok((self.zn_primary, self.zn_secondary))
+  }
+}
+
+#[derive(Clone, Debug, Default)]
+/// Trivial step circuit for use as default secondary, when only a primary circuit is required.
+pub struct TrivialCircuit<F: PrimeField> {
+  _p: PhantomData<F>,
+}
+
+impl<F> StepCircuit<F, U1> for TrivialCircuit<F>
+where
+  F: PrimeField,
+{
+  fn synthesize_step<CS: ConstraintSystem<F>>(
+    &self,
+    _cs: &mut CS,
+    z: AllocatedNum<F>,
+  ) -> Result<AllocatedNum<F>, SynthesisError> {
+    Ok(z)
+  }
+}
+
+impl<'a, F> StepCompute<'a, F, U1> for TrivialCircuit<F>
+where
+  F: PrimeField,
+{
+  fn compute(&self, z: &F) -> Option<(Self, F)> {
+    Some((self.clone(), *z))
   }
 }
 
