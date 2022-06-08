@@ -393,7 +393,6 @@ pub fn select_one_or_diff2<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-
 /// If condition set to a otherwise 1 for boolean conditions
 pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

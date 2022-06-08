@@ -2,8 +2,8 @@
 #![allow(non_snake_case)]
 use crate::gadgets::utils::{
   alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
-  select_one_or_num2, select_num_or_one, select_num_or_zero2, select_num_or_zero, select_zero_or_num2,
-  select_one_or_diff2
+  select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
+  select_one_or_num2, select_zero_or_num2,
 };
 use bellperson::{
   gadgets::{
@@ -133,7 +133,7 @@ where
     let result_from_add = self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
     let result_from_double = self.double(cs.namespace(|| "double"))?;
 
-    // Output: 
+    // Output:
     // If (self == other) {
     //  return double(self)
     // }else {
@@ -209,8 +209,8 @@ where
     // other.x
     let x_diff = select_one_or_diff2(
       cs.namespace(|| "Compute x_diff"),
-      &self.x,
       &other.x,
+      &self.x,
       &x_diff_is_actual,
     )?;
 
@@ -312,6 +312,7 @@ where
       &y,
       &other.is_infinity,
     )?;
+    return Ok(self.clone());
 
     let y = conditionally_select2(
       cs.namespace(|| "y = self.is_infinity ? other.y : y1"),
@@ -818,8 +819,8 @@ mod tests {
     let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
     let _ = synthesize_add::<Fp, Fq, _>(
       cs.namespace(|| "synthesize add of negation"),
-      a.clone(),
-      b.clone(),
+      a,
+      b,
     );
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
@@ -844,7 +845,7 @@ mod tests {
     let e = synthesize_add::<Fp, Fq, _>(
       cs.namespace(|| "synthesize add of negation"),
       a.clone(),
-      b.clone(),
+      b,
     );
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
     let a_p: Point<Fp, Fq> = Point::new(
