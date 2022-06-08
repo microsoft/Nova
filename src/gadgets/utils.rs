@@ -369,6 +369,31 @@ pub fn select_one_or_num2<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
+/// If condition set to 1 otherwise a - b
+pub fn select_one_or_diff2<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  b: &AllocatedNum<F>,
+  condition: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? == F::one() {
+      Ok(F::one())
+    } else {
+      Ok(*a.get_value().get()? - *b.get_value().get()?)
+    }
+  })?;
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + CS::one() - a.get_variable() + b.get_variable(),
+    |lc| lc + condition.get_variable(),
+    |lc| lc + c.get_variable() - a.get_variable() + b.get_variable(),
+  );
+  Ok(c)
+}
+
+
 /// If condition set to a otherwise 1 for boolean conditions
 pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

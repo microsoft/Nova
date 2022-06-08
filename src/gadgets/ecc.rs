@@ -3,6 +3,7 @@
 use crate::gadgets::utils::{
   alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
   select_one_or_num2, select_num_or_one, select_num_or_zero2, select_num_or_zero, select_zero_or_num2,
+  select_one_or_diff2
 };
 use bellperson::{
   gadgets::{
@@ -128,11 +129,20 @@ where
       &other.y,
     )?;
 
-    // Compute the result of the addition and the result of doublin
+    // Compute the result of the addition and the result of double self
     let result_from_add = self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
     let result_from_double = self.double(cs.namespace(|| "double"))?;
 
-    // If equal_y then select double otherwise infinity
+    // Output: 
+    // If (self == other) {
+    //  return double(self)
+    // }else {
+    //  if (self.x == other.x){
+    //      return infinity [negation]
+    //  } else {
+    //      return add(self, other)
+    //  }
+    // }
     let result_for_equal_x = AllocatedPoint::select_point_or_infinity(
       cs.namespace(|| "equal_y ? result_from_double : infinity"),
       &result_from_double,
@@ -162,16 +172,6 @@ where
     // If either self or other are the infinity point or self.x = other.x  then compute bogus values
     // Specifically,
     // x_diff = self != inf && other != inf && self.x == other.x ? (other.x - self.x) : 1
-
-    let x_diff_actual = AllocatedNum::alloc(cs.namespace(|| "actual x diff"), || {
-      Ok(*other.x.get_value().get()? - *self.x.get_value().get()?)
-    })?;
-    cs.enforce(
-      || "actual x_diff is correct",
-      |lc| lc + other.x.get_variable() - self.x.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + x_diff_actual.get_variable(),
-    );
 
     // Compute self.is_infinity OR other.is_infinity =
     // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
@@ -205,10 +205,12 @@ where
       |lc| lc + CS::one() - x_diff_is_actual.get_variable(),
     );
 
-    // x_diff = 1 if either self.is_infinity or other.is_infinity or self.x = other.x else x_diff_actual
-    let x_diff = select_one_or_num2(
+    // x_diff = 1 if either self.is_infinity or other.is_infinity or self.x = other.x else self.x -
+    // other.x
+    let x_diff = select_one_or_diff2(
       cs.namespace(|| "Compute x_diff"),
-      &x_diff_actual,
+      &self.x,
+      &other.x,
       &x_diff_is_actual,
     )?;
 
