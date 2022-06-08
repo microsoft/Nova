@@ -155,80 +155,29 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
 
   let r = AllocatedBit::alloc(cs.namespace(|| "r"), r_value)?;
 
-  let delta = AllocatedNum::alloc(cs.namespace(|| "delta"), || {
-    let a_value = *a.get_value().get()?;
-    let b_value = *b.get_value().get()?;
+  // Allocate t s.t. t=1 if z1 == z2 else 1/(z1 - z2)
 
-    let mut delta = a_value;
-    delta.sub_assign(&b_value);
-
-    Ok(delta)
-  })?;
-
-  cs.enforce(
-    || "delta = (a - b)",
-    |lc| lc + a.get_variable() - b.get_variable(),
-    |lc| lc + CS::one(),
-    |lc| lc + delta.get_variable(),
-  );
-
-  let delta_inv = AllocatedNum::alloc(cs.namespace(|| "delta_inv"), || {
-    let delta = *delta.get_value().get()?;
-
-    if delta.is_zero().unwrap_u8() == 1 {
-      Ok(F::one()) // we can return any number here, it doesn't matter
-    } else {
-      Ok(delta.invert().unwrap())
-    }
-  })?;
-
-  // Allocate `t = delta * delta_inv`
-  // If `delta` is non-zero (a != b), `t` will equal 1
-  // If `delta` is zero (a == b), `t` cannot equal 1
   let t = AllocatedNum::alloc(cs.namespace(|| "t"), || {
-    let mut tmp = *delta.get_value().get()?;
-    tmp.mul_assign(&(*delta_inv.get_value().get()?));
-
-    Ok(tmp)
+    Ok(if *a.get_value().get()? == *b.get_value().get()? {
+      F::one()
+    } else {
+      (*a.get_value().get()? - *b.get_value().get()?)
+        .invert()
+        .unwrap()
+    })
   })?;
 
-  // Constrain allocation:
-  // t = (a - b) * delta_inv
   cs.enforce(
-    || "t = (a - b) * delta_inv",
-    |lc| lc + a.get_variable() - b.get_variable(),
-    |lc| lc + delta_inv.get_variable(),
+    || "t*(a - b) = 1 - r",
     |lc| lc + t.get_variable(),
+    |lc| lc + a.get_variable() - b.get_variable(),
+    |lc| lc + CS::one() - r.get_variable(),
   );
 
-  // Constrain:
-  // (a - b) * (t - 1) == 0
-  // This enforces that correct `delta_inv` was provided,
-  // and thus `t` is 1 if `(a - b)` is non zero (a != b )
   cs.enforce(
-    || "(a - b) * (t - 1) == 0",
-    |lc| lc + a.get_variable() - b.get_variable(),
-    |lc| lc + t.get_variable() - CS::one(),
-    |lc| lc,
-  );
-
-  // Constrain:
-  // (a - b) * r == 0
-  // This enforces that `r` is zero if `(a - b)` is non-zero (a != b)
-  cs.enforce(
-    || "(a - b) * r == 0",
-    |lc| lc + a.get_variable() - b.get_variable(),
+    || "r*(a - b) = 0",
     |lc| lc + r.get_variable(),
-    |lc| lc,
-  );
-
-  // Constrain:
-  // (t - 1) * (r - 1) == 0
-  // This enforces that `r` is one if `t` is not one (a == b)
-  cs.enforce(
-    || "(t - 1) * (r - 1) == 0",
-    |lc| lc + t.get_variable() - CS::one(),
-    |lc| lc + r.get_variable() - CS::one(),
+    |lc| lc + a.get_variable() - b.get_variable(),
     |lc| lc,
   );
 
@@ -324,8 +273,8 @@ pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-/// If condition set to 0 otherwise a
-pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
+/// If condition set to 0 otherwise a. Condition is an allocated num
+pub fn select_zero_or_num2<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
   condition: &AllocatedNum<F>,
@@ -349,8 +298,56 @@ pub fn select_zero_or<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
+/// If condition set to a otherwise 0. Condition is an allocated num
+pub fn select_num_or_zero2<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  condition: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? == F::one() {
+      Ok(*a.get_value().get()?)
+    } else {
+      Ok(F::zero())
+    }
+  })?;
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + a.get_variable(),
+    |lc| lc + condition.get_variable(),
+    |lc| lc + c.get_variable(),
+  );
+
+  Ok(c)
+}
+
+/// If condition set to a otherwise 0
+pub fn select_num_or_zero<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  condition: &Boolean,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? {
+      Ok(*a.get_value().get()?)
+    } else {
+      Ok(F::zero())
+    }
+  })?;
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + a.get_variable(),
+    |_| condition.lc(CS::one(), F::one()),
+    |lc| lc + c.get_variable(),
+  );
+
+  Ok(c)
+}
+
 /// If condition set to 1 otherwise a
-pub fn select_one_or<F: PrimeField, CS: ConstraintSystem<F>>(
+pub fn select_one_or_num2<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &AllocatedNum<F>,
   condition: &AllocatedNum<F>,
@@ -369,5 +366,29 @@ pub fn select_one_or<F: PrimeField, CS: ConstraintSystem<F>>(
     |lc| lc + condition.get_variable(),
     |lc| lc + c.get_variable() - a.get_variable(),
   );
+  Ok(c)
+}
+
+/// If condition set to a otherwise 1 for boolean conditions
+pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  condition: &Boolean,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
+    if *condition.get_value().get()? {
+      Ok(*a.get_value().get()?)
+    } else {
+      Ok(F::one())
+    }
+  })?;
+
+  cs.enforce(
+    || "conditional select constraint",
+    |lc| lc + a.get_variable() - CS::one(),
+    |_| condition.lc(CS::one(), F::one()),
+    |lc| lc + c.get_variable() - CS::one(),
+  );
+
   Ok(c)
 }
