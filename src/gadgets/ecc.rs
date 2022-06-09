@@ -1,7 +1,9 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
 use crate::gadgets::utils::{
-  alloc_one, alloc_zero, conditionally_select, conditionally_select2, select_one_or, select_zero_or,
+  alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
+  select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
+  select_one_or_num2, select_zero_or_num2,
 };
 use bellperson::{
   gadgets::{
@@ -96,7 +98,7 @@ where
     }
   }
 
-  // Make the point io
+  /// Make the point io
   #[cfg(test)]
   pub fn inputize<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
     let _ = self.x.inputize(cs.namespace(|| "Input point.x"));
@@ -107,52 +109,113 @@ where
     Ok(())
   }
 
-  /// Adds other point to this point and returns the result
-  /// Assumes that both other.is_infinity and this.is_infinty are bits
+  /// Add two points (may be equal)
   pub fn add<CS: ConstraintSystem<Fp>>(
     &self,
     mut cs: CS,
     other: &AllocatedPoint<Fp>,
   ) -> Result<Self, SynthesisError> {
-    // Allocate the boolean variables that check if either of the points is infinity
+    // Compute boolean equal indicating if self = other
 
+    let equal_x = alloc_num_equals(
+      cs.namespace(|| "check self.x == other.x"),
+      &self.x,
+      &other.x,
+    )?;
+
+    let equal_y = alloc_num_equals(
+      cs.namespace(|| "check self.y == other.y"),
+      &self.y,
+      &other.y,
+    )?;
+
+    // Compute the result of the addition and the result of double self
+    let result_from_add = self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
+    let result_from_double = self.double(cs.namespace(|| "double"))?;
+
+    // Output:
+    // If (self == other) {
+    //  return double(self)
+    // }else {
+    //  if (self.x == other.x){
+    //      return infinity [negation]
+    //  } else {
+    //      return add(self, other)
+    //  }
+    // }
+    let result_for_equal_x = AllocatedPoint::select_point_or_infinity(
+      cs.namespace(|| "equal_y ? result_from_double : infinity"),
+      &result_from_double,
+      &Boolean::from(equal_y),
+    )?;
+
+    AllocatedPoint::conditionally_select(
+      cs.namespace(|| "equal ? result_from_double : result_from_add"),
+      &result_for_equal_x,
+      &result_from_add,
+      &Boolean::from(equal_x),
+    )
+  }
+
+  /// Adds other point to this point and returns the result. Assumes that the two points are
+  /// different and that both other.is_infinity and this.is_infinty are bits
+  pub fn add_internal<CS: ConstraintSystem<Fp>>(
+    &self,
+    mut cs: CS,
+    other: &AllocatedPoint<Fp>,
+    equal_x: &AllocatedBit,
+  ) -> Result<Self, SynthesisError> {
     //************************************************************************/
     // lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
     //************************************************************************/
     // First compute (other.x - self.x).inverse()
-    // If either self or other are 1 then compute bogus values
+    // If either self or other are the infinity point or self.x = other.x  then compute bogus values
+    // Specifically,
+    // x_diff = self != inf && other != inf && self.x == other.x ? (other.x - self.x) : 1
 
-    // x_diff = other != inf && self != inf ? (other.x - self.x) : 1
-    let x_diff_actual = AllocatedNum::alloc(cs.namespace(|| "actual x diff"), || {
-      Ok(*other.x.get_value().get()? - *self.x.get_value().get()?)
-    })?;
-    cs.enforce(
-      || "actual x_diff is correct",
-      |lc| lc + other.x.get_variable() - self.x.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + x_diff_actual.get_variable(),
-    );
-
-    // Compute self.is_infinity OR other.is_infinity
+    // Compute self.is_infinity OR other.is_infinity =
+    // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
     let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
-      Ok(*self.is_infinity.get_value().get()? * *other.is_infinity.get_value().get()?)
+      Ok(
+        Fp::one()
+          - (Fp::one() - *self.is_infinity.get_value().get()?)
+            * (Fp::one() - *other.is_infinity.get_value().get()?),
+      )
     })?;
     cs.enforce(
-      || "at least one inf = self.is_infinity * other.is_infinity",
-      |lc| lc + self.is_infinity.get_variable(),
-      |lc| lc + other.is_infinity.get_variable(),
-      |lc| lc + at_least_one_inf.get_variable(),
+      || "1 - at least one inf = (1-self.is_infinity) * (1-other.is_infinity)",
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc + CS::one() - other.is_infinity.get_variable(),
+      |lc| lc + CS::one() - at_least_one_inf.get_variable(),
     );
 
-    // x_diff = 1 if either self.is_infinity or other.is_infinity else x_diff_actual
-    let x_diff = select_one_or(
+    // Now compute x_diff_is_actual = at_least_one_inf OR equal_x
+    let x_diff_is_actual =
+      AllocatedNum::alloc(cs.namespace(|| "allocate x_diff_is_actual"), || {
+        Ok(if *equal_x.get_value().get()? {
+          Fp::one()
+        } else {
+          *at_least_one_inf.get_value().get()?
+        })
+      })?;
+    cs.enforce(
+      || "1 - x_diff_is_actual = (1-equal_x) * (1-at_least_one_inf)",
+      |lc| lc + CS::one() - at_least_one_inf.get_variable(),
+      |lc| lc + CS::one() - equal_x.get_variable(),
+      |lc| lc + CS::one() - x_diff_is_actual.get_variable(),
+    );
+
+    // x_diff = 1 if either self.is_infinity or other.is_infinity or self.x = other.x else self.x -
+    // other.x
+    let x_diff = select_one_or_diff2(
       cs.namespace(|| "Compute x_diff"),
-      &x_diff_actual,
-      &at_least_one_inf,
+      &other.x,
+      &self.x,
+      &x_diff_is_actual,
     )?;
 
     let x_diff_inv = AllocatedNum::alloc(cs.namespace(|| "x diff inverse"), || {
-      if *at_least_one_inf.get_value().get()? == Fp::one() {
+      if *x_diff_is_actual.get_value().get()? == Fp::one() {
         // Set to default
         Ok(Fp::one())
       } else {
@@ -220,55 +283,56 @@ where
       |lc| lc + y.get_variable() + self.y.get_variable(),
     );
 
-    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is infinity"), || Ok(Fp::zero()))?;
-
     //************************************************************************/
-    // We only return the computed x, y if neither of the points is infinity.
+    // We only return the computed x, y if neither of the points is infinity and self.x != other.y
     // if self.is_infinity return other.clone()
     // elif other.is_infinity return self.clone()
+    // elif self.x == other.x return infinity
     // Otherwise return the computed points.
     //************************************************************************/
     // Now compute the output x
-    let inner_x = conditionally_select2(
-      cs.namespace(|| "final x: inner if"),
+
+    let x1 = conditionally_select2(
+      cs.namespace(|| "x1 = other.is_infinity ? self.x : x"),
       &self.x,
       &x,
       &other.is_infinity,
     )?;
+
     let x = conditionally_select2(
-      cs.namespace(|| "final x: outer if"),
+      cs.namespace(|| "x = self.is_infinity ? other.x : x1"),
       &other.x,
-      &inner_x,
+      &x1,
       &self.is_infinity,
     )?;
 
-    // The output y
-    let inner_y = conditionally_select2(
-      cs.namespace(|| "final y: inner if"),
+    let y1 = conditionally_select2(
+      cs.namespace(|| "y1 = other.is_infinity ? self.y : y"),
       &self.y,
       &y,
       &other.is_infinity,
     )?;
+
     let y = conditionally_select2(
-      cs.namespace(|| "final y: outer if"),
+      cs.namespace(|| "y = self.is_infinity ? other.y : y1"),
       &other.y,
-      &inner_y,
+      &y1,
       &self.is_infinity,
     )?;
 
-    // The output is_infinity
-    let inner_is_infinity = conditionally_select2(
-      cs.namespace(|| "final is infinity: inner if"),
+    let is_infinity1 = select_num_or_zero2(
+      cs.namespace(|| "is_infinity1 = other.is_infinity ? self.is_infinity : 0"),
       &self.is_infinity,
-      &is_infinity,
       &other.is_infinity,
     )?;
+
     let is_infinity = conditionally_select2(
-      cs.namespace(|| "final is infinity: outer if"),
+      cs.namespace(|| "is_infinity = self.is_infinity ? other.is_infinity : is_infinity1"),
       &other.is_infinity,
-      &inner_is_infinity,
+      &is_infinity1,
       &self.is_infinity,
     )?;
+
     Ok(Self { x, y, is_infinity })
   }
 
@@ -292,7 +356,7 @@ where
       |lc| lc + tmp_actual.get_variable(),
     );
 
-    let tmp = select_one_or(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
+    let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
     // Compute inv = tmp.invert
     let tmp_inv = AllocatedNum::alloc(cs.namespace(|| "tmp inverse"), || {
@@ -387,10 +451,10 @@ where
     /*************************************************************/
 
     // x
-    let x = select_zero_or(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
+    let x = select_zero_or_num2(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
 
     // y
-    let y = select_zero_or(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
+    let y = select_zero_or_num2(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
 
     // is_infinity
     let is_infinity = self.is_infinity.clone();
@@ -417,7 +481,6 @@ where
       //    res = self.add(&res);
       //  }
       /*************************************************************/
-
       let self_and_res = self.add(cs.namespace(|| format!("{}: add", i)), &res)?;
       res = Self::conditionally_select(
         cs.namespace(|| format!("{}: Update res", i)),
@@ -444,6 +507,25 @@ where
       cs.namespace(|| "select is_infinity"),
       &a.is_infinity,
       &b.is_infinity,
+      condition,
+    )?;
+
+    Ok(Self { x, y, is_infinity })
+  }
+
+  /// If condition outputs a otherwise infinity
+  pub fn select_point_or_infinity<CS: ConstraintSystem<Fp>>(
+    mut cs: CS,
+    a: &Self,
+    condition: &Boolean,
+  ) -> Result<Self, SynthesisError> {
+    let x = select_num_or_zero(cs.namespace(|| "select x"), &a.x, condition)?;
+
+    let y = select_num_or_zero(cs.namespace(|| "select y"), &a.y, condition)?;
+
+    let is_infinity = select_num_or_one(
+      cs.namespace(|| "select is_infinity"),
+      &a.is_infinity,
       condition,
     )?;
 
@@ -501,7 +583,28 @@ where
     }
   }
 
+  /// Add any two points
   pub fn add(&self, other: &Point<Fp, Fq>) -> Self {
+    if self.x == other.x {
+      // If self == other then call double
+      if self.y == other.y {
+        self.double()
+      } else {
+        // if self.x == other.x and self.y != other.y then return infinity
+        Self {
+          x: Fp::zero(),
+          y: Fp::zero(),
+          is_infinity: true,
+          _p: Default::default(),
+        }
+      }
+    } else {
+      self.add_internal(other)
+    }
+  }
+
+  /// Add two different points
+  pub fn add_internal(&self, other: &Point<Fp, Fq>) -> Self {
     if self.is_infinity {
       return other.clone();
     }
@@ -679,6 +782,87 @@ mod tests {
     let e_new = a_p.scalar_mul(&s);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
     // Make sure that this is satisfiable
+    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+  }
+
+  fn synthesize_add_equal<Fp, Fq, CS>(mut cs: CS) -> (AllocatedPoint<Fp>, AllocatedPoint<Fp>)
+  where
+    Fp: PrimeField,
+    Fq: PrimeField + PrimeFieldBits,
+    CS: ConstraintSystem<Fp>,
+  {
+    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
+    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    let e = a.add(cs.namespace(|| "add a to a"), &a).unwrap();
+    let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
+    (a, e)
+  }
+
+  #[test]
+  fn test_ecc_circuit_add_equal() {
+    // First create the shape
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    println!("Number of constraints: {}", cs.num_constraints());
+    let shape = cs.r1cs_shape();
+    let gens = cs.r1cs_gens();
+
+    // Then the satisfying assignment
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let (a, e) = synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let a_p: Point<Fp, Fq> = Point::new(
+      a.x.get_value().unwrap(),
+      a.y.get_value().unwrap(),
+      a.is_infinity.get_value().unwrap() == Fp::one(),
+    );
+    let e_p: Point<Fp, Fq> = Point::new(
+      e.x.get_value().unwrap(),
+      e.y.get_value().unwrap(),
+      e.is_infinity.get_value().unwrap() == Fp::one(),
+    );
+    let e_new = a_p.add(&a_p);
+    assert!(e_p.x == e_new.x && e_p.y == e_new.y);
+    // Make sure that it is satisfiable
+    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+  }
+
+  fn synthesize_add_negation<Fp, Fq, CS>(mut cs: CS) -> AllocatedPoint<Fp>
+  where
+    Fp: PrimeField,
+    Fq: PrimeField + PrimeFieldBits,
+    CS: ConstraintSystem<Fp>,
+  {
+    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
+    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    let mut b = a.clone();
+    b.y =
+      AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || Ok(Fp::zero())).unwrap();
+    let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
+    let e = a.add(cs.namespace(|| "add a to b"), &b).unwrap();
+    e
+  }
+
+  #[test]
+  fn test_ecc_circuit_add_negation() {
+    // First create the shape
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    println!("Number of constraints: {}", cs.num_constraints());
+    let shape = cs.r1cs_shape();
+    let gens = cs.r1cs_gens();
+
+    // Then the satisfying assignment
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let e = synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add negation"));
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let e_p: Point<Fp, Fq> = Point::new(
+      e.x.get_value().unwrap(),
+      e.y.get_value().unwrap(),
+      e.is_infinity.get_value().unwrap() == Fp::one(),
+    );
+    assert!(e_p.is_infinity);
+    // Make sure that it is satisfiable
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
   }
 }
