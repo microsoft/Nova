@@ -312,7 +312,6 @@ where
       &y,
       &other.is_infinity,
     )?;
-    return Ok(self.clone());
 
     let y = conditionally_select2(
       cs.namespace(|| "y = self.is_infinity ? other.y : y1"),
@@ -786,85 +785,82 @@ mod tests {
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
   }
 
-  fn synthesize_add<Fp, Fq, CS>(
-    mut cs: CS,
-    a: AllocatedPoint<Fp>,
-    b: AllocatedPoint<Fp>,
-  ) -> AllocatedPoint<Fp>
+  fn synthesize_add_equal<Fp, Fq, CS>(mut cs: CS) -> (AllocatedPoint<Fp>, AllocatedPoint<Fp>)
   where
     Fp: PrimeField,
     Fq: PrimeField + PrimeFieldBits,
     CS: ConstraintSystem<Fp>,
   {
-    let e = a.add(cs.namespace(|| "add a to b"), &b).unwrap();
-    e
+    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
+    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    let e = a.add(cs.namespace(|| "add a to a"), &a).unwrap();
+    let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
+    (a, e)
   }
 
   #[test]
-  fn test_ecc_circuit_add_corner_cases() {
+  fn test_ecc_circuit_add_equal() {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    // Two additions
-    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
-    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
-    let _ = synthesize_add::<Fp, Fq, _>(
-      cs.namespace(|| "synthesize add equal"),
-      a.clone(),
-      a.clone(),
-    );
+    let _ = synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
-    let mut b = a.clone();
-    b.y =
-      AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || Ok(Fp::zero())).unwrap();
-    let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
-    let _ = synthesize_add::<Fp, Fq, _>(
-      cs.namespace(|| "synthesize add of negation"),
-      a,
-      b,
-    );
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    // Double a
-    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
-    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
-    let d = synthesize_add::<Fp, Fq, _>(
-      cs.namespace(|| "synthesize add equal"),
-      a.clone(),
-      a.clone(),
-    );
-    // Now add a to b where b.x = a.x and b.y = -b.x
-    let mut b = a.clone();
-    b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
-      Ok(Fp::zero() - b.y.get_value().unwrap())
-    })
-    .unwrap();
-    let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
-    let e = synthesize_add::<Fp, Fq, _>(
-      cs.namespace(|| "synthesize add of negation"),
-      a.clone(),
-      b,
-    );
+    let (a, e) = synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
     let a_p: Point<Fp, Fq> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
       a.is_infinity.get_value().unwrap() == Fp::one(),
     );
-    let d_p: Point<Fp, Fq> = Point::new(
-      d.x.get_value().unwrap(),
-      d.y.get_value().unwrap(),
-      d.is_infinity.get_value().unwrap() == Fp::one(),
-    );
     let e_p: Point<Fp, Fq> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
       e.is_infinity.get_value().unwrap() == Fp::one(),
     );
-    let d_new = a_p.add(&a_p);
-    assert!(d_p.x == d_new.x && d_p.y == d_new.y);
+    let e_new = a_p.add(&a_p);
+    assert!(e_p.x == e_new.x && e_p.y == e_new.y);
+    // Make sure that it is satisfiable
+    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+  }
+
+  fn synthesize_add_negation<Fp, Fq, CS>(mut cs: CS) -> AllocatedPoint<Fp>
+  where
+    Fp: PrimeField,
+    Fq: PrimeField + PrimeFieldBits,
+    CS: ConstraintSystem<Fp>,
+  {
+    let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
+    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    let mut b = a.clone();
+    b.y =
+      AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || Ok(Fp::zero())).unwrap();
+    let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
+    let e = a.add(cs.namespace(|| "add a to b"), &b).unwrap();
+    e
+  }
+
+  #[test]
+  fn test_ecc_circuit_add_negation() {
+    // First create the shape
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    println!("Number of constraints: {}", cs.num_constraints());
+    let shape = cs.r1cs_shape();
+    let gens = cs.r1cs_gens();
+
+    // Then the satisfying assignment
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let e = synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add negation"));
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let e_p: Point<Fp, Fq> = Point::new(
+      e.x.get_value().unwrap(),
+      e.y.get_value().unwrap(),
+      e.is_infinity.get_value().unwrap() == Fp::one(),
+    );
     assert!(e_p.is_infinity);
     // Make sure that it is satisfiable
     assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
