@@ -65,7 +65,7 @@ fn bench_compressed_snark(c: &mut Criterion, num_samples: usize, num_steps: usiz
   // Bench time to produce a compressed SNARK
   group.bench_function("Prove", |b| {
     b.iter(|| {
-      let _ = CompressedSNARK::prove(black_box(&pp), black_box(&recursive_snark));
+      assert!(CompressedSNARK::prove(black_box(&pp), black_box(&recursive_snark)).is_ok());
     })
   });
   let res = CompressedSNARK::prove(&pp, &recursive_snark);
@@ -85,12 +85,14 @@ fn bench_compressed_snark(c: &mut Criterion, num_samples: usize, num_steps: usiz
   let name = "Verify";
   group.bench_function(name, |b| {
     b.iter(|| {
-      let _ = black_box(&compressed_snark).verify(
-        black_box(&pp),
-        black_box(num_steps),
-        black_box(<G1 as Group>::Scalar::one()),
-        black_box(<G2 as Group>::Scalar::zero()),
-      );
+      assert!(black_box(&compressed_snark)
+        .verify(
+          black_box(&pp),
+          black_box(num_steps),
+          black_box(<G1 as Group>::Scalar::zero()),
+          black_box(<G2 as Group>::Scalar::zero()),
+        )
+        .is_ok());
     })
   });
 

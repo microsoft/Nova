@@ -57,12 +57,13 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   group.bench_function("Prove", |b| {
     b.iter(|| {
       // produce a recursive SNARK
-      let _ = RecursiveSNARK::prove(
+      assert!(RecursiveSNARK::prove(
         black_box(&pp),
         black_box(num_steps),
         black_box(<G1 as Group>::Scalar::zero()),
         black_box(<G2 as Group>::Scalar::zero()),
-      );
+      )
+      .is_ok());
     })
   });
   let res = RecursiveSNARK::prove(
@@ -79,12 +80,14 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   let name = "Verify";
   group.bench_function(name, |b| {
     b.iter(|| {
-      let _ = black_box(&recursive_snark).verify(
-        black_box(&pp),
-        black_box(num_steps),
-        black_box(<G1 as Group>::Scalar::one()),
-        black_box(<G2 as Group>::Scalar::zero()),
-      );
+      assert!(black_box(&recursive_snark)
+        .verify(
+          black_box(&pp),
+          black_box(num_steps),
+          black_box(<G1 as Group>::Scalar::zero()),
+          black_box(<G2 as Group>::Scalar::zero()),
+        )
+        .is_ok());
     });
   });
   group.finish();
