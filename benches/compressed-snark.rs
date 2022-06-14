@@ -85,7 +85,7 @@ fn bench_compressed_snark(c: &mut Criterion, num_samples: usize, num_steps: usiz
   let name = "Verify";
   group.bench_function(name, |b| {
     b.iter(|| {
-      let _ = compressed_snark.verify(
+      let _ = black_box(&compressed_snark).verify(
         black_box(&pp),
         black_box(num_steps),
         black_box(<G1 as Group>::Scalar::one()),
