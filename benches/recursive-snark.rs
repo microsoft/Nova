@@ -79,7 +79,7 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   let name = "Verify";
   group.bench_function(name, |b| {
     b.iter(|| {
-      let _ = black_box(recursive_snark).verify(
+      let _ = recursive_snark.verify(
         black_box(&pp),
         black_box(num_steps),
         black_box(<G1 as Group>::Scalar::one()),
