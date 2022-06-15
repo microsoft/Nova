@@ -2,7 +2,7 @@
 
 extern crate flate2;
 
-//use flate2::{write::ZlibEncoder, Compression};
+use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{Group, StepCircuit},
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -19,7 +19,7 @@ use std::time::Duration;
 
 fn compressed_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
-  let num_steps = 3;
+  let num_steps = 10;
   bench_compressed_snark(c, num_samples, num_steps);
 }
 
@@ -73,13 +73,10 @@ fn bench_compressed_snark(c: &mut Criterion, num_samples: usize, num_steps: usiz
   let compressed_snark = res.unwrap();
 
   // Output the proof size
-  //let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-  //bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
-  //let proof_encoded = encoder.finish().unwrap();
-  //println!(
-  //  "ProofSize: {} B",
-  //  proof_encoded.len(),
-  //);
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+  bincode::serialize_into(&mut encoder, &compressed_snark.serialize()).unwrap();
+  let proof_encoded = encoder.finish().unwrap();
+  println!("CompressedSNARK/ProofSize: {} B", proof_encoded.len(),);
 
   // Benchmark the verification time
   let name = "Verify";

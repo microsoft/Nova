@@ -2,7 +2,7 @@
 
 extern crate flate2;
 
-//use flate2::{write::ZlibEncoder, Compression};
+use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{Group, StepCircuit},
   PublicParams, RecursiveSNARK,
@@ -37,7 +37,8 @@ targets = recursive_snark_benchmark
 criterion_main!(recursive_snark);
 
 fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize) {
-  let mut group = c.benchmark_group(format!("RecursiveSNARK-NumSteps-{}", num_steps));
+  let name = format!("RecursiveSNARK-NumSteps-{}", num_steps);
+  let mut group = c.benchmark_group(name.clone());
   group.sample_size(num_samples);
   // Produce public parameters
   let pp = PublicParams::<
@@ -75,7 +76,12 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   assert!(res.is_ok());
   let recursive_snark = res.unwrap();
 
-  // TODO: Output the proof size
+  // Output the proof size
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+  bincode::serialize_into(&mut encoder, &recursive_snark.serialize()).unwrap();
+  let proof_encoded = encoder.finish().unwrap();
+  println!("{}/ProofSize: {} B", name, proof_encoded.len(),);
+
   // Benchmark the verification time
   let name = "Verify";
   group.bench_function(name, |b| {

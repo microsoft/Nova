@@ -29,14 +29,19 @@ use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
+use ff::PrimeField;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSSNARK,
-  RelaxedR1CSWitness,
+  R1CSGens, R1CSInstance, R1CSInstanceSerialized, R1CSShape, R1CSWitness, R1CSWitnessSerialized,
+  RelaxedR1CSInstance, RelaxedR1CSInstanceSerialized, RelaxedR1CSWitness,
+  RelaxedR1CSWitnessSerialized, RelaxedR1CSSNARK, RelaxedR1CSSNARKSerialized
 };
-use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
+use serde::{Deserialize, Serialize};
+use traits::{
+  AbsorbInROTrait, CompressedGroup, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit,
+};
 
 type ROConstants<G> =
   <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
@@ -148,6 +153,21 @@ where
   zn_secondary: G2::Scalar,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+}
+
+/// A Serialized version of the RecursiveSNARK
+#[derive(Serialize, Deserialize)]
+pub struct RecursiveSNARKSerialized {
+  r_W_primary: RelaxedR1CSWitnessSerialized,
+  r_U_primary: RelaxedR1CSInstanceSerialized,
+  l_w_primary: R1CSWitnessSerialized,
+  l_u_primary: R1CSInstanceSerialized,
+  r_W_secondary: RelaxedR1CSWitnessSerialized,
+  r_U_secondary: RelaxedR1CSInstanceSerialized,
+  l_w_secondary: R1CSWitnessSerialized,
+  l_u_secondary: R1CSInstanceSerialized,
+  zn_primary: Vec<u8>,
+  zn_secondary: Vec<u8>,
 }
 
 impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
@@ -423,6 +443,22 @@ where
 
     Ok((self.zn_primary, self.zn_secondary))
   }
+
+  /// Serialize the SNARK
+  pub fn serialize(&self) -> RecursiveSNARKSerialized {
+    RecursiveSNARKSerialized {
+      r_W_primary: self.r_W_primary.serialize(),
+      r_U_primary: self.r_U_primary.serialize(),
+      l_w_primary: self.l_w_primary.serialize(),
+      l_u_primary: self.l_u_primary.serialize(),
+      r_W_secondary: self.r_W_secondary.serialize(),
+      r_U_secondary: self.r_U_secondary.serialize(),
+      l_w_secondary: self.l_w_secondary.serialize(),
+      l_u_secondary: self.l_u_secondary.serialize(),
+      zn_primary: self.zn_primary.to_repr().as_ref().to_vec(),
+      zn_secondary: self.zn_secondary.to_repr().as_ref().to_vec(),
+    }
+  }
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
@@ -448,6 +484,23 @@ where
 
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+}
+
+/// Serialized version of the compressed snark
+#[derive(Serialize, Deserialize)]
+pub struct CompressedSNARKSerialized {
+  r_U_primary: RelaxedR1CSInstanceSerialized,
+  l_u_primary: R1CSInstanceSerialized,
+  nifs_comm_T_primary: Vec<u8>,
+  f_W_snark_primary: RelaxedR1CSSNARKSerialized,
+
+  r_U_secondary: RelaxedR1CSInstanceSerialized,
+  l_u_secondary: R1CSInstanceSerialized,
+  nifs_comm_T_secondary: Vec<u8>,
+  f_W_snark_secondary: RelaxedR1CSSNARKSerialized,
+
+  zn_primary: Vec<u8>,
+  zn_secondary: Vec<u8>,
 }
 
 impl<G1, G2, C1, C2> CompressedSNARK<G1, G2, C1, C2>
@@ -614,6 +667,24 @@ where
     res_secondary?;
 
     Ok((self.zn_primary, self.zn_secondary))
+  }
+
+  /// Serialize the compressed snark
+  pub fn serialize(&self) -> CompressedSNARKSerialized {
+    CompressedSNARKSerialized {
+      r_U_primary: self.r_U_primary.serialize(),
+      l_u_primary: self.l_u_primary.serialize(),
+      nifs_comm_T_primary: self.nifs_primary.comm_T.comm.as_bytes().to_vec(),
+      f_W_snark_primary: self.f_W_snark_primary.serialize(),
+
+      r_U_secondary: self.r_U_secondary.serialize(),
+      l_u_secondary: self.l_u_secondary.serialize(),
+      nifs_comm_T_secondary: self.nifs_secondary.comm_T.comm.as_bytes().to_vec(),
+      f_W_snark_secondary: self.f_W_snark_secondary.serialize(),
+
+      zn_primary: self.zn_primary.to_repr().as_ref().to_vec(),
+      zn_secondary: self.zn_secondary.to_repr().as_ref().to_vec(),
+    }
   }
 }
 

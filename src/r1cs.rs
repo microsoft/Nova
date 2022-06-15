@@ -6,11 +6,13 @@ use super::{
   errors::NovaError,
   gadgets::utils::scalar_as_base,
   ipa::{
-    FinalInnerProductArgument, InnerProductInstance, InnerProductWitness, StepInnerProductArgument,
+    FinalInnerProductArgument, FinalInnerProductArgumentSerialized, 
+    InnerProductInstance, InnerProductWitness, StepInnerProductArgument, 
+    StepInnerProductArgumentSerialized
   },
   polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial},
-  sumcheck::SumcheckProof,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, Group, HashFuncTrait},
+  sumcheck::{SumcheckProof,SumcheckProofSerialized},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, CompressedGroup, Group, HashFuncTrait},
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
 use core::cmp::max;
@@ -45,11 +47,24 @@ pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
 
+/// Serialized version of a R1CSWitness
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct R1CSWitnessSerialized {
+  W: Vec<Vec<u8>>,
+}
+
 /// A type that holds an R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
+}
+
+/// Serialized version of a RelaxedR1CSWitness
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct R1CSInstanceSerialized {
+  pub(crate) comm_W: Vec<u8>,
+  pub(crate) X: Vec<Vec<u8>>,
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
@@ -59,6 +74,13 @@ pub struct RelaxedR1CSWitness<G: Group> {
   E: Vec<G::Scalar>,
 }
 
+/// Serialized version of a RelaxedR1CSWitness
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelaxedR1CSWitnessSerialized {
+  W: Vec<Vec<u8>>,
+  E: Vec<Vec<u8>>,
+}
+
 /// A type that holds a Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSInstance<G: Group> {
@@ -66,6 +88,15 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_E: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
   pub(crate) u: G::Scalar,
+}
+
+/// Serialized version of a RelaxedR1CSWitness
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelaxedR1CSInstanceSerialized {
+  pub(crate) comm_W: Vec<u8>,
+  pub(crate) comm_E: Vec<u8>,
+  pub(crate) X: Vec<Vec<u8>>,
+  pub(crate) u: Vec<u8>,
 }
 
 impl<G: Group> R1CSGens<G> {
@@ -562,6 +593,17 @@ impl<G: Group> R1CSWitness<G> {
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
     self.W.commit(&gens.gens)
   }
+
+  /// Serializes the witness in a R1CSWitnessSerialized
+  pub fn serialize(&self) -> R1CSWitnessSerialized {
+    R1CSWitnessSerialized {
+      W: self
+        .W
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
+    }
+  }
 }
 
 impl<G: Group> R1CSInstance<G> {
@@ -578,6 +620,18 @@ impl<G: Group> R1CSInstance<G> {
         comm_W: *comm_W,
         X: X.to_owned(),
       })
+    }
+  }
+
+  /// Serialize the instance to R1CSInstanceSerialized
+  pub fn serialize(&self) -> R1CSInstanceSerialized {
+    R1CSInstanceSerialized {
+      comm_W: self.comm_W.compress().comm.as_bytes().to_vec(),
+      X: self
+        .X
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
     }
   }
 }
@@ -662,6 +716,22 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
     Self { W, E }
   }
+
+  /// Serializes the witness in a RelaxedR1CSWitnessSerialized
+  pub fn serialize(&self) -> RelaxedR1CSWitnessSerialized {
+    RelaxedR1CSWitnessSerialized {
+      W: self
+        .W
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
+      E: self
+        .E
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
+    }
+  }
 }
 
 impl<G: Group> RelaxedR1CSInstance<G> {
@@ -717,6 +787,20 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       u,
     })
   }
+
+  /// Serialize the instance to RelaxedR1CSInstanceSerialized
+  pub fn serialize(&self) -> RelaxedR1CSInstanceSerialized {
+    RelaxedR1CSInstanceSerialized {
+      comm_W: self.comm_W.compress().comm.as_bytes().to_vec(),
+      comm_E: self.comm_E.compress().comm.as_bytes().to_vec(),
+      X: self
+        .X
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
+      u: self.u.to_repr().as_ref().to_vec(),
+    }
+  }
 }
 
 impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
@@ -755,6 +839,18 @@ pub struct RelaxedR1CSSNARK<G: Group> {
   eval_W: G::Scalar,
   step_ipa: StepInnerProductArgument<G>,
   final_ipa: FinalInnerProductArgument<G>,
+}
+
+/// Serialized version of RelaxedR1CSSNARK
+#[derive(Serialize, Deserialize)]
+pub struct RelaxedR1CSSNARKSerialized {
+  sc_proof_outer: SumcheckProofSerialized,
+  claims_outer: (Vec<u8>, Vec<u8>, Vec<u8>),
+  sc_proof_inner: SumcheckProofSerialized,
+  eval_E: Vec<u8>,
+  eval_W: Vec<u8>,
+  step_ipa: StepInnerProductArgumentSerialized,
+  final_ipa: FinalInnerProductArgumentSerialized,
 }
 
 impl<G: Group> RelaxedR1CSSNARK<G> {
@@ -1008,5 +1104,22 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     )?;
 
     Ok(())
+  }
+
+  /// Serialize the RelaxedR1CSSNARK
+  pub fn serialize(&self) -> RelaxedR1CSSNARKSerialized {
+    RelaxedR1CSSNARKSerialized {
+        sc_proof_outer: self.sc_proof_outer.serialize(),
+        claims_outer: (
+            self.claims_outer.0.to_repr().as_ref().to_vec(), 
+            self.claims_outer.1.to_repr().as_ref().to_vec(), 
+            self.claims_outer.2.to_repr().as_ref().to_vec(), 
+        ),
+        sc_proof_inner: self.sc_proof_inner.serialize(),
+        eval_E: self.eval_E.to_repr().as_ref().to_vec(),
+        eval_W: self.eval_W.to_repr().as_ref().to_vec(),
+        step_ipa: self.step_ipa.serialize(),
+        final_ipa: self.final_ipa.serialize(),
+    } 
   }
 }

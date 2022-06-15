@@ -1,11 +1,12 @@
 #![allow(clippy::too_many_arguments)]
 use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use super::errors::NovaError;
-use super::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
-use ff::Field;
+use super::traits::{AppendToTranscriptTrait, ChallengeTrait, Group, CompressedGroup};
+use ff::{Field, PrimeField};
 use merlin::Transcript;
 use rayon::prelude::*;
 use std::marker::PhantomData;
+use serde::{Serialize, Deserialize};
 
 pub struct InnerProductWitness<G: Group> {
   x_vec: Vec<G::Scalar>,
@@ -21,12 +22,24 @@ pub struct StepInnerProductArgument<G: Group> {
   C: G::Scalar,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct StepInnerProductArgumentSerialized {
+  C: Vec<u8>
+}
+
 #[derive(Debug)]
 pub struct FinalInnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
   R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
   x_hat: G::Scalar,
   _p: PhantomData<G>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FinalInnerProductArgumentSerialized {
+    L_vec: Vec<Vec<u8>>,
+    R_vec: Vec<Vec<u8>>,
+    x_hat: Vec<u8>
 }
 
 impl<G: Group> InnerProductWitness<G> {
@@ -141,6 +154,12 @@ impl<G: Group> StepInnerProductArgument<G> {
       comm_x_vec,
       a_vec,
       y,
+    }
+  }
+
+  pub fn serialize(&self) -> StepInnerProductArgumentSerialized {
+    StepInnerProductArgumentSerialized {
+        C: self.C.to_repr().as_ref().to_vec(),
     }
   }
 }
@@ -398,5 +417,13 @@ impl<G: Group> FinalInnerProductArgument<G> {
     } else {
       Err(NovaError::InvalidIPA)
     }
+  }
+
+  pub fn serialize(&self) -> FinalInnerProductArgumentSerialized {
+     FinalInnerProductArgumentSerialized {
+        L_vec: self.L_vec.iter().map(|x| x.comm.as_bytes().to_vec()).collect(),
+        R_vec: self.R_vec.iter().map(|x| x.comm.as_bytes().to_vec()).collect(),
+        x_hat: self.x_hat.to_repr().as_ref().to_vec(),
+     }
   }
 }
