@@ -10,7 +10,7 @@ use core::{
 use ff::Field;
 use merlin::Transcript;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CommitGens<G: Group> {
   gens: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
@@ -28,12 +28,79 @@ pub struct CompressedCommitment<C: CompressedGroup> {
 
 impl<G: Group> CommitGens<G> {
   pub fn new(label: &'static [u8], n: usize) -> Self {
-    let gens = G::from_label(label, n);
+    CommitGens {
+      gens: G::from_label(label, n),
+      _p: Default::default(),
+    }
+  }
 
+  pub fn len(&self) -> usize {
+    self.gens.len()
+  }
+
+  pub fn split_at(&self, n: usize) -> (CommitGens<G>, CommitGens<G>) {
+    (
+      CommitGens {
+        gens: self.gens[0..n].to_vec(),
+        _p: Default::default(),
+      },
+      CommitGens {
+        gens: self.gens[n..].to_vec(),
+        _p: Default::default(),
+      },
+    )
+  }
+
+  pub fn combine(&self, other: &CommitGens<G>) -> CommitGens<G> {
+    let gens = {
+      let mut c = self.gens.clone();
+      c.extend(other.gens.clone());
+      c
+    };
     CommitGens {
       gens,
-      _p: PhantomData::default(),
+      _p: Default::default(),
     }
+  }
+
+  // combines the left and right halves of `self` using `w1` and `w2` as the weights
+  pub fn fold(&mut self, w1: &G::Scalar, w2: &G::Scalar) {
+    let w = vec![*w1, *w2];
+    let (L, R) = self.split_at(self.len() / 2);
+
+    let gens = (0..self.len() / 2)
+      .map(|i| {
+        let gens = CommitGens::<G> {
+          gens: [L.gens[i].clone(), R.gens[i].clone()].to_vec(),
+          _p: Default::default(),
+        };
+        w.commit(&gens).comm.preprocessed()
+      })
+      .collect();
+
+    self.gens = gens;
+  }
+
+  /// returns a singleton vector of generators where the entry is r * G, where G is the generator of the group
+  pub fn from_scalar(r: &G::Scalar) -> Self {
+    CommitGens {
+      gens: vec![G::gen().mul(r).preprocessed()],
+      _p: Default::default(),
+    }
+  }
+
+  /// reinterprets a vector of commitments as a set of generators
+  pub fn reinterpret_commitments_as_gens(
+    c: &[CompressedCommitment<G::CompressedGroupElement>],
+  ) -> Result<Self, NovaError> {
+    let d = (0..c.len())
+      .map(|i| c[i].decompress())
+      .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
+    let gens = (0..d.len()).map(|i| d[i].comm.preprocessed()).collect();
+    Ok(CommitGens {
+      gens,
+      _p: Default::default(),
+    })
   }
 }
 

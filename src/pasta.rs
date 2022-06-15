@@ -11,7 +11,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{Curve, GroupEncoding},
+  group::{Curve, Group as Grp, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
 use rand::SeedableRng;
@@ -48,6 +48,10 @@ impl Group for pallas::Point {
     pasta_msm::pallas(bases, scalars)
   }
 
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+    self.to_affine()
+  }
+
   fn compress(&self) -> Self::CompressedGroupElement {
     PallasCompressedElementWrapper::new(self.to_bytes())
   }
@@ -81,6 +85,10 @@ impl Group for pallas::Point {
       16,
     )
     .unwrap()
+  }
+
+  fn gen() -> Self {
+    pallas::Point::generator()
   }
 }
 
@@ -137,6 +145,10 @@ impl Group for vesta::Point {
     VestaCompressedElementWrapper::new(self.to_bytes())
   }
 
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+    self.to_affine()
+  }
+
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
     let mut shake = Shake256::default();
     shake.input(label);
@@ -166,6 +178,10 @@ impl Group for vesta::Point {
       16,
     )
     .unwrap()
+  }
+
+  fn gen() -> Self {
+    vesta::Point::generator()
   }
 }
 
