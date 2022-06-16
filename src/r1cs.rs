@@ -5,7 +5,10 @@ use super::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   gadgets::utils::scalar_as_base,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, HashFuncTrait},
+  ipa::{FinalInnerProductArgument, StepInnerProductArgument},
+  polynomial::{EqPolynomial, MultilinearPolynomial},
+  sumcheck::SumcheckProof,
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, Group, HashFuncTrait},
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
 use ff::{Field, PrimeField};
@@ -166,6 +169,34 @@ impl<G: Group> R1CSShape<G> {
     let Cz = sparse_matrix_vec_product(&self.C, self.num_cons, z);
 
     Ok((Az, Bz, Cz))
+  }
+
+  pub fn compute_eval_table_sparse(
+    &self,
+    rx: &[G::Scalar],
+  ) -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
+    assert_eq!(rx.len(), self.num_cons);
+
+    let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
+    let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
+    let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
+
+    for i in 0..self.A.len() {
+      let (row, col, val) = self.A[i];
+      A_evals[col] += rx[row] * val;
+    }
+
+    for i in 0..self.B.len() {
+      let (row, col, val) = self.B[i];
+      B_evals[col] += rx[row] * val;
+    }
+
+    for i in 0..self.C.len() {
+      let (row, col, val) = self.C[i];
+      C_evals[col] += rx[row] * val;
+    }
+
+    (A_evals, B_evals, C_evals)
   }
 
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
@@ -556,5 +587,138 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
         ro.absorb(scalar_as_base::<G>(limb));
       }
     }
+  }
+}
+
+/// A succinct proof of knowledge of a witness to a relaxed R1CS instance
+/// The proof is produced using Spartan's combination of the sum-check and
+/// the commitment to a vector viewed as a polynomial commitment
+pub struct RelaxedR1CSSNARK<G: Group> {
+  sc_proof_outer: SumcheckProof<G>,
+  claims_outer: (G::Scalar, G::Scalar, G::Scalar),
+  sc_proof_inner: SumcheckProof<G>,
+  eval_W: G::Scalar,
+  ipa_eval_W: StepInnerProductArgument<G>,
+  eval_E: G::Scalar,
+  ipa_eval_E: StepInnerProductArgument<G>,
+  ipa_final: FinalInnerProductArgument<G>,
+}
+
+impl<G: Group> RelaxedR1CSSNARK<G> {
+  fn protocol_name() -> &'static [u8] {
+    b"RelaxedR1CSSNARK"
+  }
+
+  /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
+  pub fn prove(
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    W: &RelaxedR1CSWitness<G>,
+    transcript: &mut Transcript,
+  ) -> Result<Self, NovaError> {
+    // append the protocol name to the transcript
+    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+
+    // append the R1CSShape and RelaxedR1CSInstance to the transcript
+    S.append_to_transcript(b"S", transcript);
+    U.append_to_transcript(b"U", transcript);
+
+    // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
+    let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+
+    // check that R1CSShape has certain size characteristics
+    assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
+    assert_eq!(S.num_vars.next_power_of_two(), S.num_vars);
+    assert_eq!(S.num_io.next_power_of_two(), S.num_io);
+    assert!(S.num_io < S.num_vars);
+
+    let (num_rounds_x, num_rounds_y) =
+      (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
+
+    // outer sum-check
+    let tau = (0..num_rounds_x)
+      .map(|_i| G::Scalar::challenge(b"challenge_tau", transcript))
+      .collect();
+    let mut poly_tau = EqPolynomial::new(tau).evals();
+    let (mut poly_Az, mut poly_Bz, mut poly_Cz, mut poly_uCz_E) = {
+      let (poly_Az, poly_Bz, poly_Cz) = S.multiply_vec(&z)?;
+      let poly_uCz_E = (0..S.num_cons).map(|i| U.u * poly_Cz[i] + W.E[i]).collect();
+      (poly_Az, poly_Bz, poly_Cz, poly_uCz_E)
+    };
+
+    let comb_func_outer =
+      |poly_A_comp: &G::Scalar,
+       poly_B_comp: &G::Scalar,
+       poly_C_comp: &G::Scalar,
+       poly_D_comp: &G::Scalar|
+       -> G::Scalar { *poly_A_comp * (*poly_B_comp * *poly_C_comp - *poly_D_comp) };
+    let (sc_proof_outer, r_x, claims_outer) = SumcheckProof::prove_cubic_with_additive_term(
+      &G::Scalar::zero(), // claim is zero
+      num_rounds_x,
+      &mut MultilinearPolynomial::new(poly_tau),
+      &mut MultilinearPolynomial::new(poly_Az),
+      &mut MultilinearPolynomial::new(poly_Bz),
+      &mut MultilinearPolynomial::new(poly_Cz),
+      comb_func_outer,
+      transcript,
+    );
+
+    // claims from the end of sum-check
+    let claim_tau: G::Scalar = claims_outer[0];
+    let (claim_Az, claim_Bz, _claim_uCz_E) = (claims_outer[1], claims_outer[2], claims_outer[3]);
+    claims_outer[0].append_to_transcript(b"claim_tau", transcript);
+    claims_outer[1].append_to_transcript(b"claim_Az", transcript);
+    claims_outer[2].append_to_transcript(b"claim_Bz", transcript);
+    let claim_Cz = MultilinearPolynomial::new(poly_Cz).evaluate(&r_x);
+    let eval_E = MultilinearPolynomial::new(W.E).evaluate(&r_x);
+    claim_Cz.append_to_transcript(b"claim_Cz", transcript);
+    eval_E.append_to_transcript(b"claim_E", transcript);
+
+    // inner sum-check
+    let r_A = G::Scalar::challenge(b"challenge_rA", transcript);
+    let r_B = G::Scalar::challenge(b"challenge_rB", transcript);
+    let r_C = G::Scalar::challenge(b"challenge_rC", transcript);
+    let claim_outer_joint = r_A * claims_outer[1] + r_B * claims_outer[2] + r_C * claim_Cz;
+
+    let poly_ABC = {
+      // compute the initial evaluation table for R(\tau, x)
+      let evals_rx = EqPolynomial::new(r_x.clone()).evals();
+      let (evals_A, evals_B, evals_C) = S.compute_eval_table_sparse(&evals_rx);
+
+      assert_eq!(evals_A.len(), evals_B.len());
+      assert_eq!(evals_A.len(), evals_C.len());
+      (0..evals_A.len())
+        .map(|i| r_A * evals_A[i] + r_B * evals_B[i] + r_C * evals_C[i])
+        .collect::<Vec<G::Scalar>>()
+    };
+
+    let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
+      *poly_A_comp * *poly_B_comp
+    };
+    let (sc_proof_inner, r_y, claims_inner) = SumcheckProof::prove_quad(
+      &claim_outer_joint,
+      num_rounds_y,
+      &mut MultilinearPolynomial::new(z),
+      &mut MultilinearPolynomial::new(poly_ABC),
+      comb_func,
+      transcript,
+    );
+  }
+
+  /// verifies a proof of satisfiability of a RelaxedR1CS instance
+  pub fn verify(
+    &self,
+    gens: &R1CSGens<G>,
+    S: &R1CSShape<G>,
+    U: &RelaxedR1CSInstance<G>,
+    transcript: &mut Transcript,
+  ) -> Result<(), NovaError> {
+    // append the protocol name to the transcript
+    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+
+    // append the R1CSShape and RelaxedR1CSInstance to the transcript
+    S.append_to_transcript(b"S", transcript);
+    U.append_to_transcript(b"U", transcript);
   }
 }

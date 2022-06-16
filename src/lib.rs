@@ -13,8 +13,10 @@ pub mod gadgets;
 mod ipa;
 pub mod nifs;
 pub mod pasta;
+mod polynomial;
 mod poseidon;
 pub mod r1cs;
+mod sumcheck;
 pub mod traits;
 
 use crate::bellperson::{
