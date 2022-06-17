@@ -182,6 +182,7 @@ impl<G: Group> R1CSShape<G> {
     let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
     let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
 
+    // TODO: cut duplicate code
     for i in 0..self.A.len() {
       let (row, col, val) = self.A[i];
       A_evals[col] += rx[row] * val;
@@ -385,6 +386,100 @@ impl<G: Group> R1CSShape<G> {
     }
     res
   }
+
+  /// Pads the R1CSShape so that the number of variables is a power of two
+  /// Renumbers variables to accomodate padded variables
+  fn pad(&self) -> Self {
+    // check if the provided R1CSShape is already as required
+    if self.num_vars.next_power_of_two() == self.num_vars
+      && self.num_cons.next_power_of_two() == self.num_cons
+    {
+      return self.clone();
+    }
+
+    // check if the number of variables are as expected, then
+    // we simply set the number of constraints to the next power of two
+    if self.num_vars.next_power_of_two() == self.num_vars {
+      let digest = Self::compute_digest(
+        self.num_cons.next_power_of_two(),
+        self.num_vars,
+        self.num_io,
+        &self.A,
+        &self.B,
+        &self.C,
+      );
+
+      return R1CSShape {
+        num_cons: self.num_cons.next_power_of_two(),
+        num_vars: self.num_vars,
+        num_io: self.num_io,
+        A: self.A.clone(),
+        B: self.B.clone(),
+        C: self.C.clone(),
+        digest,
+      };
+    }
+
+    // otherwise, we need to pad the number of variables and renumber variable accesses
+    let num_vars_padded = self.num_vars.next_power_of_two();
+    let num_cons_padded = self.num_cons.next_power_of_two();
+
+    // TODO: cut duplicate code
+    let A_padded = self
+      .A
+      .iter()
+      .map(|(r, c, v)| {
+        if c >= &self.num_vars {
+          (*r, c + num_vars_padded - self.num_vars, v.clone())
+        } else {
+          (*r, *c, v.clone())
+        }
+      })
+      .collect::<Vec<_>>();
+
+    let B_padded = self
+      .B
+      .iter()
+      .map(|(r, c, v)| {
+        if c >= &self.num_vars {
+          (*r, c + num_vars_padded - self.num_vars, v.clone())
+        } else {
+          (*r, *c, v.clone())
+        }
+      })
+      .collect::<Vec<_>>();
+
+    let C_padded = self
+      .C
+      .iter()
+      .map(|(r, c, v)| {
+        if c >= &self.num_vars {
+          (*r, c + num_vars_padded - self.num_vars, v.clone())
+        } else {
+          (*r, *c, v.clone())
+        }
+      })
+      .collect::<Vec<_>>();
+
+    let digest = Self::compute_digest(
+      num_cons_padded,
+      num_vars_padded,
+      self.num_io,
+      &A_padded,
+      &B_padded,
+      &C_padded,
+    );
+
+    R1CSShape {
+      num_cons: num_cons_padded,
+      num_vars: num_vars_padded,
+      num_io: self.num_io,
+      A: A_padded,
+      B: B_padded,
+      C: C_padded,
+      digest,
+    }
+  }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -509,6 +604,22 @@ impl<G: Group> RelaxedR1CSWitness<G> {
       .collect::<Vec<G::Scalar>>();
     Ok(RelaxedR1CSWitness { W, E })
   }
+
+  fn pad(&self, S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
+    let W = {
+      let mut W = self.W.clone();
+      W.extend(vec![G::Scalar::zero(); S.num_vars - W.len()]);
+      W
+    };
+
+    let E = {
+      let mut E = self.E.clone();
+      E.extend(vec![G::Scalar::zero(); S.num_cons - E.len()]);
+      E
+    };
+
+    Self { W, E }
+  }
 }
 
 impl<G: Group> RelaxedR1CSInstance<G> {
@@ -621,18 +732,27 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     // append the protocol name to the transcript
     transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
 
+    // pad the shape and witness
+    let S = S.pad();
+    let W = W.pad(&S);
+
+    // sanity check that R1CSShape has certain size characteristics
+    assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
+    assert_eq!(S.num_vars.next_power_of_two(), S.num_vars);
+    assert_eq!(S.num_io.next_power_of_two(), S.num_io);
+    assert!(S.num_io < S.num_vars);
+
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
     S.append_to_transcript(b"S", transcript);
     U.append_to_transcript(b"U", transcript);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
-
-    // check that R1CSShape has certain size characteristics
-    assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
-    assert_eq!(S.num_vars.next_power_of_two(), S.num_vars);
-    assert_eq!(S.num_io.next_power_of_two(), S.num_io);
-    assert!(S.num_io < S.num_vars);
+    // TODO: cleanup how this gets created?
+    let z = {
+      let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+      z.resize(S.num_vars * 2, G::Scalar::zero());
+      z
+    };
 
     let (num_rounds_x, num_rounds_y) =
       (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
