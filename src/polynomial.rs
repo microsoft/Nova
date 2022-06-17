@@ -44,15 +44,14 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 #[derive(Debug)]
 pub struct MultilinearPolynomial<Scalar: PrimeField> {
   num_vars: usize, // the number of variables in the multilinear polynomial
-  len: usize,
-  Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   pub fn new(Z: Vec<Scalar>) -> Self {
+    assert_eq!(Z.len(), (2 as usize).pow(Z.len().log2() as u32));
     MultilinearPolynomial {
       num_vars: Z.len().log2() as usize,
-      len: Z.len(),
       Z,
     }
   }
@@ -62,22 +61,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   pub fn len(&self) -> usize {
-    self.len
-  }
-
-  pub fn clone(&self) -> MultilinearPolynomial<Scalar> {
-    Self::new(self.Z[0..self.len].to_vec())
-  }
-
-  pub fn split(
-    &self,
-    idx: usize,
-  ) -> (MultilinearPolynomial<Scalar>, MultilinearPolynomial<Scalar>) {
-    assert!(idx < self.len());
-    (
-      MultilinearPolynomial::new(self.Z[..idx].to_vec()),
-      MultilinearPolynomial::new(self.Z[idx..2 * idx].to_vec()),
-    )
+    self.Z.len()
   }
 
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
@@ -86,7 +70,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       self.Z[i] = self.Z[i] + *r * (self.Z[i + n] - self.Z[i]);
     }
     self.num_vars -= 1;
-    self.len = n;
   }
 
   pub fn bound_poly_var_bot(&mut self, r: &Scalar) {
@@ -95,7 +78,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       self.Z[i] = self.Z[2 * i] + *r * (self.Z[2 * i + 1] - self.Z[2 * i]);
     }
     self.num_vars -= 1;
-    self.len = n;
   }
 
   // returns Z(r) in O(n) time
@@ -109,10 +91,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       sum = sum + chis[i] * self.Z[i];
     }
     sum
-  }
-
-  fn vec(&self) -> &Vec<Scalar> {
-    &self.Z
   }
 }
 

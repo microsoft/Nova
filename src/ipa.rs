@@ -4,6 +4,7 @@ use super::errors::NovaError;
 use super::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 use ff::Field;
 use merlin::Transcript;
+use rayon::prelude::*;
 use std::marker::PhantomData;
 
 pub struct InnerProductWitness<G: Group> {
@@ -239,10 +240,17 @@ impl<G: Group> FinalInnerProductArgument<G> {
         let r_inverse = r.invert().unwrap();
 
         // fold the left half and the right half
-        for i in 0..n / 2 {
-          x_vec_ref[i] = x_L[i] * r + r_inverse * x_R[i];
-          a_vec_ref[i] = a_L[i] * r_inverse + r * a_R[i];
-        }
+        x_vec_ref = x_L
+          .par_iter()
+          .zip(x_R.par_iter())
+          .map(|(x_L, x_R)| *x_L * r + r_inverse * *x_R)
+          .collect::<Vec<G::Scalar>>();
+
+        a_vec_ref = a_L
+          .par_iter()
+          .zip(a_R.par_iter())
+          .map(|(a_L, a_R)| *a_L * r_inverse + r * *a_R)
+          .collect::<Vec<G::Scalar>>();
 
         gens_ref.fold(&r_inverse, &r);
         n /= 2;

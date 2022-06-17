@@ -9,6 +9,7 @@ use core::{
 };
 use ff::Field;
 use merlin::Transcript;
+use rayon::prelude::*;
 
 #[derive(Clone, Debug)]
 pub struct CommitGens<G: Group> {
@@ -69,6 +70,7 @@ impl<G: Group> CommitGens<G> {
     let (L, R) = self.split_at(self.len() / 2);
 
     let gens = (0..self.len() / 2)
+      .into_par_iter()
       .map(|i| {
         let gens = CommitGens::<G> {
           gens: [L.gens[i].clone(), R.gens[i].clone()].to_vec(),

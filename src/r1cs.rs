@@ -178,9 +178,9 @@ impl<G: Group> R1CSShape<G> {
   ) -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
     assert_eq!(rx.len(), self.num_cons);
 
-    let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
-    let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
-    let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); self.num_vars + self.num_io + 1];
+    let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
+    let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
+    let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
 
     // TODO: cut duplicate code
     for i in 0..self.A.len() {
@@ -741,12 +741,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     U.append_to_transcript(b"U", &mut transcript);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    // TODO: cleanup how this gets created?
-    let z = {
-      let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
-      z.resize(S.num_vars * 2, G::Scalar::zero());
-      z
-    };
+    let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
 
     let (num_rounds_x, num_rounds_y) =
       (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
@@ -810,19 +805,25 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
         .collect::<Vec<G::Scalar>>()
     };
 
+    // TODO: fix this
+    let poly_z = {
+      z.resize(S.num_vars * 2, G::Scalar::zero());
+      z
+    };
+
     let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
       *poly_A_comp * *poly_B_comp
     };
     let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad(
       &claim_inner_joint,
       num_rounds_y,
-      &mut MultilinearPolynomial::new(z),
+      &mut MultilinearPolynomial::new(poly_z),
       &mut MultilinearPolynomial::new(poly_ABC),
       comb_func,
       &mut transcript,
     );
 
-    let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y);
+    let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,
@@ -841,6 +842,8 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     U: &RelaxedR1CSInstance<G>,
   ) -> Result<(), NovaError> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
+
+    let S = S.pad();
 
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
     S.append_to_transcript(b"S", &mut transcript);

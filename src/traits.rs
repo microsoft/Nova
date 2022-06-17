@@ -30,7 +30,7 @@ pub trait Group:
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone;
+  type PreprocessedGroupElement: Clone + Send + Sync;
 
   /// A type that represents a hash function that consumes elements
   /// from the base field and squeezes out elements of the scalar field
