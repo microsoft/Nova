@@ -717,20 +717,14 @@ pub struct RelaxedR1CSSNARK<G: Group> {
 }
 
 impl<G: Group> RelaxedR1CSSNARK<G> {
-  fn protocol_name() -> &'static [u8] {
-    b"RelaxedR1CSSNARK"
-  }
-
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
   pub fn prove(
     _gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
-    transcript: &mut Transcript,
   ) -> Result<Self, NovaError> {
-    // append the protocol name to the transcript
-    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+    let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
 
     // pad the shape and witness
     let S = S.pad();
@@ -743,8 +737,8 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     assert!(S.num_io < S.num_vars);
 
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
-    S.append_to_transcript(b"S", transcript);
-    U.append_to_transcript(b"U", transcript);
+    S.append_to_transcript(b"S", &mut transcript);
+    U.append_to_transcript(b"U", &mut transcript);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
     // TODO: cleanup how this gets created?
@@ -759,7 +753,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
 
     // outer sum-check
     let tau = (0..num_rounds_x)
-      .map(|_i| G::Scalar::challenge(b"challenge_tau", transcript))
+      .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
       .collect();
     let poly_tau = EqPolynomial::new(tau).evals();
     let (poly_Az, poly_Bz, poly_Cz, poly_uCz_E) = {
@@ -784,24 +778,24 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       &mut MultilinearPolynomial::new(poly_Bz),
       &mut MultilinearPolynomial::new(poly_uCz_E),
       comb_func_outer,
-      transcript,
+      &mut transcript,
     );
 
     // claims from the end of sum-check
     let _claim_tau: G::Scalar = claims_outer[0];
     let (claim_Az, claim_Bz, _claim_uCz_E) = (claims_outer[1], claims_outer[2], claims_outer[3]);
     //claims_outer[0].append_to_transcript(b"claim_tau", transcript);
-    claims_outer[1].append_to_transcript(b"claim_Az", transcript);
-    claims_outer[2].append_to_transcript(b"claim_Bz", transcript);
+    claims_outer[1].append_to_transcript(b"claim_Az", &mut transcript);
+    claims_outer[2].append_to_transcript(b"claim_Bz", &mut transcript);
     let claim_Cz = MultilinearPolynomial::new(poly_Cz).evaluate(&r_x);
     let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
-    claim_Cz.append_to_transcript(b"claim_Cz", transcript);
-    eval_E.append_to_transcript(b"claim_E", transcript);
+    claim_Cz.append_to_transcript(b"claim_Cz", &mut transcript);
+    eval_E.append_to_transcript(b"claim_E", &mut transcript);
 
     // inner sum-check
-    let r_A = G::Scalar::challenge(b"challenge_rA", transcript);
-    let r_B = G::Scalar::challenge(b"challenge_rB", transcript);
-    let r_C = G::Scalar::challenge(b"challenge_rC", transcript);
+    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
+    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
+    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
     let claim_inner_joint = r_A * claims_outer[1] + r_B * claims_outer[2] + r_C * claim_Cz;
 
     let poly_ABC = {
@@ -825,7 +819,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       &mut MultilinearPolynomial::new(z),
       &mut MultilinearPolynomial::new(poly_ABC),
       comb_func,
-      transcript,
+      &mut transcript,
     );
 
     let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y);
@@ -845,55 +839,55 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     _gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
-    transcript: &mut Transcript,
   ) -> Result<(), NovaError> {
-    // append the protocol name to the transcript
-    transcript.append_message(b"protocol-name", RelaxedR1CSSNARK::<G>::protocol_name());
+    let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
 
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
-    S.append_to_transcript(b"S", transcript);
-    U.append_to_transcript(b"U", transcript);
+    S.append_to_transcript(b"S", &mut transcript);
+    U.append_to_transcript(b"U", &mut transcript);
 
     let (num_rounds_x, num_rounds_y) =
       (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
 
     // outer sum-check
     let _tau = (0..num_rounds_x)
-      .map(|_i| G::Scalar::challenge(b"challenge_tau", transcript))
+      .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
       .collect::<Vec<G::Scalar>>();
 
     let (_claim_outer_final, _r_x) =
       self
         .sc_proof_outer
-        .verify(G::Scalar::zero(), num_rounds_x, 3, transcript)?;
+        .verify(G::Scalar::zero(), num_rounds_x, 3, &mut transcript)?;
 
     // TODO: verify claim_outer_final
 
     self
       .claims_outer
       .0
-      .append_to_transcript(b"claim_Az", transcript);
+      .append_to_transcript(b"claim_Az", &mut transcript);
     self
       .claims_outer
       .1
-      .append_to_transcript(b"claim_Bz", transcript);
+      .append_to_transcript(b"claim_Bz", &mut transcript);
     self
       .claims_outer
       .2
-      .append_to_transcript(b"claim_Cz", transcript);
-    self.eval_E.append_to_transcript(b"claim_E", transcript);
+      .append_to_transcript(b"claim_Cz", &mut transcript);
+    self
+      .eval_E
+      .append_to_transcript(b"claim_E", &mut transcript);
 
     // inner sum-check
-    let r_A = G::Scalar::challenge(b"challenge_rA", transcript);
-    let r_B = G::Scalar::challenge(b"challenge_rB", transcript);
-    let r_C = G::Scalar::challenge(b"challenge_rC", transcript);
+    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
+    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
+    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
     let claim_inner_joint =
       r_A * self.claims_outer.0 + r_B * self.claims_outer.1 + r_C * self.claims_outer.2;
 
     let (_claim_inner_final, _r_y) =
       self
         .sc_proof_inner
-        .verify(claim_inner_joint, num_rounds_y, 2, transcript)?;
+        .verify(claim_inner_joint, num_rounds_y, 2, &mut transcript)?;
 
     // TODO: verify claim_inner_final
 

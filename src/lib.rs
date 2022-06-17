@@ -34,7 +34,8 @@ use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
+  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSSNARK,
+  RelaxedR1CSWitness,
 };
 use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
 
@@ -408,12 +409,12 @@ where
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
   nifs_primary: NIFS<G1>,
-  f_W_primary: RelaxedR1CSWitness<G1>,
+  f_W_snark_primary: RelaxedR1CSSNARK<G1>,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
   nifs_secondary: NIFS<G2>,
-  f_W_secondary: RelaxedR1CSWitness<G2>,
+  f_W_snark_secondary: RelaxedR1CSSNARK<G2>,
 
   zn_primary: G1::Scalar,
   zn_secondary: G2::Scalar,
@@ -435,7 +436,7 @@ where
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
     // fold the primary circuit's instance
-    let (nifs_primary, (_f_U_primary, f_W_primary)) = NIFS::prove(
+    let (nifs_primary, (f_U_primary, f_W_primary)) = NIFS::prove(
       &pp.r1cs_gens_primary,
       &pp.ro_consts_primary,
       &pp.r1cs_shape_primary,
@@ -446,7 +447,7 @@ where
     )?;
 
     // fold the secondary circuit's instance
-    let (nifs_secondary, (_f_U_secondary, f_W_secondary)) = NIFS::prove(
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
       &pp.r1cs_gens_secondary,
       &pp.ro_consts_secondary,
       &pp.r1cs_shape_secondary,
@@ -456,16 +457,32 @@ where
       &recursive_snark.l_w_secondary,
     )?;
 
+    // create a SNARK proving the knowledge of f_W_primary
+    let f_W_snark_primary = RelaxedR1CSSNARK::prove(
+      &pp.r1cs_gens_primary,
+      &pp.r1cs_shape_primary,
+      &f_U_primary,
+      &f_W_primary,
+    )?;
+
+    // create a SNARK proving the knowledge of f_W_secondary
+    let f_W_snark_secondary = RelaxedR1CSSNARK::prove(
+      &pp.r1cs_gens_secondary,
+      &pp.r1cs_shape_secondary,
+      &f_U_secondary,
+      &f_W_secondary,
+    )?;
+
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
       l_u_primary: recursive_snark.l_u_primary.clone(),
       nifs_primary,
-      f_W_primary,
+      f_W_snark_primary,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
-      f_W_secondary,
+      f_W_snark_secondary,
 
       zn_primary: recursive_snark.zn_primary,
       zn_secondary: recursive_snark.zn_secondary,
@@ -536,14 +553,15 @@ where
       &self.l_u_secondary,
     )?;
 
-    // check the satisfiability of the folded instances using the purported folded witnesses
-    pp.r1cs_shape_primary
-      .is_sat_relaxed(&pp.r1cs_gens_primary, &f_U_primary, &self.f_W_primary)?;
+    // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
+    self
+      .f_W_snark_primary
+      .verify(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary, &f_U_primary)?;
 
-    pp.r1cs_shape_secondary.is_sat_relaxed(
+    self.f_W_snark_secondary.verify(
       &pp.r1cs_gens_secondary,
+      &pp.r1cs_shape_secondary,
       &f_U_secondary,
-      &self.f_W_secondary,
     )?;
 
     Ok((self.zn_primary, self.zn_secondary))
