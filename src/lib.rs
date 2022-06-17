@@ -732,6 +732,59 @@ mod tests {
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
+  }
+
+  #[test]
+  fn test_ivc_nontrivial_with_compression() {
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      CubicCircuit {
+        _p: Default::default(),
+      },
+    );
+
+    let num_steps = 3;
+
+    // produce a recursive SNARK
+    let res = RecursiveSNARK::prove(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+    let recursive_snark = res.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
+    let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
+    for _i in 0..num_steps {
+      zn_secondary_direct = CubicCircuit {
+        _p: Default::default(),
+      }
+      .compute(&zn_secondary_direct);
+    }
+    assert_eq!(zn_secondary, zn_secondary_direct);
+    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
 
     // produce a compressed SNARK
     let res = CompressedSNARK::prove(&pp, &recursive_snark);
