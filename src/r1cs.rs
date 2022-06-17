@@ -5,7 +5,7 @@ use super::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   gadgets::utils::scalar_as_base,
-  ipa::{FinalInnerProductArgument, StepInnerProductArgument},
+  // ipa::{FinalInnerProductArgument, StepInnerProductArgument},
   polynomial::{EqPolynomial, MultilinearPolynomial},
   sumcheck::SumcheckProof,
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, Group, HashFuncTrait},
@@ -171,6 +171,7 @@ impl<G: Group> R1CSShape<G> {
     Ok((Az, Bz, Cz))
   }
 
+  /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials
   pub fn compute_eval_table_sparse(
     &self,
     rx: &[G::Scalar],
@@ -598,10 +599,10 @@ pub struct RelaxedR1CSSNARK<G: Group> {
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   sc_proof_inner: SumcheckProof<G>,
   eval_W: G::Scalar,
-  ipa_eval_W: StepInnerProductArgument<G>,
+  // ipa_eval_W: StepInnerProductArgument<G>,
   eval_E: G::Scalar,
-  ipa_eval_E: StepInnerProductArgument<G>,
-  ipa_final: FinalInnerProductArgument<G>,
+  // ipa_eval_E: StepInnerProductArgument<G>,
+  // ipa_final: FinalInnerProductArgument<G>,
 }
 
 impl<G: Group> RelaxedR1CSSNARK<G> {
@@ -611,7 +612,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
 
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
   pub fn prove(
-    gens: &R1CSGens<G>,
+    _gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
@@ -640,10 +641,12 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", transcript))
       .collect();
-    let mut poly_tau = EqPolynomial::new(tau).evals();
-    let (mut poly_Az, mut poly_Bz, mut poly_Cz, mut poly_uCz_E) = {
+    let poly_tau = EqPolynomial::new(tau).evals();
+    let (poly_Az, poly_Bz, poly_Cz, poly_uCz_E) = {
       let (poly_Az, poly_Bz, poly_Cz) = S.multiply_vec(&z)?;
-      let poly_uCz_E = (0..S.num_cons).map(|i| U.u * poly_Cz[i] + W.E[i]).collect();
+      let poly_uCz_E = (0..S.num_cons)
+        .map(|i| U.u * poly_Cz[i] + W.E[i])
+        .collect::<Vec<G::Scalar>>();
       (poly_Az, poly_Bz, poly_Cz, poly_uCz_E)
     };
 
@@ -659,19 +662,19 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       &mut MultilinearPolynomial::new(poly_tau),
       &mut MultilinearPolynomial::new(poly_Az),
       &mut MultilinearPolynomial::new(poly_Bz),
-      &mut MultilinearPolynomial::new(poly_Cz),
+      &mut MultilinearPolynomial::new(poly_uCz_E),
       comb_func_outer,
       transcript,
     );
 
     // claims from the end of sum-check
-    let claim_tau: G::Scalar = claims_outer[0];
+    let _claim_tau: G::Scalar = claims_outer[0];
     let (claim_Az, claim_Bz, _claim_uCz_E) = (claims_outer[1], claims_outer[2], claims_outer[3]);
-    claims_outer[0].append_to_transcript(b"claim_tau", transcript);
+    //claims_outer[0].append_to_transcript(b"claim_tau", transcript);
     claims_outer[1].append_to_transcript(b"claim_Az", transcript);
     claims_outer[2].append_to_transcript(b"claim_Bz", transcript);
     let claim_Cz = MultilinearPolynomial::new(poly_Cz).evaluate(&r_x);
-    let eval_E = MultilinearPolynomial::new(W.E).evaluate(&r_x);
+    let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
     claim_Cz.append_to_transcript(b"claim_Cz", transcript);
     eval_E.append_to_transcript(b"claim_E", transcript);
 
@@ -679,7 +682,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let r_A = G::Scalar::challenge(b"challenge_rA", transcript);
     let r_B = G::Scalar::challenge(b"challenge_rB", transcript);
     let r_C = G::Scalar::challenge(b"challenge_rC", transcript);
-    let claim_outer_joint = r_A * claims_outer[1] + r_B * claims_outer[2] + r_C * claim_Cz;
+    let claim_inner_joint = r_A * claims_outer[1] + r_B * claims_outer[2] + r_C * claim_Cz;
 
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
@@ -696,20 +699,30 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
       *poly_A_comp * *poly_B_comp
     };
-    let (sc_proof_inner, r_y, claims_inner) = SumcheckProof::prove_quad(
-      &claim_outer_joint,
+    let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad(
+      &claim_inner_joint,
       num_rounds_y,
       &mut MultilinearPolynomial::new(z),
       &mut MultilinearPolynomial::new(poly_ABC),
       comb_func,
       transcript,
     );
+
+    let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y);
+
+    Ok(RelaxedR1CSSNARK {
+      sc_proof_outer,
+      claims_outer: (claim_Az, claim_Bz, claim_Cz),
+      sc_proof_inner,
+      eval_W,
+      eval_E,
+    })
   }
 
   /// verifies a proof of satisfiability of a RelaxedR1CS instance
   pub fn verify(
     &self,
-    gens: &R1CSGens<G>,
+    _gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
     transcript: &mut Transcript,
@@ -720,5 +733,52 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
     S.append_to_transcript(b"S", transcript);
     U.append_to_transcript(b"U", transcript);
+
+    let (num_rounds_x, num_rounds_y) =
+      (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
+
+    // outer sum-check
+    let _tau = (0..num_rounds_x)
+      .map(|_i| G::Scalar::challenge(b"challenge_tau", transcript))
+      .collect::<Vec<G::Scalar>>();
+
+    let (_claim_outer_final, _r_x) =
+      self
+        .sc_proof_outer
+        .verify(G::Scalar::zero(), num_rounds_x, 3, transcript)?;
+
+    // TODO: verify claim_outer_final
+
+    self
+      .claims_outer
+      .0
+      .append_to_transcript(b"claim_Az", transcript);
+    self
+      .claims_outer
+      .1
+      .append_to_transcript(b"claim_Bz", transcript);
+    self
+      .claims_outer
+      .2
+      .append_to_transcript(b"claim_Cz", transcript);
+    self.eval_E.append_to_transcript(b"claim_E", transcript);
+
+    // inner sum-check
+    let r_A = G::Scalar::challenge(b"challenge_rA", transcript);
+    let r_B = G::Scalar::challenge(b"challenge_rB", transcript);
+    let r_C = G::Scalar::challenge(b"challenge_rC", transcript);
+    let claim_inner_joint =
+      r_A * self.claims_outer.0 + r_B * self.claims_outer.1 + r_C * self.claims_outer.2;
+
+    let (_claim_inner_final, _r_y) =
+      self
+        .sc_proof_inner
+        .verify(claim_inner_joint, num_rounds_y, 2, transcript)?;
+
+    // TODO: verify claim_inner_final
+
+    // TODO: verify eval_W and eval_E
+
+    Ok(())
   }
 }
