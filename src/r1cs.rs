@@ -853,7 +853,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
       *poly_A_comp * *poly_B_comp
     };
-    let (sc_proof_inner, r_y, claims_inner) = SumcheckProof::prove_quad(
+    let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad(
       &claim_inner_joint,
       num_rounds_y,
       &mut MultilinearPolynomial::new(poly_ABC),
