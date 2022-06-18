@@ -2,7 +2,6 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
-#![feature(int_log)]
 
 pub mod bellperson;
 mod circuit;

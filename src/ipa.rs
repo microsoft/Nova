@@ -200,7 +200,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
       let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
       let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
 
-      for _i in 0..U.a_vec.len().log2() {
+      for _i in 0..(U.a_vec.len() as f64).log2() as usize {
         let (x_L, x_R) = (x_vec_ref[0..n / 2].to_vec(), x_vec_ref[n / 2..n].to_vec());
         let (a_L, a_R) = (a_vec_ref[0..n / 2].to_vec(), a_vec_ref[n / 2..n].to_vec());
         let (gens_L, gens_R) = gens_ref.split_at(n / 2);

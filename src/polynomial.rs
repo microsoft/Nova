@@ -44,9 +44,9 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   pub fn new(Z: Vec<Scalar>) -> Self {
-    assert_eq!(Z.len(), (2_usize).pow(Z.len().log2() as u32));
+    assert_eq!(Z.len(), (2_usize).pow((Z.len() as f64).log2() as u32));
     MultilinearPolynomial {
-      num_vars: Z.len().log2() as usize,
+      num_vars: (Z.len() as f64).log2() as usize,
       Z,
     }
   }
