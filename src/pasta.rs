@@ -46,12 +46,12 @@ impl Group for pallas::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    //pasta_msm::pallas(bases, scalars)
-    scalars
+    pasta_msm::pallas(bases, scalars)
+    /*scalars
       .into_iter()
       .zip(bases)
       .map(|(scalar, point)| point.mul(scalar))
-      .fold(Ep::group_zero(), |acc, x| acc + x)
+      .fold(Ep::group_zero(), |acc, x| acc + x)*/
   }
 
   fn preprocessed(&self) -> Self::PreprocessedGroupElement {
@@ -144,12 +144,12 @@ impl Group for vesta::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    //pasta_msm::vesta(bases, scalars)
-    scalars
+    pasta_msm::vesta(bases, scalars)
+    /*scalars
       .into_iter()
       .zip(bases)
       .map(|(scalar, point)| point.mul(scalar))
-      .fold(Eq::group_zero(), |acc, x| acc + x)
+      .fold(Eq::group_zero(), |acc, x| acc + x)*/
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
