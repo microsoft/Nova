@@ -19,12 +19,14 @@ pub trait Group:
   + GroupOpsOwned
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
+  + Send
+  + Sync
 {
   /// A type representing an element of the base field of the group
   type Base: PrimeField + PrimeFieldBits;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait;
+  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait + Send + Sync;
 
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;

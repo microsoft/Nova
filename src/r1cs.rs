@@ -6,7 +6,7 @@ use super::{
   errors::NovaError,
   gadgets::utils::scalar_as_base,
   // ipa::{FinalInnerProductArgument, StepInnerProductArgument},
-  polynomial::{EqPolynomial, MultilinearPolynomial},
+  polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial},
   sumcheck::SumcheckProof,
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, Group, HashFuncTrait},
 };
@@ -304,15 +304,21 @@ impl<G: Group> R1CSShape<G> {
     };
 
     let AZ_1_circ_BZ_2 = (0..AZ_1.len())
+      .into_par_iter()
       .map(|i| AZ_1[i] * BZ_2[i])
       .collect::<Vec<G::Scalar>>();
     let AZ_2_circ_BZ_1 = (0..AZ_2.len())
+      .into_par_iter()
       .map(|i| AZ_2[i] * BZ_1[i])
       .collect::<Vec<G::Scalar>>();
     let u_1_cdot_CZ_2 = (0..CZ_2.len())
+      .into_par_iter()
       .map(|i| U1.u * CZ_2[i])
       .collect::<Vec<G::Scalar>>();
-    let u_2_cdot_CZ_1 = (0..CZ_1.len()).map(|i| CZ_1[i]).collect::<Vec<G::Scalar>>();
+    let u_2_cdot_CZ_1 = (0..CZ_1.len())
+      .into_par_iter()
+      .map(|i| CZ_1[i])
+      .collect::<Vec<G::Scalar>>();
 
     let T = AZ_1_circ_BZ_2
       .par_iter()
@@ -427,7 +433,7 @@ impl<G: Group> R1CSShape<G> {
     // TODO: cut duplicate code
     let A_padded = self
       .A
-      .iter()
+      .par_iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
           (*r, c + num_vars_padded - self.num_vars, *v)
@@ -439,7 +445,7 @@ impl<G: Group> R1CSShape<G> {
 
     let B_padded = self
       .B
-      .iter()
+      .par_iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
           (*r, c + num_vars_padded - self.num_vars, *v)
@@ -451,7 +457,7 @@ impl<G: Group> R1CSShape<G> {
 
     let C_padded = self
       .C
-      .iter()
+      .par_iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
           (*r, c + num_vars_padded - self.num_vars, *v)
@@ -479,6 +485,32 @@ impl<G: Group> R1CSShape<G> {
       C: C_padded,
       digest,
     }
+  }
+
+  fn evaluate_with_table(
+    M: &[(usize, usize, G::Scalar)],
+    T_x: &[G::Scalar],
+    T_y: &[G::Scalar],
+  ) -> G::Scalar {
+    (0..M.len())
+      .map(|i| {
+        let (row, col, val) = M[i];
+        T_x[row] * T_y[col] * val
+      })
+      .fold(G::Scalar::zero(), |acc, x| acc + x)
+  }
+
+  fn evaluate_as_sparse_polynomial(
+    &self,
+    r_x: &[G::Scalar],
+    r_y: &[G::Scalar],
+  ) -> (G::Scalar, G::Scalar, G::Scalar) {
+    let T_x = EqPolynomial::new(r_x.to_vec()).evals();
+    let T_y = EqPolynomial::new(r_y.to_vec()).evals();
+    let eval_A_r = Self::evaluate_with_table(&self.A, &T_x, &T_y);
+    let eval_B_r = Self::evaluate_with_table(&self.B, &T_x, &T_y);
+    let eval_C_r = Self::evaluate_with_table(&self.C, &T_x, &T_y);
+    (eval_A_r, eval_B_r, eval_C_r)
   }
 }
 
@@ -707,7 +739,6 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
 /// the commitment to a vector viewed as a polynomial commitment
 pub struct RelaxedR1CSSNARK<G: Group> {
   sc_proof_outer: SumcheckProof<G>,
-  claim_tau: G::Scalar,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   sc_proof_inner: SumcheckProof<G>,
   eval_W: G::Scalar,
@@ -731,7 +762,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let S = S.pad();
     let W = W.pad(&S);
 
-    assert!(S.is_sat_relaxed(_gens, &U, &W).is_ok());
+    debug_assert!(S.is_sat_relaxed(_gens, &U, &W).is_ok());
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
@@ -786,8 +817,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     );
 
     // claims from the end of sum-check
-    let (claim_Az, claim_Bz, claim_uCz_E): (G::Scalar, G::Scalar, G::Scalar) =
-      (claims_outer[1], claims_outer[2], claims_outer[3]);
+    let (claim_Az, claim_Bz): (G::Scalar, G::Scalar) = (claims_outer[1], claims_outer[2]);
 
     claim_Az.append_to_transcript(b"claim_Az", &mut transcript);
     claim_Bz.append_to_transcript(b"claim_Bz", &mut transcript);
@@ -800,7 +830,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
     let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
     let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
-    let claim_inner_joint = r_A * claims_outer[1] + r_B * claims_outer[2] + r_C * claim_Cz;
+    let claim_inner_joint = r_A * claim_Az + r_B * claim_Bz + r_C * claim_Cz;
 
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
@@ -823,20 +853,22 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
       *poly_A_comp * *poly_B_comp
     };
-    let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad(
+    let (sc_proof_inner, r_y, claims_inner, claim_final) = SumcheckProof::prove_quad(
       &claim_inner_joint,
       num_rounds_y,
-      &mut MultilinearPolynomial::new(poly_z),
       &mut MultilinearPolynomial::new(poly_ABC),
+      &mut MultilinearPolynomial::new(poly_z),
       comb_func,
       &mut transcript,
     );
+
+    let (eval_ABC, eval_Z) = (claims_inner[0], claims_inner[1]);
+    assert_eq!(eval_ABC * eval_Z, claim_final);
 
     let eval_W = MultilinearPolynomial::new(W.W).evaluate(&r_y[1..]);
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,
-      claim_tau,
       claims_outer: (claim_Az, claim_Bz, claim_Cz),
       sc_proof_inner,
       eval_W,
@@ -876,7 +908,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let (claim_Az, claim_Bz, claim_Cz) = self.claims_outer;
     let taus_bound_rx = EqPolynomial::new(tau).evaluate(&r_x);
     let claim_outer_final_expected =
-      self.claim_tau * (claim_Az * claim_Bz - U.u * claim_Cz - self.eval_E);
+      taus_bound_rx * (claim_Az * claim_Bz - U.u * claim_Cz - self.eval_E);
     if claim_outer_final != claim_outer_final_expected {
       return Err(NovaError::InvalidSumcheckProof);
     }
@@ -904,12 +936,32 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let claim_inner_joint =
       r_A * self.claims_outer.0 + r_B * self.claims_outer.1 + r_C * self.claims_outer.2;
 
-    let (_claim_inner_final, _r_y) =
+    let (claim_inner_final, r_y) =
       self
         .sc_proof_inner
         .verify(claim_inner_joint, num_rounds_y, 2, &mut transcript)?;
 
-    // TODO: verify claim_inner_final
+    // verify claim_inner_final
+    let eval_Z = {
+      let eval_X = {
+        // constant term
+        let mut poly_X = vec![(0, U.u)];
+        //remaining inputs
+        poly_X.extend(
+          (0..U.X.len())
+            .map(|i| (i + 1, U.X[i]))
+            .collect::<Vec<(usize, G::Scalar)>>(),
+        );
+        SparsePolynomial::new(S.num_vars.log2() as usize, poly_X).evaluate(&r_y[1..].to_vec())
+      };
+      (G::Scalar::one() - r_y[0]) * self.eval_W + r_y[0] * eval_X
+    };
+
+    let (eval_A_r, eval_B_r, eval_C_r) = S.evaluate_as_sparse_polynomial(&r_x, &r_y);
+    let claim_inner_final_expected = (r_A * eval_A_r + r_B * eval_B_r + r_C * eval_C_r) * eval_Z;
+    if claim_inner_final != claim_inner_final_expected {
+      return Err(NovaError::InvalidSumcheckProof);
+    }
 
     // TODO: verify eval_W and eval_E
 

@@ -98,3 +98,45 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
     &(self.Z[_index])
   }
 }
+
+pub struct SparsePolynomial<Scalar: PrimeField> {
+  num_vars: usize,
+  Z: Vec<(usize, Scalar)>,
+}
+
+impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
+  pub fn new(num_vars: usize, Z: Vec<(usize, Scalar)>) -> Self {
+    SparsePolynomial { num_vars, Z }
+  }
+
+  fn compute_chi(a: &[bool], r: &[Scalar]) -> Scalar {
+    assert_eq!(a.len(), r.len());
+    let mut chi_i = Scalar::one();
+    for j in 0..r.len() {
+      if a[j] {
+        chi_i *= r[j];
+      } else {
+        chi_i *= Scalar::one() - r[j];
+      }
+    }
+    chi_i
+  }
+
+  // Takes O(n log n). TODO: do this in O(n) where n is the number of entries in Z
+  pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
+    assert_eq!(self.num_vars, r.len());
+
+    let get_bits = |num: usize, num_bits: usize| -> Vec<bool> {
+      (0..num_bits)
+        .map(|shift_amount| ((num & (1 << (num_bits - shift_amount - 1))) > 0))
+        .collect::<Vec<bool>>()
+    };
+
+    (0..self.Z.len())
+      .map(|i| {
+        let bits = get_bits(self.Z[i].0, r.len());
+        SparsePolynomial::compute_chi(&bits, r) * self.Z[i].1
+      })
+      .fold(Scalar::zero(), |acc, item| acc + item)
+  }
+}
