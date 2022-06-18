@@ -49,7 +49,7 @@ impl Group for pallas::Point {
   ) -> Self {
     //pasta_msm::pallas(bases, scalars)
     scalars
-    .into_iter()
+    .iter()
     .zip(bases)
     .map(|(scalar, point)| point.mul(scalar))
     .fold(Ep::group_zero(), |acc, x| acc + x)
@@ -147,7 +147,7 @@ impl Group for vesta::Point {
   ) -> Self {
     // pasta_msm::vesta(bases, scalars)
     scalars
-    .into_iter()
+    .iter()
     .zip(bases)
     .map(|(scalar, point)| point.mul(scalar))
     .fold(Eq::group_zero(), |acc, x| acc + x)
