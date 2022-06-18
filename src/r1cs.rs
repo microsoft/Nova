@@ -5,12 +5,15 @@ use super::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   gadgets::utils::scalar_as_base,
-  // ipa::{FinalInnerProductArgument, StepInnerProductArgument},
+  ipa::{
+    FinalInnerProductArgument, InnerProductInstance, InnerProductWitness, StepInnerProductArgument,
+  },
   polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial},
   sumcheck::SumcheckProof,
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, Group, HashFuncTrait},
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
+use core::cmp::max;
 use ff::{Field, PrimeField};
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
@@ -21,8 +24,7 @@ use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
-  pub(crate) gens_W: CommitGens<G>, // TODO: avoid pub(crate)
-  pub(crate) gens_E: CommitGens<G>,
+  pub(crate) gens: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
@@ -69,13 +71,9 @@ pub struct RelaxedR1CSInstance<G: Group> {
 impl<G: Group> R1CSGens<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
-    // generators to commit to witness vector `W`
-    let gens_W = CommitGens::new(b"gens_W", num_vars);
-
-    // generators to commit to the error/slack vector `E`
-    let gens_E = CommitGens::new(b"gens_E", num_cons);
-
-    R1CSGens { gens_E, gens_W }
+    R1CSGens {
+      gens: CommitGens::new(b"gens", max(num_vars, num_cons)),
+    }
   }
 }
 
@@ -235,8 +233,8 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
-      let comm_W = W.W.commit(&gens.gens_W);
-      let comm_E = W.E.commit(&gens.gens_E);
+      let comm_W = W.W.commit(&gens.gens);
+      let comm_E = W.E.commit(&gens.gens);
 
       U.comm_W == comm_W && U.comm_E == comm_E
     };
@@ -274,7 +272,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens_W);
+    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens);
 
     if res_eq && res_comm {
       Ok(())
@@ -328,7 +326,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens_E);
+    let comm_T = T.commit(&gens.gens);
 
     Ok((T, comm_T))
   }
@@ -550,7 +548,7 @@ impl<G: Group> R1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    self.W.commit(&gens.gens_W)
+    self.W.commit(&gens.gens)
   }
 }
 
@@ -607,7 +605,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
-    (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
+    (self.W.commit(&gens.gens), self.E.commit(&gens.gens))
   }
 
   /// Folds an incoming R1CSWitness into the current one
@@ -741,17 +739,16 @@ pub struct RelaxedR1CSSNARK<G: Group> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   sc_proof_inner: SumcheckProof<G>,
-  eval_W: G::Scalar,
-  // ipa_eval_W: StepInnerProductArgument<G>,
   eval_E: G::Scalar,
-  // ipa_eval_E: StepInnerProductArgument<G>,
-  // ipa_final: FinalInnerProductArgument<G>,
+  eval_W: G::Scalar,
+  step_ipa: StepInnerProductArgument<G>,
+  final_ipa: FinalInnerProductArgument<G>,
 }
 
 impl<G: Group> RelaxedR1CSSNARK<G> {
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
   pub fn prove(
-    _gens: &R1CSGens<G>,
+    gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
@@ -762,7 +759,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let S = S.pad();
     let W = W.pad(&S);
 
-    debug_assert!(S.is_sat_relaxed(_gens, &U, &W).is_ok());
+    debug_assert!(S.is_sat_relaxed(gens, &U, &W).is_ok());
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
@@ -824,7 +821,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let claim_Cz = poly_Cz.evaluate(&r_x);
     let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
     claim_Cz.append_to_transcript(b"claim_Cz", &mut transcript);
-    eval_E.append_to_transcript(b"claim_E", &mut transcript);
+    eval_E.append_to_transcript(b"eval_E", &mut transcript);
 
     // inner sum-check
     let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
@@ -834,7 +831,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
 
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
-      let evals_rx = EqPolynomial::new(r_x).evals();
+      let evals_rx = EqPolynomial::new(r_x.clone()).evals();
       let (evals_A, evals_B, evals_C) = S.compute_eval_table_sparse(&evals_rx);
 
       assert_eq!(evals_A.len(), evals_B.len());
@@ -862,7 +859,22 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       &mut transcript,
     );
 
-    let eval_W = MultilinearPolynomial::new(W.W).evaluate(&r_y[1..]);
+    let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
+    eval_W.append_to_transcript(b"eval_W", &mut transcript);
+
+    let (step_ipa, r_U, r_W) = StepInnerProductArgument::prove(
+      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x.clone()).evals(), &eval_E),
+      &InnerProductWitness::new(&W.E),
+      &InnerProductInstance::new(
+        &U.comm_W,
+        &EqPolynomial::new(r_y[1..].to_vec()).evals(),
+        &eval_W,
+      ),
+      &InnerProductWitness::new(&W.W),
+      &mut transcript,
+    );
+
+    let final_ipa = FinalInnerProductArgument::prove(&r_U, &r_W, &gens.gens, &mut transcript)?;
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,
@@ -870,13 +882,15 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       sc_proof_inner,
       eval_W,
       eval_E,
+      step_ipa,
+      final_ipa,
     })
   }
 
   /// verifies a proof of satisfiability of a RelaxedR1CS instance
   pub fn verify(
     &self,
-    _gens: &R1CSGens<G>,
+    gens: &R1CSGens<G>,
     S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
   ) -> Result<(), NovaError> {
@@ -922,9 +936,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       .claims_outer
       .2
       .append_to_transcript(b"claim_Cz", &mut transcript);
-    self
-      .eval_E
-      .append_to_transcript(b"claim_E", &mut transcript);
+    self.eval_E.append_to_transcript(b"eval_E", &mut transcript);
 
     // inner sum-check
     let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
@@ -960,7 +972,25 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       return Err(NovaError::InvalidSumcheckProof);
     }
 
-    // TODO: verify eval_W and eval_E
+    // verify eval_W and eval_E
+    self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
+
+    let r_U = self.step_ipa.verify(
+      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &self.eval_E),
+      &InnerProductInstance::new(
+        &U.comm_W,
+        &EqPolynomial::new(r_y[1..].to_vec()).evals(),
+        &self.eval_W,
+      ),
+      &mut transcript,
+    );
+
+    self.final_ipa.verify(
+      max(S.num_vars, S.num_cons),
+      &r_U,
+      &gens.gens,
+      &mut transcript,
+    )?;
 
     Ok(())
   }

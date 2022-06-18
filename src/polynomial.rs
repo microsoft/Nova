@@ -68,15 +68,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.num_vars -= 1;
   }
 
-  pub fn bound_poly_var_bot(&mut self, r: &Scalar) {
-    let n = self.len() / 2;
-    for i in 0..n {
-      self.Z[i] = self.Z[2 * i] + *r * (self.Z[2 * i + 1] - self.Z[2 * i]);
-    }
-    self.Z.resize(n, Scalar::zero());
-    self.num_vars -= 1;
-  }
-
   // returns Z(r) in O(n) time
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     // r must have a value for each variable

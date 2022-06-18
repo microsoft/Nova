@@ -146,17 +146,12 @@ impl<G: Group> StepInnerProductArgument<G> {
 }
 
 impl<G: Group> InnerProductInstance<G> {
-  pub fn new(
-    comm_x_vec: &CompressedCommitment<G::CompressedGroupElement>,
-    a_vec: &[G::Scalar],
-    y: &G::Scalar,
-  ) -> Result<Self, NovaError> {
-    let comm_x_vec_decompressed = comm_x_vec.decompress()?;
-    Ok(InnerProductInstance {
-      comm_x_vec: comm_x_vec_decompressed,
+  pub fn new(comm_x_vec: &Commitment<G>, a_vec: &[G::Scalar], y: &G::Scalar) -> Self {
+    InnerProductInstance {
+      comm_x_vec: comm_x_vec.clone(),
       a_vec: a_vec.to_vec(),
       y: *y,
-    })
+    }
   }
 }
 
