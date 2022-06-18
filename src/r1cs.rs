@@ -430,9 +430,9 @@ impl<G: Group> R1CSShape<G> {
       .iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, v.clone())
+          (*r, c + num_vars_padded - self.num_vars, *v)
         } else {
-          (*r, *c, v.clone())
+          (*r, *c, *v)
         }
       })
       .collect::<Vec<_>>();
@@ -442,9 +442,9 @@ impl<G: Group> R1CSShape<G> {
       .iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, v.clone())
+          (*r, c + num_vars_padded - self.num_vars, *v)
         } else {
-          (*r, *c, v.clone())
+          (*r, *c, *v)
         }
       })
       .collect::<Vec<_>>();
@@ -454,9 +454,9 @@ impl<G: Group> R1CSShape<G> {
       .iter()
       .map(|(r, c, v)| {
         if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, v.clone())
+          (*r, c + num_vars_padded - self.num_vars, *v)
         } else {
-          (*r, *c, v.clone())
+          (*r, *c, *v)
         }
       })
       .collect::<Vec<_>>();
@@ -795,7 +795,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
 
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
-      let evals_rx = EqPolynomial::new(r_x.clone()).evals();
+      let evals_rx = EqPolynomial::new(r_x).evals();
       let (evals_A, evals_B, evals_C) = S.compute_eval_table_sparse(&evals_rx);
 
       assert_eq!(evals_A.len(), evals_B.len());
@@ -823,7 +823,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       &mut transcript,
     );
 
-    let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
+    let eval_W = MultilinearPolynomial::new(W.W).evaluate(&r_y[1..]);
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,

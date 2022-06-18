@@ -63,7 +63,7 @@ impl<G: Group> SumcheckProof<G> {
   {
     let mut r: Vec<G::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
-    let mut claim_per_round = claim.clone();
+    let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
         let len = poly_A.len() / 2;
@@ -133,7 +133,7 @@ impl<G: Group> SumcheckProof<G> {
   {
     let mut r: Vec<G::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
-    let mut claim_per_round = claim.clone();
+    let mut claim_per_round = *claim;
 
     for _ in 0..num_rounds {
       let poly = {
@@ -276,7 +276,7 @@ impl<G: Group> UniPoly<G> {
   pub fn eval_at_one(&self) -> G::Scalar {
     let mut sum = G::Scalar::zero();
     for i in 0..self.coeffs.len() {
-      sum = sum + self.coeffs[i];
+      sum += self.coeffs[i];
     }
     sum
     // (0..self.coeffs.len()).map(|i| self.coeffs[i]).sum()

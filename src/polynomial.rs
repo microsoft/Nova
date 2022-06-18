@@ -13,8 +13,8 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
     assert_eq!(self.r.len(), rx.len());
     let mut prod = Scalar::one();
-    for i in 0..rx.len() {
-      prod = prod * (self.r[i] * rx[i] + (Scalar::one() - self.r[i]) * (Scalar::one() - rx[i]));
+    for (i, rx_i) in rx.iter().enumerate() {
+      prod *= self.r[i] * rx_i + (Scalar::one() - self.r[i]) * (Scalar::one() - rx_i);
     }
     prod
     // (0..rx.len())
@@ -25,7 +25,7 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
 
-    let mut evals: Vec<Scalar> = vec![Scalar::one(); (2 as usize).pow(ell as u32) as usize];
+    let mut evals: Vec<Scalar> = vec![Scalar::one(); (2_usize).pow(ell as u32) as usize];
     let mut size = 1;
     for j in 0..ell {
       // in each iteration, we double the size of chis
@@ -49,7 +49,7 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   pub fn new(Z: Vec<Scalar>) -> Self {
-    assert_eq!(Z.len(), (2 as usize).pow(Z.len().log2() as u32));
+    assert_eq!(Z.len(), (2_usize).pow(Z.len().log2() as u32));
     MultilinearPolynomial {
       num_vars: Z.len().log2() as usize,
       Z,
@@ -86,9 +86,10 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     assert_eq!(r.len(), self.get_num_vars());
     let chis = EqPolynomial::new(r.to_vec()).evals();
     assert_eq!(chis.len(), self.Z.len());
+    // TODO: cleanup
     let mut sum = Scalar::zero();
-    for i in 0..self.Z.len() {
-      sum = sum + chis[i] * self.Z[i];
+    for (i, z) in self.Z.iter().enumerate() {
+      sum += chis[i] * z;
     }
     sum
   }
