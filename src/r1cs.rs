@@ -759,7 +759,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let S = S.pad();
     let W = W.pad(&S);
 
-    debug_assert!(S.is_sat_relaxed(gens, &U, &W).is_ok());
+    debug_assert!(S.is_sat_relaxed(gens, U, &W).is_ok());
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
@@ -863,7 +863,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     eval_W.append_to_transcript(b"eval_W", &mut transcript);
 
     let (step_ipa, r_U, r_W) = StepInnerProductArgument::prove(
-      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x.clone()).evals(), &eval_E),
+      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &eval_E),
       &InnerProductWitness::new(&W.E),
       &InnerProductInstance::new(
         &U.comm_W,

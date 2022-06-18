@@ -148,7 +148,7 @@ impl<G: Group> StepInnerProductArgument<G> {
 impl<G: Group> InnerProductInstance<G> {
   pub fn new(comm_x_vec: &Commitment<G>, a_vec: &[G::Scalar], y: &G::Scalar) -> Self {
     InnerProductInstance {
-      comm_x_vec: comm_x_vec.clone(),
+      comm_x_vec: *comm_x_vec,
       a_vec: a_vec.to_vec(),
       y: *y,
     }

@@ -10,7 +10,7 @@ use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt, Group as Grp2},
+  arithmetic::{CurveAffine, CurveExt},
   group::{Curve, Group as Grp, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
@@ -18,7 +18,6 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use sha3::Shake256;
 use std::io::Read;
-use std::ops::Mul;
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -48,10 +47,10 @@ impl Group for pallas::Point {
   ) -> Self {
     pasta_msm::pallas(bases, scalars)
     /*scalars
-      .into_iter()
-      .zip(bases)
-      .map(|(scalar, point)| point.mul(scalar))
-      .fold(Ep::group_zero(), |acc, x| acc + x)*/
+    .into_iter()
+    .zip(bases)
+    .map(|(scalar, point)| point.mul(scalar))
+    .fold(Ep::group_zero(), |acc, x| acc + x)*/
   }
 
   fn preprocessed(&self) -> Self::PreprocessedGroupElement {
@@ -146,10 +145,10 @@ impl Group for vesta::Point {
   ) -> Self {
     pasta_msm::vesta(bases, scalars)
     /*scalars
-      .into_iter()
-      .zip(bases)
-      .map(|(scalar, point)| point.mul(scalar))
-      .fold(Eq::group_zero(), |acc, x| acc + x)*/
+    .into_iter()
+    .zip(bases)
+    .map(|(scalar, point)| point.mul(scalar))
+    .fold(Eq::group_zero(), |acc, x| acc + x)*/
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
