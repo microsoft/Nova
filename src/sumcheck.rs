@@ -57,7 +57,7 @@ impl<G: Group> SumcheckProof<G> {
     poly_B: &mut MultilinearPolynomial<G::Scalar>,
     comb_func: F,
     transcript: &mut Transcript,
-  ) -> (Self, Vec<G::Scalar>, Vec<G::Scalar>, G::Scalar)
+  ) -> (Self, Vec<G::Scalar>, Vec<G::Scalar>)
   where
     F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
@@ -115,7 +115,6 @@ impl<G: Group> SumcheckProof<G> {
       },
       r,
       vec![poly_A[0], poly_B[0]],
-      claim_per_round,
     )
   }
 
