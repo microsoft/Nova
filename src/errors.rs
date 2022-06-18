@@ -22,4 +22,6 @@ pub enum NovaError {
   InvalidNumSteps,
   /// returned when an invalid inner product argument is provided
   InvalidIPA,
+  /// returned when an invalid sum-check proof is provided
+  InvalidSumcheckProof,
 }

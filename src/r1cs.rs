@@ -707,6 +707,7 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
 /// the commitment to a vector viewed as a polynomial commitment
 pub struct RelaxedR1CSSNARK<G: Group> {
   sc_proof_outer: SumcheckProof<G>,
+  claim_tau: G::Scalar,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   sc_proof_inner: SumcheckProof<G>,
   eval_W: G::Scalar,
@@ -730,6 +731,8 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let S = S.pad();
     let W = W.pad(&S);
 
+    assert!(S.is_sat_relaxed(_gens, &U, &W).is_ok());
+
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(S.num_cons.next_power_of_two(), S.num_cons);
     assert_eq!(S.num_vars.next_power_of_two(), S.num_vars);
@@ -750,13 +753,19 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
       .collect();
-    let poly_tau = EqPolynomial::new(tau).evals();
-    let (poly_Az, poly_Bz, poly_Cz, poly_uCz_E) = {
+
+    let mut poly_tau = MultilinearPolynomial::new(EqPolynomial::new(tau).evals());
+    let (mut poly_Az, mut poly_Bz, poly_Cz, mut poly_uCz_E) = {
       let (poly_Az, poly_Bz, poly_Cz) = S.multiply_vec(&z)?;
       let poly_uCz_E = (0..S.num_cons)
         .map(|i| U.u * poly_Cz[i] + W.E[i])
         .collect::<Vec<G::Scalar>>();
-      (poly_Az, poly_Bz, poly_Cz, poly_uCz_E)
+      (
+        MultilinearPolynomial::new(poly_Az),
+        MultilinearPolynomial::new(poly_Bz),
+        MultilinearPolynomial::new(poly_Cz),
+        MultilinearPolynomial::new(poly_uCz_E),
+      )
     };
 
     let comb_func_outer =
@@ -768,21 +777,21 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let (sc_proof_outer, r_x, claims_outer) = SumcheckProof::prove_cubic_with_additive_term(
       &G::Scalar::zero(), // claim is zero
       num_rounds_x,
-      &mut MultilinearPolynomial::new(poly_tau),
-      &mut MultilinearPolynomial::new(poly_Az),
-      &mut MultilinearPolynomial::new(poly_Bz),
-      &mut MultilinearPolynomial::new(poly_uCz_E),
+      &mut poly_tau,
+      &mut poly_Az,
+      &mut poly_Bz,
+      &mut poly_uCz_E,
       comb_func_outer,
       &mut transcript,
     );
 
     // claims from the end of sum-check
-    let _claim_tau: G::Scalar = claims_outer[0];
-    let (claim_Az, claim_Bz, _claim_uCz_E) = (claims_outer[1], claims_outer[2], claims_outer[3]);
-    //claims_outer[0].append_to_transcript(b"claim_tau", transcript);
-    claims_outer[1].append_to_transcript(b"claim_Az", &mut transcript);
-    claims_outer[2].append_to_transcript(b"claim_Bz", &mut transcript);
-    let claim_Cz = MultilinearPolynomial::new(poly_Cz).evaluate(&r_x);
+    let (claim_Az, claim_Bz, claim_uCz_E): (G::Scalar, G::Scalar, G::Scalar) =
+      (claims_outer[1], claims_outer[2], claims_outer[3]);
+
+    claim_Az.append_to_transcript(b"claim_Az", &mut transcript);
+    claim_Bz.append_to_transcript(b"claim_Bz", &mut transcript);
+    let claim_Cz = poly_Cz.evaluate(&r_x);
     let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
     claim_Cz.append_to_transcript(b"claim_Cz", &mut transcript);
     eval_E.append_to_transcript(b"claim_E", &mut transcript);
@@ -827,6 +836,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,
+      claim_tau,
       claims_outer: (claim_Az, claim_Bz, claim_Cz),
       sc_proof_inner,
       eval_W,
@@ -853,16 +863,23 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       (S.num_cons.log2() as usize, (S.num_vars.log2() + 1) as usize);
 
     // outer sum-check
-    let _tau = (0..num_rounds_x)
+    let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
       .collect::<Vec<G::Scalar>>();
 
-    let (_claim_outer_final, _r_x) =
+    let (claim_outer_final, r_x) =
       self
         .sc_proof_outer
         .verify(G::Scalar::zero(), num_rounds_x, 3, &mut transcript)?;
 
-    // TODO: verify claim_outer_final
+    // verify claim_outer_final
+    let (claim_Az, claim_Bz, claim_Cz) = self.claims_outer;
+    let taus_bound_rx = EqPolynomial::new(tau).evaluate(&r_x);
+    let claim_outer_final_expected =
+      self.claim_tau * (claim_Az * claim_Bz - U.u * claim_Cz - self.eval_E);
+    if claim_outer_final != claim_outer_final_expected {
+      return Err(NovaError::InvalidSumcheckProof);
+    }
 
     self
       .claims_outer

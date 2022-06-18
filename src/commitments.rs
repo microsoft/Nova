@@ -30,7 +30,7 @@ pub struct CompressedCommitment<C: CompressedGroup> {
 impl<G: Group> CommitGens<G> {
   pub fn new(label: &'static [u8], n: usize) -> Self {
     CommitGens {
-      gens: G::from_label(label, n),
+      gens: G::from_label(label, n.next_power_of_two()),
       _p: Default::default(),
     }
   }
