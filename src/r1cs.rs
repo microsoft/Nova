@@ -6,13 +6,14 @@ use super::{
   errors::NovaError,
   gadgets::utils::scalar_as_base,
   ipa::{
-    FinalInnerProductArgument, FinalInnerProductArgumentSerialized, 
-    InnerProductInstance, InnerProductWitness, StepInnerProductArgument, 
-    StepInnerProductArgumentSerialized
+    FinalInnerProductArgument, FinalInnerProductArgumentSerialized, InnerProductInstance,
+    InnerProductWitness, StepInnerProductArgument, StepInnerProductArgumentSerialized,
   },
   polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial},
-  sumcheck::{SumcheckProof,SumcheckProofSerialized},
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, CompressedGroup, Group, HashFuncTrait},
+  sumcheck::{SumcheckProof, SumcheckProofSerialized},
+  traits::{
+    AbsorbInROTrait, AppendToTranscriptTrait, ChallengeTrait, CompressedGroup, Group, HashFuncTrait,
+  },
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
 use core::cmp::max;
@@ -1109,17 +1110,17 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
   /// Serialize the RelaxedR1CSSNARK
   pub fn serialize(&self) -> RelaxedR1CSSNARKSerialized {
     RelaxedR1CSSNARKSerialized {
-        sc_proof_outer: self.sc_proof_outer.serialize(),
-        claims_outer: (
-            self.claims_outer.0.to_repr().as_ref().to_vec(), 
-            self.claims_outer.1.to_repr().as_ref().to_vec(), 
-            self.claims_outer.2.to_repr().as_ref().to_vec(), 
-        ),
-        sc_proof_inner: self.sc_proof_inner.serialize(),
-        eval_E: self.eval_E.to_repr().as_ref().to_vec(),
-        eval_W: self.eval_W.to_repr().as_ref().to_vec(),
-        step_ipa: self.step_ipa.serialize(),
-        final_ipa: self.final_ipa.serialize(),
-    } 
+      sc_proof_outer: self.sc_proof_outer.serialize(),
+      claims_outer: (
+        self.claims_outer.0.to_repr().as_ref().to_vec(),
+        self.claims_outer.1.to_repr().as_ref().to_vec(),
+        self.claims_outer.2.to_repr().as_ref().to_vec(),
+      ),
+      sc_proof_inner: self.sc_proof_inner.serialize(),
+      eval_E: self.eval_E.to_repr().as_ref().to_vec(),
+      eval_W: self.eval_W.to_repr().as_ref().to_vec(),
+      step_ipa: self.step_ipa.serialize(),
+      final_ipa: self.final_ipa.serialize(),
+    }
   }
 }

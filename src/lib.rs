@@ -35,8 +35,8 @@ use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSInstanceSerialized, R1CSShape, R1CSWitness, R1CSWitnessSerialized,
-  RelaxedR1CSInstance, RelaxedR1CSInstanceSerialized, RelaxedR1CSWitness,
-  RelaxedR1CSWitnessSerialized, RelaxedR1CSSNARK, RelaxedR1CSSNARKSerialized
+  RelaxedR1CSInstance, RelaxedR1CSInstanceSerialized, RelaxedR1CSSNARK, RelaxedR1CSSNARKSerialized,
+  RelaxedR1CSWitness, RelaxedR1CSWitnessSerialized,
 };
 use serde::{Deserialize, Serialize};
 use traits::{

@@ -11,16 +11,21 @@ use nova_snark::{
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::marker::PhantomData;
+use bellperson::{
+  gadgets::{num::AllocatedNum, Assignment},
+  ConstraintSystem, SynthesisError,
+};
 use criterion::*;
 use ff::PrimeField;
+use rand::rngs::OsRng;
 use std::time::Duration;
 
 fn recursive_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
-  for num_steps in 1..10 {
-    bench_recursive_snark(c, num_samples, num_steps);
+  for num_cons in 1..10 {
+    for num_steps in 1..10 {
+      bench_recursive_snark(c, num_samples, num_steps, num_cons);
+    }
   }
 }
 
@@ -36,24 +41,17 @@ targets = recursive_snark_benchmark
 
 criterion_main!(recursive_snark);
 
-fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize) {
-  let name = format!("RecursiveSNARK-NumSteps-{}", num_steps);
+fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize, num_cons: usize) {
+  let name = format!("RecursiveSNARK-NumCons-{}-NumSteps-{}", num_cons, num_steps);
   let mut group = c.benchmark_group(name.clone());
   group.sample_size(num_samples);
   // Produce public parameters
   let pp = PublicParams::<
     G1,
     G2,
-    TrivialTestCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>,
-  >::setup(
-    TrivialTestCircuit {
-      _p: Default::default(),
-    },
-    TrivialTestCircuit {
-      _p: Default::default(),
-    },
-  );
+    TestCircuit<<G1 as Group>::Scalar>,
+    TestCircuit<<G2 as Group>::Scalar>,
+  >::setup(TestCircuit::new(0), TestCircuit::new(num_cons));
   // Bench time to produce a recursive SNARK
   group.bench_function("Prove", |b| {
     b.iter(|| {
@@ -76,6 +74,14 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   assert!(res.is_ok());
   let recursive_snark = res.unwrap();
 
+  // verify the recursive SNARK
+  let res = recursive_snark.verify(
+    &pp,
+    num_steps,
+    <G1 as Group>::Scalar::zero(),
+    <G2 as Group>::Scalar::zero(),
+  );
+  assert!(res.is_ok());
   // Output the proof size
   let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
   bincode::serialize_into(&mut encoder, &recursive_snark.serialize()).unwrap();
@@ -99,24 +105,68 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   group.finish();
 }
 
+// The test circuit has $num_cons constraints. each constraint i is of the form
+// (a*x_{i-1} + 1) * b*Z[i] = x_i
+// where a and b are random coefficients. Z[i] is a variable known by the prover. x_{-1} = input z
+// and x_n is the output z
 #[derive(Clone, Debug)]
-struct TrivialTestCircuit<F: PrimeField> {
-  _p: PhantomData<F>,
+struct TestCircuit<F: PrimeField> {
+  num_cons: usize,
+  coeffs: Vec<(F, F)>,
+  Z: Vec<F>,
 }
 
-impl<F> StepCircuit<F> for TrivialTestCircuit<F>
+impl<F> TestCircuit<F>
+where
+  F: PrimeField,
+{
+  pub fn new(num_cons: usize) -> Self {
+    // Generate 2*num_cons random field elements (each constraint has two coefficients
+    let coeffs = (0..num_cons)
+      .map(|_| (F::random(&mut OsRng), F::random(&mut OsRng)))
+      .collect();
+    let Z = (0..num_cons).map(|_| F::random(&mut OsRng)).collect();
+    Self {
+      num_cons,
+      coeffs,
+      Z,
+    }
+  }
+}
+
+impl<F> StepCircuit<F> for TestCircuit<F>
 where
   F: PrimeField,
 {
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
-    _cs: &mut CS,
+    cs: &mut CS,
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError> {
-    Ok(z)
+    let mut output = z;
+    for i in 0..self.num_cons {
+      let u = AllocatedNum::alloc(cs.namespace(|| format!("alloc Z[{}]", i)), || Ok(self.Z[i]))?;
+      let a = self.coeffs[i].0;
+      let b = self.coeffs[i].1;
+      let z_new = AllocatedNum::alloc(cs.namespace(|| format!("alloc x_{}", i)), || {
+        Ok((*output.get_value().get()? * a + F::one()) * self.Z[i] * b)
+      })?;
+      cs.enforce(
+        || format!("Constraint {}", i),
+        |lc| lc + (a, output.get_variable()) + CS::one(),
+        |lc| lc + (b, u.get_variable()),
+        |lc| lc + z_new.get_variable(),
+      );
+      output = z_new
+    }
+    Ok(output)
   }
 
   fn compute(&self, z: &F) -> F {
-    *z
+    let mut output = *z;
+    for i in 0..self.num_cons {
+      output = (output * self.coeffs[i].0 + F::one()) * self.Z[i] * self.coeffs[i].1
+    }
+    output
   }
 }

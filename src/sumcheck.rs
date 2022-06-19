@@ -16,7 +16,7 @@ pub struct SumcheckProof<G: Group> {
 
 #[derive(Serialize, Deserialize)]
 pub struct SumcheckProofSerialized {
-  compressed_polys: Vec<CompressedUniPolySerialized>
+  compressed_polys: Vec<CompressedUniPolySerialized>,
 }
 
 impl<G: Group> SumcheckProof<G> {
@@ -217,7 +217,11 @@ impl<G: Group> SumcheckProof<G> {
 
   pub fn serialize(&self) -> SumcheckProofSerialized {
     SumcheckProofSerialized {
-        compressed_polys: self.compressed_polys.iter().map(|x| x.serialize()).collect(),
+      compressed_polys: self
+        .compressed_polys
+        .iter()
+        .map(|x| x.serialize())
+        .collect(),
     }
   }
 }
@@ -334,10 +338,11 @@ impl<G: Group> CompressedUniPoly<G> {
 
   pub fn serialize(&self) -> CompressedUniPolySerialized {
     CompressedUniPolySerialized {
-        coeffs_except_linear_term: self.coeffs_except_linear_term
-            .iter()
-            .map(|x| x.to_repr().as_ref().to_vec())
-            .collect(),
+      coeffs_except_linear_term: self
+        .coeffs_except_linear_term
+        .iter()
+        .map(|x| x.to_repr().as_ref().to_vec())
+        .collect(),
     }
   }
 }
