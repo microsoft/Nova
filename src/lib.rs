@@ -376,26 +376,50 @@ where
     }
 
     // check the satisfiability of the provided instances
-    pp.r1cs_shape_primary.is_sat_relaxed(
-      &pp.r1cs_gens_primary,
-      &self.r_U_primary,
-      &self.r_W_primary,
-    )?;
+    let ((res_r_primary, res_l_primary), (res_r_secondary, res_l_secondary)) = rayon::join(
+      || {
+        rayon::join(
+          || {
+            pp.r1cs_shape_primary.is_sat_relaxed(
+              &pp.r1cs_gens_primary,
+              &self.r_U_primary,
+              &self.r_W_primary,
+            )
+          },
+          || {
+            pp.r1cs_shape_primary.is_sat(
+              &pp.r1cs_gens_primary,
+              &self.l_u_primary,
+              &self.l_w_primary,
+            )
+          },
+        )
+      },
+      || {
+        rayon::join(
+          || {
+            pp.r1cs_shape_secondary.is_sat_relaxed(
+              &pp.r1cs_gens_secondary,
+              &self.r_U_secondary,
+              &self.r_W_secondary,
+            )
+          },
+          || {
+            pp.r1cs_shape_secondary.is_sat(
+              &pp.r1cs_gens_secondary,
+              &self.l_u_secondary,
+              &self.l_w_secondary,
+            )
+          },
+        )
+      },
+    );
 
-    pp.r1cs_shape_primary
-      .is_sat(&pp.r1cs_gens_primary, &self.l_u_primary, &self.l_w_primary)?;
-
-    pp.r1cs_shape_secondary.is_sat_relaxed(
-      &pp.r1cs_gens_secondary,
-      &self.r_U_secondary,
-      &self.r_W_secondary,
-    )?;
-
-    pp.r1cs_shape_secondary.is_sat(
-      &pp.r1cs_gens_secondary,
-      &self.l_u_secondary,
-      &self.l_w_secondary,
-    )?;
+    // check the returned res objects
+    res_r_primary?;
+    res_l_primary?;
+    res_r_secondary?;
+    res_l_secondary?;
 
     Ok((self.zn_primary, self.zn_secondary))
   }
