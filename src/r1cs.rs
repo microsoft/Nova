@@ -361,15 +361,15 @@ impl<G: Group> R1CSShape<G> {
       num_vars,
       num_io,
       A: A
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
       B: B
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
       C: C
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
     };
@@ -405,7 +405,7 @@ impl<G: Group> R1CSShape<G> {
 
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
-  fn pad(&self) -> Self {
+  pub fn pad(&self) -> Self {
     // check if the provided R1CSShape is already as required
     if self.num_vars.next_power_of_two() == self.num_vars
       && self.num_cons.next_power_of_two() == self.num_cons
@@ -767,8 +767,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
   ) -> Result<Self, NovaError> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
 
-    // pad the shape and witness
-    let S = S.pad();
+    // pad the witness (shape is already padded)
     let W = W.pad(&S);
 
     debug_assert!(S.is_sat_relaxed(gens, U, &W).is_ok());
@@ -909,8 +908,6 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     U: &RelaxedR1CSInstance<G>,
   ) -> Result<(), NovaError> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
-
-    let S = S.pad();
 
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
     S.append_to_transcript(b"S", &mut transcript);

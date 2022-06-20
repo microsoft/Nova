@@ -53,10 +53,12 @@ where
   ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
+  r1cs_shape_padded_primary: R1CSShape<G1>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
+  r1cs_shape_padded_secondary: R1CSShape<G2>,
   c_primary: C1,
   c_secondary: C2,
   params_primary: NIFSVerifierCircuitParams,
@@ -93,6 +95,7 @@ where
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let r1cs_shape_padded_primary = r1cs_shape_primary.pad();
 
     // Initialize gens for the secondary
     let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
@@ -104,16 +107,19 @@ where
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let r1cs_shape_padded_secondary = r1cs_shape_secondary.pad();
 
     Self {
       ro_consts_primary,
       ro_consts_circuit_primary,
       r1cs_gens_primary,
       r1cs_shape_primary,
+      r1cs_shape_padded_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       r1cs_gens_secondary,
       r1cs_shape_secondary,
+      r1cs_shape_padded_secondary,
       c_primary,
       c_secondary,
       params_primary,
@@ -459,7 +465,7 @@ where
       || {
         RelaxedR1CSSNARK::prove(
           &pp.r1cs_gens_primary,
-          &pp.r1cs_shape_primary,
+          &pp.r1cs_shape_padded_primary,
           &f_U_primary,
           &f_W_primary,
         )
@@ -467,7 +473,7 @@ where
       || {
         RelaxedR1CSSNARK::prove(
           &pp.r1cs_gens_secondary,
-          &pp.r1cs_shape_secondary,
+          &pp.r1cs_shape_padded_secondary,
           &f_U_secondary,
           &f_W_secondary,
         )
