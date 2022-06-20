@@ -16,6 +16,7 @@ use pasta_curves::{
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use rayon::prelude::*;
 use sha3::Shake256;
 use std::{io::Read, ops::Mul};
 
@@ -49,10 +50,10 @@ impl Group for pallas::Point {
       pasta_msm::pallas(bases, scalars)
     } else {
       scalars
-        .iter()
+        .par_iter()
         .zip(bases)
         .map(|(scalar, base)| base.mul(scalar))
-        .fold(Ep::group_zero(), |acc, x| acc + x)
+        .reduce(|| Ep::group_zero(), |x, y| x + y)
     }
   }
 
@@ -150,10 +151,10 @@ impl Group for vesta::Point {
       pasta_msm::vesta(bases, scalars)
     } else {
       scalars
-        .iter()
+        .par_iter()
         .zip(bases)
         .map(|(scalar, base)| base.mul(scalar))
-        .fold(Eq::group_zero(), |acc, x| acc + x)
+        .reduce(|| Eq::group_zero(), |x, y| x + y)
     }
   }
 
