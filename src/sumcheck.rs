@@ -68,26 +68,23 @@ impl<G: Group> SumcheckProof<G> {
       let poly = {
         let len = poly_A.len() / 2;
 
-        // Unblinded sumcheck poly
-        let iter = (0..len).into_par_iter();
-
         // Make an iterator returning the contributions to the evaluations
-        let eval_iter = iter.map(|i| {
-          // eval 0: bound_func is A(low)
-          let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
+        let (eval_point_0, eval_point_2) = (0..len)
+          .into_par_iter()
+          .map(|i| {
+            // eval 0: bound_func is A(low)
+            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
 
-          // eval 2: bound_func is -A(low) + 2*A(high)
-          let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-          let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-          let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
-          (eval_point_0, eval_point_2)
-        });
-
-        // Sum the iterator to get the evaluations
-        let (eval_point_0, eval_point_2) = eval_iter.reduce(
-          || (G::Scalar::zero(), G::Scalar::zero()),
-          |a, b| (a.0 + b.0, a.1 + b.1),
-        );
+            // eval 2: bound_func is -A(low) + 2*A(high)
+            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+            let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
+            (eval_point_0, eval_point_2)
+          })
+          .reduce(
+            || (G::Scalar::zero(), G::Scalar::zero()),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          );
 
         let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
         UniPoly::from_evals(&evals)
@@ -139,45 +136,42 @@ impl<G: Group> SumcheckProof<G> {
       let poly = {
         let len = poly_A.len() / 2;
 
-        // Unblinded sumcheck poly
-        let iter = (0..len).into_par_iter();
-
         // Make an iterator returning the contributions to the evaluations
-        let eval_iter = iter.map(|i| {
-          // eval 0: bound_func is A(low)
-          let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
+        let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
+          .into_par_iter()
+          .map(|i| {
+            // eval 0: bound_func is A(low)
+            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
 
-          // eval 2: bound_func is -A(low) + 2*A(high)
-          let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-          let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-          let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-          let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-          let eval_point_2 = comb_func(
-            &poly_A_bound_point,
-            &poly_B_bound_point,
-            &poly_C_bound_point,
-            &poly_D_bound_point,
+            // eval 2: bound_func is -A(low) + 2*A(high)
+            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+            let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+            let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
+            let eval_point_2 = comb_func(
+              &poly_A_bound_point,
+              &poly_B_bound_point,
+              &poly_C_bound_point,
+              &poly_D_bound_point,
+            );
+
+            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+            let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+            let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+            let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+            let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
+            let eval_point_3 = comb_func(
+              &poly_A_bound_point,
+              &poly_B_bound_point,
+              &poly_C_bound_point,
+              &poly_D_bound_point,
+            );
+            (eval_point_0, eval_point_2, eval_point_3)
+          })
+          .reduce(
+            || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
+            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
           );
-
-          // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-          let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-          let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-          let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-          let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-          let eval_point_3 = comb_func(
-            &poly_A_bound_point,
-            &poly_B_bound_point,
-            &poly_C_bound_point,
-            &poly_D_bound_point,
-          );
-          (eval_point_0, eval_point_2, eval_point_3)
-        });
-
-        // Sum the iterator to get the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) = eval_iter.reduce(
-          || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
-          |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-        );
 
         let evals = vec![
           eval_point_0,
