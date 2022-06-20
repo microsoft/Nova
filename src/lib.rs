@@ -563,9 +563,11 @@ where
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
       || {
-        self
-          .f_W_snark_primary
-          .verify(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary, &f_U_primary)
+        self.f_W_snark_primary.verify(
+          &pp.r1cs_gens_primary,
+          &pp.r1cs_shape_padded_primary,
+          &f_U_primary,
+        )
       },
       || {
         self.f_W_snark_secondary.verify(
