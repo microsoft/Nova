@@ -165,7 +165,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
     (0..a.len())
       .into_par_iter()
       .map(|i| a[i] * b[i])
-      .reduce(|| G::Scalar::zero(), |x, y| x + y)
+      .reduce(G::Scalar::zero, |x, y| x + y)
   }
 
   pub fn prove(

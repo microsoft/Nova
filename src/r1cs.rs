@@ -768,7 +768,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
 
     // pad the witness (shape is already padded)
-    let W = W.pad(&S);
+    let W = W.pad(S);
 
     debug_assert!(S.is_sat_relaxed(gens, U, &W).is_ok());
 
