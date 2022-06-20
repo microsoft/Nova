@@ -396,8 +396,6 @@ where
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
-/// For now, it implements a constant factor compression.
-/// In the future, we will implement an exponential reduction in proof sizes
 pub struct CompressedSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
