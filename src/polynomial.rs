@@ -90,8 +90,9 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     assert_eq!(chis.len(), self.Z.len());
 
     (0..chis.len())
+      .into_par_iter()
       .map(|i| chis[i] * self.Z[i])
-      .fold(Scalar::zero(), |acc, item| acc + item)
+      .reduce(Scalar::zero, |x, y| x + y)
   }
 }
 
@@ -133,15 +134,17 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
 
     let get_bits = |num: usize, num_bits: usize| -> Vec<bool> {
       (0..num_bits)
+        .into_par_iter()
         .map(|shift_amount| ((num & (1 << (num_bits - shift_amount - 1))) > 0))
         .collect::<Vec<bool>>()
     };
 
     (0..self.Z.len())
+      .into_par_iter()
       .map(|i| {
         let bits = get_bits(self.Z[i].0, r.len());
         SparsePolynomial::compute_chi(&bits, r) * self.Z[i].1
       })
-      .fold(Scalar::zero(), |acc, item| acc + item)
+      .reduce(Scalar::zero, |x, y| x + y)
   }
 }

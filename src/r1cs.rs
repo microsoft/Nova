@@ -850,6 +850,7 @@ impl<G: Group> RelaxedR1CSSNARK<G> {
       assert_eq!(evals_A.len(), evals_B.len());
       assert_eq!(evals_A.len(), evals_C.len());
       (0..evals_A.len())
+        .into_par_iter()
         .map(|i| r_A * evals_A[i] + r_B * evals_B[i] + r_C * evals_C[i])
         .collect::<Vec<G::Scalar>>()
     };
