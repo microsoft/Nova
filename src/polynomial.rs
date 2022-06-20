@@ -1,5 +1,6 @@
 use core::ops::Index;
 use ff::PrimeField;
+use rayon::prelude::*;
 
 pub struct EqPolynomial<Scalar: PrimeField> {
   r: Vec<Scalar>,
@@ -19,18 +20,23 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
-
-    let mut evals: Vec<Scalar> = vec![Scalar::one(); (2_usize).pow(ell as u32) as usize];
+    let mut evals: Vec<Scalar> = vec![Scalar::zero(); (2_usize).pow(ell as u32) as usize];
     let mut size = 1;
-    for j in 0..ell {
-      // in each iteration, we double the size of chis
+    evals[0] = Scalar::one();
+
+    for r in self.r.iter().rev() {
+      let (evals_left, evals_right) = evals.split_at_mut(size);
+      let (evals_right, _) = evals_right.split_at_mut(size);
+
+      evals_left
+        .par_iter_mut()
+        .zip(evals_right.par_iter_mut())
+        .for_each(|(x, y)| {
+          *y = *x * r;
+          *x -= &*y;
+        });
+
       size *= 2;
-      for i in (0..size).rev().step_by(2) {
-        // copy each element from the prior iteration twice
-        let scalar = evals[i / 2];
-        evals[i] = scalar * self.r[j];
-        evals[i - 1] = scalar - evals[i];
-      }
     }
     evals
   }
@@ -61,9 +67,17 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
-    for i in 0..n {
-      self.Z[i] = self.Z[i] + *r * (self.Z[i + n] - self.Z[i]);
-    }
+
+    let (left, right) = self.Z.split_at_mut(n);
+    let (right, _) = right.split_at(n);
+
+    left
+      .par_iter_mut()
+      .zip(right.par_iter())
+      .for_each(|(a, b)| {
+        *a += *r * (*b - *a);
+      });
+
     self.Z.resize(n, Scalar::zero());
     self.num_vars -= 1;
   }

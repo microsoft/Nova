@@ -163,8 +163,9 @@ impl<G: Group> FinalInnerProductArgument<G> {
   pub fn inner_product(a: &[G::Scalar], b: &[G::Scalar]) -> G::Scalar {
     assert_eq!(a.len(), b.len());
     (0..a.len())
+      .into_par_iter()
       .map(|i| a[i] * b[i])
-      .fold(G::Scalar::zero(), |acc, item| acc + item)
+      .reduce(|| G::Scalar::zero(), |x, y| x + y)
   }
 
   pub fn prove(
