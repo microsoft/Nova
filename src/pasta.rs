@@ -10,7 +10,7 @@ use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt},
+  arithmetic::{CurveAffine, CurveExt, Group as OtherGroup},
   group::{Curve, Group as Grp, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
@@ -45,10 +45,14 @@ impl Group for pallas::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    if scalars.len() > 1 {
+    if scalars.len() >= 128 {
       pasta_msm::pallas(bases, scalars)
     } else {
-      bases[0].mul(scalars[0])
+      scalars
+        .iter()
+        .zip(bases)
+        .map(|(scalar, base)| base.mul(scalar))
+        .fold(Ep::group_zero(), |acc, x| acc + x)
     }
   }
 
@@ -142,10 +146,14 @@ impl Group for vesta::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    if scalars.len() > 1 {
+    if scalars.len() >= 128 {
       pasta_msm::vesta(bases, scalars)
     } else {
-      bases[0].mul(scalars[0])
+      scalars
+        .iter()
+        .zip(bases)
+        .map(|(scalar, base)| base.mul(scalar))
+        .fold(Eq::group_zero(), |acc, x| acc + x)
     }
   }
 
