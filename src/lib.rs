@@ -438,27 +438,35 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
-    // fold the primary circuit's instance
-    let (nifs_primary, (f_U_primary, f_W_primary)) = NIFS::prove(
-      &pp.r1cs_gens_primary,
-      &pp.ro_consts_primary,
-      &pp.r1cs_shape_primary,
-      &recursive_snark.r_U_primary,
-      &recursive_snark.r_W_primary,
-      &recursive_snark.l_u_primary,
-      &recursive_snark.l_w_primary,
-    )?;
+    let (res_primary, res_secondary) = rayon::join(
+      // fold the primary circuit's instance
+      || {
+        NIFS::prove(
+          &pp.r1cs_gens_primary,
+          &pp.ro_consts_primary,
+          &pp.r1cs_shape_primary,
+          &recursive_snark.r_U_primary,
+          &recursive_snark.r_W_primary,
+          &recursive_snark.l_u_primary,
+          &recursive_snark.l_w_primary,
+        )
+      },
+      || {
+        // fold the secondary circuit's instance
+        NIFS::prove(
+          &pp.r1cs_gens_secondary,
+          &pp.ro_consts_secondary,
+          &pp.r1cs_shape_secondary,
+          &recursive_snark.r_U_secondary,
+          &recursive_snark.r_W_secondary,
+          &recursive_snark.l_u_secondary,
+          &recursive_snark.l_w_secondary,
+        )
+      },
+    );
 
-    // fold the secondary circuit's instance
-    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
-      &pp.r1cs_gens_secondary,
-      &pp.ro_consts_secondary,
-      &pp.r1cs_shape_secondary,
-      &recursive_snark.r_U_secondary,
-      &recursive_snark.r_W_secondary,
-      &recursive_snark.l_u_secondary,
-      &recursive_snark.l_w_secondary,
-    )?;
+    let (nifs_primary, (f_U_primary, f_W_primary)) = res_primary?;
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
 
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
