@@ -328,8 +328,12 @@ impl<G: Group> FinalInnerProductArgument<G> {
       // precompute scalars necessary for verification
       let (exps, r_square, r_inverse_square) = {
         let r_inverse = Self::batch_invert(&r);
-        let r_square: Vec<G::Scalar> = (0..self.L_vec.len()).map(|i| r[i] * r[i]).collect();
+        let r_square: Vec<G::Scalar> = (0..self.L_vec.len())
+          .into_par_iter()
+          .map(|i| r[i] * r[i])
+          .collect();
         let r_inverse_square: Vec<G::Scalar> = (0..self.L_vec.len())
+          .into_par_iter()
           .map(|i| r_inverse[i] * r_inverse[i])
           .collect();
 

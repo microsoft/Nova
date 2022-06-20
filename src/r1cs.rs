@@ -247,9 +247,7 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
-      let comm_W = W.W.commit(&gens.gens);
-      let comm_E = W.E.commit(&gens.gens);
-
+      let (comm_W, comm_E) = rayon::join(|| W.W.commit(&gens.gens), || W.E.commit(&gens.gens));
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
