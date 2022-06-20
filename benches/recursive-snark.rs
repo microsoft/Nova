@@ -123,10 +123,7 @@ where
     let coeffs = (0..num_cons)
       .map(|_| (F::random(&mut OsRng), F::random(&mut OsRng)))
       .collect();
-    Self {
-      num_cons,
-      coeffs,
-    }
+    Self { num_cons, coeffs }
   }
 }
 
