@@ -96,9 +96,13 @@ impl<G: Group> CommitGens<G> {
     c: &[CompressedCommitment<G::CompressedGroupElement>],
   ) -> Result<Self, NovaError> {
     let d = (0..c.len())
+      .into_par_iter()
       .map(|i| c[i].decompress())
       .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
-    let gens = (0..d.len()).map(|i| d[i].comm.preprocessed()).collect();
+    let gens = (0..d.len())
+      .into_par_iter()
+      .map(|i| d[i].comm.preprocessed())
+      .collect();
     Ok(CommitGens {
       gens,
       _p: Default::default(),
