@@ -22,8 +22,8 @@ use std::time::Duration;
 
 fn recursive_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
-  for num_cons in 1..10 {
-    for num_steps in 1..10 {
+  for num_cons in 0..1 {
+    for num_steps in 10..11 {
       bench_recursive_snark(c, num_samples, num_steps, num_cons);
     }
   }
@@ -106,14 +106,12 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
 }
 
 // The test circuit has $num_cons constraints. each constraint i is of the form
-// (a*x_{i-1} + 1) * b*Z[i] = x_i
-// where a and b are random coefficients. Z[i] is a variable known by the prover. x_{-1} = input z
-// and x_n is the output z
+// (a*x_{i-1} + 1) * b = x_i
+// where a and b are random coefficients. x_{-1} = input z and x_n is the output z
 #[derive(Clone, Debug)]
 struct TestCircuit<F: PrimeField> {
   num_cons: usize,
   coeffs: Vec<(F, F)>,
-  Z: Vec<F>,
 }
 
 impl<F> TestCircuit<F>
@@ -125,11 +123,9 @@ where
     let coeffs = (0..num_cons)
       .map(|_| (F::random(&mut OsRng), F::random(&mut OsRng)))
       .collect();
-    let Z = (0..num_cons).map(|_| F::random(&mut OsRng)).collect();
     Self {
       num_cons,
       coeffs,
-      Z,
     }
   }
 }
@@ -145,16 +141,15 @@ where
   ) -> Result<AllocatedNum<F>, SynthesisError> {
     let mut output = z;
     for i in 0..self.num_cons {
-      let u = AllocatedNum::alloc(cs.namespace(|| format!("alloc Z[{}]", i)), || Ok(self.Z[i]))?;
       let a = self.coeffs[i].0;
       let b = self.coeffs[i].1;
       let z_new = AllocatedNum::alloc(cs.namespace(|| format!("alloc x_{}", i)), || {
-        Ok((*output.get_value().get()? * a + F::one()) * self.Z[i] * b)
+        Ok((*output.get_value().get()? * a + F::one()) * b)
       })?;
       cs.enforce(
         || format!("Constraint {}", i),
         |lc| lc + (a, output.get_variable()) + CS::one(),
-        |lc| lc + (b, u.get_variable()),
+        |lc| lc + (b, CS::one()),
         |lc| lc + z_new.get_variable(),
       );
       output = z_new
@@ -165,7 +160,7 @@ where
   fn compute(&self, z: &F) -> F {
     let mut output = *z;
     for i in 0..self.num_cons {
-      output = (output * self.coeffs[i].0 + F::one()) * self.Z[i] * self.coeffs[i].1
+      output = (output * self.coeffs[i].0 + F::one()) * self.coeffs[i].1
     }
     output
   }
