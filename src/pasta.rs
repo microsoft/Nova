@@ -53,7 +53,7 @@ impl Group for pallas::Point {
         .par_iter()
         .zip(bases)
         .map(|(scalar, base)| base.mul(scalar))
-        .reduce(|| Ep::group_zero(), |x, y| x + y)
+        .reduce(Ep::group_zero, |x, y| x + y)
     }
   }
 
@@ -154,7 +154,7 @@ impl Group for vesta::Point {
         .par_iter()
         .zip(bases)
         .map(|(scalar, base)| base.mul(scalar))
-        .reduce(|| Eq::group_zero(), |x, y| x + y)
+        .reduce(Eq::group_zero, |x, y| x + y)
     }
   }
 
