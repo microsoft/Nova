@@ -549,13 +549,13 @@ where
     // fold the running instance and last instance to get a folded instance
     let f_U_primary = self.nifs_primary.verify(
       &pp.ro_consts_primary,
-      &pp.r1cs_shape_primary,
+      &pp.r1cs_shape_padded_primary,
       &self.r_U_primary,
       &self.l_u_primary,
     )?;
     let f_U_secondary = self.nifs_secondary.verify(
       &pp.ro_consts_secondary,
-      &pp.r1cs_shape_secondary,
+      &pp.r1cs_shape_padded_secondary,
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
