@@ -454,32 +454,36 @@ where
       &recursive_snark.l_w_secondary,
     )?;
 
-    // create a SNARK proving the knowledge of f_W_primary
-    let f_W_snark_primary = RelaxedR1CSSNARK::prove(
-      &pp.r1cs_gens_primary,
-      &pp.r1cs_shape_primary,
-      &f_U_primary,
-      &f_W_primary,
-    )?;
-
-    // create a SNARK proving the knowledge of f_W_secondary
-    let f_W_snark_secondary = RelaxedR1CSSNARK::prove(
-      &pp.r1cs_gens_secondary,
-      &pp.r1cs_shape_secondary,
-      &f_U_secondary,
-      &f_W_secondary,
-    )?;
+    // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
+    let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
+      || {
+        RelaxedR1CSSNARK::prove(
+          &pp.r1cs_gens_primary,
+          &pp.r1cs_shape_primary,
+          &f_U_primary,
+          &f_W_primary,
+        )
+      },
+      || {
+        RelaxedR1CSSNARK::prove(
+          &pp.r1cs_gens_secondary,
+          &pp.r1cs_shape_secondary,
+          &f_U_secondary,
+          &f_W_secondary,
+        )
+      },
+    );
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
       l_u_primary: recursive_snark.l_u_primary.clone(),
       nifs_primary,
-      f_W_snark_primary,
+      f_W_snark_primary: f_W_snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
-      f_W_snark_secondary,
+      f_W_snark_secondary: f_W_snark_secondary?,
 
       zn_primary: recursive_snark.zn_primary,
       zn_secondary: recursive_snark.zn_secondary,
@@ -551,15 +555,23 @@ where
     )?;
 
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
-    self
-      .f_W_snark_primary
-      .verify(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary, &f_U_primary)?;
+    let (res_primary, res_secondary) = rayon::join(
+      || {
+        self
+          .f_W_snark_primary
+          .verify(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary, &f_U_primary)
+      },
+      || {
+        self.f_W_snark_secondary.verify(
+          &pp.r1cs_gens_secondary,
+          &pp.r1cs_shape_secondary,
+          &f_U_secondary,
+        )
+      },
+    );
 
-    self.f_W_snark_secondary.verify(
-      &pp.r1cs_gens_secondary,
-      &pp.r1cs_shape_secondary,
-      &f_U_secondary,
-    )?;
+    res_primary?;
+    res_secondary?;
 
     Ok((self.zn_primary, self.zn_secondary))
   }

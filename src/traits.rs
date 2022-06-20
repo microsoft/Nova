@@ -96,7 +96,7 @@ pub trait ChallengeTrait {
 /// A helper trait that defines the behavior of a hash function that we use as an RO
 pub trait HashFuncTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Base> + Clone;
+  type Constants: HashFuncConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
@@ -143,7 +143,7 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A helper trait for a step of the incremental computation (i.e., circuit for F)
-pub trait StepCircuit<F: PrimeField> {
+pub trait StepCircuit<F: PrimeField>: Send + Sync {
   /// Sythesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step z_{i+1}
   fn synthesize<CS: ConstraintSystem<F>>(
