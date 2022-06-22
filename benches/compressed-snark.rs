@@ -23,8 +23,12 @@ use std::time::Duration;
 fn compressed_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
   let num_steps = 10;
-  let num_cons = 0;
-  bench_compressed_snark(c, num_samples, num_steps, num_cons);
+  bench_compressed_snark(c, num_samples, num_steps, 0);
+  let num_cons_ver_circuit = 20764;
+  for &log_num_cons in [15, 16, 17, 18, 19, 20].iter(){
+    let num_cons = usize::pow(2, log_num_cons) - num_cons_ver_circuit;
+    bench_compressed_snark(c, num_samples, num_steps, num_cons);
+  }
 }
 
 fn set_duration() -> Criterion {

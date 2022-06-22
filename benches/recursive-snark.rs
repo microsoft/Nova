@@ -22,8 +22,14 @@ use std::time::Duration;
 
 fn recursive_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
-  for num_cons in 0..1 {
-    for num_steps in 10..11 {
+  let num_cons_ver_circuit = 20764;
+  // First run for 0 constraints
+  for num_steps in 3..10 {
+    bench_recursive_snark(c, num_samples, num_steps, 0);
+  }
+  for &log_num_cons in [15, 16, 17, 18, 19, 20].iter(){
+    for num_steps in 3..10 {
+      let num_cons = usize::pow(2, log_num_cons) - num_cons_ver_circuit;
       bench_recursive_snark(c, num_samples, num_steps, num_cons);
     }
   }
