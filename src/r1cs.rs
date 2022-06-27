@@ -24,7 +24,7 @@ use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 pub struct R1CSGens<G: Group> {
-  pub(crate) gens: CommitGens<G>,
+  gens: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices

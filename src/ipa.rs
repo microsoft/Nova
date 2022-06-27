@@ -7,34 +7,47 @@ use merlin::Transcript;
 use rayon::prelude::*;
 use std::marker::PhantomData;
 
-pub struct InnerProductWitness<G: Group> {
-  x_vec: Vec<G::Scalar>,
+pub fn inner_product<T>(a: &[T], b: &[T]) -> T
+where
+  T: Field + Send + Sync,
+{
+  assert_eq!(a.len(), b.len());
+  (0..a.len())
+    .into_par_iter()
+    .map(|i| a[i] * b[i])
+    .reduce(T::zero, |x, y| x + y)
 }
 
 pub struct InnerProductInstance<G: Group> {
-  comm_x_vec: Commitment<G>,
+  comm_a_vec: Commitment<G>,
+  b_vec: Vec<G::Scalar>,
+  c: G::Scalar,
+}
+
+impl<G: Group> InnerProductInstance<G> {
+  pub fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
+    InnerProductInstance {
+      comm_a_vec: *comm_a_vec,
+      b_vec: b_vec.to_vec(),
+      c: *c,
+    }
+  }
+}
+
+pub struct InnerProductWitness<G: Group> {
   a_vec: Vec<G::Scalar>,
-  y: G::Scalar,
-}
-
-pub struct StepInnerProductArgument<G: Group> {
-  C: G::Scalar,
-}
-
-#[derive(Debug)]
-pub struct FinalInnerProductArgument<G: Group> {
-  L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
-  R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
-  x_hat: G::Scalar,
-  _p: PhantomData<G>,
 }
 
 impl<G: Group> InnerProductWitness<G> {
-  pub fn new(x_vec: &[G::Scalar]) -> Self {
+  pub fn new(a_vec: &[G::Scalar]) -> Self {
     InnerProductWitness {
-      x_vec: x_vec.to_vec(),
+      a_vec: a_vec.to_vec(),
     }
   }
+}
+
+pub struct StepInnerProductArgument<G: Group> {
+  cross_term: G::Scalar,
 }
 
 impl<G: Group> StepInnerProductArgument<G> {
@@ -52,57 +65,47 @@ impl<G: Group> StepInnerProductArgument<G> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
 
     // add the two commitments and two public vectors to the transcript
-    U1.comm_x_vec
-      .append_to_transcript(b"U1_comm_x_vec", transcript);
-    U1.a_vec.append_to_transcript(b"U1_a_vec", transcript);
-    U2.comm_x_vec
-      .append_to_transcript(b"U2_comm_x_vec", transcript);
-    U2.a_vec.append_to_transcript(b"U2_a_vec", transcript);
+    U1.comm_a_vec
+      .append_to_transcript(b"U1_comm_a_vec", transcript);
+    U1.b_vec.append_to_transcript(b"U1_b_vec", transcript);
+    U2.comm_a_vec
+      .append_to_transcript(b"U2_comm_a_vec", transcript);
+    U2.b_vec.append_to_transcript(b"U2_b_vec", transcript);
 
-    // commit to the cross-term
-    let C = {
-      let T1 = (0..W1.x_vec.len())
-        .map(|i| W1.x_vec[i] * U2.a_vec[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
-
-      let T2 = (0..W2.x_vec.len())
-        .map(|i| W2.x_vec[i] * U1.a_vec[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
-
-      T1 + T2
-    };
+    // compute the cross-term
+    let cross_term = inner_product(&W1.a_vec, &U2.b_vec) + inner_product(&W2.a_vec, &U1.b_vec);
 
     // add the cross-term to the transcript
-    C.append_to_transcript(b"C", transcript);
+    cross_term.append_to_transcript(b"cross_term", transcript);
 
     // obtain a random challenge
     let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the vectors and their inner product
-    let x_vec = W1
-      .x_vec
-      .iter()
-      .zip(W2.x_vec.iter())
+    let a_vec = W1
+      .a_vec
+      .par_iter()
+      .zip(W2.a_vec.par_iter())
       .map(|(x1, x2)| *x1 + r * x2)
       .collect::<Vec<G::Scalar>>();
-    let a_vec = U1
-      .a_vec
-      .iter()
-      .zip(U2.a_vec.iter())
+    let b_vec = U1
+      .b_vec
+      .par_iter()
+      .zip(U2.b_vec.par_iter())
       .map(|(a1, a2)| *a1 + r * a2)
       .collect::<Vec<G::Scalar>>();
-    let y = U1.y + r * r * U2.y + r * C;
-    let comm_x_vec = U1.comm_x_vec + U2.comm_x_vec * r;
 
-    let W = InnerProductWitness { x_vec };
+    let c = U1.c + r * r * U2.c + r * cross_term;
+    let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
 
+    let W = InnerProductWitness { a_vec };
     let U = InnerProductInstance {
-      comm_x_vec,
-      a_vec,
-      y,
+      comm_a_vec,
+      b_vec,
+      c,
     };
 
-    (StepInnerProductArgument { C }, U, W)
+    (StepInnerProductArgument { cross_term }, U, W)
   }
 
   pub fn verify(
@@ -114,58 +117,50 @@ impl<G: Group> StepInnerProductArgument<G> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
 
     // add the two commitments and two public vectors to the transcript
-    U1.comm_x_vec
-      .append_to_transcript(b"U1_comm_x_vec", transcript);
-    U1.a_vec.append_to_transcript(b"U1_a_vec", transcript);
-    U2.comm_x_vec
-      .append_to_transcript(b"U2_comm_x_vec", transcript);
-    U2.a_vec.append_to_transcript(b"U2_a_vec", transcript);
+    U1.comm_a_vec
+      .append_to_transcript(b"U1_comm_a_vec", transcript);
+    U1.b_vec.append_to_transcript(b"U1_b_vec", transcript);
+    U2.comm_a_vec
+      .append_to_transcript(b"U2_comm_a_vec", transcript);
+    U2.b_vec.append_to_transcript(b"U2_b_vec", transcript);
 
     // add the cross-term to the transcript
-    self.C.append_to_transcript(b"C", transcript);
+    self
+      .cross_term
+      .append_to_transcript(b"cross_term", transcript);
 
     // obtain a random challenge
     let r = G::Scalar::challenge(b"r", transcript);
 
     // fold the vectors and their inner product
-    let a_vec = U1
-      .a_vec
-      .iter()
-      .zip(U2.a_vec.iter())
+    let b_vec = U1
+      .b_vec
+      .par_iter()
+      .zip(U2.b_vec.par_iter())
       .map(|(a1, a2)| *a1 + r * a2)
       .collect::<Vec<G::Scalar>>();
-    let y = U1.y + r * r * U2.y + r * self.C;
-    let comm_x_vec = U1.comm_x_vec + U2.comm_x_vec * r;
+    let c = U1.c + r * r * U2.c + r * self.cross_term;
+    let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
 
     InnerProductInstance {
-      comm_x_vec,
-      a_vec,
-      y,
+      comm_a_vec,
+      b_vec,
+      c,
     }
   }
 }
 
-impl<G: Group> InnerProductInstance<G> {
-  pub fn new(comm_x_vec: &Commitment<G>, a_vec: &[G::Scalar], y: &G::Scalar) -> Self {
-    InnerProductInstance {
-      comm_x_vec: *comm_x_vec,
-      a_vec: a_vec.to_vec(),
-      y: *y,
-    }
-  }
+#[derive(Debug)]
+pub struct FinalInnerProductArgument<G: Group> {
+  L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
+  R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
+  a_hat: G::Scalar,
+  _p: PhantomData<G>,
 }
 
 impl<G: Group> FinalInnerProductArgument<G> {
   fn protocol_name() -> &'static [u8] {
     b"inner product argument (final)"
-  }
-
-  pub fn inner_product(a: &[G::Scalar], b: &[G::Scalar]) -> G::Scalar {
-    assert_eq!(a.len(), b.len());
-    (0..a.len())
-      .into_par_iter()
-      .map(|i| a[i] * b[i])
-      .reduce(G::Scalar::zero, |x, y| x + y)
   }
 
   pub fn prove(
@@ -176,24 +171,24 @@ impl<G: Group> FinalInnerProductArgument<G> {
   ) -> Result<Self, NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
 
-    let n = W.x_vec.len();
-    if U.a_vec.len() != n || gens.len() != n || !gens.len().is_power_of_two() {
+    let n = W.a_vec.len();
+    if U.b_vec.len() != n || gens.len() != n || !gens.len().is_power_of_two() {
       return Err(NovaError::InvalidInputLength);
     }
 
-    U.comm_x_vec.append_to_transcript(b"comm_x_vec", transcript);
-    U.a_vec.append_to_transcript(b"a_vec", transcript);
-    U.y.append_to_transcript(b"y", transcript);
+    U.comm_a_vec.append_to_transcript(b"comm_a_vec", transcript);
+    U.b_vec.append_to_transcript(b"b_vec", transcript);
+    U.c.append_to_transcript(b"c", transcript);
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
-    let gens_y = CommitGens::from_scalar(&r); // TODO: take externally, but randomize it
+    let gens_c = CommitGens::from_scalar(&r); // TODO: take externally, but randomize it
 
     // produce a logarithmic-sized argument
-    let (L_vec, R_vec, x_hat) = {
+    let (L_vec, R_vec, a_hat) = {
       // we create mutable copies of vectors and generators
-      let mut x_vec_ref = W.x_vec.to_vec();
-      let mut a_vec_ref = U.a_vec.to_vec();
+      let mut a_vec_ref = W.a_vec.to_vec();
+      let mut b_vec_ref = U.b_vec.to_vec();
       let mut gens_ref = gens.clone();
 
       // two vectors to hold the logarithmic number of group elements
@@ -201,29 +196,29 @@ impl<G: Group> FinalInnerProductArgument<G> {
       let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
       let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
 
-      for _i in 0..(U.a_vec.len() as f64).log2() as usize {
-        let (x_L, x_R) = (x_vec_ref[0..n / 2].to_vec(), x_vec_ref[n / 2..n].to_vec());
+      for _i in 0..(U.b_vec.len() as f64).log2() as usize {
         let (a_L, a_R) = (a_vec_ref[0..n / 2].to_vec(), a_vec_ref[n / 2..n].to_vec());
+        let (b_L, b_R) = (b_vec_ref[0..n / 2].to_vec(), b_vec_ref[n / 2..n].to_vec());
         let (gens_L, gens_R) = gens_ref.split_at(n / 2);
 
-        let c_L = Self::inner_product(&x_L, &a_R);
-        let c_R = Self::inner_product(&x_R, &a_L);
+        let c_L = inner_product(&a_L, &b_R);
+        let c_R = inner_product(&a_R, &b_L);
 
         let L = {
           let v = {
-            let mut v = x_L.to_vec();
+            let mut v = a_L.to_vec();
             v.push(c_L);
             v
           };
-          v.commit(&gens_R.combine(&gens_y)).compress()
+          v.commit(&gens_R.combine(&gens_c)).compress()
         };
         let R = {
           let v = {
-            let mut v = x_R.to_vec();
+            let mut v = a_R.to_vec();
             v.push(c_R);
             v
           };
-          v.commit(&gens_L.combine(&gens_y)).compress()
+          v.commit(&gens_L.combine(&gens_c)).compress()
         };
 
         L.append_to_transcript(b"L", transcript);
@@ -236,29 +231,29 @@ impl<G: Group> FinalInnerProductArgument<G> {
         let r_inverse = r.invert().unwrap();
 
         // fold the left half and the right half
-        x_vec_ref = x_L
-          .par_iter()
-          .zip(x_R.par_iter())
-          .map(|(x_L, x_R)| *x_L * r + r_inverse * *x_R)
-          .collect::<Vec<G::Scalar>>();
-
         a_vec_ref = a_L
           .par_iter()
           .zip(a_R.par_iter())
-          .map(|(a_L, a_R)| *a_L * r_inverse + r * *a_R)
+          .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
+          .collect::<Vec<G::Scalar>>();
+
+        b_vec_ref = b_L
+          .par_iter()
+          .zip(b_R.par_iter())
+          .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
           .collect::<Vec<G::Scalar>>();
 
         gens_ref.fold(&r_inverse, &r);
         n /= 2;
       }
 
-      (L_vec, R_vec, x_vec_ref[0])
+      (L_vec, R_vec, a_vec_ref[0])
     };
 
     Ok(FinalInnerProductArgument {
       L_vec,
       R_vec,
-      x_hat,
+      a_hat,
       _p: Default::default(),
     })
   }
@@ -296,7 +291,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
   ) -> Result<(), NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
     if gens.len() != n
-      || U.a_vec.len() != n
+      || U.b_vec.len() != n
       || n != (1 << self.L_vec.len())
       || self.L_vec.len() != self.R_vec.len()
       || self.L_vec.len() >= 32
@@ -304,19 +299,17 @@ impl<G: Group> FinalInnerProductArgument<G> {
       return Err(NovaError::InvalidInputLength);
     }
 
-    U.comm_x_vec.append_to_transcript(b"comm_x_vec", transcript);
-    U.a_vec.append_to_transcript(b"a_vec", transcript);
-    U.y.append_to_transcript(b"y", transcript);
+    U.comm_a_vec.append_to_transcript(b"comm_a_vec", transcript);
+    U.b_vec.append_to_transcript(b"b_vec", transcript);
+    U.c.append_to_transcript(b"c", transcript);
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
-    let gens_y = CommitGens::from_scalar(&r);
-
-    let comm_y = [U.y].commit(&gens_y);
-    let gamma = U.comm_x_vec + comm_y;
+    let gens_c = CommitGens::from_scalar(&r);
+    let gamma = U.comm_a_vec + [U.c].commit(&gens_c);
 
     // verify the logarithmic-sized inner product argument
-    let (gens_hat, gamma_hat, a_hat) = {
+    let (gens_hat, gamma_hat, b_hat) = {
       // compute a vector of public coins using self.L_vec and self.R_vec
       let r = (0..self.L_vec.len())
         .map(|i| {
@@ -363,7 +356,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
         CommitGens::reinterpret_commitments_as_gens(&[c])?
       };
 
-      let a_hat = Self::inner_product(&U.a_vec, &exps);
+      let b_hat = inner_product(&U.b_vec, &exps);
 
       let gens_folded = {
         let gens_L = CommitGens::reinterpret_commitments_as_gens(&self.L_vec)?;
@@ -383,14 +376,14 @@ impl<G: Group> FinalInnerProductArgument<G> {
         scalars.commit(&gens_folded)
       };
 
-      (gens_hat, gamma_hat, a_hat)
+      (gens_hat, gamma_hat, b_hat)
     };
 
     let lhs = gamma_hat;
     let rhs = {
-      let y_hat = self.x_hat * a_hat;
-      let gens_hat = gens_hat.combine(&gens_y);
-      [self.x_hat, y_hat].commit(&gens_hat)
+      let c_hat = self.a_hat * b_hat;
+      let gens_hat = gens_hat.combine(&gens_c);
+      [self.a_hat, c_hat].commit(&gens_hat)
     };
 
     if lhs == rhs {
