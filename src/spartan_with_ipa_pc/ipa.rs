@@ -164,9 +164,10 @@ impl<G: Group> FinalInnerProductArgument<G> {
   }
 
   pub fn prove(
+    gens: &CommitGens<G>,
+    gens_c: &CommitGens<G>,
     U: &InnerProductInstance<G>,
     W: &InnerProductWitness<G>,
-    gens: &CommitGens<G>,
     transcript: &mut Transcript,
   ) -> Result<Self, NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
@@ -182,7 +183,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
-    let gens_c = CommitGens::from_scalar(&r); // TODO: take externally, but randomize it
+    let gens_c = gens_c.scale(&r);
 
     // produce a logarithmic-sized argument
     let (L_vec, R_vec, a_hat) = {
@@ -284,9 +285,10 @@ impl<G: Group> FinalInnerProductArgument<G> {
 
   pub fn verify(
     &self,
+    gens: &CommitGens<G>,
+    gens_c: &CommitGens<G>,
     n: usize,
     U: &InnerProductInstance<G>,
-    gens: &CommitGens<G>,
     transcript: &mut Transcript,
   ) -> Result<(), NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
@@ -305,7 +307,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
-    let gens_c = CommitGens::from_scalar(&r);
+    let gens_c = gens_c.scale(&r);
     let gamma = U.comm_a_vec + [U.c].commit(&gens_c);
 
     // verify the logarithmic-sized inner product argument

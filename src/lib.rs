@@ -37,7 +37,7 @@ use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it wi
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
-use spartan_with_ipa_pc::RelaxedR1CSSNARK;
+use snark::RelaxedR1CSSNARKTrait;
 use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
 
 type ROConstants<G> =
@@ -428,22 +428,24 @@ where
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
-pub struct CompressedSNARK<G1, G2, C1, C2>
+pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
   nifs_primary: NIFS<G1>,
-  f_W_snark_primary: RelaxedR1CSSNARK<G1>,
+  f_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
   nifs_secondary: NIFS<G2>,
-  f_W_snark_secondary: RelaxedR1CSSNARK<G2>,
+  f_W_snark_secondary: S2,
 
   zn_primary: G1::Scalar,
   zn_secondary: G2::Scalar,
@@ -452,12 +454,14 @@ where
   _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, C1, C2> CompressedSNARK<G1, G2, C1, C2>
+impl<G1, G2, C1, C2, S1, S2> CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
 {
   /// Create a new `CompressedSNARK`
   pub fn prove(
@@ -494,20 +498,24 @@ where
     let (nifs_primary, (f_U_primary, f_W_primary)) = res_primary?;
     let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
 
+    // produce a prover key for the SNARK
+    let (pk_primary, pk_secondary) = rayon::join(
+      || S1::prover_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
+      || S2::prover_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
+    );
+
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
       || {
-        RelaxedR1CSSNARK::prove(
-          &pp.r1cs_gens_primary,
-          &pp.r1cs_shape_padded_primary,
+        S1::prove(
+          &pk_primary,
           &f_U_primary,
           &f_W_primary.pad(&pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
         )
       },
       || {
-        RelaxedR1CSSNARK::prove(
-          &pp.r1cs_gens_secondary,
-          &pp.r1cs_shape_padded_secondary,
+        S2::prove(
+          &pk_secondary,
           &f_U_secondary,
           &f_W_secondary.pad(&pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
         )
@@ -594,21 +602,19 @@ where
       &self.l_u_secondary,
     )?;
 
+    // produce a verifier key for the SNARK
+    let (vk_primary, vk_secondary) = rayon::join(
+      || S1::verifier_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
+      || S2::verifier_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
+    );
+
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
+      || self.f_W_snark_primary.verify(&vk_primary, &f_U_primary),
       || {
-        self.f_W_snark_primary.verify(
-          &pp.r1cs_gens_primary,
-          &pp.r1cs_shape_padded_primary,
-          &f_U_primary,
-        )
-      },
-      || {
-        self.f_W_snark_secondary.verify(
-          &pp.r1cs_gens_secondary,
-          &pp.r1cs_shape_padded_secondary,
-          &f_U_secondary,
-        )
+        self
+          .f_W_snark_secondary
+          .verify(&vk_secondary, &f_U_secondary)
       },
     );
 
@@ -624,6 +630,8 @@ mod tests {
   use super::*;
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
+  type S1 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
+  type S2 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::PrimeField;
   use std::marker::PhantomData;
@@ -838,7 +846,7 @@ mod tests {
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::prove(&pp, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 

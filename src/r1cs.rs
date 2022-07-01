@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
+#[derive(Clone)]
 pub struct R1CSGens<G: Group> {
   pub(crate) gens: CommitGens<G>,
 }

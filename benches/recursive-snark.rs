@@ -75,7 +75,6 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize, num_steps: usize
   assert!(res.is_ok());
   let recursive_snark = res.unwrap();
 
-  // TODO: Output the proof size
   // Benchmark the verification time
   let name = "Verify";
   group.bench_function(name, |b| {

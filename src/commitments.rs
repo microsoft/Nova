@@ -83,10 +83,23 @@ impl<G: Group> CommitGens<G> {
     self.gens = gens;
   }
 
-  /// returns a singleton vector of generators where the entry is r * G, where G is the generator of the group
-  pub fn from_scalar(r: &G::Scalar) -> Self {
+  /// Scales each element in `self` by `r`
+  pub fn scale(&self, r: &G::Scalar) -> Self {
+    let gens_scaled = self
+      .gens
+      .clone()
+      .into_par_iter()
+      .map(|g| {
+        let gens = CommitGens::<G> {
+          gens: vec![g],
+          _p: Default::default(),
+        };
+        [*r].commit(&gens).comm.preprocessed()
+      })
+      .collect();
+
     CommitGens {
-      gens: vec![G::gen().mul(r).preprocessed()],
+      gens: gens_scaled,
       _p: Default::default(),
     }
   }
