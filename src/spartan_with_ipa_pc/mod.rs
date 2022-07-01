@@ -13,9 +13,7 @@ use super::{
 };
 use core::cmp::max;
 use ff::Field;
-use ipa::{
-  FinalInnerProductArgument, InnerProductInstance, InnerProductWitness, StepInnerProductArgument,
-};
+use ipa::{InnerProductArgument, InnerProductInstance, InnerProductWitness, NIFSForInnerProduct};
 use itertools::concat;
 use merlin::Transcript;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
@@ -65,8 +63,8 @@ pub struct RelaxedR1CSSNARK<G: Group> {
   sc_proof_inner: SumcheckProof<G>,
   eval_E: G::Scalar,
   eval_W: G::Scalar,
-  step_ipa: StepInnerProductArgument<G>,
-  final_ipa: FinalInnerProductArgument<G>,
+  nifs_ip: NIFSForInnerProduct<G>,
+  ipa: InnerProductArgument<G>,
 }
 
 impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
@@ -224,7 +222,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
     eval_W.append_to_transcript(b"eval_W", &mut transcript);
 
-    let (step_ipa, r_U, r_W) = StepInnerProductArgument::prove(
+    let (nifs_ip, r_U, r_W) = NIFSForInnerProduct::prove(
       &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &eval_E),
       &InnerProductWitness::new(&W.E),
       &InnerProductInstance::new(
@@ -236,7 +234,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       &mut transcript,
     );
 
-    let final_ipa = FinalInnerProductArgument::prove(
+    let ipa = InnerProductArgument::prove(
       &pk.gens_r1cs.gens,
       &pk.gens_ipa,
       &r_U,
@@ -250,8 +248,8 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       sc_proof_inner,
       eval_W,
       eval_E,
-      step_ipa,
-      final_ipa,
+      nifs_ip,
+      ipa,
     })
   }
 
@@ -361,7 +359,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     // verify eval_W and eval_E
     self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
 
-    let r_U = self.step_ipa.verify(
+    let r_U = self.nifs_ip.verify(
       &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &self.eval_E),
       &InnerProductInstance::new(
         &U.comm_W,
@@ -371,7 +369,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       &mut transcript,
     );
 
-    self.final_ipa.verify(
+    self.ipa.verify(
       &vk.gens_r1cs.gens,
       &vk.gens_ipa,
       max(vk.S.num_vars, vk.S.num_cons),

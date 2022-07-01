@@ -18,6 +18,8 @@ where
     .reduce(T::zero, |x, y| x + y)
 }
 
+/// An inner product instance consists of a commitment to a vector `a` and another vector `b`
+/// and the claim that c = <a, b>.
 pub struct InnerProductInstance<G: Group> {
   comm_a_vec: Commitment<G>,
   b_vec: Vec<G::Scalar>,
@@ -46,13 +48,14 @@ impl<G: Group> InnerProductWitness<G> {
   }
 }
 
-pub struct StepInnerProductArgument<G: Group> {
+/// A non-interactive folding scheme (NIFS) for inner product relations
+pub struct NIFSForInnerProduct<G: Group> {
   cross_term: G::Scalar,
 }
 
-impl<G: Group> StepInnerProductArgument<G> {
+impl<G: Group> NIFSForInnerProduct<G> {
   pub fn protocol_name() -> &'static [u8] {
-    b"inner product argument (step)"
+    b"NIFSForInnerProduct"
   }
 
   pub fn prove(
@@ -105,7 +108,7 @@ impl<G: Group> StepInnerProductArgument<G> {
       c,
     };
 
-    (StepInnerProductArgument { cross_term }, U, W)
+    (NIFSForInnerProduct { cross_term }, U, W)
   }
 
   pub fn verify(
@@ -150,17 +153,18 @@ impl<G: Group> StepInnerProductArgument<G> {
   }
 }
 
+/// An inner product argument
 #[derive(Debug)]
-pub struct FinalInnerProductArgument<G: Group> {
+pub struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
   R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
   a_hat: G::Scalar,
   _p: PhantomData<G>,
 }
 
-impl<G: Group> FinalInnerProductArgument<G> {
+impl<G: Group> InnerProductArgument<G> {
   fn protocol_name() -> &'static [u8] {
-    b"inner product argument (final)"
+    b"inner product argument"
   }
 
   pub fn prove(
@@ -250,7 +254,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
       (L_vec, R_vec, a_vec_ref[0])
     };
 
-    Ok(FinalInnerProductArgument {
+    Ok(InnerProductArgument {
       L_vec,
       R_vec,
       a_hat,
