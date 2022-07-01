@@ -2,6 +2,7 @@
 use crate::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use crate::errors::NovaError;
 use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use core::iter;
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
@@ -188,102 +189,91 @@ impl<G: Group> InnerProductArgument<G> {
     let r = G::Scalar::challenge(b"r", transcript);
     let gens_c = gens_c.scale(&r);
 
-    // produce a logarithmic-sized argument
-    let (L_vec, R_vec, a_hat) = {
-      // we create mutable copies of vectors and generators
-      let mut a_vec_ref = W.a_vec.to_vec();
-      let mut b_vec_ref = U.b_vec.to_vec();
-      let mut gens_ref = gens.clone();
+    // a closure that executes a step of the recursive inner product argument
+    let prove_inner = |a_vec: &[G::Scalar],
+                       b_vec: &[G::Scalar],
+                       gens: &CommitGens<G>,
+                       transcript: &mut Transcript|
+     -> Result<
+      (
+        CompressedCommitment<G::CompressedGroupElement>,
+        CompressedCommitment<G::CompressedGroupElement>,
+        Vec<G::Scalar>,
+        Vec<G::Scalar>,
+        CommitGens<G>,
+      ),
+      NovaError,
+    > {
+      let n = a_vec.len();
+      let (gens_L, gens_R) = gens.split_at(n / 2);
 
-      // two vectors to hold the logarithmic number of group elements
-      let mut n = W.a_vec.len();
-      let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
-      let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
+      let c_L = inner_product(&a_vec[0..n / 2], &b_vec[n / 2..n]);
+      let c_R = inner_product(&a_vec[n / 2..n], &b_vec[0..n / 2]);
 
-      for _i in 0..(U.b_vec.len() as f64).log2() as usize {
-        let (a_L, a_R) = (a_vec_ref[0..n / 2].to_vec(), a_vec_ref[n / 2..n].to_vec());
-        let (b_L, b_R) = (b_vec_ref[0..n / 2].to_vec(), b_vec_ref[n / 2..n].to_vec());
-        let (gens_L, gens_R) = gens_ref.split_at(n / 2);
+      let L = a_vec[0..n / 2]
+        .iter()
+        .chain(iter::once(&c_L))
+        .copied()
+        .collect::<Vec<G::Scalar>>()
+        .commit(&gens_R.combine(&gens_c))
+        .compress();
+      let R = a_vec[n / 2..n]
+        .iter()
+        .chain(iter::once(&c_R))
+        .copied()
+        .collect::<Vec<G::Scalar>>()
+        .commit(&gens_L.combine(&gens_c))
+        .compress();
 
-        let c_L = inner_product(&a_L, &b_R);
-        let c_R = inner_product(&a_R, &b_L);
+      L.append_to_transcript(b"L", transcript);
+      R.append_to_transcript(b"R", transcript);
 
-        let L = {
-          let v = {
-            let mut v = a_L.to_vec();
-            v.push(c_L);
-            v
-          };
-          v.commit(&gens_R.combine(&gens_c)).compress()
-        };
-        let R = {
-          let v = {
-            let mut v = a_R.to_vec();
-            v.push(c_R);
-            v
-          };
-          v.commit(&gens_L.combine(&gens_c)).compress()
-        };
+      let r = G::Scalar::challenge(b"challenge_r", transcript);
+      let r_inverse = r.invert().unwrap();
 
-        L.append_to_transcript(b"L", transcript);
-        R.append_to_transcript(b"R", transcript);
+      // fold the left half and the right half
+      let a_vec_folded = a_vec[0..n / 2]
+        .par_iter()
+        .zip(a_vec[n / 2..n].par_iter())
+        .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
+        .collect::<Vec<G::Scalar>>();
 
-        L_vec.push(L);
-        R_vec.push(R);
+      let b_vec_folded = b_vec[0..n / 2]
+        .par_iter()
+        .zip(b_vec[n / 2..n].par_iter())
+        .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
+        .collect::<Vec<G::Scalar>>();
 
-        let r = G::Scalar::challenge(b"challenge_r", transcript);
-        let r_inverse = r.invert().unwrap();
+      let gens_folded = gens.fold(&r_inverse, &r);
 
-        // fold the left half and the right half
-        a_vec_ref = a_L
-          .par_iter()
-          .zip(a_R.par_iter())
-          .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
-          .collect::<Vec<G::Scalar>>();
-
-        b_vec_ref = b_L
-          .par_iter()
-          .zip(b_R.par_iter())
-          .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
-          .collect::<Vec<G::Scalar>>();
-
-        gens_ref.fold(&r_inverse, &r);
-        n /= 2;
-      }
-
-      (L_vec, R_vec, a_vec_ref[0])
+      Ok((L, R, a_vec_folded, b_vec_folded, gens_folded))
     };
+
+    // two vectors to hold the logarithmic number of group elements
+    let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
+    let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
+
+    // we create mutable copies of vectors and generators
+    let mut a_vec = W.a_vec.to_vec();
+    let mut b_vec = U.b_vec.to_vec();
+    let mut gens = gens.clone();
+    for _i in 0..(U.b_vec.len() as f64).log2() as usize {
+      let (L, R, a_vec_folded, b_vec_folded, gens_folded) =
+        prove_inner(&a_vec, &b_vec, &gens, transcript)?;
+      L_vec.push(L);
+      R_vec.push(R);
+
+      a_vec = a_vec_folded;
+      b_vec = b_vec_folded;
+      gens = gens_folded;
+    }
 
     Ok(InnerProductArgument {
       L_vec,
       R_vec,
-      a_hat,
+      a_hat: a_vec[0],
       _p: Default::default(),
     })
-  }
-
-  fn batch_invert(v: &[G::Scalar]) -> Vec<G::Scalar> {
-    let mut products = vec![G::Scalar::zero(); v.len()];
-    let mut acc = G::Scalar::one();
-
-    for i in 0..v.len() {
-      products[i] = acc;
-      acc *= v[i];
-    }
-
-    assert_ne!(acc, G::Scalar::zero());
-
-    // compute the inverse once for all entries
-    acc = acc.invert().unwrap();
-
-    let mut inv = vec![G::Scalar::zero(); v.len()];
-    for i in 0..v.len() {
-      let tmp = acc * v[v.len() - 1 - i];
-      inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
-      acc = tmp;
-    }
-
-    inv
   }
 
   pub fn verify(
@@ -310,87 +300,97 @@ impl<G: Group> InnerProductArgument<G> {
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript);
     let gens_c = gens_c.scale(&r);
-    let gamma = U.comm_a_vec + [U.c].commit(&gens_c);
 
-    // verify the logarithmic-sized inner product argument
-    let (gens_hat, gamma_hat, b_hat) = {
-      // compute a vector of public coins using self.L_vec and self.R_vec
-      let r = (0..self.L_vec.len())
-        .map(|i| {
-          self.L_vec[i].append_to_transcript(b"L", transcript);
-          self.R_vec[i].append_to_transcript(b"R", transcript);
-          G::Scalar::challenge(b"challenge_r", transcript)
-        })
-        .collect::<Vec<G::Scalar>>();
+    let P = U.comm_a_vec + [U.c].commit(&gens_c);
 
-      // precompute scalars necessary for verification
-      let (exps, r_square, r_inverse_square) = {
-        let r_inverse = Self::batch_invert(&r);
-        let r_square: Vec<G::Scalar> = (0..self.L_vec.len())
-          .into_par_iter()
-          .map(|i| r[i] * r[i])
-          .collect();
-        let r_inverse_square: Vec<G::Scalar> = (0..self.L_vec.len())
-          .into_par_iter()
-          .map(|i| r_inverse[i] * r_inverse[i])
-          .collect();
+    let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
+      let mut products = vec![G::Scalar::zero(); v.len()];
+      let mut acc = G::Scalar::one();
 
-        // compute the vector with the tensor structure
-        let exps = {
-          let mut exps = vec![G::Scalar::zero(); n];
-          exps[0] = {
-            let mut v = G::Scalar::one();
-            for r_inverse_i in &r_inverse {
-              v *= r_inverse_i;
-            }
-            v
-          };
-          for i in 1..n {
-            let pos_in_u = (31 - (i as u32).leading_zeros()) as usize;
-            exps[i] = exps[i - (1 << pos_in_u)] * r_square[(self.L_vec.len() - 1) - pos_in_u];
-          }
-          exps
-        };
+      for i in 0..v.len() {
+        products[i] = acc;
+        acc *= v[i];
+      }
 
-        (exps, r_square, r_inverse_square)
+      // we can compute an inversion only if acc is non-zero
+      if acc == G::Scalar::zero() {
+        return Err(NovaError::InvalidInputLength);
+      }
+
+      // compute the inverse once for all entries
+      acc = acc.invert().unwrap();
+
+      let mut inv = vec![G::Scalar::zero(); v.len()];
+      for i in 0..v.len() {
+        let tmp = acc * v[v.len() - 1 - i];
+        inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+        acc = tmp;
+      }
+
+      Ok(inv)
+    };
+
+    // compute a vector of public coins using self.L_vec and self.R_vec
+    let r = (0..self.L_vec.len())
+      .map(|i| {
+        self.L_vec[i].append_to_transcript(b"L", transcript);
+        self.R_vec[i].append_to_transcript(b"R", transcript);
+        G::Scalar::challenge(b"challenge_r", transcript)
+      })
+      .collect::<Vec<G::Scalar>>();
+
+    // precompute scalars necessary for verification
+    let r_square: Vec<G::Scalar> = (0..self.L_vec.len())
+      .into_par_iter()
+      .map(|i| r[i] * r[i])
+      .collect();
+    let r_inverse = batch_invert(&r)?;
+    let r_inverse_square: Vec<G::Scalar> = (0..self.L_vec.len())
+      .into_par_iter()
+      .map(|i| r_inverse[i] * r_inverse[i])
+      .collect();
+
+    // compute the vector with the tensor structure
+    let s = {
+      let mut s = vec![G::Scalar::zero(); n];
+      s[0] = {
+        let mut v = G::Scalar::one();
+        for r_inverse_i in &r_inverse {
+          v *= r_inverse_i;
+        }
+        v
       };
+      for i in 1..n {
+        let pos_in_r = (31 - (i as u32).leading_zeros()) as usize;
+        s[i] = s[i - (1 << pos_in_r)] * r_square[(self.L_vec.len() - 1) - pos_in_r];
+      }
+      s
+    };
 
-      let gens_hat = {
-        let c = exps.commit(gens).compress();
-        CommitGens::reinterpret_commitments_as_gens(&[c])?
-      };
+    let gens_hat = {
+      let c = s.commit(gens).compress();
+      CommitGens::reinterpret_commitments_as_gens(&[c])?
+    };
 
-      let b_hat = inner_product(&U.b_vec, &exps);
+    let b_hat = inner_product(&U.b_vec, &s);
 
+    let P_hat = {
       let gens_folded = {
         let gens_L = CommitGens::reinterpret_commitments_as_gens(&self.L_vec)?;
         let gens_R = CommitGens::reinterpret_commitments_as_gens(&self.R_vec)?;
-        let gens_gamma = CommitGens::reinterpret_commitments_as_gens(&[gamma.compress()])?;
-        gens_L.combine(&gens_R).combine(&gens_gamma)
+        let gens_P = CommitGens::reinterpret_commitments_as_gens(&[P.compress()])?;
+        gens_L.combine(&gens_R).combine(&gens_P)
       };
-
-      let gamma_hat = {
-        let scalars: Vec<G::Scalar> = {
-          let mut v = r_square;
-          v.extend(r_inverse_square);
-          v.push(G::Scalar::one());
-          v
-        };
-
-        scalars.commit(&gens_folded)
-      };
-
-      (gens_hat, gamma_hat, b_hat)
+      r_square
+        .iter()
+        .chain(r_inverse_square.iter())
+        .chain(iter::once(&G::Scalar::one()))
+        .copied()
+        .collect::<Vec<G::Scalar>>()
+        .commit(&gens_folded)
     };
 
-    let lhs = gamma_hat;
-    let rhs = {
-      let c_hat = self.a_hat * b_hat;
-      let gens_hat = gens_hat.combine(&gens_c);
-      [self.a_hat, c_hat].commit(&gens_hat)
-    };
-
-    if lhs == rhs {
+    if P_hat == [self.a_hat, self.a_hat * b_hat].commit(&gens_hat.combine(&gens_c)) {
       Ok(())
     } else {
       Err(NovaError::InvalidIPA)

@@ -65,7 +65,7 @@ impl<G: Group> CommitGens<G> {
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
-  pub fn fold(&mut self, w1: &G::Scalar, w2: &G::Scalar) {
+  pub fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> CommitGens<G> {
     let w = vec![*w1, *w2];
     let (L, R) = self.split_at(self.len() / 2);
 
@@ -80,7 +80,10 @@ impl<G: Group> CommitGens<G> {
       })
       .collect();
 
-    self.gens = gens;
+    CommitGens {
+      gens,
+      _p: Default::default(),
+    }
   }
 
   /// Scales each element in `self` by `r`
