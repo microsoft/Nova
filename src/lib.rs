@@ -17,6 +17,7 @@ pub mod bellperson;
 pub mod errors;
 pub mod gadgets;
 pub mod pasta;
+pub mod snark;
 pub mod traits;
 
 use crate::bellperson::{
@@ -431,8 +432,8 @@ pub struct CompressedSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
@@ -455,8 +456,8 @@ impl<G1, G2, C1, C2> CompressedSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `CompressedSNARK`
   pub fn prove(

@@ -362,6 +362,7 @@ mod tests {
   use ff::PrimeField;
   use std::marker::PhantomData;
 
+  #[derive(Clone)]
   struct TestCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
