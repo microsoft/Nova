@@ -10,7 +10,6 @@ mod constants;
 mod nifs;
 mod poseidon;
 mod r1cs;
-mod spartan_with_ipa_pc;
 
 // public modules
 pub mod bellperson;
@@ -18,6 +17,7 @@ pub mod errors;
 pub mod gadgets;
 pub mod pasta;
 pub mod snark;
+pub mod spartan_with_ipa_pc;
 pub mod traits;
 
 use crate::bellperson::{

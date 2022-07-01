@@ -1,8 +1,5 @@
 #![allow(non_snake_case)]
 
-extern crate flate2;
-
-//use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{Group, StepCircuit},
   PublicParams, RecursiveSNARK,

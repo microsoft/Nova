@@ -1,3 +1,5 @@
+//! This module implements RelaxedR1CSSNARKTrait using a Spartan variant
+//! instantiated with an IPA-based polynomial commitment scheme
 mod ipa;
 mod polynomial;
 mod sumcheck;
@@ -20,6 +22,7 @@ use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
 use rayon::prelude::*;
 use sumcheck::SumcheckProof;
 
+/// A type that represents the prover's key
 pub struct ProverKey<G: Group> {
   gens_r1cs: R1CSGens<G>,
   gens_ipa: CommitGens<G>,
@@ -36,6 +39,7 @@ impl<G: Group> ProverKeyTrait<G> for ProverKey<G> {
   }
 }
 
+/// A type that represents the verifier's key
 pub struct VerifierKey<G: Group> {
   gens_r1cs: R1CSGens<G>,
   gens_ipa: CommitGens<G>,
@@ -77,7 +81,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
   ) -> Result<Self, NovaError> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
 
-    debug_assert!(pk.S.is_sat_relaxed(&pk.gens_r1cs, U, &W).is_ok());
+    debug_assert!(pk.S.is_sat_relaxed(&pk.gens_r1cs, U, W).is_ok());
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
