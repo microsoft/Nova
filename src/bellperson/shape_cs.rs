@@ -117,6 +117,7 @@ where
   }
 
   /// Print all public inputs, aux inputs, and constraint names.
+  #[allow(dead_code)]
   pub fn pretty_print_list(&self) -> Vec<String> {
     let mut result = Vec::new();
 
@@ -135,6 +136,7 @@ where
   }
 
   /// Print all iputs and a detailed representation of each constraint.
+  #[allow(dead_code)]
   pub fn pretty_print(&self) -> String {
     let mut s = String::new();
 

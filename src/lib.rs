@@ -4,6 +4,7 @@
 #![deny(missing_docs)]
 
 // private modules
+mod bellperson;
 mod circuit;
 mod commitments;
 mod constants;
@@ -12,7 +13,6 @@ mod poseidon;
 mod r1cs;
 
 // public modules
-pub mod bellperson;
 pub mod errors;
 pub mod gadgets;
 pub mod pasta;
