@@ -268,12 +268,10 @@ impl<G: Group> UniPoly<G> {
   }
 
   pub fn eval_at_one(&self) -> G::Scalar {
-    let mut sum = G::Scalar::zero();
-    for i in 0..self.coeffs.len() {
-      sum += self.coeffs[i];
-    }
-    sum
-    // (0..self.coeffs.len()).map(|i| self.coeffs[i]).sum()
+    (0..self.coeffs.len())
+      .into_par_iter()
+      .map(|i| self.coeffs[i])
+      .reduce(G::Scalar::zero, |a, b| a + b)
   }
 
   pub fn evaluate(&self, r: &G::Scalar) -> G::Scalar {
