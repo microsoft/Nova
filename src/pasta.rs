@@ -95,10 +95,6 @@ impl Group for pallas::Point {
     )
     .unwrap()
   }
-
-  fn gen() -> Self {
-    pallas::Point::generator()
-  }
 }
 
 impl ChallengeTrait for pallas::Scalar {
@@ -195,10 +191,6 @@ impl Group for vesta::Point {
       16,
     )
     .unwrap()
-  }
-
-  fn gen() -> Self {
-    vesta::Point::generator()
   }
 }
 
