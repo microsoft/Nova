@@ -25,15 +25,22 @@ impl<G: Group> SumcheckProof<G> {
     let mut r: Vec<G::Scalar> = Vec::new();
 
     // verify that there is a univariate polynomial for each round
-    assert_eq!(self.compressed_polys.len(), num_rounds);
+    if self.compressed_polys.len() != num_rounds {
+      return Err(NovaError::InvalidSumcheckProof);
+    }
+
     for i in 0..self.compressed_polys.len() {
       let poly = self.compressed_polys[i].decompress(&e);
 
       // verify degree bound
-      assert_eq!(poly.degree(), degree_bound);
+      if poly.degree() != degree_bound {
+        return Err(NovaError::InvalidSumcheckProof);
+      }
 
       // check if G_k(0) + G_k(1) = e
-      assert_eq!(poly.eval_at_zero() + poly.eval_at_one(), e);
+      if poly.eval_at_zero() + poly.eval_at_one() != e {
+        return Err(NovaError::InvalidSumcheckProof);
+      }
 
       // append the prover's message to the transcript
       poly.append_to_transcript(b"poly", transcript);
@@ -94,16 +101,16 @@ impl<G: Group> SumcheckProof<G> {
       poly.append_to_transcript(b"poly", transcript);
 
       //derive the verifier's challenge for the next round
-      let r_j = G::Scalar::challenge(b"challenge_nextround", transcript);
-      r.push(r_j);
+      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript);
+      r.push(r_i);
       polys.push(poly.compress());
 
       // Set up next round
-      claim_per_round = poly.evaluate(&r_j);
+      claim_per_round = poly.evaluate(&r_i);
 
       // bound all tables to the verifier's challenege
-      poly_A.bound_poly_var_top(&r_j);
-      poly_B.bound_poly_var_top(&r_j);
+      poly_A.bound_poly_var_top(&r_i);
+      poly_B.bound_poly_var_top(&r_i);
     }
 
     (
@@ -186,18 +193,18 @@ impl<G: Group> SumcheckProof<G> {
       poly.append_to_transcript(b"poly", transcript);
 
       //derive the verifier's challenge for the next round
-      let r_j = G::Scalar::challenge(b"challenge_nextround", transcript);
-      r.push(r_j);
+      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript);
+      r.push(r_i);
       polys.push(poly.compress());
 
       // Set up next round
-      claim_per_round = poly.evaluate(&r_j);
+      claim_per_round = poly.evaluate(&r_i);
 
       // bound all tables to the verifier's challenege
-      poly_A.bound_poly_var_top(&r_j);
-      poly_B.bound_poly_var_top(&r_j);
-      poly_C.bound_poly_var_top(&r_j);
-      poly_D.bound_poly_var_top(&r_j);
+      poly_A.bound_poly_var_top(&r_i);
+      poly_B.bound_poly_var_top(&r_i);
+      poly_C.bound_poly_var_top(&r_i);
+      poly_D.bound_poly_var_top(&r_i);
     }
 
     (
