@@ -10,14 +10,15 @@ use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt},
+  arithmetic::{CurveAffine, CurveExt, Group as OtherGroup},
   group::{Curve, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use rayon::prelude::*;
 use sha3::Shake256;
-use std::io::Read;
+use std::{io::Read, ops::Mul};
 
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
@@ -45,7 +46,19 @@ impl Group for pallas::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    pasta_msm::pallas(bases, scalars)
+    if scalars.len() >= 128 {
+      pasta_msm::pallas(bases, scalars)
+    } else {
+      scalars
+        .par_iter()
+        .zip(bases)
+        .map(|(scalar, base)| base.mul(scalar))
+        .reduce(Ep::group_zero, |x, y| x + y)
+    }
+  }
+
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+    self.to_affine()
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
@@ -130,11 +143,23 @@ impl Group for vesta::Point {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    pasta_msm::vesta(bases, scalars)
+    if scalars.len() >= 128 {
+      pasta_msm::vesta(bases, scalars)
+    } else {
+      scalars
+        .par_iter()
+        .zip(bases)
+        .map(|(scalar, base)| base.mul(scalar))
+        .reduce(Eq::group_zero, |x, y| x + y)
+    }
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
     VestaCompressedElementWrapper::new(self.to_bytes())
+  }
+
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+    self.to_affine()
   }
 
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {

@@ -8,6 +8,7 @@ use super::{
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, HashFuncTrait},
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
+use core::cmp::max;
 use ff::{Field, PrimeField};
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
@@ -17,20 +18,20 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
+#[derive(Clone)]
 pub struct R1CSGens<G: Group> {
-  pub(crate) gens_W: CommitGens<G>, // TODO: avoid pub(crate)
-  pub(crate) gens_E: CommitGens<G>,
+  pub(crate) gens: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct R1CSShape<G: Group> {
-  num_cons: usize,
-  num_vars: usize,
-  num_io: usize,
-  A: Vec<(usize, usize, G::Scalar)>,
-  B: Vec<(usize, usize, G::Scalar)>,
-  C: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) num_cons: usize,
+  pub(crate) num_vars: usize,
+  pub(crate) num_io: usize,
+  pub(crate) A: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) B: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) C: Vec<(usize, usize, G::Scalar)>,
   digest: G::Scalar, // digest of the rest of R1CSShape
 }
 
@@ -50,8 +51,8 @@ pub struct R1CSInstance<G: Group> {
 /// A type that holds a witness for a given Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelaxedR1CSWitness<G: Group> {
-  W: Vec<G::Scalar>,
-  E: Vec<G::Scalar>,
+  pub(crate) W: Vec<G::Scalar>,
+  pub(crate) E: Vec<G::Scalar>,
 }
 
 /// A type that holds a Relaxed R1CS instance
@@ -66,13 +67,9 @@ pub struct RelaxedR1CSInstance<G: Group> {
 impl<G: Group> R1CSGens<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
-    // generators to commit to witness vector `W`
-    let gens_W = CommitGens::new(b"gens_W", num_vars);
-
-    // generators to commit to the error/slack vector `E`
-    let gens_E = CommitGens::new(b"gens_E", num_cons);
-
-    R1CSGens { gens_E, gens_W }
+    R1CSGens {
+      gens: CommitGens::new(b"gens", max(num_vars, num_cons)),
+    }
   }
 }
 
@@ -137,7 +134,7 @@ impl<G: Group> R1CSShape<G> {
     Ok(shape)
   }
 
-  fn multiply_vec(
+  pub fn multiply_vec(
     &self,
     z: &[G::Scalar],
   ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
@@ -161,9 +158,15 @@ impl<G: Group> R1CSShape<G> {
           })
       };
 
-    let Az = sparse_matrix_vec_product(&self.A, self.num_cons, z);
-    let Bz = sparse_matrix_vec_product(&self.B, self.num_cons, z);
-    let Cz = sparse_matrix_vec_product(&self.C, self.num_cons, z);
+    let (Az, (Bz, Cz)) = rayon::join(
+      || sparse_matrix_vec_product(&self.A, self.num_cons, z),
+      || {
+        rayon::join(
+          || sparse_matrix_vec_product(&self.B, self.num_cons, z),
+          || sparse_matrix_vec_product(&self.C, self.num_cons, z),
+        )
+      },
+    );
 
     Ok((Az, Bz, Cz))
   }
@@ -202,9 +205,7 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
-      let comm_W = W.W.commit(&gens.gens_W);
-      let comm_E = W.E.commit(&gens.gens_E);
-
+      let (comm_W, comm_E) = rayon::join(|| W.W.commit(&gens.gens), || W.E.commit(&gens.gens));
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
@@ -241,7 +242,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens_W);
+    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens);
 
     if res_eq && res_comm {
       Ok(())
@@ -271,15 +272,21 @@ impl<G: Group> R1CSShape<G> {
     };
 
     let AZ_1_circ_BZ_2 = (0..AZ_1.len())
+      .into_par_iter()
       .map(|i| AZ_1[i] * BZ_2[i])
       .collect::<Vec<G::Scalar>>();
     let AZ_2_circ_BZ_1 = (0..AZ_2.len())
+      .into_par_iter()
       .map(|i| AZ_2[i] * BZ_1[i])
       .collect::<Vec<G::Scalar>>();
     let u_1_cdot_CZ_2 = (0..CZ_2.len())
+      .into_par_iter()
       .map(|i| U1.u * CZ_2[i])
       .collect::<Vec<G::Scalar>>();
-    let u_2_cdot_CZ_1 = (0..CZ_1.len()).map(|i| CZ_1[i]).collect::<Vec<G::Scalar>>();
+    let u_2_cdot_CZ_1 = (0..CZ_1.len())
+      .into_par_iter()
+      .map(|i| CZ_1[i])
+      .collect::<Vec<G::Scalar>>();
 
     let T = AZ_1_circ_BZ_2
       .par_iter()
@@ -289,7 +296,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens_E);
+    let comm_T = T.commit(&gens.gens);
 
     Ok((T, comm_T))
   }
@@ -312,15 +319,15 @@ impl<G: Group> R1CSShape<G> {
       num_vars,
       num_io,
       A: A
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
       B: B
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
       C: C
-        .iter()
+        .par_iter()
         .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
         .collect(),
     };
@@ -352,6 +359,78 @@ impl<G: Group> R1CSShape<G> {
       coeff += coeff;
     }
     res
+  }
+
+  /// Pads the R1CSShape so that the number of variables is a power of two
+  /// Renumbers variables to accomodate padded variables
+  pub fn pad(&self) -> Self {
+    // check if the provided R1CSShape is already as required
+    if self.num_vars.next_power_of_two() == self.num_vars
+      && self.num_cons.next_power_of_two() == self.num_cons
+    {
+      return self.clone();
+    }
+
+    // check if the number of variables are as expected, then
+    // we simply set the number of constraints to the next power of two
+    if self.num_vars.next_power_of_two() == self.num_vars {
+      let digest = Self::compute_digest(
+        self.num_cons.next_power_of_two(),
+        self.num_vars,
+        self.num_io,
+        &self.A,
+        &self.B,
+        &self.C,
+      );
+
+      return R1CSShape {
+        num_cons: self.num_cons.next_power_of_two(),
+        num_vars: self.num_vars,
+        num_io: self.num_io,
+        A: self.A.clone(),
+        B: self.B.clone(),
+        C: self.C.clone(),
+        digest,
+      };
+    }
+
+    // otherwise, we need to pad the number of variables and renumber variable accesses
+    let num_vars_padded = self.num_vars.next_power_of_two();
+    let num_cons_padded = self.num_cons.next_power_of_two();
+    let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
+      M.par_iter()
+        .map(|(r, c, v)| {
+          if c >= &self.num_vars {
+            (*r, c + num_vars_padded - self.num_vars, *v)
+          } else {
+            (*r, *c, *v)
+          }
+        })
+        .collect::<Vec<_>>()
+    };
+
+    let A_padded = apply_pad(&self.A);
+    let B_padded = apply_pad(&self.B);
+    let C_padded = apply_pad(&self.C);
+
+    let digest = Self::compute_digest(
+      num_cons_padded,
+      num_vars_padded,
+      self.num_io,
+      &A_padded,
+      &B_padded,
+      &C_padded,
+    );
+
+    R1CSShape {
+      num_cons: num_cons_padded,
+      num_vars: num_vars_padded,
+      num_io: self.num_io,
+      A: A_padded,
+      B: B_padded,
+      C: C_padded,
+      digest,
+    }
   }
 }
 
@@ -391,7 +470,7 @@ impl<G: Group> R1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    self.W.commit(&gens.gens_W)
+    self.W.commit(&gens.gens)
   }
 }
 
@@ -448,7 +527,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
-    (self.W.commit(&gens.gens_W), self.E.commit(&gens.gens_E))
+    (self.W.commit(&gens.gens), self.E.commit(&gens.gens))
   }
 
   /// Folds an incoming R1CSWitness into the current one
@@ -476,6 +555,23 @@ impl<G: Group> RelaxedR1CSWitness<G> {
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
     Ok(RelaxedR1CSWitness { W, E })
+  }
+
+  /// Pads the provided witness to the correct length
+  pub fn pad(&self, S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
+    let W = {
+      let mut W = self.W.clone();
+      W.extend(vec![G::Scalar::zero(); S.num_vars - W.len()]);
+      W
+    };
+
+    let E = {
+      let mut E = self.E.clone();
+      E.extend(vec![G::Scalar::zero(); S.num_cons - E.len()]);
+      E
+    };
+
+    Self { W, E }
   }
 }
 

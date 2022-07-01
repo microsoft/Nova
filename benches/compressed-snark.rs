@@ -1,8 +1,5 @@
 #![allow(non_snake_case)]
 
-extern crate flate2;
-
-//use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{Group, StepCircuit},
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -10,6 +7,8 @@ use nova_snark::{
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
+type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
+type S2 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
 
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
@@ -65,21 +64,16 @@ fn bench_compressed_snark(c: &mut Criterion, num_samples: usize, num_steps: usiz
   // Bench time to produce a compressed SNARK
   group.bench_function("Prove", |b| {
     b.iter(|| {
-      assert!(CompressedSNARK::prove(black_box(&pp), black_box(&recursive_snark)).is_ok());
+      assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
+        black_box(&pp),
+        black_box(&recursive_snark)
+      )
+      .is_ok());
     })
   });
-  let res = CompressedSNARK::prove(&pp, &recursive_snark);
+  let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
   assert!(res.is_ok());
   let compressed_snark = res.unwrap();
-
-  // Output the proof size
-  //let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-  //bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
-  //let proof_encoded = encoder.finish().unwrap();
-  //println!(
-  //  "ProofSize: {} B",
-  //  proof_encoded.len(),
-  //);
 
   // Benchmark the verification time
   let name = "Verify";

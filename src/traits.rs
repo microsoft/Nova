@@ -19,18 +19,20 @@ pub trait Group:
   + GroupOpsOwned
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
+  + Send
+  + Sync
 {
   /// A type representing an element of the base field of the group
   type Base: PrimeField + PrimeFieldBits;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait;
+  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait + Send + Sync;
 
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement;
+  type PreprocessedGroupElement: Clone + Send + Sync;
 
   /// A type that represents a hash function that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -44,6 +46,9 @@ pub trait Group:
 
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
+
+  /// Produces a preprocessed element
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement;
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
@@ -88,7 +93,7 @@ pub trait ChallengeTrait {
 /// A helper trait that defines the behavior of a hash function that we use as an RO
 pub trait HashFuncTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Base> + Clone;
+  type Constants: HashFuncConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
@@ -135,7 +140,7 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A helper trait for a step of the incremental computation (i.e., circuit for F)
-pub trait StepCircuit<F: PrimeField> {
+pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
   /// Sythesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step z_{i+1}
   fn synthesize<CS: ConstraintSystem<F>>(

@@ -1,7 +1,6 @@
 //! There are two Verification Circuits. The primary and the secondary.
 //! Each of them is over a Pasta curve but
 //! only the primary executes the next step of the computation.
-//! TODO: The base case is different for the primary and the secondary.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
 //! of the running instances. Each of these hashes is
 //! H(params = H(shape, gens), i, z0, zi, U). Each circuit folds the last invocation of
@@ -267,7 +266,7 @@ where
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?; //TODO: maybe optimize this?
+    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // Synthesize the circuit for the base case and get the new running instance
     let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
@@ -362,6 +361,7 @@ mod tests {
   use ff::PrimeField;
   use std::marker::PhantomData;
 
+  #[derive(Clone)]
   struct TestCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
@@ -430,15 +430,8 @@ mod tests {
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
-      shape2.get_digest(),
-      zero1,
-      zero1, // TODO: Provide real input for z0
-      None,
-      None,
-      None,
-      None,
-    );
+    let inputs1: NIFSVerifierCircuitInputs<G2> =
+      NIFSVerifierCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params1,

@@ -20,4 +20,8 @@ pub enum NovaError {
   ProofVerifyError,
   /// returned if the provided number of steps is zero
   InvalidNumSteps,
+  /// returned when an invalid inner product argument is provided
+  InvalidIPA,
+  /// returned when an invalid sum-check proof is provided
+  InvalidSumcheckProof,
 }

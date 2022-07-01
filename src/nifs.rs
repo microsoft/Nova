@@ -11,6 +11,7 @@ use super::traits::{AbsorbInROTrait, Group, HashFuncTrait};
 use std::marker::PhantomData;
 
 /// A SNARK that holds the proof of a step of an incremental computation
+#[allow(clippy::upper_case_acronyms)]
 pub struct NIFS<G: Group> {
   pub(crate) comm_T: CompressedCommitment<G::CompressedGroupElement>,
   _p: PhantomData<G>,

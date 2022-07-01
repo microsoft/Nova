@@ -3,16 +3,21 @@
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
 
-pub mod bellperson;
+// private modules
 mod circuit;
 mod commitments;
 mod constants;
+mod nifs;
+mod poseidon;
+mod r1cs;
+
+// public modules
+pub mod bellperson;
 pub mod errors;
 pub mod gadgets;
-pub mod nifs;
 pub mod pasta;
-mod poseidon;
-pub mod r1cs;
+pub mod snark;
+pub mod spartan_with_ipa_pc;
 pub mod traits;
 
 use crate::bellperson::{
@@ -32,6 +37,7 @@ use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it wi
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use snark::RelaxedR1CSSNARKTrait;
 use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
 
 type ROConstants<G> =
@@ -49,10 +55,12 @@ where
   ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
+  r1cs_shape_padded_primary: R1CSShape<G1>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
+  r1cs_shape_padded_secondary: R1CSShape<G2>,
   c_primary: C1,
   c_secondary: C2,
   params_primary: NIFSVerifierCircuitParams,
@@ -89,6 +97,7 @@ where
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let r1cs_shape_padded_primary = r1cs_shape_primary.pad();
 
     // Initialize gens for the secondary
     let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
@@ -100,16 +109,19 @@ where
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let r1cs_shape_padded_secondary = r1cs_shape_secondary.pad();
 
     Self {
       ro_consts_primary,
       ro_consts_circuit_primary,
       r1cs_gens_primary,
       r1cs_shape_primary,
+      r1cs_shape_padded_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       r1cs_gens_secondary,
       r1cs_shape_secondary,
+      r1cs_shape_padded_secondary,
       c_primary,
       c_secondary,
       params_primary,
@@ -366,50 +378,74 @@ where
     }
 
     // check the satisfiability of the provided instances
-    pp.r1cs_shape_primary.is_sat_relaxed(
-      &pp.r1cs_gens_primary,
-      &self.r_U_primary,
-      &self.r_W_primary,
-    )?;
+    let ((res_r_primary, res_l_primary), (res_r_secondary, res_l_secondary)) = rayon::join(
+      || {
+        rayon::join(
+          || {
+            pp.r1cs_shape_primary.is_sat_relaxed(
+              &pp.r1cs_gens_primary,
+              &self.r_U_primary,
+              &self.r_W_primary,
+            )
+          },
+          || {
+            pp.r1cs_shape_primary.is_sat(
+              &pp.r1cs_gens_primary,
+              &self.l_u_primary,
+              &self.l_w_primary,
+            )
+          },
+        )
+      },
+      || {
+        rayon::join(
+          || {
+            pp.r1cs_shape_secondary.is_sat_relaxed(
+              &pp.r1cs_gens_secondary,
+              &self.r_U_secondary,
+              &self.r_W_secondary,
+            )
+          },
+          || {
+            pp.r1cs_shape_secondary.is_sat(
+              &pp.r1cs_gens_secondary,
+              &self.l_u_secondary,
+              &self.l_w_secondary,
+            )
+          },
+        )
+      },
+    );
 
-    pp.r1cs_shape_primary
-      .is_sat(&pp.r1cs_gens_primary, &self.l_u_primary, &self.l_w_primary)?;
-
-    pp.r1cs_shape_secondary.is_sat_relaxed(
-      &pp.r1cs_gens_secondary,
-      &self.r_U_secondary,
-      &self.r_W_secondary,
-    )?;
-
-    pp.r1cs_shape_secondary.is_sat(
-      &pp.r1cs_gens_secondary,
-      &self.l_u_secondary,
-      &self.l_w_secondary,
-    )?;
+    // check the returned res objects
+    res_r_primary?;
+    res_l_primary?;
+    res_r_secondary?;
+    res_l_secondary?;
 
     Ok((self.zn_primary, self.zn_secondary))
   }
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
-/// For now, it implements a constant factor compression.
-/// In the future, we will implement an exponential reduction in proof sizes
-pub struct CompressedSNARK<G1, G2, C1, C2>
+pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
   nifs_primary: NIFS<G1>,
-  f_W_primary: RelaxedR1CSWitness<G1>,
+  f_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
   nifs_secondary: NIFS<G2>,
-  f_W_secondary: RelaxedR1CSWitness<G2>,
+  f_W_snark_secondary: S2,
 
   zn_primary: G1::Scalar,
   zn_secondary: G2::Scalar,
@@ -418,50 +454,84 @@ where
   _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, C1, C2> CompressedSNARK<G1, G2, C1, C2>
+impl<G1, G2, C1, C2, S1, S2> CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
 {
   /// Create a new `CompressedSNARK`
   pub fn prove(
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
-    // fold the primary circuit's instance
-    let (nifs_primary, (_f_U_primary, f_W_primary)) = NIFS::prove(
-      &pp.r1cs_gens_primary,
-      &pp.ro_consts_primary,
-      &pp.r1cs_shape_primary,
-      &recursive_snark.r_U_primary,
-      &recursive_snark.r_W_primary,
-      &recursive_snark.l_u_primary,
-      &recursive_snark.l_w_primary,
-    )?;
+    let (res_primary, res_secondary) = rayon::join(
+      // fold the primary circuit's instance
+      || {
+        NIFS::prove(
+          &pp.r1cs_gens_primary,
+          &pp.ro_consts_primary,
+          &pp.r1cs_shape_primary,
+          &recursive_snark.r_U_primary,
+          &recursive_snark.r_W_primary,
+          &recursive_snark.l_u_primary,
+          &recursive_snark.l_w_primary,
+        )
+      },
+      || {
+        // fold the secondary circuit's instance
+        NIFS::prove(
+          &pp.r1cs_gens_secondary,
+          &pp.ro_consts_secondary,
+          &pp.r1cs_shape_secondary,
+          &recursive_snark.r_U_secondary,
+          &recursive_snark.r_W_secondary,
+          &recursive_snark.l_u_secondary,
+          &recursive_snark.l_w_secondary,
+        )
+      },
+    );
 
-    // fold the secondary circuit's instance
-    let (nifs_secondary, (_f_U_secondary, f_W_secondary)) = NIFS::prove(
-      &pp.r1cs_gens_secondary,
-      &pp.ro_consts_secondary,
-      &pp.r1cs_shape_secondary,
-      &recursive_snark.r_U_secondary,
-      &recursive_snark.r_W_secondary,
-      &recursive_snark.l_u_secondary,
-      &recursive_snark.l_w_secondary,
-    )?;
+    let (nifs_primary, (f_U_primary, f_W_primary)) = res_primary?;
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
+
+    // produce a prover key for the SNARK
+    let (pk_primary, pk_secondary) = rayon::join(
+      || S1::prover_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
+      || S2::prover_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
+    );
+
+    // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
+    let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
+      || {
+        S1::prove(
+          &pk_primary,
+          &f_U_primary,
+          &f_W_primary.pad(&pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
+        )
+      },
+      || {
+        S2::prove(
+          &pk_secondary,
+          &f_U_secondary,
+          &f_W_secondary.pad(&pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
+        )
+      },
+    );
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
       l_u_primary: recursive_snark.l_u_primary.clone(),
       nifs_primary,
-      f_W_primary,
+      f_W_snark_primary: f_W_snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
-      f_W_secondary,
+      f_W_snark_secondary: f_W_snark_secondary?,
 
       zn_primary: recursive_snark.zn_primary,
       zn_secondary: recursive_snark.zn_secondary,
@@ -532,15 +602,24 @@ where
       &self.l_u_secondary,
     )?;
 
-    // check the satisfiability of the folded instances using the purported folded witnesses
-    pp.r1cs_shape_primary
-      .is_sat_relaxed(&pp.r1cs_gens_primary, &f_U_primary, &self.f_W_primary)?;
+    // produce a verifier key for the SNARK
+    let (vk_primary, vk_secondary) = rayon::join(
+      || S1::verifier_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
+      || S2::verifier_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
+    );
 
-    pp.r1cs_shape_secondary.is_sat_relaxed(
-      &pp.r1cs_gens_secondary,
-      &f_U_secondary,
-      &self.f_W_secondary,
-    )?;
+    // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
+    let (res_primary, res_secondary) = rayon::join(
+      || self.f_W_snark_primary.verify(&vk_primary, &f_U_primary),
+      || {
+        self
+          .f_W_snark_secondary
+          .verify(&vk_secondary, &f_U_secondary)
+      },
+    );
+
+    res_primary?;
+    res_secondary?;
 
     Ok((self.zn_primary, self.zn_secondary))
   }
@@ -551,6 +630,8 @@ mod tests {
   use super::*;
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
+  type S1 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
+  type S2 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::PrimeField;
   use std::marker::PhantomData;
@@ -710,9 +791,62 @@ mod tests {
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
+  }
+
+  #[test]
+  fn test_ivc_nontrivial_with_compression() {
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      CubicCircuit {
+        _p: Default::default(),
+      },
+    );
+
+    let num_steps = 3;
+
+    // produce a recursive SNARK
+    let res = RecursiveSNARK::prove(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+    let recursive_snark = res.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      <G1 as Group>::Scalar::one(),
+      <G2 as Group>::Scalar::zero(),
+    );
+    assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
+    let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
+    for _i in 0..num_steps {
+      zn_secondary_direct = CubicCircuit {
+        _p: Default::default(),
+      }
+      .compute(&zn_secondary_direct);
+    }
+    assert_eq!(zn_secondary, zn_secondary_direct);
+    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::prove(&pp, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
