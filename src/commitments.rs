@@ -35,7 +35,7 @@ impl<G: Group> CommitGens<G> {
     }
   }
 
-  pub fn len(&self) -> usize {
+  fn len(&self) -> usize {
     self.gens.len()
   }
 

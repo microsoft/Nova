@@ -172,8 +172,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
   ) -> Result<Self, NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
 
-    let n = W.a_vec.len();
-    if U.b_vec.len() != n || gens.len() != n || !gens.len().is_power_of_two() {
+    if U.b_vec.len() != W.a_vec.len() {
       return Err(NovaError::InvalidInputLength);
     }
 
@@ -193,7 +192,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
       let mut gens_ref = gens.clone();
 
       // two vectors to hold the logarithmic number of group elements
-      let mut n = gens_ref.len();
+      let mut n = W.a_vec.len();
       let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
       let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
 
@@ -292,8 +291,7 @@ impl<G: Group> FinalInnerProductArgument<G> {
     transcript: &mut Transcript,
   ) -> Result<(), NovaError> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
-    if gens.len() != n
-      || U.b_vec.len() != n
+    if U.b_vec.len() != n
       || n != (1 << self.L_vec.len())
       || self.L_vec.len() != self.R_vec.len()
       || self.L_vec.len() >= 32
