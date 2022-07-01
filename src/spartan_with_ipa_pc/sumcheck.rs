@@ -1,8 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
-use super::errors::NovaError;
 use super::polynomial::MultilinearPolynomial;
-use super::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use crate::errors::NovaError;
+use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 use core::marker::PhantomData;
 use ff::Field;
 use merlin::Transcript;

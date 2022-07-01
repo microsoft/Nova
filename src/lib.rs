@@ -3,19 +3,20 @@
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
 
-pub mod bellperson;
+// private modules
 mod circuit;
 mod commitments;
 mod constants;
+mod nifs;
+mod poseidon;
+mod r1cs;
+mod spartan_with_ipa_pc;
+
+// public modules
+pub mod bellperson;
 pub mod errors;
 pub mod gadgets;
-mod ipa;
-pub mod nifs;
 pub mod pasta;
-mod polynomial;
-mod poseidon;
-pub mod r1cs;
-mod sumcheck;
 pub mod traits;
 
 use crate::bellperson::{
@@ -33,9 +34,9 @@ use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSSNARK,
-  RelaxedR1CSWitness,
+  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use spartan_with_ipa_pc::RelaxedR1CSSNARK;
 use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
 
 type ROConstants<G> =
@@ -499,7 +500,7 @@ where
           &pp.r1cs_gens_primary,
           &pp.r1cs_shape_padded_primary,
           &f_U_primary,
-          &f_W_primary,
+          &f_W_primary.pad(&pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
         )
       },
       || {
@@ -507,7 +508,7 @@ where
           &pp.r1cs_gens_secondary,
           &pp.r1cs_shape_padded_secondary,
           &f_U_secondary,
-          &f_W_secondary,
+          &f_W_secondary.pad(&pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
         )
       },
     );

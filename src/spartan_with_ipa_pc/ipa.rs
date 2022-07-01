@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
-use super::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
-use super::errors::NovaError;
-use super::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use crate::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
+use crate::errors::NovaError;
+use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
