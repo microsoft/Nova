@@ -11,7 +11,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt, Group as OtherGroup},
-  group::{Curve, Group as Grp, GroupEncoding},
+  group::{Curve, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
 use rand::SeedableRng;

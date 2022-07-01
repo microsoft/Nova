@@ -156,7 +156,44 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
       let evals_rx = EqPolynomial::new(r_x.clone()).evals();
-      let (evals_A, evals_B, evals_C) = pk.S.compute_eval_table_sparse(&evals_rx);
+
+      // Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials
+      let compute_eval_table_sparse =
+        |S: &R1CSShape<G>, rx: &[G::Scalar]| -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
+          assert_eq!(rx.len(), S.num_cons);
+
+          let inner = |M: &Vec<(usize, usize, G::Scalar)>, M_evals: &mut Vec<G::Scalar>| {
+            for (row, col, val) in M {
+              M_evals[*col] += rx[*row] * val;
+            }
+          };
+
+          let (A_evals, (B_evals, C_evals)) = rayon::join(
+            || {
+              let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+              inner(&S.A, &mut A_evals);
+              A_evals
+            },
+            || {
+              rayon::join(
+                || {
+                  let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+                  inner(&S.B, &mut B_evals);
+                  B_evals
+                },
+                || {
+                  let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+                  inner(&S.C, &mut C_evals);
+                  C_evals
+                },
+              )
+            },
+          );
+
+          (A_evals, B_evals, C_evals)
+        };
+
+      let (evals_A, evals_B, evals_C) = compute_eval_table_sparse(&pk.S, &evals_rx);
 
       assert_eq!(evals_A.len(), evals_B.len());
       assert_eq!(evals_A.len(), evals_C.len());

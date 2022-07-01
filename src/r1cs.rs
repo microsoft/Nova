@@ -171,44 +171,6 @@ impl<G: Group> R1CSShape<G> {
     Ok((Az, Bz, Cz))
   }
 
-  /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials
-  pub fn compute_eval_table_sparse(
-    &self,
-    rx: &[G::Scalar],
-  ) -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
-    assert_eq!(rx.len(), self.num_cons);
-
-    let inner = |M: &Vec<(usize, usize, G::Scalar)>, M_evals: &mut Vec<G::Scalar>| {
-      for (row, col, val) in M {
-        M_evals[*col] += rx[*row] * val;
-      }
-    };
-
-    let (A_evals, (B_evals, C_evals)) = rayon::join(
-      || {
-        let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
-        inner(&self.A, &mut A_evals);
-        A_evals
-      },
-      || {
-        rayon::join(
-          || {
-            let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
-            inner(&self.B, &mut B_evals);
-            B_evals
-          },
-          || {
-            let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * self.num_vars];
-            inner(&self.C, &mut C_evals);
-            C_evals
-          },
-        )
-      },
-    );
-
-    (A_evals, B_evals, C_evals)
-  }
-
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat_relaxed(
     &self,
