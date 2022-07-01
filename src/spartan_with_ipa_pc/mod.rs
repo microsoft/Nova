@@ -201,7 +201,6 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
         .collect::<Vec<G::Scalar>>()
     };
 
-    // TODO: fix this
     let poly_z = {
       z.resize(pk.S.num_vars * 2, G::Scalar::zero());
       z

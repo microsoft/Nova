@@ -397,43 +397,21 @@ impl<G: Group> R1CSShape<G> {
     // otherwise, we need to pad the number of variables and renumber variable accesses
     let num_vars_padded = self.num_vars.next_power_of_two();
     let num_cons_padded = self.num_cons.next_power_of_two();
+    let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
+      M.par_iter()
+        .map(|(r, c, v)| {
+          if c >= &self.num_vars {
+            (*r, c + num_vars_padded - self.num_vars, *v)
+          } else {
+            (*r, *c, *v)
+          }
+        })
+        .collect::<Vec<_>>()
+    };
 
-    // TODO: cut duplicate code
-    let A_padded = self
-      .A
-      .par_iter()
-      .map(|(r, c, v)| {
-        if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, *v)
-        } else {
-          (*r, *c, *v)
-        }
-      })
-      .collect::<Vec<_>>();
-
-    let B_padded = self
-      .B
-      .par_iter()
-      .map(|(r, c, v)| {
-        if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, *v)
-        } else {
-          (*r, *c, *v)
-        }
-      })
-      .collect::<Vec<_>>();
-
-    let C_padded = self
-      .C
-      .par_iter()
-      .map(|(r, c, v)| {
-        if c >= &self.num_vars {
-          (*r, c + num_vars_padded - self.num_vars, *v)
-        } else {
-          (*r, *c, *v)
-        }
-      })
-      .collect::<Vec<_>>();
+    let A_padded = apply_pad(&self.A);
+    let B_padded = apply_pad(&self.B);
+    let C_padded = apply_pad(&self.C);
 
     let digest = Self::compute_digest(
       num_cons_padded,

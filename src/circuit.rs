@@ -430,15 +430,8 @@ mod tests {
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
-      shape2.get_digest(),
-      zero1,
-      zero1, // TODO: Provide real input for z0
-      None,
-      None,
-      None,
-      None,
-    );
+    let inputs1: NIFSVerifierCircuitInputs<G2> =
+      NIFSVerifierCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params1,
