@@ -1,6 +1,8 @@
 # Nova: Recursive SNARKs without trusted setup
 
-Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). The details of Nova are described in our [paper](https://eprint.iacr.org/2021/370). Recursive SNARKs including Nova have a wide variety of applications such as constructions of verifiable delay functions (VDFs), succinct blockchains, and incrementally verifiable versions of [verifiable state machines](https://eprint.iacr.org/2020/758.pdf). A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is dominated by two group scalar multiplications.
+Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). 
+
+Recursive SNARKs including Nova have a wide variety of applications such as Rollups, verifiable delay functions (VDFs), succinct blockchains, and incrementally verifiable versions of [verifiable state machines](https://eprint.iacr.org/2020/758.pdf). A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is dominated by two group scalar multiplications. The details of Nova are described in our CRYPTO 2022 [paper](https://eprint.iacr.org/2021/370).
 
 This repository provides `nova-snark,` a Rust library implementation of Nova.
 
@@ -12,11 +14,10 @@ cargo test
 ## References
 [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370) \
 Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
-Cryptology ePrint Archive: Report 2021/370
+CRYPTO 2022
 
-## Acknowledgements
-The first version of the code was written by: Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla.
-The latest code includes code contributions from Chhi'mèd Künzang and Friedel Ziegelmayer.
+## Acknowledgments
+See the contributors list [here](https://github.com/microsoft/Nova/graphs/contributors)
 
 ## Contributing
 
