@@ -54,7 +54,6 @@ mod tests {
     let _ = synthesize_alloc_bit(&mut cs);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
-    println!("Mult mod constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();

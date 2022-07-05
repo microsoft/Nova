@@ -1,4 +1,4 @@
-//! This library implements core components of Nova.
+//! This library implements Nova, a high-speed recursive SNARK.
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![deny(missing_docs)]
