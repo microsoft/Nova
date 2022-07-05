@@ -81,6 +81,7 @@ where
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
 
+    // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
