@@ -36,8 +36,8 @@ where
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Strengthened);
-    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Strengthened);
+    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Standard);
+    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Standard);
     Self {
       constants27,
       constants32,
