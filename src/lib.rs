@@ -33,31 +33,30 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use poseidon::ROConstantsCircuit; // TODO: make this a trait so we can use it without the concrete implementation
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use snark::RelaxedR1CSSNARKTrait;
-use traits::{AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, StepCircuit};
-
-type ROConstants<G> =
-  <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+use traits::{
+  AbsorbInROTrait, Group, HashFuncConstants, HashFuncConstantsCircuit, HashFuncConstantsTrait,
+  HashFuncTrait, StepCircuit,
+};
 
 /// A type that holds public parameters of Nova
 pub struct PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
-  ro_consts_primary: ROConstants<G1>,
-  ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base>,
+  ro_consts_primary: HashFuncConstants<G1>,
+  ro_consts_circuit_primary: HashFuncConstantsCircuit<G2>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
   r1cs_shape_padded_primary: R1CSShape<G1>,
-  ro_consts_secondary: ROConstants<G2>,
-  ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base>,
+  ro_consts_secondary: HashFuncConstants<G2>,
+  ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   r1cs_shape_padded_secondary: R1CSShape<G2>,
@@ -71,21 +70,22 @@ impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
     let params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
-    let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
-    let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
+    let ro_consts_primary: HashFuncConstants<G1> = HashFuncConstants::<G1>::new();
+    let ro_consts_secondary: HashFuncConstants<G2> = HashFuncConstants::<G2>::new();
 
-    let ro_consts_circuit_primary: ROConstantsCircuit<<G2 as Group>::Base> =
-      ROConstantsCircuit::new();
-    let ro_consts_circuit_secondary: ROConstantsCircuit<<G1 as Group>::Base> =
-      ROConstantsCircuit::new();
+    // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
+    let ro_consts_circuit_primary: HashFuncConstantsCircuit<G2> =
+      HashFuncConstantsCircuit::<G2>::new();
+    let ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1> =
+      HashFuncConstantsCircuit::<G1>::new();
 
     // Initialize gens for the primary
     let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
@@ -135,8 +135,8 @@ pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
@@ -156,8 +156,8 @@ impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar> + Clone,
-  C2: StepCircuit<G2::Scalar> + Clone,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `RecursiveSNARK`
   pub fn prove(
