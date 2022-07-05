@@ -46,7 +46,7 @@ where
 }
 
 /// A Poseidon-based RO to use outside circuits
-pub struct PoseidonRO<Base, Scalar>
+pub struct PoseidonHashFunc<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -58,7 +58,7 @@ where
   _p: PhantomData<Scalar>,
 }
 
-impl<Base, Scalar> PoseidonRO<Base, Scalar>
+impl<Base, Scalar> PoseidonHashFunc<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -81,7 +81,7 @@ where
   }
 }
 
-impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
+impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonHashFunc<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -134,7 +134,7 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
-pub struct PoseidonROCircuit<Scalar>
+pub struct PoseidonHashFuncCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -143,7 +143,7 @@ where
   constants: PoseidonConstantsCircuit<Scalar>,
 }
 
-impl<Scalar> PoseidonROCircuit<Scalar>
+impl<Scalar> PoseidonHashFuncCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -184,7 +184,7 @@ where
   }
 }
 
-impl<Scalar> HashFuncCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
+impl<Scalar> HashFuncCircuitTrait<Scalar> for PoseidonHashFuncCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -236,8 +236,8 @@ mod tests {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::new();
-    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
-    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
+    let mut ro: PoseidonHashFunc<S, B> = PoseidonHashFunc::new(constants.clone());
+    let mut ro_gadget: PoseidonHashFuncCircuit<S> = PoseidonHashFuncCircuit::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
       let num = S::random(&mut csprng);

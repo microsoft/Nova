@@ -8,7 +8,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, HashFuncCircuitTrait, ROConstantsCircuit},
+  traits::{Group, HashFuncCircuitTrait, HashFuncConstantsCircuit},
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
@@ -262,7 +262,7 @@ where
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
-    ro_consts: ROConstantsCircuit<G>,
+    ro_consts: HashFuncConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {

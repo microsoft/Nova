@@ -38,8 +38,8 @@ use r1cs::{
 };
 use snark::RelaxedR1CSSNARKTrait;
 use traits::{
-  AbsorbInROTrait, Group, HashFuncConstantsTrait, HashFuncTrait, ROConstants, ROConstantsCircuit,
-  StepCircuit,
+  AbsorbInROTrait, Group, HashFuncConstants, HashFuncConstantsCircuit, HashFuncConstantsTrait,
+  HashFuncTrait, StepCircuit,
 };
 
 /// A type that holds public parameters of Nova
@@ -50,13 +50,13 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-  ro_consts_primary: ROConstants<G1>,
-  ro_consts_circuit_primary: ROConstantsCircuit<G2>,
+  ro_consts_primary: HashFuncConstants<G1>,
+  ro_consts_circuit_primary: HashFuncConstantsCircuit<G2>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
   r1cs_shape_padded_primary: R1CSShape<G1>,
-  ro_consts_secondary: ROConstants<G2>,
-  ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
+  ro_consts_secondary: HashFuncConstants<G2>,
+  ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   r1cs_shape_padded_secondary: R1CSShape<G2>,
@@ -78,12 +78,14 @@ where
     let params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
-    let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
-    let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
+    let ro_consts_primary: HashFuncConstants<G1> = HashFuncConstants::<G1>::new();
+    let ro_consts_secondary: HashFuncConstants<G2> = HashFuncConstants::<G2>::new();
 
     // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
-    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
-    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
+    let ro_consts_circuit_primary: HashFuncConstantsCircuit<G2> =
+      HashFuncConstantsCircuit::<G2>::new();
+    let ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1> =
+      HashFuncConstantsCircuit::<G1>::new();
 
     // Initialize gens for the primary
     let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(

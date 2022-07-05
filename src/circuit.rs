@@ -16,7 +16,7 @@ use super::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, HashFuncCircuitTrait, ROConstantsCircuit, StepCircuit},
+  traits::{Group, HashFuncCircuitTrait, HashFuncConstantsCircuit, StepCircuit},
 };
 use bellperson::{
   gadgets::{
@@ -90,7 +90,7 @@ where
   SC: StepCircuit<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
-  ro_consts: ROConstantsCircuit<G>,
+  ro_consts: HashFuncConstantsCircuit<G>,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
@@ -105,7 +105,7 @@ where
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
     step_circuit: SC,
-    ro_consts: ROConstantsCircuit<G>,
+    ro_consts: HashFuncConstantsCircuit<G>,
   ) -> Self {
     Self {
       params,
@@ -388,8 +388,8 @@ mod tests {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
+    let ro_consts1: HashFuncConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
+    let ro_consts2: HashFuncConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =

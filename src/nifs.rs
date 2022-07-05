@@ -17,7 +17,7 @@ pub struct NIFS<G: Group> {
   _p: PhantomData<G>,
 }
 
-type ROConstants<G> =
+type HashFuncConstants<G> =
   <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
 impl<G: Group> NIFS<G> {
@@ -29,7 +29,7 @@ impl<G: Group> NIFS<G> {
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
     gens: &R1CSGens<G>,
-    ro_consts: &ROConstants<G>,
+    ro_consts: &HashFuncConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
@@ -78,7 +78,7 @@ impl<G: Group> NIFS<G> {
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
-    ro_consts: &ROConstants<G>,
+    ro_consts: &HashFuncConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,

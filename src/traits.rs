@@ -143,11 +143,11 @@ pub trait HashFuncConstantsTrait<Base> {
 }
 
 /// An alias for constants associated with G::HashFunc
-pub type ROConstants<G> =
+pub type HashFuncConstants<G> =
   <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
 /// An alias for constants associated with G::HashFuncCircuit
-pub type ROConstantsCircuit<G> =
+pub type HashFuncConstantsCircuit<G> =
   <<G as Group>::HashFuncCircuit as HashFuncCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// A helper trait for types with a group operation.
