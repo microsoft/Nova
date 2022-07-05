@@ -1,7 +1,7 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
 use super::{
   constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS},
-  traits::{HashFuncConstantsTrait, HashFuncTrait},
+  traits::{HashFuncCircuitTrait, HashFuncConstantsTrait, HashFuncTrait},
 };
 use bellperson::{
   gadgets::{
@@ -21,7 +21,7 @@ use neptune::{
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
-pub struct ROConstantsCircuit<Scalar>
+pub struct PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField,
 {
@@ -29,7 +29,7 @@ where
   constants32: PoseidonConstants<Scalar, U32>,
 }
 
-impl<Scalar> HashFuncConstantsTrait<Scalar> for ROConstantsCircuit<Scalar>
+impl<Scalar> HashFuncConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -54,7 +54,7 @@ where
   // Internal State
   state: Vec<Base>,
   // Constants for Poseidon
-  constants: ROConstantsCircuit<Base>,
+  constants: PoseidonConstantsCircuit<Base>,
   _p: PhantomData<Scalar>,
 }
 
@@ -86,9 +86,9 @@ where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
 {
-  type Constants = ROConstantsCircuit<Base>;
+  type Constants = PoseidonConstantsCircuit<Base>;
 
-  fn new(constants: ROConstantsCircuit<Base>) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Base>) -> Self {
     Self {
       state: Vec::new(),
       constants,
@@ -134,32 +134,19 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
-pub struct PoseidonROGadget<Scalar>
+pub struct PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
-  constants: ROConstantsCircuit<Scalar>,
+  constants: PoseidonConstantsCircuit<Scalar>,
 }
 
-impl<Scalar> PoseidonROGadget<Scalar>
+impl<Scalar> PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  /// Initialize the internal state and set the poseidon constants
-  pub fn new(constants: ROConstantsCircuit<Scalar>) -> Self {
-    Self {
-      state: Vec::new(),
-      constants,
-    }
-  }
-
-  /// Absorb a new number into the state of the oracle
-  pub fn absorb(&mut self, e: AllocatedNum<Scalar>) {
-    self.state.push(e);
-  }
-
   fn hash_inner<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
@@ -195,9 +182,29 @@ where
         .collect(),
     )
   }
+}
+
+impl<Scalar> HashFuncCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
+where
+  Scalar: PrimeField + PrimeFieldBits,
+{
+  type Constants = PoseidonConstantsCircuit<Scalar>;
+
+  /// Initialize the internal state and set the poseidon constants
+  fn new(constants: PoseidonConstantsCircuit<Scalar>) -> Self {
+    Self {
+      state: Vec::new(),
+      constants,
+    }
+  }
+
+  /// Absorb a new number into the state of the oracle
+  fn absorb(&mut self, e: AllocatedNum<Scalar>) {
+    self.state.push(e);
+  }
 
   /// Compute a challenge by hashing the current state
-  pub fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
@@ -205,7 +212,7 @@ where
     Ok(bits[..NUM_CHALLENGE_BITS].into())
   }
 
-  pub fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
@@ -228,9 +235,9 @@ mod tests {
   fn test_poseidon_ro() {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = ROConstantsCircuit::new();
+    let constants = PoseidonConstantsCircuit::new();
     let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
-    let mut ro_gadget: PoseidonROGadget<S> = PoseidonROGadget::new(constants);
+    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
       let num = S::random(&mut csprng);

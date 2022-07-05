@@ -15,9 +15,8 @@ use super::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select, le_bits_to_num,
     },
   },
-  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, StepCircuit},
+  traits::{Group, HashFuncCircuitTrait, ROConstantsCircuit, StepCircuit},
 };
 use bellperson::{
   gadgets::{
@@ -91,7 +90,7 @@ where
   SC: StepCircuit<G::Base>,
 {
   params: NIFSVerifierCircuitParams,
-  ro_consts: ROConstantsCircuit<G::Base>,
+  ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NIFSVerifierCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
@@ -106,7 +105,7 @@ where
     params: NIFSVerifierCircuitParams,
     inputs: Option<NIFSVerifierCircuitInputs<G>>,
     step_circuit: SC,
-    ro_consts: ROConstantsCircuit<G::Base>,
+    ro_consts: ROConstantsCircuit<G>,
   ) -> Self {
     Self {
       params,
@@ -221,7 +220,7 @@ where
     T: AllocatedPoint<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts.clone());
+    let mut ro = G::HashFuncCircuit::new(self.ro_consts.clone());
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(z_0);
@@ -328,7 +327,7 @@ where
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(self.ro_consts);
+    let mut ro = G::HashFuncCircuit::new(self.ro_consts);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
@@ -356,6 +355,7 @@ mod tests {
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
+    poseidon::PoseidonConstantsCircuit,
     traits::HashFuncConstantsTrait,
   };
   use ff::PrimeField;
@@ -388,8 +388,8 @@ mod tests {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<<G2 as Group>::Base> = ROConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<<G1 as Group>::Base> = ROConstantsCircuit::new();
+    let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
     let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =

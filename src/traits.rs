@@ -1,5 +1,8 @@
 //! This module defines various traits required by the users of the library to implement.
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellperson::{
+  gadgets::{boolean::AllocatedBit, num::AllocatedNum},
+  ConstraintSystem, SynthesisError,
+};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
@@ -37,6 +40,9 @@ pub trait Group:
   /// A type that represents a hash function that consumes elements
   /// from the base field and squeezes out elements of the scalar field
   type HashFunc: HashFuncTrait<Self::Base, Self::Scalar>;
+
+  /// An alternate implementation of Self::HashFunc in the circuit model
+  type HashFuncCircuit: HashFuncCircuitTrait<Self::Base>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -108,11 +114,41 @@ pub trait HashFuncTrait<Base, Scalar> {
   fn get_hash(&self) -> Scalar;
 }
 
+/// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
+pub trait HashFuncCircuitTrait<Base: PrimeField> {
+  /// A type representing constants/parameters associated with the hash function
+  type Constants: HashFuncConstantsTrait<Base> + Clone + Send + Sync;
+
+  /// Initializes the hash function
+  fn new(constants: Self::Constants) -> Self;
+
+  /// Adds a scalar to the internal state
+  fn absorb(&mut self, e: AllocatedNum<Base>);
+
+  /// Returns a random challenge by hashing the internal state
+  fn get_challenge<CS>(&mut self, cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>;
+
+  /// Returns a hash of the internal state
+  fn get_hash<CS>(&mut self, cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>;
+}
+
 /// A helper trait that defines the constants associated with a hash function
 pub trait HashFuncConstantsTrait<Base> {
   /// produces constants/parameters associated with the hash function
   fn new() -> Self;
 }
+
+/// An alias for constants associated with G::HashFunc
+pub type ROConstants<G> =
+  <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+
+/// An alias for constants associated with G::HashFuncCircuit
+pub type ROConstantsCircuit<G> =
+  <<G as Group>::HashFuncCircuit as HashFuncCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:

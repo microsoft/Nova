@@ -7,9 +7,8 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  poseidon::{PoseidonROGadget, ROConstantsCircuit},
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::Group,
+  traits::{Group, HashFuncCircuitTrait, ROConstantsCircuit},
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
@@ -61,7 +60,7 @@ where
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro(&self, ro: &mut PoseidonROGadget<G::Base>) {
+  pub fn absorb_in_ro(&self, ro: &mut G::HashFuncCircuit) {
     ro.absorb(self.W.x.clone());
     ro.absorb(self.W.y.clone());
     ro.absorb(self.W.is_infinity.clone());
@@ -208,7 +207,7 @@ where
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    ro: &mut PoseidonROGadget<G::Base>,
+    ro: &mut G::HashFuncCircuit,
   ) -> Result<(), SynthesisError> {
     ro.absorb(self.W.x.clone());
     ro.absorb(self.W.y.clone());
@@ -263,12 +262,12 @@ where
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
-    ro_consts: ROConstantsCircuit<G::Base>,
+    ro_consts: ROConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro: PoseidonROGadget<G::Base> = PoseidonROGadget::new(ro_consts);
+    let mut ro = G::HashFuncCircuit::new(ro_consts);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
