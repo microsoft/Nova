@@ -986,11 +986,11 @@ mod tests {
         // We now check if y = x^{1/5} by checking if y^5 = x
         let y_sq = y.square(cs.namespace(|| "y_sq"))?;
         let y_quad = y_sq.square(cs.namespace(|| "y_quad"))?;
-        let y_fifth = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
+        let y_pow_5 = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
 
         cs.enforce(
           || "y^5 = x",
-          |lc| lc + y_fifth.get_variable(),
+          |lc| lc + y_pow_5.get_variable(),
           |lc| lc + CS::one(),
           |lc| lc + x.get_variable(),
         );
