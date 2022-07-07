@@ -937,6 +937,147 @@ mod tests {
   }
 
   #[test]
+  fn test_ivc_nondet_with_compression() {
+    // y is a non-deterministic advice representing the fifth root of the input at a step.
+    #[derive(Clone, Debug)]
+    struct FifthRootCheckingCircuit<F: PrimeField> {
+      y: F,
+    }
+
+    impl<F> FifthRootCheckingCircuit<F>
+    where
+      F: PrimeField,
+    {
+      fn new(num_steps: usize) -> (F, Vec<Self>) {
+        let mut powers = Vec::new();
+        let rng = &mut rand::rngs::OsRng;
+        let mut seed = F::random(rng);
+        for _i in 0..num_steps + 1 {
+          let mut power = seed.clone();
+          power = power.square();
+          power = power.square();
+          power = power * &seed;
+
+          powers.push(Self { y: power });
+
+          seed = power;
+        }
+
+        // reverse the powers to get roots
+        let roots = powers.into_iter().rev().collect::<Vec<Self>>();
+        (roots[0].y, roots[1..].to_vec())
+      }
+    }
+
+    impl<F> StepCircuit<F> for FifthRootCheckingCircuit<F>
+    where
+      F: PrimeField,
+    {
+      fn synthesize<CS: ConstraintSystem<F>>(
+        &self,
+        cs: &mut CS,
+        z: AllocatedNum<F>,
+      ) -> Result<AllocatedNum<F>, SynthesisError> {
+        let x = z;
+
+        // we allocate a variable and set it to the provided non-derministic advice.
+        let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(self.y))?;
+
+        // We now check if y = x^{1/5} by checking if y^5 = x
+        let y_sq = y.square(cs.namespace(|| "y_sq"))?;
+        let y_quad = y_sq.square(cs.namespace(|| "y_quad"))?;
+        let y_fifth = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
+
+        cs.enforce(
+          || "y^5 = x",
+          |lc| lc + y_fifth.get_variable(),
+          |lc| lc + CS::one(),
+          |lc| lc + x.get_variable(),
+        );
+
+        Ok(y)
+      }
+
+      fn compute(&self, z: &F) -> F {
+        // sanity check
+        let x = *z;
+        let y_pow_5 = {
+          let y = self.y.clone();
+          let y_sq = y.square();
+          let y_quad = y_sq.square();
+          y_quad * self.y
+        };
+        assert_eq!(x, y_pow_5);
+
+        // return non-deterministic advice
+        // as the output of the step
+        self.y
+      }
+    }
+
+    let circuit_primary = FifthRootCheckingCircuit {
+      y: <G1 as Group>::Scalar::zero(),
+    };
+
+    let circuit_secondary = TrivialTestCircuit {
+      _p: Default::default(),
+    };
+
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+
+    let num_steps = 3;
+
+    // produce non-deterministic advice
+    let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
+    let z0_secondary = <G2 as Group>::Scalar::zero();
+
+    // produce a recursive SNARK
+    let mut recursive_snark: Option<
+      RecursiveSNARK<
+        G1,
+        G2,
+        FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+        TrivialTestCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
+
+    for i in 0..num_steps {
+      let res = RecursiveSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        roots[i].clone(),
+        circuit_secondary.clone(),
+        z0_primary,
+        z0_secondary,
+      );
+      assert!(res.is_ok());
+      recursive_snark = Some(res.unwrap());
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    assert!(res.is_ok());
+
+    // produce a compressed SNARK
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+
+    // verify the compressed SNARK
+    let res = compressed_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    assert!(res.is_ok());
+  }
+
+  #[test]
   fn test_ivc_base() {
     // produce public parameters
     let pp = PublicParams::<
