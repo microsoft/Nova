@@ -60,10 +60,10 @@ where
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   r1cs_shape_padded_secondary: R1CSShape<G2>,
-  c_primary: C1,
-  c_secondary: C2,
-  params_primary: NIFSVerifierCircuitParams,
-  params_secondary: NIFSVerifierCircuitParams,
+  nifs_params_primary: NIFSVerifierCircuitParams,
+  nifs_params_secondary: NIFSVerifierCircuitParams,
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
@@ -75,8 +75,8 @@ where
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
-    let params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let nifs_params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let nifs_params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: HashFuncConstants<G1> = HashFuncConstants::<G1>::new();
     let ro_consts_secondary: HashFuncConstants<G2> = HashFuncConstants::<G2>::new();
@@ -89,9 +89,9 @@ where
 
     // Initialize gens for the primary
     let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-      params_primary.clone(),
+      nifs_params_primary.clone(),
       None,
-      c_primary.clone(),
+      c_primary,
       ro_consts_circuit_primary.clone(),
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
@@ -101,9 +101,9 @@ where
 
     // Initialize gens for the secondary
     let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-      params_secondary.clone(),
+      nifs_params_secondary.clone(),
       None,
-      c_secondary.clone(),
+      c_secondary,
       ro_consts_circuit_secondary.clone(),
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -122,15 +122,16 @@ where
       r1cs_gens_secondary,
       r1cs_shape_secondary,
       r1cs_shape_padded_secondary,
-      c_primary,
-      c_secondary,
-      params_primary,
-      params_secondary,
+      nifs_params_primary,
+      nifs_params_secondary,
+      _p_c1: Default::default(),
+      _p_c2: Default::default(),
     }
   }
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
+#[derive(Clone, Debug)]
 pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -146,8 +147,9 @@ where
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
-  zn_primary: G1::Scalar,
-  zn_secondary: G2::Scalar,
+  i: usize,
+  zi_primary: G1::Scalar,
+  zi_secondary: G2::Scalar,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -159,175 +161,191 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-  /// Create a new `RecursiveSNARK`
-  pub fn prove(
+  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
+  /// by executing a step of the incremental computation
+  pub fn prove_step(
     pp: &PublicParams<G1, G2, C1, C2>,
-    num_steps: usize,
+    recursive_snark: Option<Self>,
+    c_primary: C1,
+    c_secondary: C2,
     z0_primary: G1::Scalar,
     z0_secondary: G2::Scalar,
   ) -> Result<Self, NovaError> {
-    if num_steps == 0 {
-      return Err(NovaError::InvalidNumSteps);
+    match recursive_snark {
+      None => {
+        // base case for the primary
+        let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+        let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+          pp.r1cs_shape_secondary.get_digest(),
+          G1::Scalar::zero(),
+          z0_primary,
+          None,
+          None,
+          None,
+          None,
+        );
+
+        let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
+          pp.nifs_params_primary.clone(),
+          Some(inputs_primary),
+          c_primary.clone(),
+          pp.ro_consts_circuit_primary.clone(),
+        );
+        let _ = circuit_primary.synthesize(&mut cs_primary);
+        let (u_primary, w_primary) = cs_primary
+          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
+          .map_err(|_e| NovaError::UnSat)?;
+
+        // base case for the secondary
+        let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+        let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+          pp.r1cs_shape_primary.get_digest(),
+          G2::Scalar::zero(),
+          z0_secondary,
+          None,
+          None,
+          Some(u_primary.clone()),
+          None,
+        );
+        let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
+          pp.nifs_params_secondary.clone(),
+          Some(inputs_secondary),
+          c_secondary.clone(),
+          pp.ro_consts_circuit_secondary.clone(),
+        );
+        let _ = circuit_secondary.synthesize(&mut cs_secondary);
+        let (u_secondary, w_secondary) = cs_secondary
+          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
+          .map_err(|_e| NovaError::UnSat)?;
+
+        // IVC proof for the primary circuit
+        let l_w_primary = w_primary;
+        let l_u_primary = u_primary;
+        let r_W_primary =
+          RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+        let r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
+          &pp.r1cs_gens_primary,
+          &pp.r1cs_shape_primary,
+          &l_u_primary,
+        );
+
+        // IVC proof of the secondary circuit
+        let l_w_secondary = w_secondary;
+        let l_u_secondary = u_secondary;
+        let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
+        let r_U_secondary =
+          RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
+
+        // Outputs of the two circuits thus far
+        let zi_primary = c_primary.compute(&z0_primary);
+        let zi_secondary = c_secondary.compute(&z0_secondary);
+
+        Ok(Self {
+          r_W_primary,
+          r_U_primary,
+          l_w_primary,
+          l_u_primary,
+          r_W_secondary,
+          r_U_secondary,
+          l_w_secondary,
+          l_u_secondary,
+          i: 1_usize,
+          zi_primary,
+          zi_secondary,
+          _p_c1: Default::default(),
+          _p_c2: Default::default(),
+        })
+      }
+      Some(r_snark) => {
+        // fold the secondary circuit's instance
+        let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
+          &pp.r1cs_gens_secondary,
+          &pp.ro_consts_secondary,
+          &pp.r1cs_shape_secondary,
+          &r_snark.r_U_secondary,
+          &r_snark.r_W_secondary,
+          &r_snark.l_u_secondary,
+          &r_snark.l_w_secondary,
+        )?;
+
+        let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+        let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+          pp.r1cs_shape_secondary.get_digest(),
+          G1::Scalar::from(r_snark.i as u64),
+          z0_primary,
+          Some(r_snark.zi_primary),
+          Some(r_snark.r_U_secondary.clone()),
+          Some(r_snark.l_u_secondary.clone()),
+          Some(nifs_secondary.comm_T.decompress()?),
+        );
+
+        let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
+          pp.nifs_params_primary.clone(),
+          Some(inputs_primary),
+          c_primary.clone(),
+          pp.ro_consts_circuit_primary.clone(),
+        );
+        let _ = circuit_primary.synthesize(&mut cs_primary);
+
+        let (l_u_primary, l_w_primary) = cs_primary
+          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
+          .map_err(|_e| NovaError::UnSat)?;
+
+        // fold the primary circuit's instance
+        let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
+          &pp.r1cs_gens_primary,
+          &pp.ro_consts_primary,
+          &pp.r1cs_shape_primary,
+          &r_snark.r_U_primary,
+          &r_snark.r_W_primary,
+          &l_u_primary,
+          &l_w_primary,
+        )?;
+
+        let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+        let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+          pp.r1cs_shape_primary.get_digest(),
+          G2::Scalar::from(r_snark.i as u64),
+          z0_secondary,
+          Some(r_snark.zi_secondary),
+          Some(r_snark.r_U_primary.clone()),
+          Some(l_u_primary.clone()),
+          Some(nifs_primary.comm_T.decompress()?),
+        );
+
+        let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
+          pp.nifs_params_secondary.clone(),
+          Some(inputs_secondary),
+          c_secondary.clone(),
+          pp.ro_consts_circuit_secondary.clone(),
+        );
+        let _ = circuit_secondary.synthesize(&mut cs_secondary);
+
+        let (l_u_secondary, l_w_secondary) = cs_secondary
+          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
+          .map_err(|_e| NovaError::UnSat)?;
+
+        // update the running instances and witnesses
+        let zi_primary = c_primary.compute(&r_snark.zi_primary);
+        let zi_secondary = c_secondary.compute(&r_snark.zi_secondary);
+
+        Ok(Self {
+          r_W_primary,
+          r_U_primary,
+          l_w_primary,
+          l_u_primary,
+          r_W_secondary,
+          r_U_secondary,
+          l_w_secondary,
+          l_u_secondary,
+          i: r_snark.i + 1,
+          zi_primary,
+          zi_secondary,
+          _p_c1: Default::default(),
+          _p_c2: Default::default(),
+        })
+      }
     }
-
-    // Execute the base case for the primary
-    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
-      pp.r1cs_shape_secondary.get_digest(),
-      G1::Scalar::zero(),
-      z0_primary,
-      None,
-      None,
-      None,
-      None,
-    );
-    let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-      pp.params_primary.clone(),
-      Some(inputs_primary),
-      pp.c_primary.clone(),
-      pp.ro_consts_circuit_primary.clone(),
-    );
-    let _ = circuit_primary.synthesize(&mut cs_primary);
-    let (u_primary, w_primary) = cs_primary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
-      .map_err(|_e| NovaError::UnSat)?;
-
-    // Execute the base case for the secondary
-    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
-      pp.r1cs_shape_primary.get_digest(),
-      G2::Scalar::zero(),
-      z0_secondary,
-      None,
-      None,
-      Some(u_primary.clone()),
-      None,
-    );
-    let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-      pp.params_secondary.clone(),
-      Some(inputs_secondary),
-      pp.c_secondary.clone(),
-      pp.ro_consts_circuit_secondary.clone(),
-    );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
-    let (u_secondary, w_secondary) = cs_secondary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
-
-    // execute the remaining steps, alternating between G1 and G2
-    let mut l_w_primary = w_primary;
-    let mut l_u_primary = u_primary;
-    let mut r_W_primary =
-      RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
-    let mut r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
-      &pp.r1cs_gens_primary,
-      &pp.r1cs_shape_primary,
-      &l_u_primary,
-    );
-
-    let mut r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
-    let mut r_U_secondary =
-      RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
-    let mut l_w_secondary = w_secondary;
-    let mut l_u_secondary = u_secondary;
-
-    let mut z_next_primary = z0_primary;
-    let mut z_next_secondary = z0_secondary;
-    z_next_primary = pp.c_primary.compute(&z_next_primary);
-    z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
-
-    for i in 1..num_steps {
-      // fold the secondary circuit's instance
-      let (nifs_secondary, (r_U_next_secondary, r_W_next_secondary)) = NIFS::prove(
-        &pp.r1cs_gens_secondary,
-        &pp.ro_consts_secondary,
-        &pp.r1cs_shape_secondary,
-        &r_U_secondary,
-        &r_W_secondary,
-        &l_u_secondary,
-        &l_w_secondary,
-      )?;
-
-      let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-      let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
-        pp.r1cs_shape_secondary.get_digest(),
-        G1::Scalar::from(i as u64),
-        z0_primary,
-        Some(z_next_primary),
-        Some(r_U_secondary),
-        Some(l_u_secondary),
-        Some(nifs_secondary.comm_T.decompress()?),
-      );
-
-      let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-        pp.params_primary.clone(),
-        Some(inputs_primary),
-        pp.c_primary.clone(),
-        pp.ro_consts_circuit_primary.clone(),
-      );
-      let _ = circuit_primary.synthesize(&mut cs_primary);
-
-      (l_u_primary, l_w_primary) = cs_primary
-        .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
-        .map_err(|_e| NovaError::UnSat)?;
-
-      // fold the primary circuit's instance
-      let (nifs_primary, (r_U_next_primary, r_W_next_primary)) = NIFS::prove(
-        &pp.r1cs_gens_primary,
-        &pp.ro_consts_primary,
-        &pp.r1cs_shape_primary,
-        &r_U_primary.clone(),
-        &r_W_primary.clone(),
-        &l_u_primary.clone(),
-        &l_w_primary.clone(),
-      )?;
-
-      let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-      let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
-        pp.r1cs_shape_primary.get_digest(),
-        G2::Scalar::from(i as u64),
-        z0_secondary,
-        Some(z_next_secondary),
-        Some(r_U_primary.clone()),
-        Some(l_u_primary.clone()),
-        Some(nifs_primary.comm_T.decompress()?),
-      );
-
-      let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-        pp.params_secondary.clone(),
-        Some(inputs_secondary),
-        pp.c_secondary.clone(),
-        pp.ro_consts_circuit_secondary.clone(),
-      );
-      let _ = circuit_secondary.synthesize(&mut cs_secondary);
-
-      (l_u_secondary, l_w_secondary) = cs_secondary
-        .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
-        .map_err(|_e| NovaError::UnSat)?;
-
-      // update the running instances and witnesses
-      r_U_secondary = r_U_next_secondary;
-      r_W_secondary = r_W_next_secondary;
-      r_U_primary = r_U_next_primary;
-      r_W_primary = r_W_next_primary;
-      z_next_primary = pp.c_primary.compute(&z_next_primary);
-      z_next_secondary = pp.c_secondary.compute(&z_next_secondary);
-    }
-
-    Ok(Self {
-      r_W_primary,
-      r_U_primary,
-      l_w_primary,
-      l_u_primary,
-      r_W_secondary,
-      r_U_secondary,
-      l_w_secondary,
-      l_u_secondary,
-      zn_primary: z_next_primary,
-      zn_secondary: z_next_secondary,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
-    })
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
@@ -340,6 +358,11 @@ where
   ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the provided proof has executed num_steps
+    if self.i != num_steps {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -358,14 +381,14 @@ where
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       hasher.absorb(z0_primary);
-      hasher.absorb(self.zn_primary);
+      hasher.absorb(self.zi_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       hasher2.absorb(z0_secondary);
-      hasher2.absorb(self.zn_secondary);
+      hasher2.absorb(self.zi_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
       (hasher.get_hash(), hasher2.get_hash())
@@ -423,11 +446,12 @@ where
     res_r_secondary?;
     res_l_secondary?;
 
-    Ok((self.zn_primary, self.zn_secondary))
+    Ok((self.zi_primary, self.zi_secondary))
   }
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
+#[derive(Clone, Debug)]
 pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -533,8 +557,8 @@ where
       nifs_secondary,
       f_W_snark_secondary: f_W_snark_secondary?,
 
-      zn_primary: recursive_snark.zn_primary,
-      zn_secondary: recursive_snark.zn_secondary,
+      zn_primary: recursive_snark.zi_primary,
+      zn_secondary: recursive_snark.zi_secondary,
 
       _p_c1: Default::default(),
       _p_c2: Default::default(),
@@ -720,10 +744,18 @@ mod tests {
       },
     );
 
+    let num_steps = 1;
+
     // produce a recursive SNARK
-    let res = RecursiveSNARK::prove(
+    let res = RecursiveSNARK::prove_step(
       &pp,
-      3,
+      None,
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
@@ -733,7 +765,7 @@ mod tests {
     // verify the recursive SNARK
     let res = recursive_snark.verify(
       &pp,
-      3,
+      num_steps,
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
@@ -742,32 +774,60 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial() {
+    let circuit_primary = TrivialTestCircuit {
+      _p: Default::default(),
+    };
+    let circuit_secondary = CubicCircuit {
+      _p: Default::default(),
+    };
+
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      CubicCircuit {
-        _p: Default::default(),
-      },
-    );
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
 
     let num_steps = 3;
 
     // produce a recursive SNARK
-    let res = RecursiveSNARK::prove(
-      &pp,
-      num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
-    );
-    assert!(res.is_ok());
-    let recursive_snark = res.unwrap();
+    let mut recursive_snark: Option<
+      RecursiveSNARK<
+        G1,
+        G2,
+        TrivialTestCircuit<<G1 as Group>::Scalar>,
+        CubicCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
+
+    for i in 0..num_steps {
+      let res = RecursiveSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        circuit_primary.clone(),
+        circuit_secondary.clone(),
+        <G1 as Group>::Scalar::one(),
+        <G2 as Group>::Scalar::zero(),
+      );
+      assert!(res.is_ok());
+      let recursive_snark_unwrapped = res.unwrap();
+
+      // verify the recursive snark at each step of recursion
+      let res = recursive_snark_unwrapped.verify(
+        &pp,
+        i + 1,
+        <G1 as Group>::Scalar::one(),
+        <G2 as Group>::Scalar::zero(),
+      );
+      assert!(res.is_ok());
+
+      // set the running variable for the next iteration
+      recursive_snark = Some(recursive_snark_unwrapped);
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
 
     // verify the recursive SNARK
     let res = recursive_snark.verify(
@@ -795,32 +855,48 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
+    let circuit_primary = TrivialTestCircuit {
+      _p: Default::default(),
+    };
+    let circuit_secondary = CubicCircuit {
+      _p: Default::default(),
+    };
+
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      CubicCircuit {
-        _p: Default::default(),
-      },
-    );
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
 
     let num_steps = 3;
 
     // produce a recursive SNARK
-    let res = RecursiveSNARK::prove(
-      &pp,
-      num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
-    );
-    assert!(res.is_ok());
-    let recursive_snark = res.unwrap();
+    let mut recursive_snark: Option<
+      RecursiveSNARK<
+        G1,
+        G2,
+        TrivialTestCircuit<<G1 as Group>::Scalar>,
+        CubicCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
+
+    for _i in 0..num_steps {
+      let res = RecursiveSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        circuit_primary.clone(),
+        circuit_secondary.clone(),
+        <G1 as Group>::Scalar::one(),
+        <G2 as Group>::Scalar::zero(),
+      );
+      assert!(res.is_ok());
+      recursive_snark = Some(res.unwrap());
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
 
     // verify the recursive SNARK
     let res = recursive_snark.verify(
@@ -861,6 +937,147 @@ mod tests {
   }
 
   #[test]
+  fn test_ivc_nondet_with_compression() {
+    // y is a non-deterministic advice representing the fifth root of the input at a step.
+    #[derive(Clone, Debug)]
+    struct FifthRootCheckingCircuit<F: PrimeField> {
+      y: F,
+    }
+
+    impl<F> FifthRootCheckingCircuit<F>
+    where
+      F: PrimeField,
+    {
+      fn new(num_steps: usize) -> (F, Vec<Self>) {
+        let mut powers = Vec::new();
+        let rng = &mut rand::rngs::OsRng;
+        let mut seed = F::random(rng);
+        for _i in 0..num_steps + 1 {
+          let mut power = seed;
+          power = power.square();
+          power = power.square();
+          power *= seed;
+
+          powers.push(Self { y: power });
+
+          seed = power;
+        }
+
+        // reverse the powers to get roots
+        let roots = powers.into_iter().rev().collect::<Vec<Self>>();
+        (roots[0].y, roots[1..].to_vec())
+      }
+    }
+
+    impl<F> StepCircuit<F> for FifthRootCheckingCircuit<F>
+    where
+      F: PrimeField,
+    {
+      fn synthesize<CS: ConstraintSystem<F>>(
+        &self,
+        cs: &mut CS,
+        z: AllocatedNum<F>,
+      ) -> Result<AllocatedNum<F>, SynthesisError> {
+        let x = z;
+
+        // we allocate a variable and set it to the provided non-derministic advice.
+        let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(self.y))?;
+
+        // We now check if y = x^{1/5} by checking if y^5 = x
+        let y_sq = y.square(cs.namespace(|| "y_sq"))?;
+        let y_quad = y_sq.square(cs.namespace(|| "y_quad"))?;
+        let y_pow_5 = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
+
+        cs.enforce(
+          || "y^5 = x",
+          |lc| lc + y_pow_5.get_variable(),
+          |lc| lc + CS::one(),
+          |lc| lc + x.get_variable(),
+        );
+
+        Ok(y)
+      }
+
+      fn compute(&self, z: &F) -> F {
+        // sanity check
+        let x = *z;
+        let y_pow_5 = {
+          let y = self.y;
+          let y_sq = y.square();
+          let y_quad = y_sq.square();
+          y_quad * self.y
+        };
+        assert_eq!(x, y_pow_5);
+
+        // return non-deterministic advice
+        // as the output of the step
+        self.y
+      }
+    }
+
+    let circuit_primary = FifthRootCheckingCircuit {
+      y: <G1 as Group>::Scalar::zero(),
+    };
+
+    let circuit_secondary = TrivialTestCircuit {
+      _p: Default::default(),
+    };
+
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
+    >::setup(circuit_primary, circuit_secondary.clone());
+
+    let num_steps = 3;
+
+    // produce non-deterministic advice
+    let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
+    let z0_secondary = <G2 as Group>::Scalar::zero();
+
+    // produce a recursive SNARK
+    let mut recursive_snark: Option<
+      RecursiveSNARK<
+        G1,
+        G2,
+        FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+        TrivialTestCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
+
+    for circuit_primary in roots.iter().take(num_steps) {
+      let res = RecursiveSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        circuit_primary.clone(),
+        circuit_secondary.clone(),
+        z0_primary,
+        z0_secondary,
+      );
+      assert!(res.is_ok());
+      recursive_snark = Some(res.unwrap());
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    assert!(res.is_ok());
+
+    // produce a compressed SNARK
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+
+    // verify the compressed SNARK
+    let res = compressed_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    assert!(res.is_ok());
+  }
+
+  #[test]
   fn test_ivc_base() {
     // produce public parameters
     let pp = PublicParams::<
@@ -880,9 +1097,15 @@ mod tests {
     let num_steps = 1;
 
     // produce a recursive SNARK
-    let res = RecursiveSNARK::prove(
+    let res = RecursiveSNARK::prove_step(
       &pp,
-      num_steps,
+      None,
+      TrivialTestCircuit {
+        _p: Default::default(),
+      },
+      CubicCircuit {
+        _p: Default::default(),
+      },
       <G1 as Group>::Scalar::one(),
       <G2 as Group>::Scalar::zero(),
     );
