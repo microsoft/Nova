@@ -131,6 +131,7 @@ where
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
+#[derive(Clone, Debug)]
 pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -450,6 +451,7 @@ where
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
+#[derive(Clone, Debug)]
 pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
