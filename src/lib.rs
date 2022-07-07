@@ -953,10 +953,10 @@ mod tests {
         let rng = &mut rand::rngs::OsRng;
         let mut seed = F::random(rng);
         for _i in 0..num_steps + 1 {
-          let mut power = seed.clone();
+          let mut power = seed;
           power = power.square();
           power = power.square();
-          power = power * &seed;
+          power *= seed;
 
           powers.push(Self { y: power });
 
@@ -1002,7 +1002,7 @@ mod tests {
         // sanity check
         let x = *z;
         let y_pow_5 = {
-          let y = self.y.clone();
+          let y = self.y;
           let y_sq = y.square();
           let y_quad = y_sq.square();
           y_quad * self.y
@@ -1029,7 +1029,7 @@ mod tests {
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(circuit_primary, circuit_secondary.clone());
 
     let num_steps = 3;
 
@@ -1047,11 +1047,11 @@ mod tests {
       >,
     > = None;
 
-    for i in 0..num_steps {
+    for circuit_primary in roots.iter().take(num_steps) {
       let res = RecursiveSNARK::prove_step(
         &pp,
         recursive_snark,
-        roots[i].clone(),
+        circuit_primary.clone(),
         circuit_secondary.clone(),
         z0_primary,
         z0_secondary,
