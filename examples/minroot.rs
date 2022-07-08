@@ -67,7 +67,7 @@ impl<F: PrimeField> MinRootCircuit<F> {
     res
   }
 
-  // produces a sample non-deterministic advice
+  // produces a sample non-deterministic advice, executing one invocation of MinRoot per step
   fn new(num_steps: usize, x_0: &F, y_0: &F, pc: &PoseidonConstants<F, U2>) -> (F, Vec<Self>) {
     // although this code is written generically, it is tailored to Pallas' scalar field
     // (p - 3 / 5)
@@ -122,9 +122,8 @@ where
     let x_i = AllocatedNum::alloc(cs.namespace(|| "x_i"), || Ok(self.x_i))?;
     let y_i = AllocatedNum::alloc(cs.namespace(|| "y_i"), || Ok(self.y_i))?;
     let x_i_plus_1 = AllocatedNum::alloc(cs.namespace(|| "x_i_plus_1"), || Ok(self.x_i_plus_1))?;
-    let y_i_plus_1 = AllocatedNum::alloc(cs.namespace(|| "y_i_plus_1"), || Ok(self.y_i_plus_1))?;
 
-    // check that z = hash(x_i, y_i)
+    // check that z = hash(x_i, y_i), where z is an output from the prior step
     let z_hash = poseidon_hash(
       cs.namespace(|| "input hash"),
       vec![x_i.clone(), y_i.clone()],
@@ -152,18 +151,12 @@ where
       |lc| lc + x_i.get_variable() + y_i.get_variable(),
     );
 
-    // (2) constraints for condition (ii); this constraint could be avoided if we just used x_i wherever y_i_plus_1 is used
-    cs.enforce(
-      || "y_i_plus_1 = x_i",
-      |lc| lc + y_i_plus_1.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + x_i.get_variable(),
-    );
+    // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
 
-    // return hash(x_i_plus_1, y_i_plus_1)
+    // return hash(x_i_plus_1, y_i_plus_1) since Nova circuits expect a single output
     poseidon_hash(
       cs.namespace(|| "output hash"),
-      vec![x_i_plus_1, y_i_plus_1],
+      vec![x_i_plus_1, x_i.clone()],
       &self.pc,
     )
   }
