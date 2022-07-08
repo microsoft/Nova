@@ -53,21 +53,6 @@ struct MinRootCircuit<F: PrimeField> {
 }
 
 impl<F: PrimeField> MinRootCircuit<F> {
-  fn pow_vartime<S: AsRef<[u64]>>(base: &F, exp: S) -> F {
-    let mut res = F::one();
-    for e in exp.as_ref().iter().rev() {
-      for i in (0..64).rev() {
-        res = res.square();
-
-        if ((*e >> i) & 1) == 1 {
-          res.mul_assign(base);
-        }
-      }
-    }
-
-    res
-  }
-
   // produces a sample non-deterministic advice, executing one invocation of MinRoot per step
   fn new(num_steps: usize, x_0: &F, y_0: &F, pc: &PoseidonConstants<F, U2>) -> (F, Vec<Self>) {
     // although this code is written generically, it is tailored to Pallas' scalar field
@@ -82,7 +67,7 @@ impl<F: PrimeField> MinRootCircuit<F> {
     let mut x_i = *x_0;
     let mut y_i = *y_0;
     for _i in 0..num_steps {
-      let x_i_plus_1 = Self::pow_vartime(&(x_i + y_i), exp.to_u64_digits());
+      let x_i_plus_1 = (x_i + y_i).pow_vartime(exp.to_u64_digits()); // computes the fifth root of x_i + y_i
 
       // sanity check
       let sq = x_i_plus_1 * x_i_plus_1;
