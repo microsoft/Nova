@@ -104,7 +104,7 @@ impl<F: PrimeField> MinRootCircuit<F> {
       y_i = y_i_plus_1;
     }
 
-    let z0 = Poseidon::<F, U2>::new_with_preimage(&vec![x_0.clone(), y_0.clone()], pc).hash();
+    let z0 = Poseidon::<F, U2>::new_with_preimage(&[*x_0, *y_0], pc).hash();
 
     (z0, res)
   }
@@ -162,17 +162,11 @@ where
 
   fn compute(&self, z: &F) -> F {
     // sanity check
-    let z_hash =
-      Poseidon::<F, U2>::new_with_preimage(&vec![self.x_i.clone(), self.y_i.clone()], &self.pc)
-        .hash();
+    let z_hash = Poseidon::<F, U2>::new_with_preimage(&[self.x_i, self.y_i], &self.pc).hash();
     debug_assert_eq!(z, &z_hash);
 
     // compute output hash using advice
-    Poseidon::<F, U2>::new_with_preimage(
-      &vec![self.x_i_plus_1.clone(), self.y_i_plus_1.clone()],
-      &self.pc,
-    )
-    .hash()
+    Poseidon::<F, U2>::new_with_preimage(&[self.x_i_plus_1, self.y_i_plus_1], &self.pc).hash()
   }
 }
 
@@ -209,16 +203,11 @@ fn main() {
   );
   let z0_secondary = <G2 as Group>::Scalar::zero();
 
+  type C1 = MinRootCircuit<<G1 as Group>::Scalar>;
+  type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
   // produce a recursive SNARK
   println!("Generating a RecursiveSNARK...");
-  let mut recursive_snark: Option<
-    RecursiveSNARK<
-      G1,
-      G2,
-      MinRootCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >,
-  > = None;
+  let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
 
   for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
     let res = RecursiveSNARK::prove_step(
