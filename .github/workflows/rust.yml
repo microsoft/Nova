@@ -19,6 +19,8 @@ jobs:
       run: rustup component add clippy
     - name: Build
       run: cargo build --verbose
+    - name: Build examples
+      run: cargo build --examples --verbose
     - name: Run tests
       run: cargo +stable test --release --verbose
     - name: Check Rustfmt Code Style
