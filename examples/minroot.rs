@@ -1,5 +1,6 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
 //! iterations of the MinRoot function, thereby realizing a Nova-based verifiable delay function (VDF).
+//! We currently execute a single iteration of the MinRoot function per step of Nova's recursion.
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
@@ -139,8 +140,8 @@ where
     // check the following conditions hold:
     // (i) x_i_plus_1 = (x_i + y_i)^{1/5}, which can be more easily checked with x_i_plus_1^5 = x_i + y_i
     // (ii) y_i_plus_1 = x_i
-
-    // (1) constraints for condition (i)
+    // (1) constraints for condition (i) are below
+    // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
     let x_i_plus_1_sq = x_i_plus_1.square(cs.namespace(|| "x_i_plus_1_sq"))?;
     let x_i_plus_1_quad = x_i_plus_1_sq.square(cs.namespace(|| "x_i_plus_1_quad"))?;
     let x_i_plus_1_pow_5 = x_i_plus_1_quad.mul(cs.namespace(|| "x_i_plus_1_pow_5"), &x_i_plus_1)?;
@@ -150,8 +151,6 @@ where
       |lc| lc + CS::one(),
       |lc| lc + x_i.get_variable() + y_i.get_variable(),
     );
-
-    // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
 
     // return hash(x_i_plus_1, y_i_plus_1) since Nova circuits expect a single output
     poseidon_hash(
@@ -211,6 +210,7 @@ fn main() {
   let z0_secondary = <G2 as Group>::Scalar::zero();
 
   // produce a recursive SNARK
+  println!("Generating a RecursiveSNARK...");
   let mut recursive_snark: Option<
     RecursiveSNARK<
       G1,
@@ -220,7 +220,7 @@ fn main() {
     >,
   > = None;
 
-  for circuit_primary in minroot_circuits.iter().take(num_steps) {
+  for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
     let res = RecursiveSNARK::prove_step(
       &pp,
       recursive_snark,
@@ -230,6 +230,7 @@ fn main() {
       z0_secondary,
     );
     assert!(res.is_ok());
+    println!("RecursiveSNARK::prove_step {}: {:?}", i, res.is_ok());
     recursive_snark = Some(res.unwrap());
   }
 
@@ -237,15 +238,21 @@ fn main() {
   let recursive_snark = recursive_snark.unwrap();
 
   // verify the recursive SNARK
+  println!("Verifying a RecursiveSNARK...");
   let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+  println!("RecursiveSNARK::verify: {:?}", res.is_ok());
   assert!(res.is_ok());
 
   // produce a compressed SNARK
+  println!("Generating a CompressedSNARK...");
   let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+  println!("CompressedSNARK::prove: {:?}", res.is_ok());
   assert!(res.is_ok());
   let compressed_snark = res.unwrap();
 
   // verify the compressed SNARK
+  println!("Verifying a CompressedSNARK...");
   let res = compressed_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+  println!("CompressedSNARK::verify: {:?}", res.is_ok());
   assert!(res.is_ok());
 }
