@@ -128,6 +128,14 @@ where
       _p_c2: Default::default(),
     }
   }
+
+  /// Returns the number of constraints in the primary and secondary circuits
+  pub fn num_constraints(&self) -> (usize, usize) {
+    (
+      self.r1cs_shape_primary.num_cons,
+      self.r1cs_shape_secondary.num_cons,
+    )
+  }
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
