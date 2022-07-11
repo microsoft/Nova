@@ -169,6 +169,7 @@ fn main() {
   let num_steps = 10;
   let num_iters_per_step = 10; // number of iterations of MinRoot per Nova's recursive step
 
+  let pc = PoseidonConstants::<<G1 as Group>::Scalar, U2>::new_with_strength(Strength::Standard);
   let circuit_primary = MinRootCircuit {
     seq: vec![
       MinRootIteration {
@@ -185,7 +186,6 @@ fn main() {
   let circuit_secondary = TrivialTestCircuit {
     _p: Default::default(),
   };
-  let pc = PoseidonConstants::<<G1 as Group>::Scalar, U2>::new_with_strength(Strength::Standard);
 
   println!("Nova-based VDF with MinRoot delay function");
   println!("==========================================");
