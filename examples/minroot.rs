@@ -166,8 +166,8 @@ where
 }
 
 fn main() {
-  let pc = PoseidonConstants::<<G1 as Group>::Scalar, U2>::new_with_strength(Strength::Standard);
-  let num_iters_per_step = 10;
+  let num_steps = 10;
+  let num_iters_per_step = 10; // number of iterations of MinRoot per Nova's recursive step
 
   let circuit_primary = MinRootCircuit {
     seq: vec![
@@ -185,6 +185,14 @@ fn main() {
   let circuit_secondary = TrivialTestCircuit {
     _p: Default::default(),
   };
+  let pc = PoseidonConstants::<<G1 as Group>::Scalar, U2>::new_with_strength(Strength::Standard);
+
+  println!("Nova-based VDF with MinRoot delay function");
+  println!("==========================================");
+  println!(
+    "Proving {} iterations of MinRoot per step",
+    num_iters_per_step
+  );
 
   // produce public parameters
   println!("Producing public parameters...");
@@ -204,7 +212,6 @@ fn main() {
   );
 
   // produce non-deterministic advice
-  let num_steps = 3;
   let (z0_primary, minroot_iterations) = MinRootIteration::new(
     num_iters_per_step * num_steps,
     &<G1 as Group>::Scalar::zero(),
