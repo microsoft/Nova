@@ -158,7 +158,7 @@ mod tests {
       n_limbs,
     )?;
 
-    let _ = a1.equal_when_carried(cs.namespace(|| "check equal"), &a2)?;
+    a1.equal_when_carried(cs.namespace(|| "check equal"), &a2)?;
     Ok(())
   }
 
@@ -182,7 +182,7 @@ mod tests {
       limb_width,
       n_limbs,
     )?;
-    let _ = m.inputize(cs.namespace(|| "modulus m"))?;
+    m.inputize(cs.namespace(|| "modulus m"))?;
 
     let a = BigNat::from_num(
       cs.namespace(|| "allocate a_limbs"),
@@ -228,14 +228,14 @@ mod tests {
       limb_width,
       n_limbs,
     )?;
-    let _ = a.inputize(cs.namespace(|| "input a"))?;
+    a.inputize(cs.namespace(|| "input a"))?;
     let b = BigNat::alloc_from_nat(
       cs.namespace(|| "b"),
       || Ok(b_val.clone()),
       limb_width,
       n_limbs,
     )?;
-    let _ = b.inputize(cs.namespace(|| "input b"))?;
+    b.inputize(cs.namespace(|| "input b"))?;
     let c = BigNat::alloc_from_nat(
       cs.namespace(|| "c"),
       || Ok(c_val.clone()),
@@ -262,14 +262,14 @@ mod tests {
       limb_width,
       n_limbs,
     )?;
-    let _ = a.inputize(cs.namespace(|| "input a"))?;
+    a.inputize(cs.namespace(|| "input a"))?;
     let b = BigNat::alloc_from_nat(
       cs.namespace(|| "b"),
       || Ok(b_val.clone()),
       limb_width,
       n_limbs,
     )?;
-    let _ = b.inputize(cs.namespace(|| "input b"))?;
+    b.inputize(cs.namespace(|| "input b"))?;
     let c = BigNat::alloc_from_nat(
       cs.namespace(|| "c"),
       || Ok(c_val.clone()),

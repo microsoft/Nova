@@ -244,7 +244,7 @@ mod tests {
       ro.absorb(num);
       let num_gadget =
         AllocatedNum::alloc(cs.namespace(|| format!("data {}", i)), || Ok(num)).unwrap();
-      let _ = num_gadget
+      num_gadget
         .inputize(&mut cs.namespace(|| format!("input {}", i)))
         .unwrap();
       ro_gadget.absorb(num_gadget);

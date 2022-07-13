@@ -740,7 +740,7 @@ mod tests {
     CS: ConstraintSystem<Fp>,
   {
     let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
-    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    a.inputize(cs.namespace(|| "inputize a")).unwrap();
     let s = Fq::random(&mut OsRng);
     // Allocate random bits and only keep 128 bits
     let bits: Vec<AllocatedBit> = s
@@ -751,7 +751,7 @@ mod tests {
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
     let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), bits).unwrap();
-    let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
+    e.inputize(cs.namespace(|| "inputize e")).unwrap();
     (a, e, s)
   }
 
@@ -792,9 +792,9 @@ mod tests {
     CS: ConstraintSystem<Fp>,
   {
     let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
-    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    a.inputize(cs.namespace(|| "inputize a")).unwrap();
     let e = a.add(cs.namespace(|| "add a to a"), &a).unwrap();
-    let _ = e.inputize(cs.namespace(|| "inputize e")).unwrap();
+    e.inputize(cs.namespace(|| "inputize e")).unwrap();
     (a, e)
   }
 
@@ -834,11 +834,11 @@ mod tests {
     CS: ConstraintSystem<Fp>,
   {
     let a = AllocatedPoint::<Fp>::random_vartime(cs.namespace(|| "a")).unwrap();
-    let _ = a.inputize(cs.namespace(|| "inputize a")).unwrap();
+    a.inputize(cs.namespace(|| "inputize a")).unwrap();
     let mut b = a.clone();
     b.y =
       AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || Ok(Fp::zero())).unwrap();
-    let _ = b.inputize(cs.namespace(|| "inputize b")).unwrap();
+    b.inputize(cs.namespace(|| "inputize b")).unwrap();
     let e = a.add(cs.namespace(|| "add a to b"), &b).unwrap();
     e
   }
