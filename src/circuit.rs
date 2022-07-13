@@ -225,7 +225,7 @@ where
     ro.absorb(i);
     ro.absorb(z_0);
     ro.absorb(z_i);
-    let _ = U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+    U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
     let hash_bits = ro.get_hash(cs.namespace(|| "Input hash"))?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
@@ -332,15 +332,14 @@ where
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
     ro.absorb(z_next);
-    let _ = Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
+    Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
     let hash_bits = ro.get_hash(cs.namespace(|| "output hash bits"))?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-    let _ = u
-      .X1
+    u.X1
       .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
-    let _ = hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
+    hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
 
     Ok(())
   }
