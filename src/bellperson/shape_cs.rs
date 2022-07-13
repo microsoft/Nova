@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::traits::Group;
-use ff::{Field, PrimeField};
-
 use bellperson::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use core::fmt::Write;
+use ff::{Field, PrimeField};
 
 #[derive(Clone, Copy)]
 struct OrderedVariable(Variable);
@@ -141,7 +141,7 @@ where
     let mut s = String::new();
 
     for input in &self.inputs {
-      s.push_str(&format!("INPUT {}\n", &input))
+      writeln!(s, "INPUT {}", &input).unwrap()
     }
 
     let negone = -<G::Scalar>::one();
@@ -164,20 +164,20 @@ where
         if coeff != <G::Scalar>::one() && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
-              s.push_str(&format!("2^{} . ", i));
+              write!(s, "2^{} . ", i).unwrap();
               break;
             }
           }
 
-          s.push_str(&format!("{:?} . ", coeff))
+          write!(s, "{:?} . ", coeff).unwrap()
         }
 
         match var.0.get_unchecked() {
           Index::Input(i) => {
-            s.push_str(&format!("`I{}`", &self.inputs[i]));
+            write!(s, "`I{}`", &self.inputs[i]).unwrap();
           }
           Index::Aux(i) => {
-            s.push_str(&format!("`A{}`", &self.aux[i]));
+            write!(s, "`A{}`", &self.aux[i]).unwrap();
           }
         }
       }
@@ -191,9 +191,9 @@ where
     for &(ref a, ref b, ref c, ref name) in &self.constraints {
       s.push('\n');
 
-      s.push_str(&format!("{}: ", name));
+      write!(s, "{}: ", name).unwrap();
       pp(&mut s, a);
-      s.push_str(" * ");
+      write!(s, " * ").unwrap();
       pp(&mut s, b);
       s.push_str(" = ");
       pp(&mut s, c);
