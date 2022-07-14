@@ -1,43 +1,16 @@
 #![allow(non_snake_case)]
 
+use criterion::*;
 use nova_snark::{
-  traits::{Group, StepCircuit},
+  traits::{circuit::TrivialTestCircuit, Group},
   PublicParams, RecursiveSNARK,
 };
+use std::time::Duration;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-
-#[derive(Clone, Debug)]
-struct TrivialTestCircuit<F: PrimeField> {
-  _p: PhantomData<F>,
-}
-
-impl<F> StepCircuit<F> for TrivialTestCircuit<F>
-where
-  F: PrimeField,
-{
-  fn synthesize<CS: ConstraintSystem<F>>(
-    &self,
-    _cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
-    Ok(z)
-  }
-
-  fn compute(&self, z: &F) -> F {
-    *z
-  }
-}
-
 type C1 = TrivialTestCircuit<<G1 as Group>::Scalar>;
 type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
-
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::marker::PhantomData;
-use criterion::*;
-use ff::PrimeField;
-use std::time::Duration;
 
 fn recursive_snark_benchmark(c: &mut Criterion) {
   let num_samples = 10;
@@ -62,12 +35,8 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize) {
 
   // Produce public parameters
   let pp = PublicParams::<G1, G2, C1, C2>::setup(
-    TrivialTestCircuit {
-      _p: Default::default(),
-    },
-    TrivialTestCircuit {
-      _p: Default::default(),
-    },
+    TrivialTestCircuit::default(),
+    TrivialTestCircuit::default(),
   );
 
   // Bench time to produce a recursive SNARK;
@@ -81,12 +50,8 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize) {
     let res = RecursiveSNARK::prove_step(
       &pp,
       recursive_snark,
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
+      TrivialTestCircuit::default(),
+      TrivialTestCircuit::default(),
       <G1 as Group>::Scalar::one(),
       <G2 as Group>::Scalar::zero(),
     );
@@ -112,12 +77,8 @@ fn bench_recursive_snark(c: &mut Criterion, num_samples: usize) {
       assert!(RecursiveSNARK::prove_step(
         black_box(&pp),
         black_box(recursive_snark.clone()),
-        black_box(TrivialTestCircuit {
-          _p: Default::default(),
-        }),
-        black_box(TrivialTestCircuit {
-          _p: Default::default(),
-        }),
+        black_box(TrivialTestCircuit::default()),
+        black_box(TrivialTestCircuit::default()),
         black_box(<G1 as Group>::Scalar::zero()),
         black_box(<G2 as Group>::Scalar::zero()),
       )

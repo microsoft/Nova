@@ -16,7 +16,7 @@ use super::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, HashFuncCircuitTrait, HashFuncConstantsCircuit, StepCircuit},
+  traits::{circuit::StepCircuit, Group, HashFuncCircuitTrait, HashFuncConstantsCircuit},
 };
 use bellperson::{
   gadgets::{
@@ -355,32 +355,8 @@ mod tests {
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     poseidon::PoseidonConstantsCircuit,
-    traits::HashFuncConstantsTrait,
+    traits::{circuit::TrivialTestCircuit, HashFuncConstantsTrait},
   };
-  use ff::PrimeField;
-  use std::marker::PhantomData;
-
-  #[derive(Clone)]
-  struct TestCircuit<F: PrimeField> {
-    _p: PhantomData<F>,
-  }
-
-  impl<F> StepCircuit<F> for TestCircuit<F>
-  where
-    F: PrimeField,
-  {
-    fn synthesize<CS: ConstraintSystem<F>>(
-      &self,
-      _cs: &mut CS,
-      z: AllocatedNum<F>,
-    ) -> Result<AllocatedNum<F>, SynthesisError> {
-      Ok(z)
-    }
-
-    fn compute(&self, z: &F) -> F {
-      *z
-    }
-  }
 
   #[test]
   fn test_verification_circuit() {
@@ -391,13 +367,11 @@ mod tests {
     let ro_consts2: HashFuncConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
-    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NIFSVerifierCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params1.clone(),
         None,
-        TestCircuit {
-          _p: Default::default(),
-        },
+        TrivialTestCircuit::default(),
         ro_consts1.clone(),
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
@@ -406,13 +380,11 @@ mod tests {
     assert_eq!(cs.num_constraints(), 20584);
 
     // Initialize the shape and gens for the secondary
-    let circuit2: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+    let circuit2: NIFSVerifierCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params2.clone(),
         None,
-        TestCircuit {
-          _p: Default::default(),
-        },
+        TrivialTestCircuit::default(),
         ro_consts2.clone(),
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -425,13 +397,11 @@ mod tests {
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: NIFSVerifierCircuitInputs<G2> =
       NIFSVerifierCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
-    let circuit1: NIFSVerifierCircuit<G2, TestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NIFSVerifierCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params1,
         Some(inputs1),
-        TestCircuit {
-          _p: Default::default(),
-        },
+        TrivialTestCircuit::default(),
         ro_consts1,
       );
     let _ = circuit1.synthesize(&mut cs1);
@@ -451,13 +421,11 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit: NIFSVerifierCircuit<G1, TestCircuit<<G1 as Group>::Base>> =
+    let circuit: NIFSVerifierCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NIFSVerifierCircuit::new(
         params2,
         Some(inputs2),
-        TestCircuit {
-          _p: Default::default(),
-        },
+        TrivialTestCircuit::default(),
         ro_consts2,
       );
     let _ = circuit.synthesize(&mut cs2);

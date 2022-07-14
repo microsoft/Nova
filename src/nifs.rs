@@ -8,7 +8,7 @@ use super::r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use super::traits::{AbsorbInROTrait, Group, HashFuncTrait};
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 /// A SNARK that holds the proof of a step of an incremental computation
 #[allow(clippy::upper_case_acronyms)]
