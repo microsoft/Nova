@@ -8,8 +8,10 @@ use super::{
   commitments::CommitGens,
   errors::NovaError,
   r1cs::{R1CSGens, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
-  traits::{AppendToTranscriptTrait, ChallengeTrait, Group},
+  traits::{
+    snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
+    AppendToTranscriptTrait, ChallengeTrait, Group,
+  },
 };
 use core::cmp::max;
 use ff::Field;

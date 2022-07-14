@@ -16,7 +16,6 @@ mod r1cs;
 pub mod errors;
 pub mod gadgets;
 pub mod pasta;
-pub mod snark;
 pub mod spartan_with_ipa_pc;
 pub mod traits;
 
@@ -36,10 +35,9 @@ use nifs::NIFS;
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
-use snark::RelaxedR1CSSNARKTrait;
 use traits::{
-  AbsorbInROTrait, Group, HashFuncConstants, HashFuncConstantsCircuit, HashFuncConstantsTrait,
-  HashFuncTrait, StepCircuit,
+  circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, HashFuncConstants,
+  HashFuncConstantsCircuit, HashFuncConstantsTrait, HashFuncTrait,
 };
 
 /// A type that holds public parameters of Nova
@@ -665,32 +663,11 @@ mod tests {
   type S1 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
   type S2 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use core::marker::PhantomData;
   use ff::PrimeField;
-  use std::marker::PhantomData;
+  use traits::circuit::TrivialTestCircuit;
 
-  #[derive(Clone, Debug)]
-  struct TrivialTestCircuit<F: PrimeField> {
-    _p: PhantomData<F>,
-  }
-
-  impl<F> StepCircuit<F> for TrivialTestCircuit<F>
-  where
-    F: PrimeField,
-  {
-    fn synthesize<CS: ConstraintSystem<F>>(
-      &self,
-      _cs: &mut CS,
-      z: AllocatedNum<F>,
-    ) -> Result<AllocatedNum<F>, SynthesisError> {
-      Ok(z)
-    }
-
-    fn compute(&self, z: &F) -> F {
-      *z
-    }
-  }
-
-  #[derive(Clone, Debug)]
+  #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
@@ -743,14 +720,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-    );
+    >::setup(TrivialTestCircuit::default(), TrivialTestCircuit::default());
 
     let num_steps = 1;
 
@@ -758,12 +728,8 @@ mod tests {
     let res = RecursiveSNARK::prove_step(
       &pp,
       None,
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
+      TrivialTestCircuit::default(),
+      TrivialTestCircuit::default(),
       <G1 as Group>::Scalar::zero(),
       <G2 as Group>::Scalar::zero(),
     );
@@ -782,12 +748,8 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial() {
-    let circuit_primary = TrivialTestCircuit {
-      _p: Default::default(),
-    };
-    let circuit_secondary = CubicCircuit {
-      _p: Default::default(),
-    };
+    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
@@ -852,10 +814,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit {
-        _p: Default::default(),
-      }
-      .compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -863,12 +822,8 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    let circuit_primary = TrivialTestCircuit {
-      _p: Default::default(),
-    };
-    let circuit_secondary = CubicCircuit {
-      _p: Default::default(),
-    };
+    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
@@ -921,10 +876,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit {
-        _p: Default::default(),
-      }
-      .compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -1027,9 +979,7 @@ mod tests {
       y: <G1 as Group>::Scalar::zero(),
     };
 
-    let circuit_secondary = TrivialTestCircuit {
-      _p: Default::default(),
-    };
+    let circuit_secondary = TrivialTestCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
@@ -1093,14 +1043,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      CubicCircuit {
-        _p: Default::default(),
-      },
-    );
+    >::setup(TrivialTestCircuit::default(), CubicCircuit::default());
 
     let num_steps = 1;
 
@@ -1108,12 +1051,8 @@ mod tests {
     let res = RecursiveSNARK::prove_step(
       &pp,
       None,
-      TrivialTestCircuit {
-        _p: Default::default(),
-      },
-      CubicCircuit {
-        _p: Default::default(),
-      },
+      TrivialTestCircuit::default(),
+      CubicCircuit::default(),
       <G1 as Group>::Scalar::one(),
       <G2 as Group>::Scalar::zero(),
     );

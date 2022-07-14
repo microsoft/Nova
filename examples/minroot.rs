@@ -12,11 +12,13 @@ use neptune::{
   Strength,
 };
 use nova_snark::{
-  traits::{Group, StepCircuit},
+  traits::{
+    circuit::{StepCircuit, TrivialTestCircuit},
+    Group,
+  },
   CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use num_bigint::BigUint;
-use std::marker::PhantomData;
 use std::time::Instant;
 
 #[derive(Clone, Debug)]
@@ -183,9 +185,7 @@ fn main() {
     pc: pc.clone(),
   };
 
-  let circuit_secondary = TrivialTestCircuit {
-    _p: Default::default(),
-  };
+  let circuit_secondary = TrivialTestCircuit::default();
 
   println!("Nova-based VDF with MinRoot delay function");
   println!("==========================================");
@@ -298,27 +298,4 @@ fn main() {
     start.elapsed()
   );
   assert!(res.is_ok());
-}
-
-// A trivial test circuit that we use on the secondary curve
-#[derive(Clone, Debug)]
-struct TrivialTestCircuit<F: PrimeField> {
-  _p: PhantomData<F>,
-}
-
-impl<F> StepCircuit<F> for TrivialTestCircuit<F>
-where
-  F: PrimeField,
-{
-  fn synthesize<CS: ConstraintSystem<F>>(
-    &self,
-    _cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
-    Ok(z)
-  }
-
-  fn compute(&self, z: &F) -> F {
-    *z
-  }
 }
