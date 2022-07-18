@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use bellperson::{
   gadgets::{boolean::AllocatedBit, num::AllocatedNum},
   ConstraintSystem, SynthesisError,
@@ -320,28 +318,5 @@ where
       &self.pc,
     )
     .hash()
-  }
-}
-
-// A trivial test circuit that we will use on the secondary curve
-#[derive(Clone, Debug)]
-pub struct TrivialTestCircuit<F: PrimeField> {
-  pub _p: PhantomData<F>,
-}
-
-impl<F> StepCircuit<F> for TrivialTestCircuit<F>
-where
-  F: PrimeField,
-{
-  fn synthesize<CS: ConstraintSystem<F>>(
-    &self,
-    _cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
-    Ok(z)
-  }
-
-  fn compute(&self, z: &F) -> F {
-    *z
   }
 }

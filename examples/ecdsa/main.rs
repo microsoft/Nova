@@ -2,15 +2,17 @@
 //! Scheme borrowed from https://github.com/filecoin-project/bellperson-gadgets/blob/main/src/eddsa.rs
 //! Sign using G1 curve, and prove using G2 curve.
 
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg};
-
+use core::ops::{Add, AddAssign, Mul, MulAssign, Neg};
 use ff::{
   derive::byteorder::{ByteOrder, LittleEndian},
   Field, PrimeField, PrimeFieldBits,
 };
 use generic_array::typenum::U8;
 use neptune::{poseidon::PoseidonConstants, Strength};
-use nova_snark::{traits::Group as Nova_Group, CompressedSNARK, PublicParams, RecursiveSNARK};
+use nova_snark::{
+  traits::{circuit::TrivialTestCircuit, Group as Nova_Group},
+  CompressedSNARK, PublicParams, RecursiveSNARK,
+};
 use num_bigint::BigUint;
 use pasta_curves::{
   arithmetic::CurveAffine,
@@ -21,7 +23,7 @@ use sha3::{Digest, Sha3_512};
 use subtle::Choice;
 
 pub mod circuit;
-use crate::circuit::{Coordinate, EcdsaCircuit, EcdsaSignature, TrivialTestCircuit};
+use crate::circuit::{Coordinate, EcdsaCircuit, EcdsaSignature};
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
@@ -223,9 +225,7 @@ fn main() {
     pc: pc.clone(),
   };
 
-  let circuit_secondary = TrivialTestCircuit {
-    _p: Default::default(),
-  };
+  let circuit_secondary = TrivialTestCircuit::default();
 
   let pp = PublicParams::<
     G2,
