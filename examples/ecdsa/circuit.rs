@@ -8,10 +8,7 @@ use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
 };
-use nova_snark::{
-  gadgets::{ecc::AllocatedPoint, utils::alloc_num_equals},
-  traits::circuit::StepCircuit,
-};
+use nova_snark::{gadgets::ecc::AllocatedPoint, traits::circuit::StepCircuit};
 use subtle::Choice;
 
 // An affine point coordinate that is on the curve.
@@ -46,11 +43,21 @@ where
   Fb: PrimeField<Repr = [u8; 32]>,
   Fs: PrimeField<Repr = [u8; 32]> + PrimeFieldBits,
 {
-  pub r: Coordinate<Fb>,
-  pub g: Coordinate<Fb>,
-  pub pk: Coordinate<Fb>,
-  pub c: Fs,
-  pub s: Fs,
+  pk: Coordinate<Fb>, // public key
+  r: Coordinate<Fb>,  // (r, s) is the ECDSA signature
+  s: Fs,
+  c: Fs,             // hash of the message
+  g: Coordinate<Fb>, // generator of the group; could be omitted if Nova's traits allow accessing the generator
+}
+
+impl<Fb, Fs> EcdsaSignature<Fb, Fs>
+where
+  Fb: PrimeField<Repr = [u8; 32]>,
+  Fs: PrimeField<Repr = [u8; 32]> + PrimeFieldBits,
+{
+  pub fn new(pk: Coordinate<Fb>, r: Coordinate<Fb>, s: Fs, c: Fs, g: Coordinate<Fb>) -> Self {
+    Self { pk, r, s, c, g }
+  }
 }
 
 // An ECDSA signature proof that we will use on the primary curve
@@ -224,10 +231,6 @@ where
       &self.pc,
     )?;
 
-    let zs_equal = alloc_num_equals(cs.namespace(|| "(z == z1)?"), &z, &z_hash)?;
-
-    println!("zs_equal: {:?}", &zs_equal.get_value());
-
     cs.enforce(
       || "z == z1",
       |lc| lc + z.get_variable(),
@@ -256,20 +259,12 @@ where
     let (rcpk_x, rcpk_y, _) = rcpk.get_coordinates();
     let (sg_x, sg_y, _) = sg.get_coordinates();
 
-    let xs_equal = alloc_num_equals(cs.namespace(|| "(sg_x == rcpk_x)?"), rcpk_x, sg_x)?;
-
-    println!("xs_equal: {:?}", &xs_equal.get_value());
-
     cs.enforce(
       || "sg_x == rcpk_x",
       |lc| lc + sg_x.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc + rcpk_x.get_variable(),
     );
-
-    let ys_equal = alloc_num_equals(cs.namespace(|| "(sg_y == rcpk_y)?"), rcpk_y, sg_y)?;
-
-    println!("ys_equal: {:?}", &ys_equal.get_value());
 
     cs.enforce(
       || "sg_y == rcpk_y",

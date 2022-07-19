@@ -1,4 +1,6 @@
 //! Demonstrates how to use Nova to produce a recursive proof of an ECDSA signature.
+//! This example proves the knowledge of a sequence of ECDSA signatures with different public keys on different messages,
+//! but the example can be adapted to other settings (e.g., proving the validity of the certificate chain with a well-known root public key)
 //! Scheme borrowed from https://github.com/filecoin-project/bellperson-gadgets/blob/main/src/eddsa.rs
 //! Sign using G1 curve, and prove using G2 curve.
 
@@ -22,43 +24,16 @@ use rand::{rngs::OsRng, RngCore};
 use sha3::{Digest, Sha3_512};
 use subtle::Choice;
 
-pub mod circuit;
+mod circuit;
+mod utils;
+
 use crate::circuit::{Coordinate, EcdsaCircuit, EcdsaSignature};
+use crate::utils::BitIterator;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
 type S2 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
-
-#[derive(Debug)]
-pub struct BitIterator<E> {
-  t: E,
-  n: usize,
-}
-
-impl<E: AsRef<[u64]>> BitIterator<E> {
-  pub fn new(t: E) -> Self {
-    let n = t.as_ref().len() * 64;
-
-    BitIterator { t, n }
-  }
-}
-
-impl<E: AsRef<[u64]>> Iterator for BitIterator<E> {
-  type Item = bool;
-
-  fn next(&mut self) -> Option<bool> {
-    if self.n == 0 {
-      None
-    } else {
-      self.n -= 1;
-      let part = self.n / 64;
-      let bit = self.n - (64 * part);
-
-      Some(self.t.as_ref()[part] & (1 << bit) > 0)
-    }
-  }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SecretKey(pub <G1 as Group>::Scalar);
@@ -266,15 +241,16 @@ fn main() {
 
       let s = signature_primary.s;
 
-      signatures.push(
-        EcdsaSignature::<<G1 as Nova_Group>::Base, <G1 as Nova_Group>::Scalar> {
-          r: Coordinate::<<G1 as Nova_Group>::Base>::new(*rxy.x(), *rxy.y()),
-          g: Coordinate::<<G1 as Nova_Group>::Base>::new(*gxy.x(), *gxy.y()),
-          pk: Coordinate::<<G1 as Nova_Group>::Base>::new(*pkxy.x(), *pkxy.y()),
-          c,
-          s,
-        },
-      );
+      signatures.push(EcdsaSignature::<
+        <G1 as Nova_Group>::Base,
+        <G1 as Nova_Group>::Scalar,
+      >::new(
+        Coordinate::<<G1 as Nova_Group>::Base>::new(*pkxy.x(), *pkxy.y()),
+        Coordinate::<<G1 as Nova_Group>::Base>::new(*rxy.x(), *rxy.y()),
+        s,
+        c,
+        Coordinate::<<G1 as Nova_Group>::Base>::new(*gxy.x(), *gxy.y()),
+      ));
     }
     signatures
   };
