@@ -29,13 +29,13 @@ use bellperson::{
 use ff::Field;
 
 #[derive(Debug, Clone)]
-pub struct NIFSVerifierCircuitParams {
+pub struct NovaAugmentedCircuitParams {
   limb_width: usize,
   n_limbs: usize,
   is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
-impl NIFSVerifierCircuitParams {
+impl NovaAugmentedCircuitParams {
   pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
@@ -46,7 +46,7 @@ impl NIFSVerifierCircuitParams {
 }
 
 #[derive(Debug)]
-pub struct NIFSVerifierCircuitInputs<G: Group> {
+pub struct NovaAugmentedCircuitInputs<G: Group> {
   params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   i: G::Base,
   z0: G::Base,
@@ -56,7 +56,7 @@ pub struct NIFSVerifierCircuitInputs<G: Group> {
   T: Option<Commitment<G>>,
 }
 
-impl<G> NIFSVerifierCircuitInputs<G>
+impl<G> NovaAugmentedCircuitInputs<G>
 where
   G: Group,
 {
@@ -83,27 +83,28 @@ where
   }
 }
 
-/// Circuit that encodes only the folding verifier
-pub struct NIFSVerifierCircuit<G, SC>
+/// The augmented circuit F' in Nova that includes a step circuit F
+/// and the circuit for the verifier in Nova's non-interactive folding scheme
+pub struct NovaAugmentedCircuit<G, SC>
 where
   G: Group,
   SC: StepCircuit<G::Base>,
 {
-  params: NIFSVerifierCircuitParams,
+  params: NovaAugmentedCircuitParams,
   ro_consts: HashFuncConstantsCircuit<G>,
-  inputs: Option<NIFSVerifierCircuitInputs<G>>,
+  inputs: Option<NovaAugmentedCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
 
-impl<G, SC> NIFSVerifierCircuit<G, SC>
+impl<G, SC> NovaAugmentedCircuit<G, SC>
 where
   G: Group,
   SC: StepCircuit<G::Base>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
-    params: NIFSVerifierCircuitParams,
-    inputs: Option<NIFSVerifierCircuitInputs<G>>,
+    params: NovaAugmentedCircuitParams,
+    inputs: Option<NovaAugmentedCircuitInputs<G>>,
     step_circuit: SC,
     ro_consts: HashFuncConstantsCircuit<G>,
   ) -> Self {
@@ -250,7 +251,7 @@ where
   }
 }
 
-impl<G, SC> Circuit<<G as Group>::Base> for NIFSVerifierCircuit<G, SC>
+impl<G, SC> Circuit<<G as Group>::Base> for NovaAugmentedCircuit<G, SC>
 where
   G: Group,
   SC: StepCircuit<G::Base>,
@@ -361,14 +362,14 @@ mod tests {
   #[test]
   fn test_verification_circuit() {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-    let params1 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: HashFuncConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
     let ro_consts2: HashFuncConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
-    let circuit1: NIFSVerifierCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NIFSVerifierCircuit::new(
+    let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      NovaAugmentedCircuit::new(
         params1.clone(),
         None,
         TrivialTestCircuit::default(),
@@ -380,8 +381,8 @@ mod tests {
     assert_eq!(cs.num_constraints(), 20584);
 
     // Initialize the shape and gens for the secondary
-    let circuit2: NIFSVerifierCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NIFSVerifierCircuit::new(
+    let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      NovaAugmentedCircuit::new(
         params2.clone(),
         None,
         TrivialTestCircuit::default(),
@@ -395,10 +396,10 @@ mod tests {
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: NIFSVerifierCircuitInputs<G2> =
-      NIFSVerifierCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
-    let circuit1: NIFSVerifierCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NIFSVerifierCircuit::new(
+    let inputs1: NovaAugmentedCircuitInputs<G2> =
+      NovaAugmentedCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
+    let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      NovaAugmentedCircuit::new(
         params1,
         Some(inputs1),
         TrivialTestCircuit::default(),
@@ -412,7 +413,7 @@ mod tests {
     // Execute the base case for the secondary
     let zero2 = <<G1 as Group>::Base as Field>::zero();
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs2: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+    let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       shape1.get_digest(),
       zero2,
       zero2,
@@ -421,8 +422,8 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit: NIFSVerifierCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NIFSVerifierCircuit::new(
+    let circuit: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      NovaAugmentedCircuit::new(
         params2,
         Some(inputs2),
         TrivialTestCircuit::default(),
