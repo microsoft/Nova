@@ -25,7 +25,7 @@ use crate::bellperson::{
   solver::SatisfyingAssignment,
 };
 use ::bellperson::{Circuit, ConstraintSystem};
-use circuit::{NIFSVerifierCircuit, NIFSVerifierCircuitInputs, NIFSVerifierCircuitParams};
+use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
@@ -58,8 +58,8 @@ where
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   r1cs_shape_padded_secondary: R1CSShape<G2>,
-  nifs_params_primary: NIFSVerifierCircuitParams,
-  nifs_params_secondary: NIFSVerifierCircuitParams,
+  augmented_circuit_params_primary: NovaAugmentedCircuitParams,
+  augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -73,8 +73,10 @@ where
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
-    let nifs_params_primary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let nifs_params_secondary = NIFSVerifierCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let augmented_circuit_params_primary =
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let augmented_circuit_params_secondary =
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: HashFuncConstants<G1> = HashFuncConstants::<G1>::new();
     let ro_consts_secondary: HashFuncConstants<G2> = HashFuncConstants::<G2>::new();
@@ -86,8 +88,8 @@ where
       HashFuncConstantsCircuit::<G1>::new();
 
     // Initialize gens for the primary
-    let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-      nifs_params_primary.clone(),
+    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+      augmented_circuit_params_primary.clone(),
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
@@ -98,8 +100,8 @@ where
     let r1cs_shape_padded_primary = r1cs_shape_primary.pad();
 
     // Initialize gens for the secondary
-    let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-      nifs_params_secondary.clone(),
+    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+      augmented_circuit_params_secondary.clone(),
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
@@ -120,8 +122,8 @@ where
       r1cs_gens_secondary,
       r1cs_shape_secondary,
       r1cs_shape_padded_secondary,
-      nifs_params_primary,
-      nifs_params_secondary,
+      augmented_circuit_params_primary,
+      augmented_circuit_params_secondary,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
     }
@@ -181,7 +183,7 @@ where
       None => {
         // base case for the primary
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+        let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_secondary.get_digest(),
           G1::Scalar::zero(),
           z0_primary,
@@ -191,8 +193,8 @@ where
           None,
         );
 
-        let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-          pp.nifs_params_primary.clone(),
+        let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+          pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
@@ -204,7 +206,7 @@ where
 
         // base case for the secondary
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+        let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_primary.get_digest(),
           G2::Scalar::zero(),
           z0_secondary,
@@ -213,8 +215,8 @@ where
           Some(u_primary.clone()),
           None,
         );
-        let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-          pp.nifs_params_secondary.clone(),
+        let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+          pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
@@ -275,7 +277,7 @@ where
         )?;
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: NIFSVerifierCircuitInputs<G2> = NIFSVerifierCircuitInputs::new(
+        let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_secondary.get_digest(),
           G1::Scalar::from(r_snark.i as u64),
           z0_primary,
@@ -285,8 +287,8 @@ where
           Some(nifs_secondary.comm_T.decompress()?),
         );
 
-        let circuit_primary: NIFSVerifierCircuit<G2, C1> = NIFSVerifierCircuit::new(
-          pp.nifs_params_primary.clone(),
+        let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+          pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
@@ -309,7 +311,7 @@ where
         )?;
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: NIFSVerifierCircuitInputs<G1> = NIFSVerifierCircuitInputs::new(
+        let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_primary.get_digest(),
           G2::Scalar::from(r_snark.i as u64),
           z0_secondary,
@@ -319,8 +321,8 @@ where
           Some(nifs_primary.comm_T.decompress()?),
         );
 
-        let circuit_secondary: NIFSVerifierCircuit<G1, C2> = NIFSVerifierCircuit::new(
-          pp.nifs_params_secondary.clone(),
+        let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+          pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
