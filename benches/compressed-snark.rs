@@ -32,10 +32,10 @@ fn bench_compressed_snark(c: &mut Criterion) {
   let num_samples = 10;
 
   // we vary the number of constraints in the step circuit
-  for &log_num_cons_in_step_circuit in [0, 15, 16, 17, 18, 19, 20].iter() {
+  for &log_num_cons_in_step_circuit in [0, 14, 15, 16, 17, 18, 19, 20].iter() {
     let num_cons = 1 << log_num_cons_in_step_circuit;
 
-    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{}", num_cons));
+    let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{}", num_cons));
     group.sample_size(num_samples);
 
     // Produce public parameters
