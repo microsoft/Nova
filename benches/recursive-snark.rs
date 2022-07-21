@@ -57,8 +57,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
         recursive_snark,
         NonTrivialTestCircuit::new(num_cons),
         TrivialTestCircuit::default(),
-        <G1 as Group>::Scalar::one(),
-        <G2 as Group>::Scalar::one(),
+        <G1 as Group>::Scalar::from(2u64),
+        <G2 as Group>::Scalar::from(2u64),
       );
       assert!(res.is_ok());
       let recursive_snark_unwrapped = res.unwrap();
@@ -67,8 +67,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       let res = recursive_snark_unwrapped.verify(
         &pp,
         i + 1,
-        <G1 as Group>::Scalar::one(),
-        <G2 as Group>::Scalar::one(),
+        <G1 as Group>::Scalar::from(2u64),
+        <G2 as Group>::Scalar::from(2u64),
       );
       assert!(res.is_ok());
 
@@ -84,8 +84,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
           black_box(recursive_snark.clone()),
           black_box(NonTrivialTestCircuit::new(num_cons)),
           black_box(TrivialTestCircuit::default()),
-          black_box(<G1 as Group>::Scalar::one()),
-          black_box(<G2 as Group>::Scalar::one()),
+          black_box(<G1 as Group>::Scalar::from(2u64)),
+          black_box(<G2 as Group>::Scalar::from(2u64)),
         )
         .is_ok());
       })
@@ -100,8 +100,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
           .verify(
             black_box(&pp),
             black_box(num_warmup_steps),
-            black_box(<G1 as Group>::Scalar::one()),
-            black_box(<G2 as Group>::Scalar::one()),
+            black_box(<G1 as Group>::Scalar::from(2u64)),
+            black_box(<G2 as Group>::Scalar::from(2u64)),
           )
           .is_ok());
       });
