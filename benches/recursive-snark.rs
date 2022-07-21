@@ -27,9 +27,13 @@ targets = bench_recursive_snark
 criterion_main!(recursive_snark);
 
 fn bench_recursive_snark(c: &mut Criterion) {
+  let num_cons_verifier_circuit_primary = 20584;
   // we vary the number of constraints in the step circuit
-  for &log_num_cons_in_step_circuit in [0, 14, 15, 16, 17, 18, 19, 20].iter() {
-    let num_cons = 1 << log_num_cons_in_step_circuit;
+  for &num_cons_in_augmented_circuit in
+    [20584, 32768, 65536, 131072, 262144, 524288, 1048576].iter()
+  {
+    // number of constraints in the step circuit
+    let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
 
     let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{}", num_cons));
     group.sample_size(10);
