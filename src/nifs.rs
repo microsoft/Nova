@@ -2,12 +2,13 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 
-use super::commitments::CompressedCommitment;
-use super::errors::NovaError;
-use super::r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
+use super::{
+  commitments::CompressedCommitment,
+  constants::NUM_CHALLENGE_BITS,
+  errors::NovaError,
+  r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  traits::{AbsorbInROTrait, Group, HashFuncTrait},
 };
-use super::traits::{AbsorbInROTrait, Group, HashFuncTrait};
 use core::marker::PhantomData;
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -54,7 +55,7 @@ impl<G: Group> NIFS<G> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.get_challenge();
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r)?;
@@ -99,7 +100,7 @@ impl<G: Group> NIFS<G> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.get_challenge();
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r)?;

@@ -107,11 +107,8 @@ pub trait HashFuncTrait<Base, Scalar> {
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: Base);
 
-  /// Returns a random challenge by hashing the internal state
-  fn get_challenge(&self) -> Scalar;
-
-  /// Returns a hash of the internal state
-  fn get_hash(&self) -> Scalar;
+  /// Returns a challenge of `num_bits` by hashing the internal state
+  fn squeeze(&self, num_bits: usize) -> Scalar;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
@@ -125,13 +122,8 @@ pub trait HashFuncCircuitTrait<Base: PrimeField> {
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: AllocatedNum<Base>);
 
-  /// Returns a random challenge by hashing the internal state
-  fn get_challenge<CS>(&mut self, cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Base>;
-
-  /// Returns a hash of the internal state
-  fn get_hash<CS>(&mut self, cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  /// Returns a challenge of `num_bits` by hashing the internal state
+  fn squeeze<CS>(&mut self, cs: CS, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Base>;
 }

@@ -8,6 +8,7 @@
 
 use super::{
   commitments::Commitment,
+  constants::NUM_HASH_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -228,7 +229,7 @@ where
     ro.absorb(z_i);
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
-    let hash_bits = ro.get_hash(cs.namespace(|| "Input hash"))?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
@@ -334,7 +335,7 @@ where
     ro.absorb(z_0);
     ro.absorb(z_next);
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
-    let hash_bits = ro.get_hash(cs.namespace(|| "output hash bits"))?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit

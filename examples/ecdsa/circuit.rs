@@ -289,7 +289,7 @@ where
     )
   }
 
-  fn compute(&self, z: &F) -> F {
+  fn output(&self, z: &F) -> F {
     let z_hash = Poseidon::<F, U8>::new_with_preimage(
       &[
         self.z_r.x,

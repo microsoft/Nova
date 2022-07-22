@@ -1,5 +1,6 @@
 //! This module implements various gadgets necessary for folding R1CS types.
 use crate::{
+  constants::NUM_CHALLENGE_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
@@ -274,7 +275,7 @@ where
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
     ro.absorb(T.is_infinity.clone());
-    let r_bits = ro.get_challenge(cs.namespace(|| "r bits"))?;
+    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
 
     // W_fold = self.W + r * u.W

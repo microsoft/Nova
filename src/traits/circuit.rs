@@ -13,8 +13,8 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
     z: AllocatedNum<F>,
   ) -> Result<AllocatedNum<F>, SynthesisError>;
 
-  /// Execute the circuit for a computation step and return output
-  fn compute(&self, z: &F) -> F;
+  /// return the output of the step when provided with with the step's input
+  fn output(&self, z: &F) -> F;
 }
 
 /// A trivial step circuit that simply returns the input
@@ -35,7 +35,7 @@ where
     Ok(z)
   }
 
-  fn compute(&self, z: &F) -> F {
+  fn output(&self, z: &F) -> F {
     *z
   }
 }

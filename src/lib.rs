@@ -26,6 +26,7 @@ use crate::bellperson::{
 };
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
+use constants::NUM_HASH_BITS;
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
@@ -245,8 +246,8 @@ where
           RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
 
         // Outputs of the two circuits thus far
-        let zi_primary = c_primary.compute(&z0_primary);
-        let zi_secondary = c_secondary.compute(&z0_secondary);
+        let zi_primary = c_primary.output(&z0_primary);
+        let zi_secondary = c_secondary.output(&z0_secondary);
 
         Ok(Self {
           r_W_primary,
@@ -334,8 +335,8 @@ where
           .map_err(|_e| NovaError::UnSat)?;
 
         // update the running instances and witnesses
-        let zi_primary = c_primary.compute(&r_snark.zi_primary);
-        let zi_secondary = c_secondary.compute(&r_snark.zi_secondary);
+        let zi_primary = c_primary.output(&r_snark.zi_primary);
+        let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
 
         Ok(Self {
           r_W_primary,
@@ -399,7 +400,10 @@ where
       hasher2.absorb(self.zi_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
-      (hasher.get_hash(), hasher2.get_hash())
+      (
+        hasher.squeeze(NUM_HASH_BITS),
+        hasher2.squeeze(NUM_HASH_BITS),
+      )
     };
 
     if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
@@ -611,7 +615,10 @@ where
       hasher2.absorb(self.zn_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
-      (hasher.get_hash(), hasher2.get_hash())
+      (
+        hasher.squeeze(NUM_HASH_BITS),
+        hasher2.squeeze(NUM_HASH_BITS),
+      )
     };
 
     if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
@@ -709,7 +716,7 @@ mod tests {
       Ok(y)
     }
 
-    fn compute(&self, z: &F) -> F {
+    fn output(&self, z: &F) -> F {
       *z * *z * *z + z + F::from(5u64)
     }
   }
@@ -816,7 +823,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -878,7 +885,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -960,7 +967,7 @@ mod tests {
         Ok(y)
       }
 
-      fn compute(&self, z: &F) -> F {
+      fn output(&self, z: &F) -> F {
         // sanity check
         let x = *z;
         let y_pow_5 = {
