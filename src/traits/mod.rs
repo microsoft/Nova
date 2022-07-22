@@ -39,10 +39,10 @@ pub trait Group:
 
   /// A type that represents a hash function that consumes elements
   /// from the base field and squeezes out elements of the scalar field
-  type HashFunc: HashFuncTrait<Self::Base, Self::Scalar>;
+  type RO: ROTrait<Self::Base, Self::Scalar>;
 
-  /// An alternate implementation of Self::HashFunc in the circuit model
-  type HashFuncCircuit: HashFuncCircuitTrait<Self::Base>;
+  /// An alternate implementation of Self::RO in the circuit model
+  type ROCircuit: ROCircuitTrait<Self::Base>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -87,7 +87,7 @@ pub trait AppendToTranscriptTrait {
 /// A helper trait to absorb different objects in RO
 pub trait AbsorbInROTrait<G: Group> {
   /// Absorbs the value in the provided RO
-  fn absorb_in_ro(&self, ro: &mut G::HashFunc);
+  fn absorb_in_ro(&self, ro: &mut G::RO);
 }
 
 /// A helper trait to generate challenges using a transcript object
@@ -97,9 +97,9 @@ pub trait ChallengeTrait {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait HashFuncTrait<Base, Scalar> {
+pub trait ROTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Base> + Clone + Send + Sync;
+  type Constants: ROConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
@@ -112,9 +112,9 @@ pub trait HashFuncTrait<Base, Scalar> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
-pub trait HashFuncCircuitTrait<Base: PrimeField> {
+pub trait ROCircuitTrait<Base: PrimeField> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: HashFuncConstantsTrait<Base> + Clone + Send + Sync;
+  type Constants: ROConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
@@ -129,18 +129,18 @@ pub trait HashFuncCircuitTrait<Base: PrimeField> {
 }
 
 /// A helper trait that defines the constants associated with a hash function
-pub trait HashFuncConstantsTrait<Base> {
+pub trait ROConstantsTrait<Base> {
   /// produces constants/parameters associated with the hash function
   fn new() -> Self;
 }
 
-/// An alias for constants associated with G::HashFunc
-pub type HashFuncConstants<G> =
-  <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+/// An alias for constants associated with G::RO
+pub type ROConstants<G> =
+  <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
-/// An alias for constants associated with G::HashFuncCircuit
-pub type HashFuncConstantsCircuit<G> =
-  <<G as Group>::HashFuncCircuit as HashFuncCircuitTrait<<G as Group>::Base>>::Constants;
+/// An alias for constants associated with G::ROCircuit
+pub type ROConstantsCircuit<G> =
+  <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:

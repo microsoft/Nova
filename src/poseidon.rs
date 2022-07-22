@@ -1,5 +1,5 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use super::traits::{HashFuncCircuitTrait, HashFuncConstantsTrait, HashFuncTrait};
+use super::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -26,7 +26,7 @@ where
   constants32: PoseidonConstants<Scalar, U32>,
 }
 
-impl<Scalar> HashFuncConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
+impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -43,7 +43,7 @@ where
 }
 
 /// A Poseidon-based RO to use outside circuits
-pub struct PoseidonHashFunc<Base, Scalar>
+pub struct PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -55,7 +55,7 @@ where
   _p: PhantomData<Scalar>,
 }
 
-impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonHashFunc<Base, Scalar>
+impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -107,7 +107,7 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
-pub struct PoseidonHashFuncCircuit<Scalar>
+pub struct PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -116,7 +116,7 @@ where
   constants: PoseidonConstantsCircuit<Scalar>,
 }
 
-impl<Scalar> HashFuncCircuitTrait<Scalar> for PoseidonHashFuncCircuit<Scalar>
+impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -196,8 +196,8 @@ mod tests {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::new();
-    let mut ro: PoseidonHashFunc<S, B> = PoseidonHashFunc::new(constants.clone());
-    let mut ro_gadget: PoseidonHashFuncCircuit<S> = PoseidonHashFuncCircuit::new(constants);
+    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
+    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
       let num = S::random(&mut csprng);

@@ -9,7 +9,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, HashFuncCircuitTrait, HashFuncConstantsCircuit},
+  traits::{Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
@@ -61,7 +61,7 @@ where
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro(&self, ro: &mut G::HashFuncCircuit) {
+  pub fn absorb_in_ro(&self, ro: &mut G::ROCircuit) {
     ro.absorb(self.W.x.clone());
     ro.absorb(self.W.y.clone());
     ro.absorb(self.W.is_infinity.clone());
@@ -208,7 +208,7 @@ where
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    ro: &mut G::HashFuncCircuit,
+    ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
     ro.absorb(self.W.x.clone());
     ro.absorb(self.W.y.clone());
@@ -263,12 +263,12 @@ where
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
-    ro_consts: HashFuncConstantsCircuit<G>,
+    ro_consts: ROConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro = G::HashFuncCircuit::new(ro_consts);
+    let mut ro = G::ROCircuit::new(ro_consts);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);

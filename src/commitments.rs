@@ -1,6 +1,6 @@
 use super::{
   errors::NovaError,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, HashFuncTrait},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, ROTrait},
 };
 use core::{
   fmt::Debug,
@@ -166,7 +166,7 @@ impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
 }
 
 impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
-  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+  fn absorb_in_ro(&self, ro: &mut G::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
     ro.absorb(x);
     ro.absorb(y);

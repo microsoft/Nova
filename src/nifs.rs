@@ -7,7 +7,7 @@ use super::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{AbsorbInROTrait, Group, HashFuncTrait},
+  traits::{AbsorbInROTrait, Group, ROTrait},
 };
 use core::marker::PhantomData;
 
@@ -19,8 +19,8 @@ pub struct NIFS<G: Group> {
   _p: PhantomData<G>,
 }
 
-type HashFuncConstants<G> =
-  <<G as Group>::HashFunc as HashFuncTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+type ROConstants<G> =
+  <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
 impl<G: Group> NIFS<G> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
@@ -31,7 +31,7 @@ impl<G: Group> NIFS<G> {
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
     gens: &R1CSGens<G>,
-    ro_consts: &HashFuncConstants<G>,
+    ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
@@ -39,7 +39,7 @@ impl<G: Group> NIFS<G> {
     W2: &R1CSWitness<G>,
   ) -> Result<(NIFS<G>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
     // initialize a new RO
-    let mut ro = G::HashFunc::new(ro_consts.clone());
+    let mut ro = G::RO::new(ro_consts.clone());
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);
@@ -80,13 +80,13 @@ impl<G: Group> NIFS<G> {
   /// if and only if `U1` and `U2` are satisfiable.
   pub fn verify(
     &self,
-    ro_consts: &HashFuncConstants<G>,
+    ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
-    let mut ro = G::HashFunc::new(ro_consts.clone());
+    let mut ro = G::RO::new(ro_consts.clone());
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);
@@ -113,7 +113,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::traits::{Group, HashFuncConstantsTrait};
+  use crate::traits::{Group, ROConstantsTrait};
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -167,10 +167,8 @@ mod tests {
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
-    let ro_consts = <<G as Group>::HashFunc as HashFuncTrait<
-      <G as Group>::Base,
-      <G as Group>::Scalar,
-    >>::Constants::new();
+    let ro_consts =
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
@@ -194,10 +192,7 @@ mod tests {
 
   fn execute_sequence(
     gens: &R1CSGens<G>,
-    ro_consts: &<<G as Group>::HashFunc as HashFuncTrait<
-      <G as Group>::Base,
-      <G as Group>::Scalar,
-    >>::Constants,
+    ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
     W1: &R1CSWitness<G>,
@@ -305,10 +300,8 @@ mod tests {
 
     // generate generators and ro constants
     let gens = R1CSGens::new(num_cons, num_vars);
-    let ro_consts = <<G as Group>::HashFunc as HashFuncTrait<
-      <G as Group>::Base,
-      <G as Group>::Scalar,
-    >>::Constants::new();
+    let ro_consts =
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     let rand_inst_witness_generator =
       |gens: &R1CSGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
