@@ -8,6 +8,7 @@
 
 use super::{
   commitments::Commitment,
+  constants::NUM_HASH_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -16,7 +17,7 @@ use super::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{circuit::StepCircuit, Group, HashFuncCircuitTrait, HashFuncConstantsCircuit},
+  traits::{circuit::StepCircuit, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellperson::{
   gadgets::{
@@ -91,7 +92,7 @@ where
   SC: StepCircuit<G::Base>,
 {
   params: NovaAugmentedCircuitParams,
-  ro_consts: HashFuncConstantsCircuit<G>,
+  ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NovaAugmentedCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
@@ -106,7 +107,7 @@ where
     params: NovaAugmentedCircuitParams,
     inputs: Option<NovaAugmentedCircuitInputs<G>>,
     step_circuit: SC,
-    ro_consts: HashFuncConstantsCircuit<G>,
+    ro_consts: ROConstantsCircuit<G>,
   ) -> Self {
     Self {
       params,
@@ -221,14 +222,14 @@ where
     T: AllocatedPoint<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::HashFuncCircuit::new(self.ro_consts.clone());
+    let mut ro = G::ROCircuit::new(self.ro_consts.clone());
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(z_0);
     ro.absorb(z_i);
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
-    let hash_bits = ro.get_hash(cs.namespace(|| "Input hash"))?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
@@ -328,13 +329,13 @@ where
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::HashFuncCircuit::new(self.ro_consts);
+    let mut ro = G::ROCircuit::new(self.ro_consts);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
     ro.absorb(z_next);
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
-    let hash_bits = ro.get_hash(cs.namespace(|| "output hash bits"))?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
@@ -356,7 +357,7 @@ mod tests {
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     poseidon::PoseidonConstantsCircuit,
-    traits::{circuit::TrivialTestCircuit, HashFuncConstantsTrait},
+    traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
   };
 
   #[test]
@@ -364,8 +365,8 @@ mod tests {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: HashFuncConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
-    let ro_consts2: HashFuncConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
+    let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
     // Initialize the shape and gens for the primary
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =

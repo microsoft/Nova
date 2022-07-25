@@ -5,7 +5,7 @@ use super::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   gadgets::utils::scalar_as_base,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, HashFuncTrait},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait},
 };
 use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
 use core::cmp::max;
@@ -453,7 +453,7 @@ impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
 }
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSShape<G> {
-  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+  fn absorb_in_ro(&self, ro: &mut G::RO) {
     ro.absorb(scalar_as_base::<G>(self.get_digest()));
   }
 }
@@ -500,7 +500,7 @@ impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
 }
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
-  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+  fn absorb_in_ro(&self, ro: &mut G::RO) {
     self.comm_W.absorb_in_ro(ro);
     for x in &self.X {
       ro.absorb(scalar_as_base::<G>(*x));
@@ -640,7 +640,7 @@ impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
 }
 
 impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
-  fn absorb_in_ro(&self, ro: &mut G::HashFunc) {
+  fn absorb_in_ro(&self, ro: &mut G::RO) {
     self.comm_W.absorb_in_ro(ro);
     self.comm_E.absorb_in_ro(ro);
     ro.absorb(scalar_as_base::<G>(self.u));

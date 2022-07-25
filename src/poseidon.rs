@@ -1,8 +1,5 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use super::{
-  constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS},
-  traits::{HashFuncCircuitTrait, HashFuncConstantsTrait, HashFuncTrait},
-};
+use super::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -29,7 +26,7 @@ where
   constants32: PoseidonConstants<Scalar, U32>,
 }
 
-impl<Scalar> HashFuncConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
+impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -46,7 +43,7 @@ where
 }
 
 /// A Poseidon-based RO to use outside circuits
-pub struct PoseidonHashFunc<Base, Scalar>
+pub struct PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -58,30 +55,7 @@ where
   _p: PhantomData<Scalar>,
 }
 
-impl<Base, Scalar> PoseidonHashFunc<Base, Scalar>
-where
-  Base: PrimeField + PrimeFieldBits,
-  Scalar: PrimeField + PrimeFieldBits,
-{
-  fn hash_inner(&self) -> Base {
-    match self.state.len() {
-      27 => {
-        Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
-      }
-      32 => {
-        Poseidon::<Base, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
-      }
-      _ => {
-        panic!(
-          "Number of elements in the RO state does not match any of the arities used in Nova: {:?}",
-          self.state.len()
-        );
-      }
-    }
-  }
-}
-
-impl<Base, Scalar> HashFuncTrait<Base, Scalar> for PoseidonHashFunc<Base, Scalar>
+impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
   Scalar: PrimeField + PrimeFieldBits,
@@ -102,28 +76,27 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn get_challenge(&self) -> Scalar {
-    let hash = self.hash_inner();
-    // Only keep NUM_CHALLENGE_BITS bits
-    let bits = hash.to_le_bits();
-    let mut res = Scalar::zero();
-    let mut coeff = Scalar::one();
-    for bit in bits[0..NUM_CHALLENGE_BITS].into_iter() {
-      if *bit {
-        res += coeff;
+  fn squeeze(&self, num_bits: usize) -> Scalar {
+    let hash = match self.state.len() {
+      27 => {
+        Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
       }
-      coeff += coeff;
-    }
-    res
-  }
+      32 => {
+        Poseidon::<Base, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
+      }
+      _ => {
+        panic!(
+          "Number of elements in the RO state does not match any of the arities used in Nova: {:?}",
+          self.state.len()
+        );
+      }
+    };
 
-  fn get_hash(&self) -> Scalar {
-    let hash = self.hash_inner();
-    // Only keep NUM_HASH_BITS bits
+    // Only return `num_bits`
     let bits = hash.to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
-    for bit in bits[0..NUM_HASH_BITS].into_iter() {
+    for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -134,7 +107,7 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
-pub struct PoseidonHashFuncCircuit<Scalar>
+pub struct PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -143,48 +116,7 @@ where
   constants: PoseidonConstantsCircuit<Scalar>,
 }
 
-impl<Scalar> PoseidonHashFuncCircuit<Scalar>
-where
-  Scalar: PrimeField + PrimeFieldBits,
-{
-  fn hash_inner<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
-    let out = match self.state.len() {
-      27 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants27,
-      )?,
-      32 => poseidon_hash(
-        cs.namespace(|| "Posideon hash"),
-        self.state.clone(),
-        &self.constants.constants32,
-      )?,
-      _ => {
-        panic!(
-          "Number of elements in the RO state does not match any of the arities used in Nova: {}",
-          self.state.len()
-        )
-      }
-    };
-
-    // return the hash as a vector of bits
-    Ok(
-      out
-        .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
-        .iter()
-        .map(|boolean| match boolean {
-          Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Wrong type of input. We should have never reached there"),
-        })
-        .collect(),
-    )
-  }
-}
-
-impl<Scalar> HashFuncCircuitTrait<Scalar> for PoseidonHashFuncCircuit<Scalar>
+impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
@@ -204,20 +136,45 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn get_challenge<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
+  fn squeeze<CS>(
+    &mut self,
+    mut cs: CS,
+    num_bits: usize,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
   {
-    let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    Ok(bits[..NUM_CHALLENGE_BITS].into())
-  }
+    let hash = match self.state.len() {
+      27 => poseidon_hash(
+        cs.namespace(|| "Poseidon hash"),
+        self.state.clone(),
+        &self.constants.constants27,
+      )?,
+      32 => poseidon_hash(
+        cs.namespace(|| "Posideon hash"),
+        self.state.clone(),
+        &self.constants.constants32,
+      )?,
+      _ => {
+        panic!(
+          "Number of elements in the RO state does not match any of the arities used in Nova: {}",
+          self.state.len()
+        )
+      }
+    };
 
-  fn get_hash<CS>(&mut self, mut cs: CS) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
-    let bits = self.hash_inner(cs.namespace(|| "hash"))?;
-    Ok(bits[..NUM_HASH_BITS].into())
+    // return the hash as a vector of bits, truncated
+    Ok(
+      hash
+        .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
+        .iter()
+        .map(|boolean| match boolean {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Wrong type of input. We should have never reached there"),
+        })
+        .collect::<Vec<AllocatedBit>>()[..num_bits]
+        .into(),
+    )
   }
 }
 
@@ -227,7 +184,10 @@ mod tests {
   type S = pasta_curves::pallas::Scalar;
   type B = pasta_curves::vesta::Scalar;
   type G = pasta_curves::pallas::Point;
-  use crate::{bellperson::solver::SatisfyingAssignment, gadgets::utils::le_bits_to_num};
+  use crate::{
+    bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
+    gadgets::utils::le_bits_to_num,
+  };
   use ff::Field;
   use rand::rngs::OsRng;
 
@@ -236,8 +196,8 @@ mod tests {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::new();
-    let mut ro: PoseidonHashFunc<S, B> = PoseidonHashFunc::new(constants.clone());
-    let mut ro_gadget: PoseidonHashFuncCircuit<S> = PoseidonHashFuncCircuit::new(constants);
+    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
+    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..27 {
       let num = S::random(&mut csprng);
@@ -249,8 +209,8 @@ mod tests {
         .unwrap();
       ro_gadget.absorb(num_gadget);
     }
-    let num = ro.get_challenge();
-    let num2_bits = ro_gadget.get_challenge(&mut cs).unwrap();
+    let num = ro.squeeze(NUM_CHALLENGE_BITS);
+    let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
     let num2 = le_bits_to_num(&mut cs, num2_bits).unwrap();
     assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
   }

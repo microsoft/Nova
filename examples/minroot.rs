@@ -148,7 +148,7 @@ where
     z_out
   }
 
-  fn compute(&self, z: &F) -> F {
+  fn output(&self, z: &F) -> F {
     // sanity check
     let z_hash =
       Poseidon::<F, U2>::new_with_preimage(&[self.seq[0].x_i, self.seq[0].y_i], &self.pc).hash();

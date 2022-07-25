@@ -26,6 +26,7 @@ use crate::bellperson::{
 };
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
+use constants::NUM_HASH_BITS;
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
 use core::marker::PhantomData;
 use errors::NovaError;
@@ -36,8 +37,8 @@ use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
 use traits::{
-  circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, HashFuncConstants,
-  HashFuncConstantsCircuit, HashFuncConstantsTrait, HashFuncTrait,
+  circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, ROConstants,
+  ROConstantsCircuit, ROConstantsTrait, ROTrait,
 };
 
 /// A type that holds public parameters of Nova
@@ -48,13 +49,13 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-  ro_consts_primary: HashFuncConstants<G1>,
-  ro_consts_circuit_primary: HashFuncConstantsCircuit<G2>,
+  ro_consts_primary: ROConstants<G1>,
+  ro_consts_circuit_primary: ROConstantsCircuit<G2>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
   r1cs_shape_padded_primary: R1CSShape<G1>,
-  ro_consts_secondary: HashFuncConstants<G2>,
-  ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1>,
+  ro_consts_secondary: ROConstants<G2>,
+  ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   r1cs_shape_padded_secondary: R1CSShape<G2>,
@@ -78,14 +79,12 @@ where
     let augmented_circuit_params_secondary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
-    let ro_consts_primary: HashFuncConstants<G1> = HashFuncConstants::<G1>::new();
-    let ro_consts_secondary: HashFuncConstants<G2> = HashFuncConstants::<G2>::new();
+    let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
+    let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
 
     // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
-    let ro_consts_circuit_primary: HashFuncConstantsCircuit<G2> =
-      HashFuncConstantsCircuit::<G2>::new();
-    let ro_consts_circuit_secondary: HashFuncConstantsCircuit<G1> =
-      HashFuncConstantsCircuit::<G1>::new();
+    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize gens for the primary
     let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
@@ -245,8 +244,8 @@ where
           RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
 
         // Outputs of the two circuits thus far
-        let zi_primary = c_primary.compute(&z0_primary);
-        let zi_secondary = c_secondary.compute(&z0_secondary);
+        let zi_primary = c_primary.output(&z0_primary);
+        let zi_secondary = c_secondary.output(&z0_secondary);
 
         Ok(Self {
           r_W_primary,
@@ -334,8 +333,8 @@ where
           .map_err(|_e| NovaError::UnSat)?;
 
         // update the running instances and witnesses
-        let zi_primary = c_primary.compute(&r_snark.zi_primary);
-        let zi_secondary = c_secondary.compute(&r_snark.zi_secondary);
+        let zi_primary = c_primary.output(&r_snark.zi_primary);
+        let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
 
         Ok(Self {
           r_W_primary,
@@ -385,21 +384,24 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::HashFunc::new(pp.ro_consts_secondary.clone());
+      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone());
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       hasher.absorb(z0_primary);
       hasher.absorb(self.zi_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
+      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       hasher2.absorb(z0_secondary);
       hasher2.absorb(self.zi_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
-      (hasher.get_hash(), hasher2.get_hash())
+      (
+        hasher.squeeze(NUM_HASH_BITS),
+        hasher2.squeeze(NUM_HASH_BITS),
+      )
     };
 
     if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
@@ -597,21 +599,24 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::HashFunc::new(pp.ro_consts_secondary.clone());
+      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone());
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       hasher.absorb(z0_primary);
       hasher.absorb(self.zn_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::HashFunc::new(pp.ro_consts_primary.clone());
+      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       hasher2.absorb(z0_secondary);
       hasher2.absorb(self.zn_secondary);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
-      (hasher.get_hash(), hasher2.get_hash())
+      (
+        hasher.squeeze(NUM_HASH_BITS),
+        hasher2.squeeze(NUM_HASH_BITS),
+      )
     };
 
     if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
@@ -709,7 +714,7 @@ mod tests {
       Ok(y)
     }
 
-    fn compute(&self, z: &F) -> F {
+    fn output(&self, z: &F) -> F {
       *z * *z * *z + z + F::from(5u64)
     }
   }
@@ -816,7 +821,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -878,7 +883,7 @@ mod tests {
     assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
     let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
     for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit::default().compute(&zn_secondary_direct);
+      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
     assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
@@ -960,7 +965,7 @@ mod tests {
         Ok(y)
       }
 
-      fn compute(&self, z: &F) -> F {
+      fn output(&self, z: &F) -> F {
         // sanity check
         let x = *z;
         let y_pow_5 = {

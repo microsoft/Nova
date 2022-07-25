@@ -146,7 +146,7 @@ where
     Ok(y)
   }
 
-  fn compute(&self, z: &F) -> F {
+  fn output(&self, z: &F) -> F {
     let mut x = *z;
     let mut y = x;
     for _i in 0..self.num_cons {
