@@ -354,14 +354,14 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 32, 8);
+    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Add mod constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 32, 8);
+    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
