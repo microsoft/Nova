@@ -89,8 +89,8 @@ where
     let mut z_out: Result<AllocatedNum<F>, SynthesisError> = Err(SynthesisError::AssignmentMissing);
 
     // allocate variables to hold x_0 and y_0
-    let x_0 = AllocatedNum::alloc(cs.namespace(|| format!("x_0")), || Ok(self.seq[0].x_i))?;
-    let y_0 = AllocatedNum::alloc(cs.namespace(|| format!("y_0")), || Ok(self.seq[0].y_i))?;
+    let x_0 = AllocatedNum::alloc(cs.namespace(|| "x_0"), || Ok(self.seq[0].x_i))?;
+    let y_0 = AllocatedNum::alloc(cs.namespace(|| "y_0"), || Ok(self.seq[0].y_i))?;
 
     // variables to hold running x_i and y_i
     let mut x_i = x_0;
