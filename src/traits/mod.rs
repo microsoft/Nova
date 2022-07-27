@@ -64,6 +64,12 @@ pub trait Group:
 
   /// Returns the order of the group as a big integer
   fn get_order() -> BigInt;
+
+  /// Returns an element that is the additive identity of the group
+  fn zero() -> Self;
+
+  /// Returns the generator of the group
+  fn get_generator() -> Self;
 }
 
 /// Represents a compressed version of a group element
