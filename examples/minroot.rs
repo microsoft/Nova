@@ -124,14 +124,10 @@ where
         x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{}", i)))?;
       let x_i_plus_1_quad =
         x_i_plus_1_sq.square(cs.namespace(|| format!("x_i_plus_1_quad_{}", i)))?;
-      let x_i_plus_1_pow_5 = x_i_plus_1_quad.mul(
-        cs.namespace(|| format!("x_i_plus_1_pow_5_{}", i)),
-        &x_i_plus_1,
-      )?;
       cs.enforce(
-        || format!("x_i_plus_1_pow_5 = x_i + y_i_iter_{}", i),
-        |lc| lc + x_i_plus_1_pow_5.get_variable(),
-        |lc| lc + CS::one(),
+        || format!("x_i_plus_1_quad * x_i_plus_1 = x_i + y_i_iter_{}", i),
+        |lc| lc + x_i_plus_1_quad.get_variable(),
+        |lc| lc + x_i_plus_1.get_variable(),
         |lc| lc + x_i.get_variable() + y_i.get_variable(),
       );
 
@@ -209,6 +205,15 @@ fn main() {
   println!(
     "Number of constraints per step (secondary circuit): {}",
     pp.num_constraints().1
+  );
+
+  println!(
+    "Number of variables per step (primary circuit): {}",
+    pp.num_variables().0
+  );
+  println!(
+    "Number of variables per step (secondary circuit): {}",
+    pp.num_variables().1
   );
 
   // produce non-deterministic advice
