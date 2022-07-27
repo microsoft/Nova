@@ -135,6 +135,14 @@ where
       self.r1cs_shape_secondary.num_cons,
     )
   }
+
+  /// Returns the number of variables in the primary and secondary circuits
+  pub fn num_variables(&self) -> (usize, usize) {
+    (
+      self.r1cs_shape_primary.num_vars,
+      self.r1cs_shape_secondary.num_vars,
+    )
+  }
 }
 
 /// A SNARK that proves the correct execution of an incremental computation

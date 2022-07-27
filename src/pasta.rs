@@ -11,7 +11,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt, Group as OtherGroup},
-  group::{Curve, GroupEncoding},
+  group::{Curve, Group as AnotherGroup, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
 use rand::SeedableRng;
@@ -95,6 +95,14 @@ impl Group for pallas::Point {
       16,
     )
     .unwrap()
+  }
+
+  fn zero() -> Self {
+    pallas::Point::group_zero()
+  }
+
+  fn get_generator() -> Self {
+    pallas::Point::generator()
   }
 }
 
@@ -193,6 +201,14 @@ impl Group for vesta::Point {
       16,
     )
     .unwrap()
+  }
+
+  fn zero() -> Self {
+    vesta::Point::group_zero()
+  }
+
+  fn get_generator() -> Self {
+    vesta::Point::generator()
   }
 }
 

@@ -577,8 +577,8 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
 impl<G: Group> RelaxedR1CSInstance<G> {
   /// Produces a default RelaxedR1CSInstance given R1CSGens and R1CSShape
-  pub fn default(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
-    let (comm_W, comm_E) = RelaxedR1CSWitness::default(S).commit(gens);
+  pub fn default(_gens: &R1CSGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
+    let (comm_W, comm_E) = (Commitment::default(), Commitment::default());
     RelaxedR1CSInstance {
       comm_W,
       comm_E,

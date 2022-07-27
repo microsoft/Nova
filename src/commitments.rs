@@ -134,6 +134,12 @@ impl<G: Group> Commitment<G> {
   }
 }
 
+impl<G: Group> Default for Commitment<G> {
+  fn default() -> Self {
+    Commitment { comm: G::zero() }
+  }
+}
+
 impl<C: CompressedGroup> CompressedCommitment<C> {
   pub fn decompress(&self) -> Result<Commitment<C::GroupElement>, NovaError> {
     let comm = self.comm.decompress();
