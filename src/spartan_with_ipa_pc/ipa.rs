@@ -2,7 +2,7 @@
 use crate::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use crate::errors::NovaError;
 use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
-use core::iter;
+use core::{cmp::max, iter};
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
@@ -35,6 +35,16 @@ impl<G: Group> InnerProductInstance<G> {
       c: *c,
     }
   }
+
+  pub fn pad(&self, n: usize) -> InnerProductInstance<G> {
+    let mut b_vec = self.b_vec.clone();
+    b_vec.resize(n, G::Scalar::zero());
+    InnerProductInstance {
+      comm_a_vec: self.comm_a_vec,
+      b_vec,
+      c: self.c,
+    }
+  }
 }
 
 pub struct InnerProductWitness<G: Group> {
@@ -46,6 +56,12 @@ impl<G: Group> InnerProductWitness<G> {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
     }
+  }
+
+  pub fn pad(&self, n: usize) -> InnerProductWitness<G> {
+    let mut a_vec = self.a_vec.clone();
+    a_vec.resize(n, G::Scalar::zero());
+    InnerProductWitness { a_vec }
   }
 }
 
@@ -67,6 +83,12 @@ impl<G: Group> NIFSForInnerProduct<G> {
     transcript: &mut Transcript,
   ) -> (Self, InnerProductInstance<G>, InnerProductWitness<G>) {
     transcript.append_message(b"protocol-name", Self::protocol_name());
+
+    // pad the instances and witness so they are of the same length
+    let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
+    let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
+    let W1 = W1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
+    let W2 = W2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
 
     // add the two commitments and two public vectors to the transcript
     U1.comm_a_vec
@@ -119,6 +141,10 @@ impl<G: Group> NIFSForInnerProduct<G> {
     transcript: &mut Transcript,
   ) -> InnerProductInstance<G> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
+
+    // pad the instances so they are of the same length
+    let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
+    let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
 
     // add the two commitments and two public vectors to the transcript
     U1.comm_a_vec
