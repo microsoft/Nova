@@ -379,7 +379,7 @@ mod tests {
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 20584);
+    assert_eq!(cs.num_constraints(), 20122);
 
     // Initialize the shape and gens for the secondary
     let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
@@ -392,7 +392,7 @@ mod tests {
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 21124);
+    assert_eq!(cs.num_constraints(), 20654);
 
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();

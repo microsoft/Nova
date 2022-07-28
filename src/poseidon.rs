@@ -9,7 +9,7 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U27, U32};
+use generic_array::typenum::{U19, U24};
 use neptune::{
   circuit::poseidon_hash,
   poseidon::{Poseidon, PoseidonConstants},
@@ -22,8 +22,8 @@ pub struct PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField,
 {
-  constants27: PoseidonConstants<Scalar, U27>,
-  constants32: PoseidonConstants<Scalar, U32>,
+  constants19: PoseidonConstants<Scalar, U19>,
+  constants24: PoseidonConstants<Scalar, U24>,
 }
 
 impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
@@ -33,11 +33,11 @@ where
   /// Generate Poseidon constants for the arities that Nova uses
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants27 = PoseidonConstants::<Scalar, U27>::new_with_strength(Strength::Standard);
-    let constants32 = PoseidonConstants::<Scalar, U32>::new_with_strength(Strength::Standard);
+    let constants19 = PoseidonConstants::<Scalar, U19>::new_with_strength(Strength::Standard);
+    let constants24 = PoseidonConstants::<Scalar, U24>::new_with_strength(Strength::Standard);
     Self {
-      constants27,
-      constants32,
+      constants19,
+      constants24,
     }
   }
 }
@@ -78,11 +78,11 @@ where
   /// Compute a challenge by hashing the current state
   fn squeeze(&self, num_bits: usize) -> Scalar {
     let hash = match self.state.len() {
-      27 => {
-        Poseidon::<Base, U27>::new_with_preimage(&self.state, &self.constants.constants27).hash()
+      19 => {
+        Poseidon::<Base, U19>::new_with_preimage(&self.state, &self.constants.constants19).hash()
       }
-      32 => {
-        Poseidon::<Base, U32>::new_with_preimage(&self.state, &self.constants.constants32).hash()
+      24 => {
+        Poseidon::<Base, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
       }
       _ => {
         panic!(
@@ -145,15 +145,15 @@ where
     CS: ConstraintSystem<Scalar>,
   {
     let hash = match self.state.len() {
-      27 => poseidon_hash(
+      19 => poseidon_hash(
         cs.namespace(|| "Poseidon hash"),
         self.state.clone(),
-        &self.constants.constants27,
+        &self.constants.constants19,
       )?,
-      32 => poseidon_hash(
+      24 => poseidon_hash(
         cs.namespace(|| "Posideon hash"),
         self.state.clone(),
-        &self.constants.constants32,
+        &self.constants.constants24,
       )?,
       _ => {
         panic!(
@@ -199,7 +199,7 @@ mod tests {
     let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    for i in 0..27 {
+    for i in 0..19 {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
