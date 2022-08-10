@@ -26,8 +26,7 @@ use crate::bellperson::{
 };
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
-use constants::NUM_HASH_BITS;
-use constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_HASH, NUM_HASH_BITS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
@@ -392,14 +391,14 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone());
+      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       hasher.absorb(z0_primary);
       hasher.absorb(self.zi_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone());
+      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       hasher2.absorb(z0_secondary);
@@ -607,14 +606,14 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone());
+      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       hasher.absorb(z0_primary);
       hasher.absorb(self.zn_primary);
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone());
+      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       hasher2.absorb(z0_secondary);

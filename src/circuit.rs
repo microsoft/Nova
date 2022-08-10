@@ -8,7 +8,7 @@
 
 use super::{
   commitments::Commitment,
-  constants::NUM_HASH_BITS,
+  constants::{NUM_FE_FOR_HASH, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -222,7 +222,7 @@ where
     T: AllocatedPoint<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone());
+    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), NUM_FE_FOR_HASH);
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(z_0);
@@ -329,7 +329,7 @@ where
       .synthesize(&mut cs.namespace(|| "F"), z_input)?;
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts);
+    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_FOR_HASH);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     ro.absorb(z_0);
@@ -361,7 +361,7 @@ mod tests {
   };
 
   #[test]
-  fn test_verification_circuit() {
+  fn test_recursive_circuit() {
     // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
@@ -379,7 +379,7 @@ mod tests {
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 20122);
+    assert_eq!(cs.num_constraints(), 19739);
 
     // Initialize the shape and gens for the secondary
     let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
@@ -392,7 +392,7 @@ mod tests {
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 20654);
+    assert_eq!(cs.num_constraints(), 20271);
 
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
