@@ -343,37 +343,24 @@ where
 
     let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
-    // Compute inv = tmp.invert
-    let tmp_inv = AllocatedNum::alloc(cs.namespace(|| "tmp inverse"), || {
-      if *self.is_infinity.get_value().get()? == Fp::one() {
-        // Return default value 1
-        Ok(Fp::one())
-      } else {
-        // Return the actual inverse
-        let inv = (*tmp.get_value().get()?).invert();
-        if inv.is_some().unwrap_u8() == 1 {
-          Ok(inv.unwrap())
-        } else {
-          Err(SynthesisError::DivisionByZero)
-        }
-      }
-    })?;
-    cs.enforce(
-      || "Check inverse",
-      |lc| lc + tmp.get_variable(),
-      |lc| lc + tmp_inv.get_variable(),
-      |lc| lc + CS::one(),
-    );
-
     // Now compute lambda as (Fp::one() + Fp::one + Fp::one()) * self.x * self.x * tmp_inv
     let prod_1 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 1"), || {
-      Ok(*tmp_inv.get_value().get()? * self.x.get_value().get()?)
+      let tmp_inv = if *self.is_infinity.get_value().get()? == Fp::one() {
+        // Return default value 1
+        Fp::one()
+      } else {
+        // Return the actual inverse
+        (*tmp.get_value().get()?).invert().unwrap()
+      };
+
+      Ok(tmp_inv * self.x.get_value().get()?)
     })?;
+
     cs.enforce(
       || "Check prod 1",
-      |lc| lc + self.x.get_variable(),
-      |lc| lc + tmp_inv.get_variable(),
+      |lc| lc + tmp.get_variable(),
       |lc| lc + prod_1.get_variable(),
+      |lc| lc + self.x.get_variable(),
     );
 
     let prod_2 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 2"), || {
