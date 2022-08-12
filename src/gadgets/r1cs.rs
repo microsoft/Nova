@@ -1,6 +1,6 @@
 //! This module implements various gadgets necessary for folding R1CS types.
 use crate::{
-  constants::NUM_CHALLENGE_BITS,
+  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
@@ -268,7 +268,7 @@ where
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro = G::ROCircuit::new(ro_consts);
+    let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);

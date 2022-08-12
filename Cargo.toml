@@ -24,7 +24,7 @@ itertools = "0.9.0"
 subtle = "2.4"
 pasta_curves = { version = "0.4.0", features = ["repr-c"] }
 pasta-msm = "0.1.3"
-neptune = { version = "7.1", default-features = false }
+neptune = { version = "7.2.0", default-features = false }
 generic-array = "0.14.4"
 bellperson-nonnative = { version = "0.3.1", default-features = false, features = ["wasm"] }
 num-bigint = { version = "0.4", features = ["serde", "rand"] }

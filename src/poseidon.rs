@@ -9,36 +9,30 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::{U19, U24};
+use generic_array::typenum::U24;
 use neptune::{
-  circuit::poseidon_hash,
-  poseidon::{Poseidon, PoseidonConstants},
+  circuit2::Elt,
+  poseidon::PoseidonConstants,
+  sponge::{
+    api::{IOPattern, SpongeAPI, SpongeOp},
+    circuit::SpongeCircuit,
+    vanilla::{Mode::Simplex, Sponge, SpongeTrait},
+  },
   Strength,
 };
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
-pub struct PoseidonConstantsCircuit<Scalar>
-where
-  Scalar: PrimeField,
-{
-  constants19: PoseidonConstants<Scalar, U19>,
-  constants24: PoseidonConstants<Scalar, U24>,
-}
+pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
 impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
-  /// Generate Poseidon constants for the arities that Nova uses
+  /// Generate Poseidon constants
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    let constants19 = PoseidonConstants::<Scalar, U19>::new_with_strength(Strength::Standard);
-    let constants24 = PoseidonConstants::<Scalar, U24>::new_with_strength(Strength::Standard);
-    Self {
-      constants19,
-      constants24,
-    }
+    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
   }
 }
 
@@ -50,8 +44,9 @@ where
 {
   // Internal State
   state: Vec<Base>,
-  // Constants for Poseidon
   constants: PoseidonConstantsCircuit<Base>,
+  num_absorbs: usize,
+  squeezed: bool,
   _p: PhantomData<Scalar>,
 }
 
@@ -62,38 +57,43 @@ where
 {
   type Constants = PoseidonConstantsCircuit<Base>;
 
-  fn new(constants: PoseidonConstantsCircuit<Base>) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Base>, num_absorbs: usize) -> Self {
     Self {
       state: Vec::new(),
       constants,
+      num_absorbs,
+      squeezed: false,
       _p: PhantomData::default(),
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: Base) {
+    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze(&self, num_bits: usize) -> Scalar {
-    let hash = match self.state.len() {
-      19 => {
-        Poseidon::<Base, U19>::new_with_preimage(&self.state, &self.constants.constants19).hash()
-      }
-      24 => {
-        Poseidon::<Base, U24>::new_with_preimage(&self.state, &self.constants.constants24).hash()
-      }
-      _ => {
-        panic!(
-          "Number of elements in the RO state does not match any of the arities used in Nova: {:?}",
-          self.state.len()
-        );
-      }
-    };
+  fn squeeze(&mut self, num_bits: usize) -> Scalar {
+    // check if we have squeezed already
+    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
+    self.squeezed = true;
+
+    let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
+    let acc = &mut ();
+    let parameter = IOPattern(vec![
+      SpongeOp::Absorb(self.num_absorbs as u32),
+      SpongeOp::Squeeze(1u32),
+    ]);
+
+    sponge.start(parameter, Some(1u32), acc);
+    assert_eq!(self.num_absorbs, self.state.len());
+    SpongeAPI::absorb(&mut sponge, self.num_absorbs as u32, &self.state, acc);
+    let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
+    sponge.finish(acc).unwrap();
 
     // Only return `num_bits`
-    let bits = hash.to_le_bits();
+    let bits = hash[0].to_le_bits();
     let mut res = Scalar::zero();
     let mut coeff = Scalar::one();
     for bit in bits[0..num_bits].into_iter() {
@@ -114,6 +114,8 @@ where
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
+  num_absorbs: usize,
+  squeezed: bool,
 }
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
@@ -123,15 +125,18 @@ where
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
   /// Initialize the internal state and set the poseidon constants
-  fn new(constants: PoseidonConstantsCircuit<Scalar>) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Scalar>, num_absorbs: usize) -> Self {
     Self {
       state: Vec::new(),
       constants,
+      num_absorbs,
+      squeezed: false,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: AllocatedNum<Scalar>) {
+    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
@@ -144,29 +149,41 @@ where
   where
     CS: ConstraintSystem<Scalar>,
   {
-    let hash = match self.state.len() {
-      19 => poseidon_hash(
-        cs.namespace(|| "Poseidon hash"),
-        self.state.clone(),
-        &self.constants.constants19,
-      )?,
-      24 => poseidon_hash(
-        cs.namespace(|| "Posideon hash"),
-        self.state.clone(),
-        &self.constants.constants24,
-      )?,
-      _ => {
-        panic!(
-          "Number of elements in the RO state does not match any of the arities used in Nova: {}",
-          self.state.len()
-        )
-      }
+    // check if we have squeezed already
+    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
+    self.squeezed = true;
+    let parameter = IOPattern(vec![
+      SpongeOp::Absorb(self.num_absorbs as u32),
+      SpongeOp::Squeeze(1u32),
+    ]);
+    let mut ns = cs.namespace(|| "ns");
+
+    let hash = {
+      let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      let acc = &mut ns;
+      assert_eq!(self.num_absorbs, self.state.len());
+
+      sponge.start(parameter, Some(1u32), acc);
+      neptune::sponge::api::SpongeAPI::absorb(
+        &mut sponge,
+        self.num_absorbs as u32,
+        &(0..self.state.len())
+          .map(|i| Elt::Allocated(self.state[i].clone()))
+          .collect::<Vec<Elt<Scalar>>>(),
+        acc,
+      );
+
+      let output = neptune::sponge::api::SpongeAPI::squeeze(&mut sponge, 1, acc);
+      sponge.finish(acc).unwrap();
+      output
     };
+
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
 
     // return the hash as a vector of bits, truncated
     Ok(
       hash
-        .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
+        .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
         .iter()
         .map(|boolean| match boolean {
           Boolean::Is(ref x) => x.clone(),
@@ -196,10 +213,11 @@ mod tests {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::new();
-    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone());
-    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants);
+    let num_absorbs = 32;
+    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants, num_absorbs);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    for i in 0..19 {
+    for i in 0..num_absorbs {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =

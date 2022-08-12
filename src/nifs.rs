@@ -4,7 +4,7 @@
 
 use super::{
   commitments::CompressedCommitment,
-  constants::NUM_CHALLENGE_BITS,
+  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{AbsorbInROTrait, Group, ROTrait},
@@ -39,7 +39,7 @@ impl<G: Group> NIFS<G> {
     W2: &R1CSWitness<G>,
   ) -> Result<(NIFS<G>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
     // initialize a new RO
-    let mut ro = G::RO::new(ro_consts.clone());
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);
@@ -86,7 +86,7 @@ impl<G: Group> NIFS<G> {
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
-    let mut ro = G::RO::new(ro_consts.clone());
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
     // append S to the transcript
     S.absorb_in_ro(&mut ro);

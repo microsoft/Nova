@@ -108,13 +108,13 @@ pub trait ROTrait<Base, Scalar> {
   type Constants: ROConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
-  fn new(constants: Self::Constants) -> Self;
+  fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: Base);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze(&self, num_bits: usize) -> Scalar;
+  fn squeeze(&mut self, num_bits: usize) -> Scalar;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
@@ -123,7 +123,7 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   type Constants: ROConstantsTrait<Base> + Clone + Send + Sync;
 
   /// Initializes the hash function
-  fn new(constants: Self::Constants) -> Self;
+  fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: AllocatedNum<Base>);
