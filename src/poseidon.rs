@@ -202,8 +202,7 @@ mod tests {
     let constants = PoseidonConstantsCircuit::new();
     let num_absorbs = 32;
     let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<S> =
-      PoseidonROCircuit::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants, num_absorbs);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..num_absorbs {
       let num = S::random(&mut csprng);
