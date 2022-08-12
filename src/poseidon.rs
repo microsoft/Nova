@@ -46,6 +46,7 @@ where
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
   num_absorbs: usize,
+  squeezed: bool,
   _p: PhantomData<Scalar>,
 }
 
@@ -61,17 +62,23 @@ where
       state: Vec::new(),
       constants,
       num_absorbs,
+      squeezed: false,
       _p: PhantomData::default(),
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: Base) {
+    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze(&self, num_bits: usize) -> Scalar {
+  fn squeeze(&mut self, num_bits: usize) -> Scalar {
+    // check if we have squeezed already
+    assert!(self.squeezed, "Cannot squeeze again after squeezing");
+    self.squeezed = true;
+
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -108,6 +115,7 @@ where
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
   num_absorbs: usize,
+  squeezed: bool,
 }
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
@@ -122,11 +130,13 @@ where
       state: Vec::new(),
       constants,
       num_absorbs,
+      squeezed: false,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: AllocatedNum<Scalar>) {
+    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
@@ -139,6 +149,9 @@ where
   where
     CS: ConstraintSystem<Scalar>,
   {
+    // check if we have squeezed already
+    assert!(self.squeezed, "Cannot squeeze again after squeezing");
+    self.squeezed = true;
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.num_absorbs as u32),
       SpongeOp::Squeeze(1u32),

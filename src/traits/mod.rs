@@ -114,7 +114,7 @@ pub trait ROTrait<Base, Scalar> {
   fn absorb(&mut self, e: Base);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze(&self, num_bits: usize) -> Scalar;
+  fn squeeze(&mut self, num_bits: usize) -> Scalar;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
