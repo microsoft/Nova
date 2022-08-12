@@ -214,39 +214,24 @@ where
       &x_diff_is_actual,
     )?;
 
-    let x_diff_inv = AllocatedNum::alloc(cs.namespace(|| "x diff inverse"), || {
-      if *x_diff_is_actual.get_value().get()? == Fp::one() {
+    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
+      let x_diff_inv = if *x_diff_is_actual.get_value().get()? == Fp::one() {
         // Set to default
-        Ok(Fp::one())
+        Fp::one()
       } else {
         // Set to the actual inverse
-        let inv = (*other.x.get_value().get()? - *self.x.get_value().get()?).invert();
-        if inv.is_some().unwrap_u8() == 1 {
-          Ok(inv.unwrap())
-        } else {
-          Err(SynthesisError::DivisionByZero)
-        }
-      }
-    })?;
+        (*other.x.get_value().get()? - *self.x.get_value().get()?)
+          .invert()
+          .unwrap()
+      };
 
-    cs.enforce(
-      || "Check inverse",
-      |lc| lc + x_diff.get_variable(),
-      |lc| lc + x_diff_inv.get_variable(),
-      |lc| lc + CS::one(),
-    );
-
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-      Ok(
-        (*other.y.get_value().get()? - *self.y.get_value().get()?)
-          * x_diff_inv.get_value().get()?,
-      )
+      Ok((*other.y.get_value().get()? - *self.y.get_value().get()?) * x_diff_inv)
     })?;
     cs.enforce(
       || "Check that lambda is correct",
-      |lc| lc + other.y.get_variable() - self.y.get_variable(),
-      |lc| lc + x_diff_inv.get_variable(),
       |lc| lc + lambda.get_variable(),
+      |lc| lc + x_diff.get_variable(),
+      |lc| lc + other.y.get_variable() - self.y.get_variable(),
     );
 
     //************************************************************************/
