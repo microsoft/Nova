@@ -164,20 +164,6 @@ fn main() {
   println!("Generating public parameters...");
 
   let circuit_primary = EcdsaCircuit::<<G2 as Nova_Group>::Scalar> {
-    z_r: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_g: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_pk: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_c: <G2 as Nova_Group>::Scalar::zero(),
-    z_s: <G2 as Nova_Group>::Scalar::zero(),
     r: Coordinate::new(
       <G2 as Nova_Group>::Scalar::zero(),
       <G2 as Nova_Group>::Scalar::zero(),

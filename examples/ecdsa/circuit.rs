@@ -61,11 +61,6 @@ pub struct EcdsaCircuit<F>
 where
   F: PrimeField<Repr = [u8; 32]>,
 {
-  pub z_r: Coordinate<F>,
-  pub z_g: Coordinate<F>,
-  pub z_pk: Coordinate<F>,
-  pub z_c: F,
-  pub z_s: F,
   pub r: Coordinate<F>,
   pub g: Coordinate<F>,
   pub pk: Coordinate<F>,
@@ -90,29 +85,6 @@ where
     let mut z0 = Vec::new();
     let mut circuits = Vec::new();
     for i in 0..num_steps {
-      let mut j = i;
-      if i > 0 {
-        j = i - 1
-      };
-      let z_signature = &signatures[j];
-      let z_r = Coordinate::new(
-        F::from_repr(z_signature.r.x.to_repr()).unwrap(),
-        F::from_repr(z_signature.r.y.to_repr()).unwrap(),
-      );
-
-      let z_g = Coordinate::new(
-        F::from_repr(z_signature.g.x.to_repr()).unwrap(),
-        F::from_repr(z_signature.g.y.to_repr()).unwrap(),
-      );
-
-      let z_pk = Coordinate::new(
-        F::from_repr(z_signature.pk.x.to_repr()).unwrap(),
-        F::from_repr(z_signature.pk.y.to_repr()).unwrap(),
-      );
-
-      let z_c = F::from_repr(z_signature.c.to_repr()).unwrap();
-      let z_s = F::from_repr(z_signature.s.to_repr()).unwrap();
-
       let signature = &signatures[i];
       let r = Coordinate::new(
         F::from_repr(signature.r.x.to_repr()).unwrap(),
@@ -135,11 +107,6 @@ where
       let s = F::from_repr(signature.s.to_repr()).unwrap();
 
       let circuit = EcdsaCircuit {
-        z_r,
-        z_g,
-        z_pk,
-        z_c,
-        z_s,
         r,
         g,
         pk,
@@ -206,11 +173,8 @@ where
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
-    z: &[AllocatedNum<F>],
+    _z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-    let (z_rx, z_ry, z_gx, z_gy, z_pkx, z_pky, z_c, z_s) =
-      (&z[0], &z[1], &z[2], &z[3], &z[4], &z[5], &z[6], &z[7]);
-
     let g = AllocatedPoint::alloc(
       cs.namespace(|| "G"),
       Some((self.g.x, self.g.y, self.g.is_infinity)),
@@ -258,7 +222,7 @@ where
     Ok(vec![rx, ry, gx, gy, pkx, pky, c, s])
   }
 
-  fn output(&self, z: &[F]) -> Vec<F> {
+  fn output(&self, _z: &[F]) -> Vec<F> {
     vec![
       self.r.x, self.r.y, self.g.x, self.g.y, self.pk.x, self.pk.y, self.c, self.s,
     ]
