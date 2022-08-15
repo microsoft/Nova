@@ -84,8 +84,7 @@ where
   {
     let mut z0 = Vec::new();
     let mut circuits = Vec::new();
-    for i in 0..num_steps {
-      let signature = &signatures[i];
+    for (i, signature) in signatures.iter().enumerate().take(num_steps) {
       let r = Coordinate::new(
         F::from_repr(signature.r.x.to_repr()).unwrap(),
         F::from_repr(signature.r.y.to_repr()).unwrap(),

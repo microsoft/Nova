@@ -157,7 +157,7 @@ where
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{}", i)), || {
-          Ok(self.inputs.get()?.zi.as_ref().unwrap_or_else(|| &zero)[i])
+          Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
@@ -456,7 +456,7 @@ mod tests {
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       shape1.get_digest(),
-      zero2.clone(),
+      zero2,
       vec![zero2],
       None,
       None,
