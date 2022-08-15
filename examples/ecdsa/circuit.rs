@@ -3,11 +3,6 @@ use bellperson::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::U8;
-use neptune::{
-  circuit::poseidon_hash,
-  poseidon::{Poseidon, PoseidonConstants},
-};
 use nova_snark::{gadgets::ecc::AllocatedPoint, traits::circuit::StepCircuit};
 use subtle::Choice;
 
@@ -78,7 +73,6 @@ where
   pub s: F,
   pub c_bits: Vec<Choice>,
   pub s_bits: Vec<Choice>,
-  pub pc: PoseidonConstants<F, U8>,
 }
 
 impl<F> EcdsaCircuit<F>
@@ -88,16 +82,12 @@ where
   // Creates a new [`EcdsaCircuit<Fb, Fs>`]. The base and scalar field elements from the curve
   // field used by the signature are converted to scalar field elements from the cyclic curve
   // field used by the circuit.
-  pub fn new<Fb, Fs>(
-    num_steps: usize,
-    signatures: &[EcdsaSignature<Fb, Fs>],
-    pc: &PoseidonConstants<F, U8>,
-  ) -> (F, Vec<Self>)
+  pub fn new<Fb, Fs>(num_steps: usize, signatures: &[EcdsaSignature<Fb, Fs>]) -> (Vec<F>, Vec<Self>)
   where
     Fb: PrimeField<Repr = [u8; 32]>,
     Fs: PrimeField<Repr = [u8; 32]> + PrimeFieldBits,
   {
-    let mut z0 = F::zero();
+    let mut z0 = Vec::new();
     let mut circuits = Vec::new();
     for i in 0..num_steps {
       let mut j = i;
@@ -157,13 +147,11 @@ where
         s,
         c_bits,
         s_bits,
-        pc: pc.clone(),
       };
       circuits.push(circuit);
 
       if i == 0 {
-        z0 =
-          Poseidon::<F, U8>::new_with_preimage(&[r.x, r.y, g.x, g.y, pk.x, pk.y, c, s], pc).hash();
+        z0 = vec![r.x, r.y, g.x, g.y, pk.x, pk.y, c, s];
       }
     }
 
@@ -208,35 +196,20 @@ impl<F> StepCircuit<F> for EcdsaCircuit<F>
 where
   F: PrimeField<Repr = [u8; 32]> + PrimeFieldBits,
 {
+  fn arity(&self) -> usize {
+    8
+  }
+
   // Prove knowledge of the sk used to generate the Ecdsa signature (R,s)
   // with public key PK and message commitment c.
   // [s]G == R + [c]PK
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
-    let z_rx = AllocatedNum::alloc(cs.namespace(|| "z_rx"), || Ok(self.z_r.x))?;
-    let z_ry = AllocatedNum::alloc(cs.namespace(|| "z_ry"), || Ok(self.z_r.y))?;
-    let z_gx = AllocatedNum::alloc(cs.namespace(|| "z_gx"), || Ok(self.z_g.x))?;
-    let z_gy = AllocatedNum::alloc(cs.namespace(|| "z_gy"), || Ok(self.z_g.y))?;
-    let z_pkx = AllocatedNum::alloc(cs.namespace(|| "z_pkx"), || Ok(self.z_pk.x))?;
-    let z_pky = AllocatedNum::alloc(cs.namespace(|| "z_pky"), || Ok(self.z_pk.y))?;
-    let z_c = AllocatedNum::alloc(cs.namespace(|| "z_c"), || Ok(self.z_c))?;
-    let z_s = AllocatedNum::alloc(cs.namespace(|| "z_s"), || Ok(self.z_s))?;
-
-    let z_hash = poseidon_hash(
-      cs.namespace(|| "input hash"),
-      vec![z_rx, z_ry, z_gx, z_gy, z_pkx, z_pky, z_c, z_s],
-      &self.pc,
-    )?;
-
-    cs.enforce(
-      || "z == z1",
-      |lc| lc + z.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + z_hash.get_variable(),
-    );
+    z: &[AllocatedNum<F>],
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    let (z_rx, z_ry, z_gx, z_gy, z_pkx, z_pky, z_c, z_s) =
+      (&z[0], &z[1], &z[2], &z[3], &z[4], &z[5], &z[6], &z[7]);
 
     let g = AllocatedPoint::alloc(
       cs.namespace(|| "G"),
@@ -282,36 +255,12 @@ where
     let c = AllocatedNum::alloc(cs.namespace(|| "c"), || Ok(self.c))?;
     let s = AllocatedNum::alloc(cs.namespace(|| "s"), || Ok(self.s))?;
 
-    poseidon_hash(
-      cs.namespace(|| "output hash"),
-      vec![rx, ry, gx, gy, pkx, pky, c, s],
-      &self.pc,
-    )
+    Ok(vec![rx, ry, gx, gy, pkx, pky, c, s])
   }
 
-  fn output(&self, z: &F) -> F {
-    let z_hash = Poseidon::<F, U8>::new_with_preimage(
-      &[
-        self.z_r.x,
-        self.z_r.y,
-        self.z_g.x,
-        self.z_g.y,
-        self.z_pk.x,
-        self.z_pk.y,
-        self.z_c,
-        self.z_s,
-      ],
-      &self.pc,
-    )
-    .hash();
-    debug_assert_eq!(z, &z_hash);
-
-    Poseidon::<F, U8>::new_with_preimage(
-      &[
-        self.r.x, self.r.y, self.g.x, self.g.y, self.pk.x, self.pk.y, self.c, self.s,
-      ],
-      &self.pc,
-    )
-    .hash()
+  fn output(&self, z: &[F]) -> Vec<F> {
+    vec![
+      self.r.x, self.r.y, self.g.x, self.g.y, self.pk.x, self.pk.y, self.c, self.s,
+    ]
   }
 }
