@@ -733,13 +733,17 @@ mod tests {
   where
     F: PrimeField,
   {
+    fn arity(&self) -> usize {
+      1
+    }
+
     fn synthesize<CS: ConstraintSystem<F>>(
       &self,
       cs: &mut CS,
-      z: AllocatedNum<F>,
-    ) -> Result<AllocatedNum<F>, SynthesisError> {
+      z: &[AllocatedNum<F>],
+    ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
-      let x = z;
+      let x = &z[0];
       let x_sq = x.square(cs.namespace(|| "x_sq"))?;
       let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
       let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
@@ -761,11 +765,11 @@ mod tests {
         |lc| lc + y.get_variable(),
       );
 
-      Ok(y)
+      Ok(vec![y])
     }
 
-    fn output(&self, z: &F) -> F {
-      *z * *z * *z + z + F::from(5u64)
+    fn output(&self, z: &[F]) -> Vec<F> {
+      vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
   }
 
@@ -787,8 +791,8 @@ mod tests {
       None,
       TrivialTestCircuit::default(),
       TrivialTestCircuit::default(),
-      <G1 as Group>::Scalar::zero(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::zero()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
@@ -797,8 +801,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      <G1 as Group>::Scalar::zero(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::zero()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
   }
@@ -834,8 +838,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        <G1 as Group>::Scalar::one(),
-        <G2 as Group>::Scalar::zero(),
+        vec![<G1 as Group>::Scalar::one()],
+        vec![<G2 as Group>::Scalar::zero()],
       );
       assert!(res.is_ok());
       let recursive_snark_unwrapped = res.unwrap();
@@ -844,8 +848,8 @@ mod tests {
       let res = recursive_snark_unwrapped.verify(
         &pp,
         i + 1,
-        <G1 as Group>::Scalar::one(),
-        <G2 as Group>::Scalar::zero(),
+        vec![<G1 as Group>::Scalar::one()],
+        vec![<G2 as Group>::Scalar::zero()],
       );
       assert!(res.is_ok());
 
@@ -860,21 +864,21 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
-    let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
   }
 
   #[test]
@@ -908,8 +912,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        <G1 as Group>::Scalar::one(),
-        <G2 as Group>::Scalar::zero(),
+        vec![<G1 as Group>::Scalar::one()],
+        vec![<G2 as Group>::Scalar::zero()],
       );
       assert!(res.is_ok());
       recursive_snark = Some(res.unwrap());
@@ -922,21 +926,21 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
-    let mut zn_secondary_direct = <G2 as Group>::Scalar::zero();
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(2460515u64));
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // produce a compressed SNARK
     let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
@@ -947,8 +951,8 @@ mod tests {
     let res = compressed_snark.verify(
       &pp,
       num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
   }
@@ -965,7 +969,7 @@ mod tests {
     where
       F: PrimeField,
     {
-      fn new(num_steps: usize) -> (F, Vec<Self>) {
+      fn new(num_steps: usize) -> (Vec<F>, Vec<Self>) {
         let mut powers = Vec::new();
         let rng = &mut rand::rngs::OsRng;
         let mut seed = F::random(rng);
@@ -982,7 +986,7 @@ mod tests {
 
         // reverse the powers to get roots
         let roots = powers.into_iter().rev().collect::<Vec<Self>>();
-        (roots[0].y, roots[1..].to_vec())
+        (vec![roots[0].y], roots[1..].to_vec())
       }
     }
 
@@ -990,12 +994,16 @@ mod tests {
     where
       F: PrimeField,
     {
+      fn arity(&self) -> usize {
+        1
+      }
+
       fn synthesize<CS: ConstraintSystem<F>>(
         &self,
         cs: &mut CS,
-        z: AllocatedNum<F>,
-      ) -> Result<AllocatedNum<F>, SynthesisError> {
-        let x = z;
+        z: &[AllocatedNum<F>],
+      ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+        let x = &z[0];
 
         // we allocate a variable and set it to the provided non-derministic advice.
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(self.y))?;
@@ -1012,12 +1020,12 @@ mod tests {
           |lc| lc + x.get_variable(),
         );
 
-        Ok(y)
+        Ok(vec![y])
       }
 
-      fn output(&self, z: &F) -> F {
+      fn output(&self, z: &[F]) -> Vec<F> {
         // sanity check
-        let x = *z;
+        let x = z[0];
         let y_pow_5 = {
           let y = self.y;
           let y_sq = y.square();
@@ -1028,7 +1036,7 @@ mod tests {
 
         // return non-deterministic advice
         // as the output of the step
-        self.y
+        vec![self.y]
       }
     }
 
@@ -1050,7 +1058,7 @@ mod tests {
 
     // produce non-deterministic advice
     let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
-    let z0_secondary = <G2 as Group>::Scalar::zero();
+    let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
 
     // produce a recursive SNARK
     let mut recursive_snark: Option<
@@ -1068,8 +1076,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        z0_primary,
-        z0_secondary,
+        z0_primary.clone(),
+        z0_secondary.clone(),
       );
       assert!(res.is_ok());
       recursive_snark = Some(res.unwrap());
@@ -1079,7 +1087,7 @@ mod tests {
     let recursive_snark = recursive_snark.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
     assert!(res.is_ok());
 
     // produce a compressed SNARK
@@ -1110,8 +1118,8 @@ mod tests {
       None,
       TrivialTestCircuit::default(),
       CubicCircuit::default(),
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
@@ -1120,14 +1128,14 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      <G1 as Group>::Scalar::one(),
-      <G2 as Group>::Scalar::zero(),
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
-    assert_eq!(zn_primary, <G1 as Group>::Scalar::one());
-    assert_eq!(zn_secondary, <G2 as Group>::Scalar::from(5u64));
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(5u64)]);
   }
 }

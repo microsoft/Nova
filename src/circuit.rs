@@ -430,8 +430,15 @@ mod tests {
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: NovaAugmentedCircuitInputs<G2> =
-      NovaAugmentedCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
+    let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
+      shape2.get_digest(),
+      zero1,
+      vec![zero1],
+      None,
+      None,
+      None,
+      None,
+    );
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         params1,
@@ -449,8 +456,8 @@ mod tests {
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       shape1.get_digest(),
-      zero2,
-      zero2,
+      zero2.clone(),
+      vec![zero2],
       None,
       None,
       Some(inst1),
