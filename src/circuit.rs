@@ -8,7 +8,7 @@
 
 use super::{
   commitments::Commitment,
-  constants::{NUM_FE_FOR_HASH, NUM_HASH_BITS},
+  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -232,9 +232,13 @@ where
     U: AllocatedRelaxedR1CSInstance<G>,
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
+    arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), NUM_FE_FOR_HASH);
+    let mut ro = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
+    );
     ro.absorb(params.clone());
     ro.absorb(i);
     for e in z_0 {
@@ -301,6 +305,7 @@ where
       U,
       u.clone(),
       T,
+      arity,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -346,8 +351,14 @@ where
       .step_circuit
       .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
 
+    if z_next.len() != arity {
+      return Err(SynthesisError::IncompatibleLengthVector(
+        "z_next".to_string(),
+      ));
+    }
+
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_FOR_HASH);
+    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
     ro.absorb(params);
     ro.absorb(i_new.clone());
     for e in z_0 {

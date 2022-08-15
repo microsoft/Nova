@@ -26,7 +26,7 @@ use crate::bellperson::{
 };
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
-use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_HASH, NUM_HASH_BITS};
+use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
@@ -48,6 +48,8 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
+  F_arity_primary: usize,
+  F_arity_secondary: usize,
   ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
   r1cs_gens_primary: R1CSGens<G1>,
@@ -81,6 +83,9 @@ where
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
 
+    let F_arity_primary = c_primary.arity();
+    let F_arity_secondary = c_secondary.arity();
+
     // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
@@ -110,6 +115,8 @@ where
     let r1cs_shape_padded_secondary = r1cs_shape_secondary.pad();
 
     Self {
+      F_arity_primary,
+      F_arity_secondary,
       ro_consts_primary,
       ro_consts_circuit_primary,
       r1cs_gens_primary,
@@ -185,6 +192,10 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<Self, NovaError> {
+    if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
+
     match recursive_snark {
       None => {
         // base case for the primary
@@ -253,6 +264,10 @@ where
         // Outputs of the two circuits thus far
         let zi_primary = c_primary.output(&z0_primary);
         let zi_secondary = c_secondary.output(&z0_secondary);
+
+        if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+          return Err(NovaError::InvalidStepOutputLength);
+        }
 
         Ok(Self {
           r_W_primary,
@@ -391,7 +406,10 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
+      let mut hasher = <G2 as Group>::RO::new(
+        pp.ro_consts_secondary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
+      );
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in &z0_primary {
@@ -402,7 +420,10 @@ where
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
+      let mut hasher2 = <G1 as Group>::RO::new(
+        pp.ro_consts_primary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
+      );
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in &z0_secondary {
@@ -614,7 +635,10 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
+      let mut hasher = <G2 as Group>::RO::new(
+        pp.ro_consts_secondary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
+      );
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
@@ -625,7 +649,10 @@ where
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
+      let mut hasher2 = <G1 as Group>::RO::new(
+        pp.ro_consts_primary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
+      );
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {

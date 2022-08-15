@@ -5,12 +5,6 @@ type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
-use generic_array::typenum::U2;
-use neptune::{
-  circuit::poseidon_hash,
-  poseidon::{Poseidon, PoseidonConstants},
-  Strength,
-};
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialTestCircuit},
@@ -31,7 +25,7 @@ struct MinRootIteration<F: PrimeField> {
 
 impl<F: PrimeField> MinRootIteration<F> {
   // produces a sample non-deterministic advice, executing one invocation of MinRoot per step
-  fn new(num_iters: usize, x_0: &F, y_0: &F, pc: &PoseidonConstants<F, U2>) -> (F, Vec<Self>) {
+  fn new(num_iters: usize, x_0: &F, y_0: &F) -> (Vec<F>, Vec<Self>) {
     // although this code is written generically, it is tailored to Pallas' scalar field
     // (p - 3 / 5)
     let exp = BigUint::parse_bytes(
@@ -65,7 +59,7 @@ impl<F: PrimeField> MinRootIteration<F> {
       y_i = y_i_plus_1;
     }
 
-    let z0 = Poseidon::<F, U2>::new_with_preimage(&[*x_0, *y_0], pc).hash();
+    let z0 = vec![*x_0, *y_0];
 
     (z0, res)
   }
@@ -74,23 +68,27 @@ impl<F: PrimeField> MinRootIteration<F> {
 #[derive(Clone, Debug)]
 struct MinRootCircuit<F: PrimeField> {
   seq: Vec<MinRootIteration<F>>,
-  pc: PoseidonConstants<F, U2>,
 }
 
 impl<F> StepCircuit<F> for MinRootCircuit<F>
 where
   F: PrimeField,
 {
+  fn arity(&self) -> usize {
+    2
+  }
+
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
-    let mut z_out: Result<AllocatedNum<F>, SynthesisError> = Err(SynthesisError::AssignmentMissing);
+    z: &[AllocatedNum<F>],
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    let mut z_out: Result<Vec<AllocatedNum<F>>, SynthesisError> =
+      Err(SynthesisError::AssignmentMissing);
 
-    // allocate variables to hold x_0 and y_0
-    let x_0 = AllocatedNum::alloc(cs.namespace(|| "x_0"), || Ok(self.seq[0].x_i))?;
-    let y_0 = AllocatedNum::alloc(cs.namespace(|| "y_0"), || Ok(self.seq[0].y_i))?;
+    // use the provided inputs
+    let x_0 = z[0].clone();
+    let y_0 = z[1].clone();
 
     // variables to hold running x_i and y_i
     let mut x_i = x_0;
@@ -101,21 +99,6 @@ where
         AllocatedNum::alloc(cs.namespace(|| format!("x_i_plus_1_iter_{}", i)), || {
           Ok(self.seq[i].x_i_plus_1)
         })?;
-
-      // check that z = hash(x_i, y_i), where z is an output from the prior step
-      if i == 0 {
-        let z_hash = poseidon_hash(
-          cs.namespace(|| "input hash"),
-          vec![x_i.clone(), y_i.clone()],
-          &self.pc,
-        )?;
-        cs.enforce(
-          || "z =? z_hash",
-          |lc| lc + z_hash.get_variable(),
-          |lc| lc + CS::one(),
-          |lc| lc + z.get_variable(),
-        );
-      }
 
       // check the following conditions hold:
       // (i) x_i_plus_1 = (x_i + y_i)^{1/5}, which can be more easily checked with x_i_plus_1^5 = x_i + y_i
@@ -135,11 +118,7 @@ where
 
       // return hash(x_i_plus_1, y_i_plus_1) since Nova circuits expect a single output
       if i == self.seq.len() - 1 {
-        z_out = poseidon_hash(
-          cs.namespace(|| "output hash"),
-          vec![x_i_plus_1.clone(), x_i.clone()],
-          &self.pc,
-        );
+        z_out = Ok(vec![x_i_plus_1.clone(), x_i.clone()]);
       }
 
       // update x_i and y_i for the next iteration
@@ -150,22 +129,16 @@ where
     z_out
   }
 
-  fn output(&self, z: &F) -> F {
+  fn output(&self, z: &[F]) -> Vec<F> {
     // sanity check
-    let z_hash =
-      Poseidon::<F, U2>::new_with_preimage(&[self.seq[0].x_i, self.seq[0].y_i], &self.pc).hash();
-    debug_assert_eq!(z, &z_hash);
+    debug_assert_eq!(z[0], self.seq[0].x_i);
+    debug_assert_eq!(z[1], self.seq[0].y_i);
 
-    // compute output hash using advice
-    let iters = self.seq.len();
-    Poseidon::<F, U2>::new_with_preimage(
-      &[
-        self.seq[iters - 1].x_i_plus_1,
-        self.seq[iters - 1].y_i_plus_1,
-      ],
-      &self.pc,
-    )
-    .hash()
+    // compute output using advice
+    vec![
+      self.seq[self.seq.len() - 1].x_i_plus_1,
+      self.seq[self.seq.len() - 1].y_i_plus_1,
+    ]
   }
 }
 
@@ -176,7 +149,6 @@ fn main() {
   let num_steps = 10;
   for num_iters_per_step in [1024, 2048, 4096, 8192, 16384, 32768, 65535] {
     // number of iterations of MinRoot per Nova's recursive step
-    let pc = PoseidonConstants::<<G1 as Group>::Scalar, U2>::new_with_strength(Strength::Standard);
     let circuit_primary = MinRootCircuit {
       seq: vec![
         MinRootIteration {
@@ -187,7 +159,6 @@ fn main() {
         };
         num_iters_per_step
       ],
-      pc: pc.clone(),
     };
 
     let circuit_secondary = TrivialTestCircuit::default();
@@ -228,7 +199,6 @@ fn main() {
       num_iters_per_step * num_steps,
       &<G1 as Group>::Scalar::zero(),
       &<G1 as Group>::Scalar::one(),
-      &pc,
     );
     let minroot_circuits = (0..num_steps)
       .map(|i| MinRootCircuit {
@@ -240,11 +210,10 @@ fn main() {
             y_i_plus_1: minroot_iterations[i * num_iters_per_step + j].y_i_plus_1,
           })
           .collect::<Vec<_>>(),
-        pc: pc.clone(),
       })
       .collect::<Vec<_>>();
 
-    let z0_secondary = <G2 as Group>::Scalar::zero();
+    let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
 
     type C1 = MinRootCircuit<<G1 as Group>::Scalar>;
     type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
@@ -259,8 +228,8 @@ fn main() {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        z0_primary,
-        z0_secondary,
+        z0_primary.clone(),
+        z0_secondary.clone(),
       );
       assert!(res.is_ok());
       println!(
@@ -278,7 +247,7 @@ fn main() {
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
     let start = Instant::now();
-    let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
     println!(
       "RecursiveSNARK::verify: {:?}, took {:?}",
       res.is_ok(),
