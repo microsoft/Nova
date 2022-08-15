@@ -162,8 +162,8 @@ where
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
   i: usize,
-  zi_primary: G1::Scalar,
-  zi_secondary: G2::Scalar,
+  zi_primary: Vec<G1::Scalar>,
+  zi_secondary: Vec<G2::Scalar>,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -182,8 +182,8 @@ where
     recursive_snark: Option<Self>,
     c_primary: C1,
     c_secondary: C2,
-    z0_primary: G1::Scalar,
-    z0_secondary: G2::Scalar,
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
   ) -> Result<Self, NovaError> {
     match recursive_snark {
       None => {
@@ -192,7 +192,7 @@ where
         let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_secondary.get_digest(),
           G1::Scalar::zero(),
-          z0_primary,
+          z0_primary.clone(),
           None,
           None,
           None,
@@ -215,7 +215,7 @@ where
         let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_primary.get_digest(),
           G2::Scalar::zero(),
-          z0_secondary,
+          z0_secondary.clone(),
           None,
           None,
           Some(u_primary.clone()),
@@ -287,7 +287,7 @@ where
           pp.r1cs_shape_secondary.get_digest(),
           G1::Scalar::from(r_snark.i as u64),
           z0_primary,
-          Some(r_snark.zi_primary),
+          Some(r_snark.zi_primary.clone()),
           Some(r_snark.r_U_secondary.clone()),
           Some(r_snark.l_u_secondary.clone()),
           Some(nifs_secondary.comm_T.decompress()?),
@@ -321,7 +321,7 @@ where
           pp.r1cs_shape_primary.get_digest(),
           G2::Scalar::from(r_snark.i as u64),
           z0_secondary,
-          Some(r_snark.zi_secondary),
+          Some(r_snark.zi_secondary.clone()),
           Some(r_snark.r_U_primary.clone()),
           Some(l_u_primary.clone()),
           Some(nifs_primary.comm_T.decompress()?),
@@ -340,8 +340,8 @@ where
           .map_err(|_e| NovaError::UnSat)?;
 
         // update the running instances and witnesses
-        let zi_primary = c_primary.output(&r_snark.zi_primary);
-        let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
+        let zi_primary = c_primary.output(&r_snark.zi_primary.clone());
+        let zi_secondary = c_secondary.output(&r_snark.zi_secondary.clone());
 
         Ok(Self {
           r_W_primary,
@@ -367,9 +367,9 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
-    z0_primary: G1::Scalar,
-    z0_secondary: G2::Scalar,
-  ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -394,15 +394,23 @@ where
       let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
-      hasher.absorb(z0_primary);
-      hasher.absorb(self.zi_primary);
+      for e in &z0_primary {
+        hasher.absorb(*e);
+      }
+      for e in &self.zi_primary {
+        hasher.absorb(*e);
+      }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
-      hasher2.absorb(z0_secondary);
-      hasher2.absorb(self.zi_secondary);
+      for e in &z0_secondary {
+        hasher2.absorb(*e);
+      }
+      for e in &self.zi_secondary {
+        hasher2.absorb(*e);
+      }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
       (
@@ -463,7 +471,7 @@ where
     res_r_secondary?;
     res_l_secondary?;
 
-    Ok((self.zi_primary, self.zi_secondary))
+    Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
 }
 
@@ -488,8 +496,8 @@ where
   nifs_secondary: NIFS<G2>,
   f_W_snark_secondary: S2,
 
-  zn_primary: G1::Scalar,
-  zn_secondary: G2::Scalar,
+  zn_primary: Vec<G1::Scalar>,
+  zn_secondary: Vec<G2::Scalar>,
 
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
@@ -574,8 +582,8 @@ where
       nifs_secondary,
       f_W_snark_secondary: f_W_snark_secondary?,
 
-      zn_primary: recursive_snark.zi_primary,
-      zn_secondary: recursive_snark.zi_secondary,
+      zn_primary: recursive_snark.zi_primary.clone(),
+      zn_secondary: recursive_snark.zi_secondary.clone(),
 
       _p_c1: Default::default(),
       _p_c2: Default::default(),
@@ -587,9 +595,9 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
-    z0_primary: G1::Scalar,
-    z0_secondary: G2::Scalar,
-  ) -> Result<(G1::Scalar, G2::Scalar), NovaError> {
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -609,15 +617,23 @@ where
       let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), NUM_FE_FOR_HASH);
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
-      hasher.absorb(z0_primary);
-      hasher.absorb(self.zn_primary);
+      for e in z0_primary {
+        hasher.absorb(e);
+      }
+      for e in &self.zn_primary {
+        hasher.absorb(*e);
+      }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), NUM_FE_FOR_HASH);
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
-      hasher2.absorb(z0_secondary);
-      hasher2.absorb(self.zn_secondary);
+      for e in z0_secondary {
+        hasher2.absorb(e);
+      }
+      for e in &self.zn_secondary {
+        hasher2.absorb(*e);
+      }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
 
       (
@@ -665,7 +681,7 @@ where
     res_primary?;
     res_secondary?;
 
-    Ok((self.zn_primary, self.zn_secondary))
+    Ok((self.zn_primary.clone(), self.zn_secondary.clone()))
   }
 }
 
