@@ -86,7 +86,7 @@ where
       SpongeOp::Squeeze(1u32),
     ]);
 
-    sponge.start(parameter, Some(1u32), acc);
+    sponge.start(parameter, None, acc);
     assert_eq!(self.num_absorbs, self.state.len());
     SpongeAPI::absorb(&mut sponge, self.num_absorbs as u32, &self.state, acc);
     let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
@@ -163,7 +163,7 @@ where
       let acc = &mut ns;
       assert_eq!(self.num_absorbs, self.state.len());
 
-      sponge.start(parameter, Some(1u32), acc);
+      sponge.start(parameter, None, acc);
       neptune::sponge::api::SpongeAPI::absorb(
         &mut sponge,
         self.num_absorbs as u32,
