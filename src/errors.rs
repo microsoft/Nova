@@ -24,4 +24,8 @@ pub enum NovaError {
   InvalidIPA,
   /// returned when an invalid sum-check proof is provided
   InvalidSumcheckProof,
+  /// returned when the initial input to an incremental computation differs from a previously declared arity
+  InvalidInitialInputLength,
+  /// returned when the step execution produces an output whose length differs from a previously declared arity
+  InvalidStepOutputLength,
 }

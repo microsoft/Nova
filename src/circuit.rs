@@ -8,12 +8,12 @@
 
 use super::{
   commitments::Commitment,
-  constants::{NUM_FE_FOR_HASH, NUM_HASH_BITS},
+  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
     utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select, le_bits_to_num,
+      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -50,8 +50,8 @@ impl NovaAugmentedCircuitParams {
 pub struct NovaAugmentedCircuitInputs<G: Group> {
   params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   i: G::Base,
-  z0: G::Base,
-  zi: Option<G::Base>,
+  z0: Vec<G::Base>,
+  zi: Option<Vec<G::Base>>,
   U: Option<RelaxedR1CSInstance<G>>,
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
@@ -66,8 +66,8 @@ where
   pub fn new(
     params: G::Scalar,
     i: G::Base,
-    z0: G::Base,
-    zi: Option<G::Base>,
+    z0: Vec<G::Base>,
+    zi: Option<Vec<G::Base>>,
     U: Option<RelaxedR1CSInstance<G>>,
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
@@ -121,12 +121,13 @@ where
   fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
+    arity: usize,
   ) -> Result<
     (
       AllocatedNum<G::Base>,
       AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
+      Vec<AllocatedNum<G::Base>>,
+      Vec<AllocatedNum<G::Base>>,
       AllocatedRelaxedR1CSInstance<G>,
       AllocatedR1CSInstance<G>,
       AllocatedPoint<G::Base>,
@@ -143,12 +144,23 @@ where
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
     // Allocate z0
-    let z_0 = AllocatedNum::alloc(cs.namespace(|| "z0"), || Ok(self.inputs.get()?.z0))?;
+    let z_0 = (0..arity)
+      .map(|i| {
+        AllocatedNum::alloc(cs.namespace(|| format!("z0_{}", i)), || {
+          Ok(self.inputs.get()?.z0[i])
+        })
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-    let z_i = AllocatedNum::alloc(cs.namespace(|| "zi"), || {
-      Ok(self.inputs.get()?.zi.unwrap_or_else(G::Base::zero))
-    })?;
+    let zero = vec![G::Base::zero(); arity];
+    let z_i = (0..arity)
+      .map(|i| {
+        AllocatedNum::alloc(cs.namespace(|| format!("zi_{}", i)), || {
+          Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
+        })
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
@@ -215,18 +227,26 @@ where
     mut cs: CS,
     params: AllocatedNum<G::Base>,
     i: AllocatedNum<G::Base>,
-    z_0: AllocatedNum<G::Base>,
-    z_i: AllocatedNum<G::Base>,
+    z_0: Vec<AllocatedNum<G::Base>>,
+    z_i: Vec<AllocatedNum<G::Base>>,
     U: AllocatedRelaxedR1CSInstance<G>,
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G::Base>,
+    arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), NUM_FE_FOR_HASH);
+    let mut ro = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
+    );
     ro.absorb(params.clone());
     ro.absorb(i);
-    ro.absorb(z_0);
-    ro.absorb(z_i);
+    for e in z_0 {
+      ro.absorb(e);
+    }
+    for e in z_i {
+      ro.absorb(e);
+    }
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
@@ -261,9 +281,11 @@ where
     self,
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
+    let arity = self.step_circuit.arity();
+
     // Allocate all witnesses
     let (params, i, z_0, z_i, U, u, T) =
-      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
+      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
@@ -283,6 +305,7 @@ where
       U,
       u.clone(),
       T,
+      arity,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -317,7 +340,7 @@ where
     );
 
     // Compute z_{i+1}
-    let z_input = conditionally_select(
+    let z_input = conditionally_select_vec(
       cs.namespace(|| "select input to F"),
       &z_0,
       &z_i,
@@ -326,14 +349,24 @@ where
 
     let z_next = self
       .step_circuit
-      .synthesize(&mut cs.namespace(|| "F"), z_input)?;
+      .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
+
+    if z_next.len() != arity {
+      return Err(SynthesisError::IncompatibleLengthVector(
+        "z_next".to_string(),
+      ));
+    }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_FOR_HASH);
+    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
     ro.absorb(params);
     ro.absorb(i_new.clone());
-    ro.absorb(z_0);
-    ro.absorb(z_next);
+    for e in z_0 {
+      ro.absorb(e);
+    }
+    for e in z_next {
+      ro.absorb(e);
+    }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
@@ -397,8 +430,15 @@ mod tests {
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: NovaAugmentedCircuitInputs<G2> =
-      NovaAugmentedCircuitInputs::new(shape2.get_digest(), zero1, zero1, None, None, None, None);
+    let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
+      shape2.get_digest(),
+      zero1,
+      vec![zero1],
+      None,
+      None,
+      None,
+      None,
+    );
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         params1,
@@ -417,7 +457,7 @@ mod tests {
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       shape1.get_digest(),
       zero2,
-      zero2,
+      vec![zero2],
       None,
       None,
       Some(inst1),

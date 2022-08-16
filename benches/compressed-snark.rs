@@ -57,8 +57,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
         recursive_snark,
         NonTrivialTestCircuit::new(num_cons),
         TrivialTestCircuit::default(),
-        <G1 as Group>::Scalar::from(2u64),
-        <G2 as Group>::Scalar::from(2u64),
+        vec![<G1 as Group>::Scalar::from(2u64)],
+        vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
       let recursive_snark_unwrapped = res.unwrap();
@@ -67,8 +67,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
       let res = recursive_snark_unwrapped.verify(
         &pp,
         i + 1,
-        <G1 as Group>::Scalar::from(2u64),
-        <G2 as Group>::Scalar::from(2u64),
+        vec![<G1 as Group>::Scalar::from(2u64)],
+        vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
 
@@ -98,8 +98,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
           .verify(
             black_box(&pp),
             black_box(num_steps),
-            black_box(<G1 as Group>::Scalar::from(2u64)),
-            black_box(<G2 as Group>::Scalar::from(2u64)),
+            black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
+            black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
@@ -130,28 +130,32 @@ impl<F> StepCircuit<F> for NonTrivialTestCircuit<F>
 where
   F: PrimeField,
 {
+  fn arity(&self) -> usize {
+    1
+  }
+
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
-    z: AllocatedNum<F>,
-  ) -> Result<AllocatedNum<F>, SynthesisError> {
+    z: &[AllocatedNum<F>],
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
     // Consider a an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
-    let mut x = z;
+    let mut x = z[0].clone();
     let mut y = x.clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{}", i)))?;
       x = y.clone();
     }
-    Ok(y)
+    Ok(vec![y])
   }
 
-  fn output(&self, z: &F) -> F {
-    let mut x = *z;
+  fn output(&self, z: &[F]) -> Vec<F> {
+    let mut x = z[0];
     let mut y = x;
     for _i in 0..self.num_cons {
       y = x * x;
       x = y;
     }
-    y
+    vec![y]
   }
 }

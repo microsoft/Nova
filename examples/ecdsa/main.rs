@@ -9,8 +9,6 @@ use ff::{
   derive::byteorder::{ByteOrder, LittleEndian},
   Field, PrimeField, PrimeFieldBits,
 };
-use generic_array::typenum::U8;
-use neptune::{poseidon::PoseidonConstants, Strength};
 use nova_snark::{
   traits::{circuit::TrivialTestCircuit, Group as Nova_Group},
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -165,22 +163,7 @@ fn main() {
   // produce public parameters
   println!("Generating public parameters...");
 
-  let pc = PoseidonConstants::<<G2 as Group>::Scalar, U8>::new_with_strength(Strength::Standard);
   let circuit_primary = EcdsaCircuit::<<G2 as Nova_Group>::Scalar> {
-    z_r: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_g: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_pk: Coordinate::new(
-      <G2 as Nova_Group>::Scalar::zero(),
-      <G2 as Nova_Group>::Scalar::zero(),
-    ),
-    z_c: <G2 as Nova_Group>::Scalar::zero(),
-    z_s: <G2 as Nova_Group>::Scalar::zero(),
     r: Coordinate::new(
       <G2 as Nova_Group>::Scalar::zero(),
       <G2 as Nova_Group>::Scalar::zero(),
@@ -197,7 +180,6 @@ fn main() {
     s: <G2 as Nova_Group>::Scalar::zero(),
     c_bits: vec![Choice::from(0u8); 256],
     s_bits: vec![Choice::from(0u8); 256],
-    pc: pc.clone(),
   };
 
   let circuit_secondary = TrivialTestCircuit::default();
@@ -258,10 +240,10 @@ fn main() {
   let (z0_primary, circuits_primary) = EcdsaCircuit::<<G2 as Nova_Group>::Scalar>::new::<
     <G1 as Nova_Group>::Base,
     <G1 as Nova_Group>::Scalar,
-  >(num_steps, &signatures(), &pc);
+  >(num_steps, &signatures());
 
   // Secondary circuit
-  let z0_secondary = <G1 as Group>::Scalar::zero();
+  let z0_secondary = vec![<G1 as Group>::Scalar::zero()];
 
   // produce a recursive SNARK
   println!("Generating a RecursiveSNARK...");
@@ -277,8 +259,8 @@ fn main() {
       recursive_snark,
       circuit_primary.clone(),
       circuit_secondary.clone(),
-      z0_primary,
-      z0_secondary,
+      z0_primary.clone(),
+      z0_secondary.clone(),
     );
     assert!(result.is_ok());
     println!("RecursiveSNARK::prove_step {}: {:?}", i, result.is_ok());
@@ -290,7 +272,7 @@ fn main() {
 
   // verify the recursive SNARK
   println!("Verifying the RecursiveSNARK...");
-  let res = recursive_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+  let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
   println!("RecursiveSNARK::verify: {:?}", res.is_ok());
   assert!(res.is_ok());
 
