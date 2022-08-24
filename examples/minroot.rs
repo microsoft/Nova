@@ -1,6 +1,8 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
 //! iterations of the MinRoot function, thereby realizing a Nova-based verifiable delay function (VDF).
 //! We execute a configurable number of iterations of the MinRoot function per step of Nova's recursion.
+//! See the description of MinRoot in Section 8.2 in the following link: https://khovratovich.github.io/MinRoot/minroot.pdf
+//! We use fifth roots instead of cube roots (as described in the above link) given our implementation targets Pasta curves
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
@@ -17,15 +19,17 @@ use std::time::Instant;
 
 #[derive(Clone, Debug)]
 struct MinRootIteration<F: PrimeField> {
+  i: F,
   x_i: F,
   y_i: F,
+  i_plus_1: F,
   x_i_plus_1: F,
   y_i_plus_1: F,
 }
 
 impl<F: PrimeField> MinRootIteration<F> {
   // produces a sample non-deterministic advice, executing one invocation of MinRoot per step
-  fn new(num_iters: usize, x_0: &F, y_0: &F) -> (Vec<F>, Vec<Self>) {
+  fn new(num_iters: usize, i_0: &F, x_0: &F, y_0: &F) -> (Vec<F>, Vec<Self>) {
     // although this code is written generically, it is tailored to Pallas' scalar field
     // (p - 3 / 5)
     let exp = BigUint::parse_bytes(
@@ -35,9 +39,10 @@ impl<F: PrimeField> MinRootIteration<F> {
     .unwrap();
 
     let mut res = Vec::new();
+    let mut i = *i_0;
     let mut x_i = *x_0;
     let mut y_i = *y_0;
-    for _i in 0..num_iters {
+    for _ii in 0..num_iters {
       let x_i_plus_1 = (x_i + y_i).pow_vartime(exp.to_u64_digits()); // computes the fifth root of x_i + y_i
 
       // sanity check
@@ -46,20 +51,24 @@ impl<F: PrimeField> MinRootIteration<F> {
       let fifth = quad * x_i_plus_1;
       debug_assert_eq!(fifth, x_i + y_i);
 
-      let y_i_plus_1 = x_i;
+      let y_i_plus_1 = x_i + i;
+      let i_plus_1 = i + F::one();
 
       res.push(Self {
+        i,
         x_i,
         y_i,
+        i_plus_1,
         x_i_plus_1,
         y_i_plus_1,
       });
 
+      i = i_plus_1;
       x_i = x_i_plus_1;
       y_i = y_i_plus_1;
     }
 
-    let z0 = vec![*x_0, *y_0];
+    let z0 = vec![*i_0, *x_0, *y_0];
 
     (z0, res)
   }
@@ -75,7 +84,7 @@ where
   F: PrimeField,
 {
   fn arity(&self) -> usize {
-    2
+    3
   }
 
   fn synthesize<CS: ConstraintSystem<F>>(
@@ -86,44 +95,67 @@ where
     let mut z_out: Result<Vec<AllocatedNum<F>>, SynthesisError> =
       Err(SynthesisError::AssignmentMissing);
 
-    // use the provided inputs
-    let x_0 = z[0].clone();
-    let y_0 = z[1].clone();
-
     // variables to hold running x_i and y_i
-    let mut x_i = x_0;
-    let mut y_i = y_0;
-    for i in 0..self.seq.len() {
+    let mut i = z[0].clone();
+    let mut x_i = z[1].clone();
+    let mut y_i = z[2].clone();
+    for ii in 0..self.seq.len() {
       // non deterministic advice
+      let i_plus_1 = AllocatedNum::alloc(cs.namespace(|| format!("i_plus_1_iter_{}", ii)), || {
+        Ok(self.seq[ii].i_plus_1)
+      })?;
       let x_i_plus_1 =
-        AllocatedNum::alloc(cs.namespace(|| format!("x_i_plus_1_iter_{}", i)), || {
-          Ok(self.seq[i].x_i_plus_1)
+        AllocatedNum::alloc(cs.namespace(|| format!("x_i_plus_1_iter_{}", ii)), || {
+          Ok(self.seq[ii].x_i_plus_1)
+        })?;
+      let y_i_plus_1 =
+        AllocatedNum::alloc(cs.namespace(|| format!("y_i_plus_1_iter_{}", ii)), || {
+          Ok(self.seq[ii].y_i_plus_1)
         })?;
 
       // check the following conditions hold:
       // (i) x_i_plus_1 = (x_i + y_i)^{1/5}, which can be more easily checked with x_i_plus_1^5 = x_i + y_i
-      // (ii) y_i_plus_1 = x_i
-      // (1) constraints for condition (i) are below
-      // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
+
       let x_i_plus_1_sq =
-        x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{}", i)))?;
+        x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{}", ii)))?;
       let x_i_plus_1_quad =
-        x_i_plus_1_sq.square(cs.namespace(|| format!("x_i_plus_1_quad_{}", i)))?;
+        x_i_plus_1_sq.square(cs.namespace(|| format!("x_i_plus_1_quad_{}", ii)))?;
       cs.enforce(
-        || format!("x_i_plus_1_quad * x_i_plus_1 = x_i + y_i_iter_{}", i),
+        || format!("x_i_plus_1_quad * x_i_plus_1 = x_i + y_i iter_{}", ii),
         |lc| lc + x_i_plus_1_quad.get_variable(),
         |lc| lc + x_i_plus_1.get_variable(),
         |lc| lc + x_i.get_variable() + y_i.get_variable(),
       );
 
-      // return hash(x_i_plus_1, y_i_plus_1) since Nova circuits expect a single output
-      if i == self.seq.len() - 1 {
-        z_out = Ok(vec![x_i_plus_1.clone(), x_i.clone()]);
+      // (ii) y_i_plus_1 = x_i + i
+      cs.enforce(
+        || format!("y_i_plus_1 = x_i + i  iter_{}", ii),
+        |lc| lc + y_i_plus_1.get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + x_i.get_variable() + i.get_variable(),
+      );
+
+      // (ii) i_plus_1 = i + i
+      cs.enforce(
+        || format!("i_plus_1 = i + i  iter_{}", ii),
+        |lc| lc + i_plus_1.get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + i.get_variable() + CS::one(),
+      );
+
+      // return (i_plus_1, x_i_plus_1, y_i_plus_1)
+      if ii == self.seq.len() - 1 {
+        z_out = Ok(vec![
+          i_plus_1.clone(),
+          x_i_plus_1.clone(),
+          y_i_plus_1.clone(),
+        ]);
       }
 
-      // update x_i and y_i for the next iteration
-      y_i = x_i;
+      // update i, x_i, and y_i for the next iteration
+      i = i_plus_1;
       x_i = x_i_plus_1;
+      y_i = y_i_plus_1;
     }
 
     z_out
@@ -131,11 +163,13 @@ where
 
   fn output(&self, z: &[F]) -> Vec<F> {
     // sanity check
-    debug_assert_eq!(z[0], self.seq[0].x_i);
-    debug_assert_eq!(z[1], self.seq[0].y_i);
+    debug_assert_eq!(z[0], self.seq[0].i);
+    debug_assert_eq!(z[1], self.seq[0].x_i);
+    debug_assert_eq!(z[2], self.seq[0].y_i);
 
     // compute output using advice
     vec![
+      self.seq[self.seq.len() - 1].i_plus_1,
       self.seq[self.seq.len() - 1].x_i_plus_1,
       self.seq[self.seq.len() - 1].y_i_plus_1,
     ]
@@ -152,8 +186,10 @@ fn main() {
     let circuit_primary = MinRootCircuit {
       seq: vec![
         MinRootIteration {
+          i: <G1 as Group>::Scalar::zero(),
           x_i: <G1 as Group>::Scalar::zero(),
           y_i: <G1 as Group>::Scalar::zero(),
+          i_plus_1: <G1 as Group>::Scalar::one(),
           x_i_plus_1: <G1 as Group>::Scalar::zero(),
           y_i_plus_1: <G1 as Group>::Scalar::zero(),
         };
@@ -198,14 +234,17 @@ fn main() {
     let (z0_primary, minroot_iterations) = MinRootIteration::new(
       num_iters_per_step * num_steps,
       &<G1 as Group>::Scalar::zero(),
+      &<G1 as Group>::Scalar::zero(),
       &<G1 as Group>::Scalar::one(),
     );
     let minroot_circuits = (0..num_steps)
       .map(|i| MinRootCircuit {
         seq: (0..num_iters_per_step)
           .map(|j| MinRootIteration {
+            i: minroot_iterations[i * num_iters_per_step + j].i,
             x_i: minroot_iterations[i * num_iters_per_step + j].x_i,
             y_i: minroot_iterations[i * num_iters_per_step + j].y_i,
+            i_plus_1: minroot_iterations[i * num_iters_per_step + j].i_plus_1,
             x_i_plus_1: minroot_iterations[i * num_iters_per_step + j].x_i_plus_1,
             y_i_plus_1: minroot_iterations[i * num_iters_per_step + j].y_i_plus_1,
           })
