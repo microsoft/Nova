@@ -350,14 +350,23 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
         };
 
       let t_precompute_tables = Timer::new("precompute_tables");
-      let T_x = EqPolynomial::new(r_x.to_vec()).evals();
-      let T_y = EqPolynomial::new(r_y.to_vec()).evals();
+      let (T_x, T_y) = rayon::join(
+        || EqPolynomial::new(r_x.to_vec()).evals(),
+        || EqPolynomial::new(r_y.to_vec()).evals(),
+      );
       t_precompute_tables.stop();
 
       let t_eval_r1cs = Timer::new("eval_r1cs");
-      let eval_A_r = evaluate_with_table(&S.A, &T_x, &T_y);
-      let eval_B_r = evaluate_with_table(&S.B, &T_x, &T_y);
-      let eval_C_r = evaluate_with_table(&S.C, &T_x, &T_y);
+      let (eval_A_r, (eval_B_r, eval_C_r)) = rayon::join(
+        || evaluate_with_table(&S.A, &T_x, &T_y),
+        || {
+          rayon::join(
+            || evaluate_with_table(&S.B, &T_x, &T_y),
+            || evaluate_with_table(&S.C, &T_x, &T_y),
+          )
+        },
+      );
+
       t_eval_r1cs.stop();
       (eval_A_r, eval_B_r, eval_C_r)
     };
@@ -375,13 +384,15 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
 
     let t_nifs_ip_verify = Timer::new("nifs_ip_verify");
+    let t_nifs_ip_verify_evals = Timer::new("nifs_ip_verify_evals");
+    let (evals_rx, evals_ry) = rayon::join(
+      || EqPolynomial::new(r_x).evals(),
+      || EqPolynomial::new(r_y[1..].to_vec()).evals(),
+    );
+    t_nifs_ip_verify_evals.stop();
     let r_U = self.nifs_ip.verify(
-      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &self.eval_E),
-      &InnerProductInstance::new(
-        &U.comm_W,
-        &EqPolynomial::new(r_y[1..].to_vec()).evals(),
-        &self.eval_W,
-      ),
+      &InnerProductInstance::new(&U.comm_E, &evals_rx, &self.eval_E),
+      &InnerProductInstance::new(&U.comm_W, &evals_ry, &self.eval_W),
       &mut transcript,
     );
     t_nifs_ip_verify.stop();

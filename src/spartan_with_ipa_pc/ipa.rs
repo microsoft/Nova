@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 use crate::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
 use crate::errors::NovaError;
+use crate::timer::Timer;
 use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 use core::{cmp::max, iter};
 use ff::Field;
@@ -141,12 +142,16 @@ impl<G: Group> NIFSForInnerProduct<G> {
     transcript: &mut Transcript,
   ) -> InnerProductInstance<G> {
     transcript.append_message(b"protocol-name", Self::protocol_name());
-
+    let t_pad = Timer::new("nifs_ip_verify_pad");
     // pad the instances so they are of the same length
-    let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-    let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
+    let (U1, U2) = rayon::join(
+      || U1.pad(max(U1.b_vec.len(), U2.b_vec.len())),
+      || U2.pad(max(U1.b_vec.len(), U2.b_vec.len())),
+    );
+    t_pad.stop();
 
     // add the two commitments and two public vectors to the transcript
+    let t_transcript = Timer::new("nifs_ip_transcript");
     U1.comm_a_vec
       .append_to_transcript(b"U1_comm_a_vec", transcript);
     U1.b_vec.append_to_transcript(b"U1_b_vec", transcript);
@@ -158,19 +163,27 @@ impl<G: Group> NIFSForInnerProduct<G> {
     self
       .cross_term
       .append_to_transcript(b"cross_term", transcript);
+    t_transcript.stop();
 
     // obtain a random challenge
+    let t_chal = Timer::new("nifs_ip_chal");
     let r = G::Scalar::challenge(b"r", transcript);
+    t_chal.stop();
 
     // fold the vectors and their inner product
+    let t_fold_vec = Timer::new("nifs_ip_fold_vec");
     let b_vec = U1
       .b_vec
       .par_iter()
       .zip(U2.b_vec.par_iter())
       .map(|(a1, a2)| *a1 + r * a2)
       .collect::<Vec<G::Scalar>>();
+    t_fold_vec.stop();
+
+    let t_fold_comm = Timer::new("nifs_ips_fold_comm");
     let c = U1.c + r * r * U2.c + r * self.cross_term;
     let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
+    t_fold_comm.stop();
 
     InnerProductInstance {
       comm_a_vec,
