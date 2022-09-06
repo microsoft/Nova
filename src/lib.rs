@@ -11,6 +11,7 @@ mod constants;
 mod nifs;
 mod poseidon;
 mod r1cs;
+mod timer;
 
 // public modules
 pub mod errors;
@@ -35,6 +36,7 @@ use nifs::NIFS;
 use r1cs::{
   R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use timer::Timer;
 use traits::{
   circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, ROConstants,
   ROConstantsCircuit, ROConstantsTrait, ROTrait,
@@ -192,11 +194,13 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<Self, NovaError> {
+    let t = Timer::new("RecursiveSNARK::prove_step");
+
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidInitialInputLength);
     }
 
-    match recursive_snark {
+    let res = match recursive_snark {
       None => {
         // base case for the primary
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
@@ -374,7 +378,9 @@ where
           _p_c2: Default::default(),
         })
       }
-    }
+    };
+    t.stop();
+    res
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
@@ -385,6 +391,8 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
+    let t = Timer::new("RecursiveSNARK::verify");
+
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -492,6 +500,8 @@ where
     res_r_secondary?;
     res_l_secondary?;
 
+    t.stop();
+
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
 }
@@ -538,6 +548,7 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
+    let t = Timer::new("CompressedSNARK::prove");
     let (res_primary, res_secondary) = rayon::join(
       // fold the primary circuit's instance
       || {
@@ -591,6 +602,7 @@ where
         )
       },
     );
+    t.stop();
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
@@ -619,6 +631,8 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
+    let t = Timer::new("CompressedSNARK::verify");
+
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -634,6 +648,7 @@ where
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
+    let t_hashcheck = Timer::new("CompressedSNARK::verify::hashcheck");
     let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
         pp.ro_consts_secondary.clone(),
@@ -674,8 +689,10 @@ where
     {
       return Err(NovaError::ProofVerifyError);
     }
+    t_hashcheck.stop();
 
     // fold the running instance and last instance to get a folded instance
+    let t_fold_last = Timer::new("CompressedSNARK::verify::fold_last");
     let f_U_primary = self.nifs_primary.verify(
       &pp.ro_consts_primary,
       &pp.r1cs_shape_primary,
@@ -688,14 +705,18 @@ where
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
+    t_fold_last.stop();
 
     // produce a verifier key for the SNARK
+    let t_vk = Timer::new("CompressedSNARK::verify::vk");
     let (vk_primary, vk_secondary) = rayon::join(
       || S1::verifier_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
       || S2::verifier_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
     );
+    t_vk.stop();
 
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
+    let t_snark_v = Timer::new("CompressedSNARK::verify::snark_v");
     let (res_primary, res_secondary) = rayon::join(
       || self.f_W_snark_primary.verify(&vk_primary, &f_U_primary),
       || {
@@ -707,6 +728,9 @@ where
 
     res_primary?;
     res_secondary?;
+    t_snark_v.stop();
+
+    t.stop();
 
     Ok((self.zn_primary.clone(), self.zn_secondary.clone()))
   }

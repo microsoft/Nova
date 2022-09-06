@@ -8,6 +8,7 @@ use super::{
   commitments::CommitGens,
   errors::NovaError,
   r1cs::{R1CSGens, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  timer::Timer,
   traits::{
     snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
     AppendToTranscriptTrait, ChallengeTrait, Group,
@@ -267,6 +268,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       ((vk.S.num_vars as f64).log2() as usize + 1) as usize,
     );
 
+    let t_sc_outer = Timer::new("sumcheck_outer");
     // outer sum-check
     let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
@@ -299,8 +301,10 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       .2
       .append_to_transcript(b"claim_Cz", &mut transcript);
     self.eval_E.append_to_transcript(b"eval_E", &mut transcript);
+    t_sc_outer.stop();
 
     // inner sum-check
+    let t_sc_inner = Timer::new("sumcheck_inner");
     let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
     let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
     let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
@@ -311,8 +315,10 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       self
         .sc_proof_inner
         .verify(claim_inner_joint, num_rounds_y, 2, &mut transcript)?;
+    t_sc_inner.stop();
 
     // verify claim_inner_final
+    let t_eval_z = Timer::new("eval_z");
     let eval_Z = {
       let eval_X = {
         // constant term
@@ -327,6 +333,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       };
       (G::Scalar::one() - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };
+    t_eval_z.stop();
 
     let evaluate_as_sparse_polynomial = |S: &R1CSShape<G>,
                                          r_x: &[G::Scalar],
@@ -342,15 +349,23 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
             .fold(G::Scalar::zero(), |acc, x| acc + x)
         };
 
+      let t_precompute_tables = Timer::new("precompute_tables");
       let T_x = EqPolynomial::new(r_x.to_vec()).evals();
       let T_y = EqPolynomial::new(r_y.to_vec()).evals();
+      t_precompute_tables.stop();
+
+      let t_eval_r1cs = Timer::new("eval_r1cs");
       let eval_A_r = evaluate_with_table(&S.A, &T_x, &T_y);
       let eval_B_r = evaluate_with_table(&S.B, &T_x, &T_y);
       let eval_C_r = evaluate_with_table(&S.C, &T_x, &T_y);
+      t_eval_r1cs.stop();
       (eval_A_r, eval_B_r, eval_C_r)
     };
 
+    let t_eval_r1cs_batch = Timer::new("eval_r1cs_batch");
     let (eval_A_r, eval_B_r, eval_C_r) = evaluate_as_sparse_polynomial(&vk.S, &r_x, &r_y);
+    t_eval_r1cs_batch.stop();
+
     let claim_inner_final_expected = (r_A * eval_A_r + r_B * eval_B_r + r_C * eval_C_r) * eval_Z;
     if claim_inner_final != claim_inner_final_expected {
       return Err(NovaError::InvalidSumcheckProof);
@@ -359,6 +374,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     // verify eval_W and eval_E
     self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
 
+    let t_nifs_ip_verify = Timer::new("nifs_ip_verify");
     let r_U = self.nifs_ip.verify(
       &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &self.eval_E),
       &InnerProductInstance::new(
@@ -368,7 +384,9 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       ),
       &mut transcript,
     );
+    t_nifs_ip_verify.stop();
 
+    let t_ipa_verify = Timer::new("ipa_verify");
     self.ipa.verify(
       &vk.gens_r1cs.gens,
       &vk.gens_ipa,
@@ -376,6 +394,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       &r_U,
       &mut transcript,
     )?;
+    t_ipa_verify.stop();
 
     Ok(())
   }
