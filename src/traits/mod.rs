@@ -182,9 +182,11 @@ impl<F: PrimeField> AppendToTranscriptTrait for F {
 impl<F: PrimeField> AppendToTranscriptTrait for [F] {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
     let mut hasher = blake3::Hasher::new();
+    let mut data = Vec::new();
     for s in self {
-      hasher.update(s.to_repr().as_ref());
+      data.extend(s.to_repr().as_ref());
     }
+    hasher.update(&data);
     let digest = hasher.finalize();
     transcript.append_message(label, &digest.as_bytes().to_vec());
   }
