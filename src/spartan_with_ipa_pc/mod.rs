@@ -342,11 +342,13 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       let evaluate_with_table =
         |M: &[(usize, usize, G::Scalar)], T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
           (0..M.len())
-            .map(|i| {
+            .collect::<Vec<usize>>()
+            .par_iter()
+            .map(|&i| {
               let (row, col, val) = M[i];
               T_x[row] * T_y[col] * val
             })
-            .fold(G::Scalar::zero(), |acc, x| acc + x)
+            .reduce(G::Scalar::zero, |acc, x| acc + x)
         };
 
       let t_precompute_tables = Timer::new("precompute_tables");
