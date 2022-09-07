@@ -12,7 +12,7 @@ use nova_snark::{
     circuit::{StepCircuit, TrivialTestCircuit},
     Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
+  CompressedSNARK, CompressedSNARKParams, RecursiveSNARK, RecursiveSNARKParams,
 };
 use num_bigint::BigUint;
 use std::time::Instant;
@@ -181,7 +181,7 @@ fn main() {
   println!("=========================================================");
 
   let num_steps = 10;
-  for num_iters_per_step in [1024, 2048, 4096, 8192, 16384, 32768, 65535] {
+  for num_iters_per_step in [65536] {
     // number of iterations of MinRoot per Nova's recursive step
     let circuit_primary = MinRootCircuit {
       seq: vec![
@@ -206,7 +206,7 @@ fn main() {
 
     // produce public parameters
     println!("Producing public parameters...");
-    let pp = PublicParams::<
+    let res_pp = RecursiveSNARKParams::<
       G1,
       G2,
       MinRootCircuit<<G1 as Group>::Scalar>,
@@ -214,20 +214,20 @@ fn main() {
     >::setup(circuit_primary, circuit_secondary.clone());
     println!(
       "Number of constraints per step (primary circuit): {}",
-      pp.num_constraints().0
+      res_pp.num_constraints().0
     );
     println!(
       "Number of constraints per step (secondary circuit): {}",
-      pp.num_constraints().1
+      res_pp.num_constraints().1
     );
 
     println!(
       "Number of variables per step (primary circuit): {}",
-      pp.num_variables().0
+      res_pp.num_variables().0
     );
     println!(
       "Number of variables per step (secondary circuit): {}",
-      pp.num_variables().1
+      res_pp.num_variables().1
     );
 
     // produce non-deterministic advice
@@ -263,7 +263,7 @@ fn main() {
     for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
       let start = Instant::now();
       let res = RecursiveSNARK::prove_step(
-        &pp,
+        &res_pp,
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
@@ -286,7 +286,7 @@ fn main() {
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
     let start = Instant::now();
-    let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
+    let res = recursive_snark.verify(&res_pp, num_steps, z0_primary.clone(), z0_secondary.clone());
     println!(
       "RecursiveSNARK::verify: {:?}, took {:?}",
       res.is_ok(),
@@ -294,12 +294,22 @@ fn main() {
     );
     assert!(res.is_ok());
 
+    println!("Producing public parameters for CompressedSNARK");
+    type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
+    type S2 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
+    let cs_pp = CompressedSNARKParams::<
+      G1,
+      G2,
+      MinRootCircuit<<G1 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      S1,
+      S2,
+    >::setup(&res_pp);
+
     // produce a compressed SNARK
     println!("Generating a CompressedSNARK using Spartan with IPA-PC...");
     let start = Instant::now();
-    type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
-    type S2 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
-    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&res_pp, &cs_pp, &recursive_snark);
     println!(
       "CompressedSNARK::prove: {:?}, took {:?}",
       res.is_ok(),
@@ -311,7 +321,7 @@ fn main() {
     // verify the compressed SNARK
     println!("Verifying a CompressedSNARK...");
     let start = Instant::now();
-    let res = compressed_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    let res = compressed_snark.verify(&res_pp, &cs_pp, num_steps, z0_primary, z0_secondary);
     println!(
       "CompressedSNARK::verify: {:?}, took {:?}",
       res.is_ok(),

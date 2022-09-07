@@ -42,8 +42,8 @@ use traits::{
   ROConstantsCircuit, ROConstantsTrait, ROTrait,
 };
 
-/// A type that holds public parameters of Nova
-pub struct PublicParams<G1, G2, C1, C2>
+/// A type that holds public parameters of Nova's RecursiveSNARK
+pub struct RecursiveSNARKParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
@@ -68,14 +68,14 @@ where
   _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
+impl<G1, G2, C1, C2> RecursiveSNARKParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-  /// Create a new `PublicParams`
+  /// Create a new `RecursiveSNARKParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
@@ -187,7 +187,7 @@ where
   /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
   /// by executing a step of the incremental computation
   pub fn prove_step(
-    pp: &PublicParams<G1, G2, C1, C2>,
+    pp: &RecursiveSNARKParams<G1, G2, C1, C2>,
     recursive_snark: Option<Self>,
     c_primary: C1,
     c_secondary: C2,
@@ -386,7 +386,7 @@ where
   /// Verify the correctness of the `RecursiveSNARK`
   pub fn verify(
     &self,
-    pp: &PublicParams<G1, G2, C1, C2>,
+    pp: &RecursiveSNARKParams<G1, G2, C1, C2>,
     num_steps: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
@@ -506,6 +506,68 @@ where
   }
 }
 
+/// Public parameters for the CompressedSNARK
+#[derive(Clone, Debug)]
+pub struct CompressedSNARKParams<G1, G2, C1, C2, S1, S2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
+{
+  pk_primary: S1::ProverKey,
+  pk_secondary: S2::ProverKey,
+  vk_primary: S1::VerifierKey,
+  vk_secondary: S2::VerifierKey,
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
+}
+
+impl<G1, G2, C1, C2, S1, S2> CompressedSNARKParams<G1, G2, C1, C2, S1, S2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
+{
+  /// Produces public parameters for CompressedSNARK
+  pub fn setup(res_pp: &RecursiveSNARKParams<G1, G2, C1, C2>) -> Self {
+    // produce a prover key for the SNARK
+    let (pk_primary, pk_secondary) = rayon::join(
+      || S1::prover_key(&res_pp.r1cs_gens_primary, &res_pp.r1cs_shape_padded_primary),
+      || {
+        S2::prover_key(
+          &res_pp.r1cs_gens_secondary,
+          &res_pp.r1cs_shape_padded_secondary,
+        )
+      },
+    );
+
+    let (vk_primary, vk_secondary) = rayon::join(
+      || S1::verifier_key(&res_pp.r1cs_gens_primary, &res_pp.r1cs_shape_padded_primary),
+      || {
+        S2::verifier_key(
+          &res_pp.r1cs_gens_secondary,
+          &res_pp.r1cs_shape_padded_secondary,
+        )
+      },
+    );
+
+    Self {
+      pk_primary,
+      pk_secondary,
+      vk_primary,
+      vk_secondary,
+      _p_c1: Default::default(),
+      _p_c2: Default::default(),
+    }
+  }
+}
+
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
 #[derive(Clone, Debug)]
 pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
@@ -545,7 +607,8 @@ where
 {
   /// Create a new `CompressedSNARK`
   pub fn prove(
-    pp: &PublicParams<G1, G2, C1, C2>,
+    res_pp: &RecursiveSNARKParams<G1, G2, C1, C2>,
+    cs_pp: &CompressedSNARKParams<G1, G2, C1, C2, S1, S2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
     let t = Timer::new("CompressedSNARK::prove");
@@ -553,9 +616,9 @@ where
       // fold the primary circuit's instance
       || {
         NIFS::prove(
-          &pp.r1cs_gens_primary,
-          &pp.ro_consts_primary,
-          &pp.r1cs_shape_primary,
+          &res_pp.r1cs_gens_primary,
+          &res_pp.ro_consts_primary,
+          &res_pp.r1cs_shape_primary,
           &recursive_snark.r_U_primary,
           &recursive_snark.r_W_primary,
           &recursive_snark.l_u_primary,
@@ -565,9 +628,9 @@ where
       || {
         // fold the secondary circuit's instance
         NIFS::prove(
-          &pp.r1cs_gens_secondary,
-          &pp.ro_consts_secondary,
-          &pp.r1cs_shape_secondary,
+          &res_pp.r1cs_gens_secondary,
+          &res_pp.ro_consts_secondary,
+          &res_pp.r1cs_shape_secondary,
           &recursive_snark.r_U_secondary,
           &recursive_snark.r_W_secondary,
           &recursive_snark.l_u_secondary,
@@ -579,26 +642,20 @@ where
     let (nifs_primary, (f_U_primary, f_W_primary)) = res_primary?;
     let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
 
-    // produce a prover key for the SNARK
-    let (pk_primary, pk_secondary) = rayon::join(
-      || S1::prover_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
-      || S2::prover_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
-    );
-
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
       || {
         S1::prove(
-          &pk_primary,
+          &cs_pp.pk_primary,
           &f_U_primary,
-          &f_W_primary.pad(&pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
+          &f_W_primary.pad(&res_pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
         )
       },
       || {
         S2::prove(
-          &pk_secondary,
+          &cs_pp.pk_secondary,
           &f_U_secondary,
-          &f_W_secondary.pad(&pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
+          &f_W_secondary.pad(&res_pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
         )
       },
     );
@@ -626,7 +683,8 @@ where
   /// Verify the correctness of the `CompressedSNARK`
   pub fn verify(
     &self,
-    pp: &PublicParams<G1, G2, C1, C2>,
+    res_pp: &RecursiveSNARKParams<G1, G2, C1, C2>,
+    cs_pp: &CompressedSNARKParams<G1, G2, C1, C2, S1, S2>,
     num_steps: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
@@ -651,10 +709,12 @@ where
     let t_hashcheck = Timer::new("CompressedSNARK::verify::hashcheck");
     let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
-        pp.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
+        res_pp.ro_consts_secondary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * res_pp.F_arity_primary,
       );
-      hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
+      hasher.absorb(scalar_as_base::<G2>(
+        res_pp.r1cs_shape_secondary.get_digest(),
+      ));
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
         hasher.absorb(e);
@@ -665,10 +725,10 @@ where
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 = <G1 as Group>::RO::new(
-        pp.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
+        res_pp.ro_consts_primary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * res_pp.F_arity_secondary,
       );
-      hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
+      hasher2.absorb(scalar_as_base::<G1>(res_pp.r1cs_shape_primary.get_digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
@@ -694,35 +754,31 @@ where
     // fold the running instance and last instance to get a folded instance
     let t_fold_last = Timer::new("CompressedSNARK::verify::fold_last");
     let f_U_primary = self.nifs_primary.verify(
-      &pp.ro_consts_primary,
-      &pp.r1cs_shape_primary,
+      &res_pp.ro_consts_primary,
+      &res_pp.r1cs_shape_primary,
       &self.r_U_primary,
       &self.l_u_primary,
     )?;
     let f_U_secondary = self.nifs_secondary.verify(
-      &pp.ro_consts_secondary,
-      &pp.r1cs_shape_secondary,
+      &res_pp.ro_consts_secondary,
+      &res_pp.r1cs_shape_secondary,
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
     t_fold_last.stop();
 
-    // produce a verifier key for the SNARK
-    let t_vk = Timer::new("CompressedSNARK::verify::vk");
-    let (vk_primary, vk_secondary) = rayon::join(
-      || S1::verifier_key(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary),
-      || S2::verifier_key(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary),
-    );
-    t_vk.stop();
-
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
     let t_snark_v = Timer::new("CompressedSNARK::verify::snark_v");
     let (res_primary, res_secondary) = rayon::join(
-      || self.f_W_snark_primary.verify(&vk_primary, &f_U_primary),
+      || {
+        self
+          .f_W_snark_primary
+          .verify(&cs_pp.vk_primary, &f_U_primary)
+      },
       || {
         self
           .f_W_snark_secondary
-          .verify(&vk_secondary, &f_U_secondary)
+          .verify(&cs_pp.vk_secondary, &f_U_secondary)
       },
     );
 
