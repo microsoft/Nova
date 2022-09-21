@@ -7,7 +7,7 @@ use ff::{
   derive::byteorder::{ByteOrder, LittleEndian},
   Field, PrimeField, PrimeFieldBits,
 };
-use nova_snark::gadgets::ecc::AllocatedPoint;
+use nova_snark::{gadgets::ecc::AllocatedPoint, traits::Group as NovaGroup};
 use num_bigint::BigUint;
 use pasta_curves::{
   arithmetic::CurveAffine,
@@ -192,21 +192,21 @@ pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
     .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
 }
 
-pub fn verify_signature<F: PrimeField + PrimeFieldBits, CS: ConstraintSystem<F>>(
+pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
   cs: &mut CS,
-  pk: AllocatedPoint<F>,
-  r: AllocatedPoint<F>,
+  pk: AllocatedPoint<G>,
+  r: AllocatedPoint<G>,
   s_bits: Vec<AllocatedBit>,
   c_bits: Vec<AllocatedBit>,
 ) -> Result<(), SynthesisError> {
-  let g = AllocatedPoint::alloc(
+  let g = AllocatedPoint::<G>::alloc(
     cs.namespace(|| "g"),
     Some((
-      F::from_str_vartime(
+      G::Base::from_str_vartime(
         "28948022309329048855892746252171976963363056481941647379679742748393362948096",
       )
       .unwrap(),
-      F::from_str_vartime("2").unwrap(),
+      G::Base::from_str_vartime("2").unwrap(),
       false,
     )),
   )
@@ -218,7 +218,7 @@ pub fn verify_signature<F: PrimeField + PrimeFieldBits, CS: ConstraintSystem<F>>
     |lc| lc + CS::one(),
     |lc| {
       lc + (
-        F::from_str_vartime(
+        G::Base::from_str_vartime(
           "28948022309329048855892746252171976963363056481941647379679742748393362948096",
         )
         .unwrap(),
@@ -231,7 +231,7 @@ pub fn verify_signature<F: PrimeField + PrimeFieldBits, CS: ConstraintSystem<F>>
     || "gy is vesta curve",
     |lc| lc + g.get_coordinates().1.get_variable(),
     |lc| lc + CS::one(),
-    |lc| lc + (F::from_str_vartime("2").unwrap(), CS::one()),
+    |lc| lc + (G::Base::from_str_vartime("2").unwrap(), CS::one()),
   );
 
   let sg = g.scalar_mul(cs.namespace(|| "[s]G"), s_bits)?;
@@ -281,7 +281,7 @@ fn main() {
   let pk = {
     let pkxy = pk.0.to_affine().coordinates().unwrap();
 
-    AllocatedPoint::alloc(
+    AllocatedPoint::<G2>::alloc(
       cs.namespace(|| "pub key"),
       Some((*pkxy.x(), *pkxy.y(), false)),
     )

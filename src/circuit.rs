@@ -130,7 +130,7 @@ where
       Vec<AllocatedNum<G::Base>>,
       AllocatedRelaxedR1CSInstance<G>,
       AllocatedR1CSInstance<G>,
-      AllocatedPoint<G::Base>,
+      AllocatedPoint<G>,
     ),
     SynthesisError,
   > {
@@ -231,7 +231,7 @@ where
     z_i: Vec<AllocatedNum<G::Base>>,
     U: AllocatedRelaxedR1CSInstance<G>,
     u: AllocatedR1CSInstance<G>,
-    T: AllocatedPoint<G::Base>,
+    T: AllocatedPoint<G>,
     arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
