@@ -410,7 +410,7 @@ mod tests {
         ro_consts1.clone(),
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
-    let _ = circuit1.synthesize(&mut cs);
+    circuit1.synthesize(&mut cs);
     let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
     assert_eq!(cs.num_constraints(), 9819);
 
@@ -423,7 +423,7 @@ mod tests {
         ro_consts2.clone(),
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
-    let _ = circuit2.synthesize(&mut cs);
+    circuit2.synthesize(&mut cs);
     let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
     assert_eq!(cs.num_constraints(), 10351);
 
@@ -446,7 +446,7 @@ mod tests {
         TrivialTestCircuit::default(),
         ro_consts1,
       );
-    let _ = circuit1.synthesize(&mut cs1);
+    circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
     // Make sure that this is satisfiable
     assert!(shape1.is_sat(&gens1, &inst1, &witness1).is_ok());
@@ -470,7 +470,7 @@ mod tests {
         TrivialTestCircuit::default(),
         ro_consts2,
       );
-    let _ = circuit.synthesize(&mut cs2);
+    circuit.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &gens2).unwrap();
     // Make sure that it is satisfiable
     assert!(shape2.is_sat(&gens2, &inst2, &witness2).is_ok());

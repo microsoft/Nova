@@ -101,9 +101,9 @@ where
   /// Make the point io
   #[cfg(test)]
   pub fn inputize<CS: ConstraintSystem<Fp>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
-    let _ = self.x.inputize(cs.namespace(|| "Input point.x"));
-    let _ = self.y.inputize(cs.namespace(|| "Input point.y"));
-    let _ = self
+    self.x.inputize(cs.namespace(|| "Input point.x"));
+    self.y.inputize(cs.namespace(|| "Input point.y"));
+    self
       .is_infinity
       .inputize(cs.namespace(|| "Input point.is_infinity"));
     Ok(())
@@ -1006,7 +1006,7 @@ mod tests {
   fn test_ecc_circuit_ops() {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_smul::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
+    synthesize_smul::<Fp, Fq, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
@@ -1049,7 +1049,7 @@ mod tests {
   fn test_ecc_circuit_add_equal() {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    synthesize_add_equal::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
@@ -1094,7 +1094,7 @@ mod tests {
   fn test_ecc_circuit_add_negation() {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
+    synthesize_add_negation::<Fp, Fq, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();

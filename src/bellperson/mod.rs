@@ -27,7 +27,7 @@ mod tests {
   ) -> Result<(), SynthesisError> {
     // get two bits as input and check that they are indeed bits
     let a = AllocatedNum::alloc(cs.namespace(|| "a"), || Ok(Fr::one()))?;
-    let _ = a.inputize(cs.namespace(|| "a is input"));
+    a.inputize(cs.namespace(|| "a is input"));
     cs.enforce(
       || "check a is 0 or 1",
       |lc| lc + CS::one() - a.get_variable(),
@@ -35,7 +35,7 @@ mod tests {
       |lc| lc,
     );
     let b = AllocatedNum::alloc(cs.namespace(|| "b"), || Ok(Fr::one()))?;
-    let _ = b.inputize(cs.namespace(|| "b is input"));
+    b.inputize(cs.namespace(|| "b is input"));
     cs.enforce(
       || "check b is 0 or 1",
       |lc| lc + CS::one() - b.get_variable(),
@@ -51,13 +51,13 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_alloc_bit(&mut cs);
+    synthesize_alloc_bit(&mut cs);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_alloc_bit(&mut cs);
+    synthesize_alloc_bit(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -75,8 +75,8 @@ mod tests {
       |lc| lc + CS::one(),
       |lc| lc,
     );
-    let _ = a.inputize(cs.namespace(|| "a is input"));
-    let _ = b.inputize(cs.namespace(|| "b is input"));
+    a.inputize(cs.namespace(|| "a is input"));
+    b.inputize(cs.namespace(|| "b is input"));
     Ok(())
   }
 
@@ -85,14 +85,14 @@ mod tests {
   ) -> Result<(), SynthesisError> {
     let a = AllocatedNum::alloc(cs.namespace(|| "a"), || Ok(Fr::one()))?;
     let b = AllocatedNum::alloc(cs.namespace(|| "b"), || Ok(Fr::one()))?;
-    let _ = a.inputize(cs.namespace(|| "a is input"));
+    a.inputize(cs.namespace(|| "a is input"));
     cs.enforce(
       || "check a = b",
       |lc| lc + a.get_variable() - b.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc,
     );
-    let _ = b.inputize(cs.namespace(|| "b is input"));
+    b.inputize(cs.namespace(|| "b is input"));
     Ok(())
   }
 
@@ -102,13 +102,13 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_use_cs_one(&mut cs);
+    synthesize_use_cs_one(&mut cs);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_use_cs_one(&mut cs);
+    synthesize_use_cs_one(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -121,13 +121,13 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_use_cs_one_after_inputize(&mut cs);
+    synthesize_use_cs_one_after_inputize(&mut cs);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_use_cs_one_after_inputize(&mut cs);
+    synthesize_use_cs_one_after_inputize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -146,7 +146,7 @@ mod tests {
       limb_width,
       n_limbs,
     )?;
-    let _ = a1.inputize(cs.namespace(|| "make a input"));
+    a1.inputize(cs.namespace(|| "make a input"));
 
     let a_num = Num::alloc(cs.namespace(|| "alloc a num"), || {
       Ok(nat_to_f(a_val).unwrap())
@@ -321,14 +321,14 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
+    synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Mult mod constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
+    synthesize_mult_mod(&mut cs, &a_val, &b_val, &m_val, &q_val, &r_val, 32, 8);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -354,14 +354,14 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
+    synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Add mod constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
+    synthesize_add(&mut cs, &a_val, &b_val, &c_val, 64, 4);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -392,14 +392,14 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
+    synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Add mod constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
+    synthesize_add_mod(&mut cs, &a_val, &b_val, &c_val, &m_val, 32, 8);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable
@@ -415,14 +415,14 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
+    synthesize_is_equal(&mut cs, &a_val, 32, 8);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     println!("Equal constraint no: {}", cs.num_constraints());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_is_equal(&mut cs, &a_val, 32, 8);
+    synthesize_is_equal(&mut cs, &a_val, 32, 8);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that this is satisfiable

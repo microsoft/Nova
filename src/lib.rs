@@ -98,7 +98,7 @@ where
       ro_consts_circuit_primary.clone(),
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
-    let _ = circuit_primary.synthesize(&mut cs);
+    circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
     let r1cs_shape_padded_primary = r1cs_shape_primary.pad();
 
@@ -110,7 +110,7 @@ where
       ro_consts_circuit_secondary.clone(),
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
-    let _ = circuit_secondary.synthesize(&mut cs);
+    circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
     let r1cs_shape_padded_secondary = r1cs_shape_secondary.pad();
 
@@ -216,7 +216,7 @@ where
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
         );
-        let _ = circuit_primary.synthesize(&mut cs_primary);
+        circuit_primary.synthesize(&mut cs_primary);
         let (u_primary, w_primary) = cs_primary
           .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
           .map_err(|_e| NovaError::UnSat)?;
@@ -238,7 +238,7 @@ where
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
         );
-        let _ = circuit_secondary.synthesize(&mut cs_secondary);
+        circuit_secondary.synthesize(&mut cs_secondary);
         let (u_secondary, w_secondary) = cs_secondary
           .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
           .map_err(|_e| NovaError::UnSat)?;
@@ -314,7 +314,7 @@ where
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
         );
-        let _ = circuit_primary.synthesize(&mut cs_primary);
+        circuit_primary.synthesize(&mut cs_primary);
 
         let (l_u_primary, l_w_primary) = cs_primary
           .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
@@ -348,7 +348,7 @@ where
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
         );
-        let _ = circuit_secondary.synthesize(&mut cs_secondary);
+        circuit_secondary.synthesize(&mut cs_secondary);
 
         let (l_u_secondary, l_w_secondary) = cs_secondary
           .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)

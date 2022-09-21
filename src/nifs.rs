@@ -127,14 +127,14 @@ mod tests {
   ) -> Result<(), SynthesisError> {
     // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x_val.unwrap()))?;
-    let _ = x.inputize(cs.namespace(|| "x is input"));
+    x.inputize(cs.namespace(|| "x is input"));
 
     let x_sq = x.square(cs.namespace(|| "x_sq"))?;
     let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
     let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
       Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + Scalar::from(5u64))
     })?;
-    let _ = y.inputize(cs.namespace(|| "y is output"));
+    y.inputize(cs.namespace(|| "y is output"));
 
     cs.enforce(
       || "y = x^3 + x + 5",
@@ -164,7 +164,7 @@ mod tests {
 
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
+    synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let shape = cs.r1cs_shape();
     let gens = cs.r1cs_gens();
     let ro_consts =
@@ -172,7 +172,7 @@ mod tests {
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(5)));
+    synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(5)));
     let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that the first instance is satisfiable
@@ -180,7 +180,7 @@ mod tests {
 
     // Now get the instance and assignment for second instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(135)));
+    synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(135)));
     let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
 
     // Make sure that the second instance is satisfiable
