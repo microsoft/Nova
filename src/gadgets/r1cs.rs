@@ -309,7 +309,7 @@ where
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
-      &G::get_order(),
+      &G::get_curve_params().2,
       limb_width,
       n_limbs,
     )?;

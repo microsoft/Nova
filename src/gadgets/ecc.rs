@@ -324,9 +324,7 @@ where
   /// Doubles the supplied point.
   pub fn double<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     //*************************************************************/
-    // lambda = G::Base::from(3)
-    //  * self.x
-    //  * self.x
+    // lambda = (G::Base::from(3) * self.x * self.x + G::A())
     //  * (G::Base::from(2)) * self.y).invert().unwrap();
     /*************************************************************/
 
@@ -343,8 +341,19 @@ where
 
     let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
-    // Now compute lambda as (G::Base::one() + G::Base::one + G::Base::one()) * self.x * self.x * tmp_inv
+    // Now compute lambda as (G::Base::from(3) * self.x * self.x + G::A()) * tmp_inv
+
     let prod_1 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 1"), || {
+      Ok(G::Base::from(3) * self.x.get_value().get()? * self.x.get_value().get()?)
+    })?;
+    cs.enforce(
+      || "Check prod 1",
+      |lc| lc + (G::Base::from(3), self.x.get_variable()),
+      |lc| lc + self.x.get_variable(),
+      |lc| lc + prod_1.get_variable(),
+    );
+
+    let lambda = AllocatedNum::alloc(cs.namespace(|| "alloc lambda"), || {
       let tmp_inv = if *self.is_infinity.get_value().get()? == G::Base::one() {
         // Return default value 1
         G::Base::one()
@@ -353,34 +362,14 @@ where
         (*tmp.get_value().get()?).invert().unwrap()
       };
 
-      Ok(tmp_inv * self.x.get_value().get()?)
+      Ok(tmp_inv * (*prod_1.get_value().get()? + G::get_curve_params().0))
     })?;
 
-    cs.enforce(
-      || "Check prod 1",
-      |lc| lc + tmp.get_variable(),
-      |lc| lc + prod_1.get_variable(),
-      |lc| lc + self.x.get_variable(),
-    );
-
-    let prod_2 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 2"), || {
-      Ok(*prod_1.get_value().get()? * self.x.get_value().get()?)
-    })?;
-    cs.enforce(
-      || "Check prod 2",
-      |lc| lc + self.x.get_variable(),
-      |lc| lc + prod_1.get_variable(),
-      |lc| lc + prod_2.get_variable(),
-    );
-
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-      Ok(*prod_2.get_value().get()? * (G::Base::one() + G::Base::one() + G::Base::one()))
-    })?;
     cs.enforce(
       || "Check lambda",
-      |lc| lc + CS::one() + CS::one() + CS::one(),
-      |lc| lc + prod_2.get_variable(),
+      |lc| lc + tmp.get_variable(),
       |lc| lc + lambda.get_variable(),
+      |lc| lc + prod_1.get_variable() + (G::get_curve_params().0, CS::one()),
     );
 
     /*************************************************************/
@@ -692,12 +681,12 @@ where
   where
     CS: ConstraintSystem<G::Base>,
   {
-    // lambda = (3 x^2 + a) / 2 * y. For pasta curves, a = 0
+    // lambda = (3 x^2 + a) / 2 * y
 
     let x_sq = self.x.square(cs.namespace(|| "x_sq"))?;
 
     let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-      let n = G::Base::from(3) * x_sq.get_value().get()?;
+      let n = G::Base::from(3) * x_sq.get_value().get()? + G::get_curve_params().0;
       let d = G::Base::from(2) * *self.y.get_value().get()?;
       if d == G::Base::zero() {
         Ok(G::Base::one())
@@ -709,7 +698,7 @@ where
       || "Check that lambda is computed correctly",
       |lc| lc + lambda.get_variable(),
       |lc| lc + (G::Base::from(2), self.y.get_variable()),
-      |lc| lc + (G::Base::from(3), x_sq.get_variable()),
+      |lc| lc + (G::Base::from(3), x_sq.get_variable()) + (G::get_curve_params().0, CS::one()),
     );
 
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
@@ -752,7 +741,6 @@ where
     condition: &Boolean,
   ) -> Result<Self, SynthesisError> {
     let x = conditionally_select(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
-
     let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
 
     Ok(Self { x, y })

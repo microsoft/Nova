@@ -89,12 +89,16 @@ impl Group for pallas::Point {
     }
   }
 
-  fn get_order() -> BigInt {
-    BigInt::from_str_radix(
+  fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
+    let A = Self::Base::zero();
+    let B = Self::Base::from(5);
+    let order = BigInt::from_str_radix(
       "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
       16,
     )
-    .unwrap()
+    .unwrap();
+
+    (A, B, order)
   }
 
   fn zero() -> Self {
@@ -195,12 +199,16 @@ impl Group for vesta::Point {
     }
   }
 
-  fn get_order() -> BigInt {
-    BigInt::from_str_radix(
+  fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
+    let A = Self::Base::zero();
+    let B = Self::Base::from(5);
+    let order = BigInt::from_str_radix(
       "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
       16,
     )
-    .unwrap()
+    .unwrap();
+
+    (A, B, order)
   }
 
   fn zero() -> Self {
