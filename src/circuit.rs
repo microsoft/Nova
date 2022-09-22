@@ -130,7 +130,7 @@ where
       Vec<AllocatedNum<G::Base>>,
       AllocatedRelaxedR1CSInstance<G>,
       AllocatedR1CSInstance<G>,
-      AllocatedPoint<G::Base>,
+      AllocatedPoint<G>,
     ),
     SynthesisError,
   > {
@@ -231,7 +231,7 @@ where
     z_i: Vec<AllocatedNum<G::Base>>,
     U: AllocatedRelaxedR1CSInstance<G>,
     u: AllocatedR1CSInstance<G>,
-    T: AllocatedPoint<G::Base>,
+    T: AllocatedPoint<G>,
     arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
@@ -412,7 +412,7 @@ mod tests {
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 9819);
+    assert_eq!(cs.num_constraints(), 9815);
 
     // Initialize the shape and gens for the secondary
     let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
@@ -425,7 +425,7 @@ mod tests {
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
-    assert_eq!(cs.num_constraints(), 10351);
+    assert_eq!(cs.num_constraints(), 10347);
 
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::zero();

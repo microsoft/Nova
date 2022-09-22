@@ -27,7 +27,7 @@ pub struct AllocatedR1CSInstance<G>
 where
   G: Group,
 {
-  pub(crate) W: AllocatedPoint<G::Base>,
+  pub(crate) W: AllocatedPoint<G>,
   pub(crate) X0: AllocatedNum<G::Base>,
   pub(crate) X1: AllocatedNum<G::Base>,
 }
@@ -75,8 +75,8 @@ pub struct AllocatedRelaxedR1CSInstance<G>
 where
   G: Group,
 {
-  pub(crate) W: AllocatedPoint<G::Base>,
-  pub(crate) E: AllocatedPoint<G::Base>,
+  pub(crate) W: AllocatedPoint<G>,
+  pub(crate) E: AllocatedPoint<G>,
   pub(crate) u: AllocatedNum<G::Base>,
   pub(crate) X0: BigNat<G::Base>,
   pub(crate) X1: BigNat<G::Base>,
@@ -262,7 +262,7 @@ where
     mut cs: CS,
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: AllocatedR1CSInstance<G>,
-    T: AllocatedPoint<G::Base>,
+    T: AllocatedPoint<G>,
     ro_consts: ROConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
@@ -309,7 +309,7 @@ where
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
-      &G::get_order(),
+      &G::get_curve_params().2,
       limb_width,
       n_limbs,
     )?;
