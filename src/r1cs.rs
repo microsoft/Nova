@@ -18,13 +18,14 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct R1CSGens<G: Group> {
   pub(crate) gens: CommitGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
@@ -36,27 +37,29 @@ pub struct R1CSShape<G: Group> {
 }
 
 /// A type that holds a witness for a given R1CS instance
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
 
 /// A type that holds an R1CS instance
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct R1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelaxedR1CSWitness<G: Group> {
   pub(crate) W: Vec<G::Scalar>,
   pub(crate) E: Vec<G::Scalar>,
 }
 
 /// A type that holds a Relaxed R1CS instance
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) comm_E: Commitment<G>,

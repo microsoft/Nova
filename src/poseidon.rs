@@ -20,10 +20,14 @@ use neptune::{
   },
   Strength,
 };
+use serde::{de::Error as DeserializeError, Serialize, Deserialize, Serializer, Deserializer};
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+
+// TODO: Define a binary repr for PoseidonConstantsCircuit, using the to_repr/from_repr
+// functions from the ff:PrimeField trait
 
 impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
@@ -36,7 +40,27 @@ where
   }
 }
 
+impl<Scalar: PrimeField> Serialize for PoseidonConstantsCircuit<Scalar> {
+  fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    self.to_repr().serialize(s)
+  }
+}
+
+impl<'de, Scalar: PrimeField> Deserialize<'de> for PoseidonConstantsCircuit<Scalar> {
+  fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+    // TODO: 32-element byte array probably too small?
+    let bytes = <[u8;32]>::deserialize(d)?;
+    match PoseidonConstantsCircuit::<Scalar>::from_repr(bytes).into() {
+      Some(circuit) => Ok(circuit),
+      None => Err(D::Error::custom(
+	"deserialized bytes don't encode a Poseidon constants circuit",
+	)),
+    }
+  }
+}
+
 /// A Poseidon-based RO to use outside circuits
+#[derive(Serialize, Deserialize)]
 pub struct PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
@@ -107,11 +131,13 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
+#[derive(Serialize, Deserialize)]
 pub struct PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
 {
   // Internal state
+  //#[serde(bound = "Scalar: Serialize + for<'de> Scalar: Deserialize<'de>")]
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
   num_absorbs: usize,

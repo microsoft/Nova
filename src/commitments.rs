@@ -10,19 +10,22 @@ use core::{
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommitGens<G: Group> {
   gens: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct Commitment<G: Group> {
   pub(crate) comm: G,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct CompressedCommitment<C: CompressedGroup> {
   comm: C,
 }

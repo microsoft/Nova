@@ -39,8 +39,11 @@ use traits::{
   circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, ROConstants,
   ROConstantsCircuit, ROConstantsTrait, ROTrait,
 };
+use serde::{Deserialize, Serialize};
 
 /// A type that holds public parameters of Nova
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -152,7 +155,8 @@ where
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
