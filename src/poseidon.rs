@@ -23,7 +23,7 @@ use neptune::{
 use serde::{de::Error as DeserializeError, Serialize, Deserialize, Serializer, Deserializer};
 
 /// All Poseidon Constants that are used in Nova
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
 // TODO: Define a binary repr for PoseidonConstantsCircuit, using the to_repr/from_repr
@@ -37,25 +37,6 @@ where
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
     Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
-  }
-}
-
-impl<Scalar: PrimeField> Serialize for PoseidonConstantsCircuit<Scalar> {
-  fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-    self.to_repr().serialize(s)
-  }
-}
-
-impl<'de, Scalar: PrimeField> Deserialize<'de> for PoseidonConstantsCircuit<Scalar> {
-  fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-    // TODO: 32-element byte array probably too small?
-    let bytes = <[u8;32]>::deserialize(d)?;
-    match PoseidonConstantsCircuit::<Scalar>::from_repr(bytes).into() {
-      Some(circuit) => Ok(circuit),
-      None => Err(D::Error::custom(
-	"deserialized bytes don't encode a Poseidon constants circuit",
-	)),
-    }
   }
 }
 
@@ -76,7 +57,7 @@ where
 
 impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
-  Base: PrimeField + PrimeFieldBits,
+  Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
   Scalar: PrimeField + PrimeFieldBits,
 {
   type Constants = PoseidonConstantsCircuit<Base>;
@@ -137,7 +118,6 @@ where
   Scalar: PrimeField + PrimeFieldBits,
 {
   // Internal state
-  //#[serde(bound = "Scalar: Serialize + for<'de> Scalar: Deserialize<'de>")]
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
   num_absorbs: usize,
@@ -146,7 +126,7 @@ where
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
-  Scalar: PrimeField + PrimeFieldBits,
+  Scalar: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
