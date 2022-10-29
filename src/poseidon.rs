@@ -9,7 +9,6 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::U24;
 use neptune::{
   circuit2::Elt,
   poseidon::PoseidonConstants,
@@ -20,11 +19,11 @@ use neptune::{
   },
   Strength,
 };
-use serde::{de::Error as DeserializeError, Serialize, Deserialize, Serializer, Deserializer};
+use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serialize, Serializer};
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone, Serialize, Deserialize)]
-pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, 24>);
 
 // TODO: Define a binary repr for PoseidonConstantsCircuit, using the to_repr/from_repr
 // functions from the ff:PrimeField trait
@@ -36,7 +35,7 @@ where
   /// Generate Poseidon constants
   #[allow(clippy::new_without_default)]
   fn new() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self(Sponge::<Scalar, 24, 25>::api_constants(Strength::Standard))
   }
 }
 
@@ -84,7 +83,7 @@ where
     assert!(!self.squeezed, "Cannot squeeze again after squeezing");
     self.squeezed = true;
 
-    let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
+    let mut sponge = Sponge::<Base, 24, 25>::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.num_absorbs as u32),
