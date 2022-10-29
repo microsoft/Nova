@@ -50,7 +50,6 @@ default = [ "bellperson/default", "bellperson-nonnative/default", "neptune/defau
 wasm = [ "bellperson/wasm", "bellperson-nonnative/wasm", "neptune/wasm" ]
 
 [patch.crates-io]
-#pasta_curves = { git = "https://github.com/filecoin-project/fil_pasta_curves", rev = "025362ad5af96e9ca54851d3554af6ca1d0c2cf6" }
-pasta_curves = { path = "../pasta_curves" }
-bellperson = { path = "../bellperson" }
-neptune = { path = "../neptune" }
+pasta_curves = { git = "https://github.com/lurk-lang/pasta_curves", branch = "sb/serde" }
+bellperson = { git = "https://github.com/lurk-lang/bellperson", branch = "sb/serde" }
+neptune = { git = "https://github.com/lurk-lang/neptune", branch = "sb/serde" }
