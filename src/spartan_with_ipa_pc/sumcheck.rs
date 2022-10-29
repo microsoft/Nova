@@ -7,8 +7,10 @@ use core::marker::PhantomData;
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct SumcheckProof<G: Group> {
   compressed_polys: Vec<CompressedUniPoly<G>>,
 }
@@ -226,7 +228,7 @@ pub struct UniPoly<G: Group> {
 
 // ax^2 + bx + c stored as vec![a,c]
 // ax^3 + bx^2 + cx + d stored as vec![a,c,d]
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CompressedUniPoly<G: Group> {
   coeffs_except_linear_term: Vec<G::Scalar>,
   _p: PhantomData<G>,

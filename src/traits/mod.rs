@@ -10,7 +10,7 @@ use core::{
 use ff::{PrimeField, PrimeFieldBits};
 use merlin::Transcript;
 use num_bigint::BigInt;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
@@ -33,10 +33,18 @@ pub trait Group:
   type Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField + PrimeFieldBits + ChallengeTrait + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type Scalar: PrimeField
+    + PrimeFieldBits
+    + ChallengeTrait
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self> + Serialize + for<'de> Deserialize<'de>;
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self>
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A type representing preprocessed group element
   type PreprocessedGroupElement: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -77,7 +85,9 @@ pub trait Group:
 }
 
 /// Represents a compressed version of a group element
-pub trait CompressedGroup: Clone + Copy + Debug + Eq + Sized + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static {
+pub trait CompressedGroup:
+  Clone + Copy + Debug + Eq + Sized + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static
+{
   /// A type that holds the decompressed version of the compressed group element
   type GroupElement: Group + Serialize + for<'de> Deserialize<'de>;
 
@@ -109,7 +119,12 @@ pub trait ChallengeTrait {
 /// A helper trait that defines the behavior of a hash function that we use as an RO
 pub trait ROTrait<Base, Scalar> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base> + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type Constants: ROConstantsTrait<Base>
+    + Clone
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -124,7 +139,12 @@ pub trait ROTrait<Base, Scalar> {
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
 pub trait ROCircuitTrait<Base: PrimeField> {
   /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base> + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type Constants: ROConstantsTrait<Base>
+    + Clone
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;

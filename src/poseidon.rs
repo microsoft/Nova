@@ -19,7 +19,7 @@ use neptune::{
   },
   Strength,
 };
-use serde::{de::Error as DeserializeError, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone, Serialize, Deserialize)]

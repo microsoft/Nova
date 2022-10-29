@@ -6,6 +6,7 @@ use core::{cmp::max, iter};
 use ff::Field;
 use merlin::Transcript;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
 pub fn inner_product<T>(a: &[T], b: &[T]) -> T
@@ -66,6 +67,7 @@ impl<G: Group> InnerProductWitness<G> {
 }
 
 /// A non-interactive folding scheme (NIFS) for inner product relations
+#[derive(Serialize, Deserialize)]
 pub struct NIFSForInnerProduct<G: Group> {
   cross_term: G::Scalar,
 }
@@ -181,7 +183,7 @@ impl<G: Group> NIFSForInnerProduct<G> {
 }
 
 /// An inner product argument
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
   R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
