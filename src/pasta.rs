@@ -17,7 +17,7 @@ use pasta_curves::{
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{self, Deserialize, Serialize};
 use sha3::Shake256;
 use std::{io::Read, ops::Mul};
 
