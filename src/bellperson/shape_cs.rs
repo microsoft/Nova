@@ -147,7 +147,7 @@ where
     let negone = -<G::Scalar>::one();
 
     let powers_of_two = (0..G::Scalar::NUM_BITS)
-      .map(|i| G::Scalar::from(2u64).pow_vartime(&[u64::from(i)]))
+      .map(|i| G::Scalar::from(2u64).pow_vartime([u64::from(i)]))
       .collect::<Vec<_>>();
 
     let pp = |s: &mut String, lc: &LinearCombination<G::Scalar>| {

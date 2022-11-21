@@ -98,7 +98,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
 
     let (num_rounds_x, num_rounds_y) = (
       (pk.S.num_cons as f64).log2() as usize,
-      ((pk.S.num_vars as f64).log2() as usize + 1) as usize,
+      ((pk.S.num_vars as f64).log2() as usize + 1),
     );
 
     // outer sum-check
@@ -264,7 +264,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
 
     let (num_rounds_x, num_rounds_y) = (
       (vk.S.num_cons as f64).log2() as usize,
-      ((vk.S.num_vars as f64).log2() as usize + 1) as usize,
+      ((vk.S.num_vars as f64).log2() as usize + 1),
     );
 
     // outer sum-check
