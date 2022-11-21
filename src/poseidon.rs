@@ -26,9 +26,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
-// TODO: Define a binary repr for PoseidonConstantsCircuit, using the to_repr/from_repr
-// functions from the ff:PrimeField trait
-
 impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,

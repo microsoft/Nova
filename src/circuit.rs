@@ -48,20 +48,14 @@ impl NovaAugmentedCircuitParams {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct NovaAugmentedCircuitInputs<G: Group> {
-  #[serde(bound = "")]
   params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-  #[serde(bound = "")]
   i: G::Base,
-  #[serde(bound = "")]
   z0: Vec<G::Base>,
-  #[serde(bound = "")]
   zi: Option<Vec<G::Base>>,
-  #[serde(bound = "")]
   U: Option<RelaxedR1CSInstance<G>>,
-  #[serde(bound = "")]
   u: Option<R1CSInstance<G>>,
-  #[serde(bound = "")]
   T: Option<Commitment<G>>,
 }
 
