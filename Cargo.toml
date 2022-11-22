@@ -23,7 +23,6 @@ rand_chacha = "0.3"
 itertools = "0.9.0"
 subtle = "2.4"
 pasta_curves = { version = "0.4.0", features = ["repr-c"] }
-pasta-msm = "0.1.3"
 neptune = { version = "8.1.0", default-features = false }
 generic-array = "0.14.4"
 bellperson-nonnative = { version = "0.4.0", default-features = false }
@@ -33,6 +32,12 @@ serde = { version = "1.0", features = ["derive"] }
 bincode = "1.2.1"
 flate2 = "1.0"
 bitvec = "1.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pasta-msm = "0.1.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 criterion = "0.3.1"
@@ -47,3 +52,6 @@ harness = false
 
 [features]
 default = [ "bellperson/default", "bellperson-nonnative/default", "neptune/default" ]
+
+[patch.crates-io]
+bellperson-nonnative = { git = "https://github.com/lurk-lang/bellperson-nonnative", branch = "wasm" }

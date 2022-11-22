@@ -43,6 +43,7 @@ impl Group for pallas::Point {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
+  #[cfg(not(target_arch = "wasm32"))]
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
@@ -56,6 +57,18 @@ impl Group for pallas::Point {
         .map(|(scalar, base)| base.mul(scalar))
         .reduce(Ep::group_zero, |x, y| x + y)
     }
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
+    scalars
+      .par_iter()
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
+      .reduce(Ep::group_zero, |x, y| x + y)
   }
 
   fn preprocessed(&self) -> Self::PreprocessedGroupElement {
@@ -153,6 +166,7 @@ impl Group for vesta::Point {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
+  #[cfg(not(target_arch = "wasm32"))]
   fn vartime_multiscalar_mul(
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
@@ -166,6 +180,18 @@ impl Group for vesta::Point {
         .map(|(scalar, base)| base.mul(scalar))
         .reduce(Eq::group_zero, |x, y| x + y)
     }
+  }
+
+  #[cfg(target_arch = "wasm32")]
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self {
+    scalars
+      .par_iter()
+      .zip(bases)
+      .map(|(scalar, base)| base.mul(scalar))
+      .reduce(Eq::group_zero, |x, y| x + y)
   }
 
   fn compress(&self) -> Self::CompressedGroupElement {
