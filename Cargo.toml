@@ -50,6 +50,6 @@ default = []
 
 [patch.crates-io]
 pasta_curves = { git = "https://github.com/lurk-lang/pasta_curves", branch = "serde-ep-eq" }
-bellperson-nonnative = { git = "https://github.com/lurk-lang/bellperson-nonnative", branch = "update-bellperson" }
+bellperson-nonnative = { git = "https://github.com/lurk-lang/bellperson-nonnative", branch = "wasm" }
 neptune = { git = "https://github.com/lurk-lang/neptune", branch = "update-pasta" }
 pasta-msm = { git = "https://github.com/lurk-lang/pasta-msm", branch = "update-pasta" }
