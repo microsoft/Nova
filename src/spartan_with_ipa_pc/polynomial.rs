@@ -20,7 +20,7 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
-    let mut evals: Vec<Scalar> = vec![Scalar::zero(); (2_usize).pow(ell as u32) as usize];
+    let mut evals: Vec<Scalar> = vec![Scalar::zero(); (2_usize).pow(ell as u32)];
     let mut size = 1;
     evals[0] = Scalar::one();
 
