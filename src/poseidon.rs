@@ -81,7 +81,7 @@ where
     assert!(!self.squeezed, "Cannot squeeze again after squeezing");
     self.squeezed = true;
 
-    let mut sponge = Sponge::<Base, U24>::new_with_constants(&self.constants.0, Simplex);
+    let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.num_absorbs as u32),
