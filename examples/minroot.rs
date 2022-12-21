@@ -116,7 +116,6 @@ where
         |lc| lc + x_i.get_variable() + y_i.get_variable(),
       );
 
-      // return hash(x_i_plus_1, y_i_plus_1) since Nova circuits expect a single output
       if i == self.seq.len() - 1 {
         z_out = Ok(vec![x_i_plus_1.clone(), x_i.clone()]);
       }
