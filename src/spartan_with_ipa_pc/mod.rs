@@ -60,9 +60,9 @@ impl<G: Group> VerifierKeyTrait<G> for VerifierKey<G> {
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
 pub struct RelaxedR1CSSNARK<G: Group> {
-  sc_proof_outer: SumcheckProof<G>,
+  pub sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
-  sc_proof_inner: SumcheckProof<G>,
+  pub sc_proof_inner: SumcheckProof<G>,
   eval_E: G::Scalar,
   eval_W: G::Scalar,
   nifs_ip: NIFSForInnerProduct<G>,

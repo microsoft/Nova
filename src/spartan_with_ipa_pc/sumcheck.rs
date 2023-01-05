@@ -10,7 +10,7 @@ use rayon::prelude::*;
 
 #[derive(Debug)]
 pub struct SumcheckProof<G: Group> {
-  compressed_polys: Vec<CompressedUniPoly<G>>,
+  pub compressed_polys: Vec<CompressedUniPoly<G>>,
 }
 
 impl<G: Group> SumcheckProof<G> {
