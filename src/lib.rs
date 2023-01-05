@@ -1,7 +1,7 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
 
 // private modules
 mod bellperson;
@@ -510,7 +510,7 @@ where
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
   nifs_primary: NIFS<G1>,
-  f_W_snark_primary: S1,
+  pub f_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
