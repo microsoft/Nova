@@ -66,6 +66,7 @@ impl<G: Group> InnerProductWitness<G> {
 }
 
 /// A non-interactive folding scheme (NIFS) for inner product relations
+#[derive(Debug)]
 pub struct NIFSForInnerProduct<G: Group> {
   cross_term: G::Scalar,
 }
