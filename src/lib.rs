@@ -5,12 +5,12 @@
 
 // private modules
 mod bellperson;
-mod circuit;
+pub mod circuit;
 mod commitments;
 mod constants;
 mod nifs;
 mod poseidon;
-mod r1cs;
+pub mod r1cs;
 
 // public modules
 pub mod errors;
@@ -509,16 +509,16 @@ where
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
   l_u_primary: R1CSInstance<G1>,
-  nifs_primary: NIFS<G1>,
+  pub nifs_primary: NIFS<G1>,
   pub f_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
-  nifs_secondary: NIFS<G2>,
-  f_W_snark_secondary: S2,
+  pub nifs_secondary: NIFS<G2>,
+  pub f_W_snark_secondary: S2,
 
-  zn_primary: Vec<G1::Scalar>,
-  zn_secondary: Vec<G2::Scalar>,
+  pub zn_primary: Vec<G1::Scalar>,
+  pub zn_secondary: Vec<G2::Scalar>,
 
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
