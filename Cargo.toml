@@ -50,5 +50,4 @@ harness = false
 default = [ "bellperson/default", "bellperson-nonnative/default", "neptune/default" ]
 
 [patch.crates-io]
-bellperson-nonnative = { git = "https://github.com/srinathsetty/bellperson-nonnative", branch = "master" }
 pasta-msm = { git = "https://github.com/lurk-lang/pasta-msm", branch = "update-pasta" }
