@@ -1,4 +1,8 @@
 //! This module implements various gadgets necessary for folding R1CS types.
+use super::nonnative::{
+  bignat::BigNat,
+  util::{f_to_nat, Num},
+};
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   gadgets::{
@@ -14,10 +18,6 @@ use crate::{
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   ConstraintSystem, SynthesisError,
-};
-use bellperson_nonnative::{
-  mp::bignat::BigNat,
-  util::{convert::f_to_nat, num::Num},
 };
 use ff::Field;
 
@@ -225,8 +225,7 @@ where
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb
-          .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[0] to num", i)))
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[0] to num", i)))
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
@@ -242,8 +241,7 @@ where
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb
-          .as_sapling_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[1] to num", i)))
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[1] to num", i)))
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
