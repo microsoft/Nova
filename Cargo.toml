@@ -47,7 +47,7 @@ name = "compressed-snark"
 harness = false
 
 [features]
-default = []
+default = [ "bellperson/default", "bellperson-nonnative/default", "neptune/default" ]
 
 [patch.crates-io]
 bellperson-nonnative = { git = "https://github.com/srinathsetty/bellperson-nonnative", branch = "master" }
