@@ -1,5 +1,6 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
+use super::gadgets::nonnative::{bignat::nat_to_limbs, util::f_to_nat};
 use super::{
   commitments::{CommitGens, CommitTrait, Commitment},
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
@@ -7,7 +8,6 @@ use super::{
   gadgets::utils::scalar_as_base,
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait},
 };
-use bellperson_nonnative::{mp::bignat::nat_to_limbs, util::convert::f_to_nat};
 use core::cmp::max;
 use ff::{Field, PrimeField};
 use flate2::{write::ZlibEncoder, Compression};
