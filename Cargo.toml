@@ -22,8 +22,9 @@ rand_core = { version = "0.5", default-features = false }
 rand_chacha = "0.3"
 itertools = "0.9.0"
 subtle = "2.4"
-pasta_curves = { version = "0.5.1", features = ["repr-c", "serde"], package = "fil_pasta_curves" }
+pasta_curves = { version = "0.5.2", features = ["repr-c", "serde"], package = "fil_pasta_curves" }
 pasta-msm = "0.1.3"
+#pasta-msm = { version = "0.1.0", package = "lurk-pasta-msm" }
 neptune = { version = "8.1.0", default-features = false }
 generic-array = "0.14.4"
 bellperson-nonnative = { version = "0.4.0", default-features = false }
@@ -49,6 +50,5 @@ harness = false
 default = []
 
 [patch.crates-io]
-fil_pasta_curves = { git = "https://github.com/lurk-lang/pasta_curves", branch = "serde" }
-neptune = { git = "https://github.com/lurk-lang/neptune", branch = "update-pasta" }
+bellperson-nonnative = { git = "https://github.com/srinathsetty/bellperson-nonnative", branch = "master" }
 pasta-msm = { git = "https://github.com/lurk-lang/pasta-msm", branch = "update-pasta" }
