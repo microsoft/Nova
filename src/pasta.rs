@@ -43,18 +43,33 @@ impl Group for pallas::Point {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self {
-    if scalars.len() >= 128 {
-      pasta_msm::pallas(bases, scalars)
+  cfg_if::cfg_if! {
+    if #[cfg(target_family = "wasm")] {
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::PreprocessedGroupElement],
+      ) -> Self {
+        scalars
+          .par_iter()
+          .zip(bases)
+          .map(|(scalar, base)| base.mul(scalar))
+          .reduce(Ep::group_zero, |x, y| x + y)
+      }
     } else {
-      scalars
-        .par_iter()
-        .zip(bases)
-        .map(|(scalar, base)| base.mul(scalar))
-        .reduce(Ep::group_zero, |x, y| x + y)
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::PreprocessedGroupElement],
+      ) -> Self {
+        if scalars.len() >= 128 {
+          pasta_msm::pallas(bases, scalars)
+        } else {
+          scalars
+            .par_iter()
+            .zip(bases)
+            .map(|(scalar, base)| base.mul(scalar))
+            .reduce(Ep::group_zero, |x, y| x + y)
+        }
+      }
     }
   }
 
@@ -153,18 +168,33 @@ impl Group for vesta::Point {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self {
-    if scalars.len() >= 128 {
-      pasta_msm::vesta(bases, scalars)
+  cfg_if::cfg_if! {
+    if #[cfg(target_family = "wasm")] {
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::PreprocessedGroupElement],
+      ) -> Self {
+        scalars
+          .par_iter()
+          .zip(bases)
+          .map(|(scalar, base)| base.mul(scalar))
+          .reduce(Eq::group_zero, |x, y| x + y)
+      }
     } else {
-      scalars
-        .par_iter()
-        .zip(bases)
-        .map(|(scalar, base)| base.mul(scalar))
-        .reduce(Eq::group_zero, |x, y| x + y)
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::PreprocessedGroupElement],
+      ) -> Self {
+        if scalars.len() >= 128 {
+          pasta_msm::vesta(bases, scalars)
+        } else {
+          scalars
+            .par_iter()
+            .zip(bases)
+            .map(|(scalar, base)| base.mul(scalar))
+            .reduce(Eq::group_zero, |x, y| x + y)
+        }
+      }
     }
   }
 
