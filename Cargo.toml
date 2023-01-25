@@ -49,5 +49,5 @@ harness = false
 [features]
 default = [ "bellperson/default", "neptune/default" ]
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
+[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = "0.1.3"

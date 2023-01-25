@@ -20,6 +20,100 @@ use rayon::prelude::*;
 use sha3::Shake256;
 use std::{io::Read, ops::Mul};
 
+// Native implementation of fast multiexp for platforms that do not support pasta_msm/semolina
+// Forked from halo2
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
+  use ff::PrimeField;
+  let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
+
+  let c = if bases.len() < 4 {
+    1
+  } else if bases.len() < 32 {
+    3
+  } else {
+    (f64::from(bases.len() as u32)).ln().ceil() as usize
+  };
+
+  fn get_at<F: PrimeField>(segment: usize, c: usize, bytes: &F::Repr) -> usize {
+    let skip_bits = segment * c;
+    let skip_bytes = skip_bits / 8;
+
+    if skip_bytes >= 32 {
+      return 0;
+    }
+
+    let mut v = [0; 8];
+    for (v, o) in v.iter_mut().zip(bytes.as_ref()[skip_bytes..].iter()) {
+      *v = *o;
+    }
+
+    let mut tmp = u64::from_le_bytes(v);
+    tmp >>= skip_bits - (skip_bytes * 8);
+    tmp %= 1 << c;
+
+    tmp as usize
+  }
+
+  let segments = (256 / c) + 1;
+
+  for current_segment in (0..segments).rev() {
+    for _ in 0..c {
+      *acc = acc.double();
+    }
+
+    #[derive(Clone, Copy)]
+    enum Bucket<C: CurveAffine> {
+      None,
+      Affine(C),
+      Projective(C::Curve),
+    }
+
+    impl<C: CurveAffine> Bucket<C> {
+      fn add_assign(&mut self, other: &C) {
+        *self = match *self {
+          Bucket::None => Bucket::Affine(*other),
+          Bucket::Affine(a) => Bucket::Projective(a + *other),
+          Bucket::Projective(mut a) => {
+            a += *other;
+            Bucket::Projective(a)
+          }
+        }
+      }
+
+      fn add(self, mut other: C::Curve) -> C::Curve {
+        match self {
+          Bucket::None => other,
+          Bucket::Affine(a) => {
+            other += a;
+            other
+          }
+          Bucket::Projective(a) => other + &a,
+        }
+      }
+    }
+
+    let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
+
+    for (coeff, base) in coeffs.iter().zip(bases.iter()) {
+      let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
+      if coeff != 0 {
+        buckets[coeff - 1].add_assign(base);
+      }
+    }
+
+    // Summation by parts
+    // e.g. 3a + 2b + 1c = a +
+    //                    (a) + b +
+    //                    ((a) + b) + c
+    let mut running_sum = C::Curve::identity();
+    for exp in buckets.into_iter().rev() {
+      running_sum = exp.add(running_sum);
+      *acc += &running_sum;
+    }
+  }
+}
+
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the pallas curve
@@ -44,16 +138,14 @@ impl Group for pallas::Point {
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
   cfg_if::cfg_if! {
-    if #[cfg(target_family = "wasm")] {
+    if #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] {
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
-        scalars
-          .par_iter()
-          .zip(bases)
-          .map(|(scalar, base)| base.mul(scalar))
-          .reduce(Ep::group_zero, |x, y| x + y)
+        let mut acc = pallas::Point::group_zero();
+        multiexp_serial(scalars, bases, &mut acc);
+        acc
       }
     } else {
       fn vartime_multiscalar_mul(
@@ -169,16 +261,14 @@ impl Group for vesta::Point {
   type ROCircuit = PoseidonROCircuit<Self::Base>;
 
   cfg_if::cfg_if! {
-    if #[cfg(target_family = "wasm")] {
+    if #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))] {
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
-        scalars
-          .par_iter()
-          .zip(bases)
-          .map(|(scalar, base)| base.mul(scalar))
-          .reduce(Eq::group_zero, |x, y| x + y)
+        let mut acc = vesta::Point::group_zero();
+        multiexp_serial(scalars, bases, &mut acc);
+        acc
       }
     } else {
       fn vartime_multiscalar_mul(
