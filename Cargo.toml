@@ -33,7 +33,6 @@ bincode = "1.2.1"
 flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
-cfg-if = "1.0.0"
 
 [dev-dependencies]
 criterion = "0.3.1"
@@ -47,7 +46,7 @@ name = "compressed-snark"
 harness = false
 
 [features]
-default = [ "bellperson/default", "neptune/default" ]
+default = ["bellperson/default", "neptune/default"]
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = "0.1.3"
