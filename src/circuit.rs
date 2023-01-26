@@ -29,6 +29,53 @@ use bellperson::{
 };
 use ff::Field;
 
+/// `StepCounter` is an enum that helps track the progression of the recursive function.
+/// In most cases, this is done with the `Standard` variant which is just a counter.
+/// For example, the function F(F(F(x))) has 3 steps, which can be defined as `StepCounter::Standard(3)`.
+/// In some rarer cases, the finality of the function is not defined based on how many times the
+/// function executes both some other external fact.
+#[derive(Copy, Clone, Debug)]
+pub enum StepCounter {
+  /// Tracks the number of steps using a counter
+  Standard(usize),
+  /// Tracks the progress of the function in terms of base case or non-base case but
+  /// it doesn't assign a specific counter to it. Completion is defined with respect
+  /// to some external fact (e.g., that an output matches some commitment).
+  Generic(GenericStepCounter),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum GenericStepCounter {
+  Base,
+  NonBase,
+}
+
+impl StepCounter {
+  /// Computes the next step's counter value. For example, if using
+  /// `Standard` variant, then `next` just increments the counter by 1.
+  pub fn next(&self) -> StepCounter {
+    match self {
+      StepCounter::Standard(i) => StepCounter::Standard(i + 1),
+      StepCounter::Generic(c) => match c {
+        GenericStepCounter::Base => StepCounter::Generic(GenericStepCounter::NonBase),
+        GenericStepCounter::NonBase => StepCounter::Generic(GenericStepCounter::NonBase),
+      },
+    }
+  }
+
+  /// Returns the value of the counter. In the `Standard` variant this is its unsigned integer
+  /// value. In the `Generic` variant, it returns 0 for the base case and 1 otherwise.
+  pub fn value(&self) -> usize {
+    match self {
+      StepCounter::Standard(i) => *i,
+      StepCounter::Generic(c) => match c {
+        GenericStepCounter::Base => 0,
+        GenericStepCounter::NonBase => 1,
+      },
+    }
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct NovaAugmentedCircuitParams {
   limb_width: usize,

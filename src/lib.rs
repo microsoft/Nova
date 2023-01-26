@@ -25,6 +25,7 @@ use crate::bellperson::{
   solver::SatisfyingAssignment,
 };
 use ::bellperson::{Circuit, ConstraintSystem};
+pub use circuit::StepCounter;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -168,7 +169,7 @@ where
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
-  i: usize,
+  i: StepCounter,
   zi_primary: Vec<G1::Scalar>,
   zi_secondary: Vec<G2::Scalar>,
   _p_c1: PhantomData<C1>,
@@ -278,7 +279,7 @@ where
           r_U_secondary,
           l_w_secondary,
           l_u_secondary,
-          i: 1_usize,
+          i: StepCounter::Standard(1_usize),
           zi_primary,
           zi_secondary,
           _p_c1: Default::default(),
@@ -300,7 +301,7 @@ where
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_secondary.get_digest(),
-          G1::Scalar::from(r_snark.i as u64),
+          G1::Scalar::from(r_snark.i.value() as u64),
           z0_primary,
           Some(r_snark.zi_primary.clone()),
           Some(r_snark.r_U_secondary.clone()),
@@ -334,7 +335,7 @@ where
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_primary.get_digest(),
-          G2::Scalar::from(r_snark.i as u64),
+          G2::Scalar::from(r_snark.i.value() as u64),
           z0_secondary,
           Some(r_snark.zi_secondary.clone()),
           Some(r_snark.r_U_primary.clone()),
@@ -367,7 +368,7 @@ where
           r_U_secondary,
           l_w_secondary,
           l_u_secondary,
-          i: r_snark.i + 1,
+          i: r_snark.i.next(),
           zi_primary,
           zi_secondary,
           _p_c1: Default::default(),
@@ -381,17 +382,17 @@ where
   pub fn verify(
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
-    num_steps: usize,
+    num_steps: StepCounter,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
-    // number of steps cannot be zero
-    if num_steps == 0 {
+    // number of steps cannot be base case
+    if num_steps.value() == 0 {
       return Err(NovaError::ProofVerifyError);
     }
 
     // check if the provided proof has executed num_steps
-    if self.i != num_steps {
+    if self.i.value() != num_steps.value() {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -411,7 +412,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
       );
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
-      hasher.absorb(G1::Scalar::from(num_steps as u64));
+      hasher.absorb(G1::Scalar::from(num_steps.value() as u64));
       for e in &z0_primary {
         hasher.absorb(*e);
       }
@@ -425,7 +426,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
-      hasher2.absorb(G2::Scalar::from(num_steps as u64));
+      hasher2.absorb(G2::Scalar::from(num_steps.value() as u64));
       for e in &z0_secondary {
         hasher2.absorb(*e);
       }
@@ -615,12 +616,12 @@ where
   pub fn verify(
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
-    num_steps: usize,
+    num_steps: StepCounter,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
-    if num_steps == 0 {
+    if num_steps.value() == 0 {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -640,7 +641,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
       );
       hasher.absorb(scalar_as_base::<G2>(pp.r1cs_shape_secondary.get_digest()));
-      hasher.absorb(G1::Scalar::from(num_steps as u64));
+      hasher.absorb(G1::Scalar::from(num_steps.value() as u64));
       for e in z0_primary {
         hasher.absorb(e);
       }
@@ -654,7 +655,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.r1cs_shape_primary.get_digest()));
-      hasher2.absorb(G2::Scalar::from(num_steps as u64));
+      hasher2.absorb(G2::Scalar::from(num_steps.value() as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
       }
@@ -783,7 +784,7 @@ mod tests {
       TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::setup(TrivialTestCircuit::default(), TrivialTestCircuit::default());
 
-    let num_steps = 1;
+    let num_steps = StepCounter::Standard(1);
 
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove_step(
@@ -820,7 +821,7 @@ mod tests {
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(circuit_primary.clone(), circuit_secondary.clone());
 
-    let num_steps = 3;
+    let num_steps = StepCounter::Standard(3);
 
     // produce a recursive SNARK
     let mut recursive_snark: Option<
@@ -832,7 +833,8 @@ mod tests {
       >,
     > = None;
 
-    for i in 0..num_steps {
+    for i in 0..num_steps.value() {
+      let step_c = StepCounter::Standard(i);
       let res = RecursiveSNARK::prove_step(
         &pp,
         recursive_snark,
@@ -847,7 +849,7 @@ mod tests {
       // verify the recursive snark at each step of recursion
       let res = recursive_snark_unwrapped.verify(
         &pp,
-        i + 1,
+        step_c.next(),
         vec![<G1 as Group>::Scalar::one()],
         vec![<G2 as Group>::Scalar::zero()],
       );
@@ -874,7 +876,7 @@ mod tests {
     // sanity: check the claimed output with a direct computation of the same
     assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
     let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
-    for _i in 0..num_steps {
+    for _i in 0..num_steps.value() {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
@@ -894,7 +896,7 @@ mod tests {
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(circuit_primary.clone(), circuit_secondary.clone());
 
-    let num_steps = 3;
+    let num_steps = StepCounter::Standard(3);
 
     // produce a recursive SNARK
     let mut recursive_snark: Option<
@@ -906,7 +908,7 @@ mod tests {
       >,
     > = None;
 
-    for _i in 0..num_steps {
+    for _i in 0..num_steps.value() {
       let res = RecursiveSNARK::prove_step(
         &pp,
         recursive_snark,
@@ -936,7 +938,7 @@ mod tests {
     // sanity: check the claimed output with a direct computation of the same
     assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
     let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
-    for _i in 0..num_steps {
+    for _i in 0..num_steps.value() {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
@@ -969,11 +971,11 @@ mod tests {
     where
       F: PrimeField,
     {
-      fn new(num_steps: usize) -> (Vec<F>, Vec<Self>) {
+      fn new(num_steps: StepCounter) -> (Vec<F>, Vec<Self>) {
         let mut powers = Vec::new();
         let rng = &mut rand::rngs::OsRng;
         let mut seed = F::random(rng);
-        for _i in 0..num_steps + 1 {
+        for _i in 0..num_steps.value() + 1 {
           let mut power = seed;
           power = power.square();
           power = power.square();
@@ -1054,7 +1056,7 @@ mod tests {
       TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::setup(circuit_primary, circuit_secondary.clone());
 
-    let num_steps = 3;
+    let num_steps = StepCounter::Standard(3);
 
     // produce non-deterministic advice
     let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
@@ -1070,7 +1072,7 @@ mod tests {
       >,
     > = None;
 
-    for circuit_primary in roots.iter().take(num_steps) {
+    for circuit_primary in roots.iter().take(num_steps.value()) {
       let res = RecursiveSNARK::prove_step(
         &pp,
         recursive_snark,
@@ -1110,7 +1112,7 @@ mod tests {
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(TrivialTestCircuit::default(), CubicCircuit::default());
 
-    let num_steps = 1;
+    let num_steps = StepCounter::Standard(1);
 
     // produce a recursive SNARK
     let res = RecursiveSNARK::prove_step(

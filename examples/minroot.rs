@@ -10,7 +10,7 @@ use nova_snark::{
     circuit::{StepCircuit, TrivialTestCircuit},
     Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
+  CompressedSNARK, PublicParams, RecursiveSNARK, StepCounter,
 };
 use num_bigint::BigUint;
 use std::time::Instant;
@@ -145,7 +145,7 @@ fn main() {
   println!("Nova-based VDF with MinRoot delay function");
   println!("=========================================================");
 
-  let num_steps = 10;
+  let num_steps = StepCounter::Standard(10);
   for num_iters_per_step in [1024, 2048, 4096, 8192, 16384, 32768, 65535] {
     // number of iterations of MinRoot per Nova's recursive step
     let circuit_primary = MinRootCircuit {
@@ -195,11 +195,11 @@ fn main() {
 
     // produce non-deterministic advice
     let (z0_primary, minroot_iterations) = MinRootIteration::new(
-      num_iters_per_step * num_steps,
+      num_iters_per_step * num_steps.value(),
       &<G1 as Group>::Scalar::zero(),
       &<G1 as Group>::Scalar::one(),
     );
-    let minroot_circuits = (0..num_steps)
+    let minroot_circuits = (0..num_steps.value())
       .map(|i| MinRootCircuit {
         seq: (0..num_iters_per_step)
           .map(|j| MinRootIteration {
@@ -220,7 +220,7 @@ fn main() {
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
 
-    for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
+    for (i, circuit_primary) in minroot_circuits.iter().take(num_steps.value()).enumerate() {
       let start = Instant::now();
       let res = RecursiveSNARK::prove_step(
         &pp,

@@ -9,7 +9,7 @@ use nova_snark::{
     circuit::{StepCircuit, TrivialTestCircuit},
     Group,
   },
-  PublicParams, RecursiveSNARK,
+  PublicParams, RecursiveSNARK, StepCounter,
 };
 use std::time::Duration;
 
@@ -66,7 +66,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
       // verify the recursive snark at each step of recursion
       let res = recursive_snark_unwrapped.verify(
         &pp,
-        i + 1,
+        StepCounter::Standard(i + 1),
         vec![<G1 as Group>::Scalar::from(2u64)],
         vec![<G2 as Group>::Scalar::from(2u64)],
       );
@@ -99,7 +99,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
         assert!(black_box(&recursive_snark)
           .verify(
             black_box(&pp),
-            black_box(num_warmup_steps),
+            black_box(StepCounter::Standard(num_warmup_steps)),
             black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
             black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
           )
