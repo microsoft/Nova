@@ -169,6 +169,7 @@ fn main() {
     );
 
     // produce public parameters
+    let start = Instant::now();
     println!("Producing public parameters...");
     let pp = PublicParams::<
       G1,
@@ -176,6 +177,8 @@ fn main() {
       MinRootCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::setup(circuit_primary, circuit_secondary.clone());
+    println!("PublicParams::setup, took {:?} ", start.elapsed());
+
     println!(
       "Number of constraints per step (primary circuit): {}",
       pp.num_constraints().0
