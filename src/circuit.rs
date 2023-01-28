@@ -6,8 +6,7 @@
 //! H(params = H(shape, gens), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
 
-use super::{
-  commitments::Commitment,
+use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
@@ -17,7 +16,10 @@ use super::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{circuit::StepCircuit, Group, ROCircuitTrait, ROConstantsCircuit},
+  traits::{
+    circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
+  },
+  Commitment,
 };
 use bellperson::{
   gadgets::{
@@ -59,10 +61,7 @@ pub struct NovaAugmentedCircuitInputs<G: Group> {
   T: Option<Commitment<G>>,
 }
 
-impl<G> NovaAugmentedCircuitInputs<G>
-where
-  G: Group,
-{
+impl<G: Group> NovaAugmentedCircuitInputs<G> {
   /// Create new inputs/witness for the verification circuit
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -88,22 +87,14 @@ where
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaAugmentedCircuit<G, SC>
-where
-  G: Group,
-  SC: StepCircuit<G::Base>,
-{
+pub struct NovaAugmentedCircuit<G: Group, SC: StepCircuit<G::Base>> {
   params: NovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NovaAugmentedCircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
 
-impl<G, SC> NovaAugmentedCircuit<G, SC>
-where
-  G: Group,
-  SC: StepCircuit<G::Base>,
-{
+impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
     params: NovaAugmentedCircuitParams,
@@ -186,10 +177,7 @@ where
     let T = AllocatedPoint::alloc(
       cs.namespace(|| "allocate T"),
       self.inputs.get().map_or(None, |inputs| {
-        inputs
-          .T
-          .get()
-          .map_or(None, |T| Some(T.comm.to_coordinates()))
+        inputs.T.get().map_or(None, |T| Some(T.to_coordinates()))
       }),
     )?;
 
@@ -274,10 +262,8 @@ where
   }
 }
 
-impl<G, SC> Circuit<<G as Group>::Base> for NovaAugmentedCircuit<G, SC>
-where
-  G: Group,
-  SC: StepCircuit<G::Base>,
+impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
+  for NovaAugmentedCircuit<G, SC>
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
@@ -388,10 +374,11 @@ mod tests {
   use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
+
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
-    poseidon::PoseidonConstantsCircuit,
+    provider::poseidon::PoseidonConstantsCircuit,
     traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
   };
 

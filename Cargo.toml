@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.12.0"
+version = "0.13.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
@@ -13,7 +13,7 @@ keywords = ["zkSNARKs", "cryptography", "proofs"]
 [dependencies]
 bellperson = { version = "0.24", default-features = false }
 ff = { version = "0.12.0", features = ["derive"] }
-merlin = "2.0.0"
+merlin = "3.0.0"
 digest = "0.8.1"
 sha3 = "0.8.2"
 rayon = "1.3.0"

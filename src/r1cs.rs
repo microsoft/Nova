@@ -1,12 +1,17 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
-use super::gadgets::nonnative::{bignat::nat_to_limbs, util::f_to_nat};
-use super::{
-  commitments::{CommitGens, CommitTrait, Commitment},
+use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::scalar_as_base,
+  },
+  traits::{
+    commitment::{CommitmentEngineTrait, CommitmentGensTrait},
+    AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait,
+  },
+  Commitment, CommitmentGens, CE,
 };
 use core::cmp::max;
 use ff::Field;
@@ -21,7 +26,7 @@ use sha3::{Digest, Sha3_256};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSGens<G: Group> {
-  pub(crate) gens: CommitGens<G>,
+  pub(crate) gens: CommitmentGens<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
@@ -71,7 +76,7 @@ impl<G: Group> R1CSGens<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
     R1CSGens {
-      gens: CommitGens::new(b"gens", max(num_vars, num_cons)),
+      gens: CommitmentGens::<G>::new(b"gens", max(num_vars, num_cons)),
     }
   }
 }
@@ -202,7 +207,10 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
-      let (comm_W, comm_E) = rayon::join(|| W.W.commit(&gens.gens), || W.E.commit(&gens.gens));
+      let (comm_W, comm_E) = rayon::join(
+        || CE::<G>::commit(&gens.gens, &W.W),
+        || CE::<G>::commit(&gens.gens, &W.E),
+      );
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
@@ -239,7 +247,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == W.W.commit(&gens.gens);
+    let res_comm: bool = U.comm_W == gens.gens.commit(&W.W);
 
     if res_eq && res_comm {
       Ok(())
@@ -293,7 +301,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = T.commit(&gens.gens);
+    let comm_T = gens.gens.commit(&T);
 
     Ok((T, comm_T))
   }
@@ -458,7 +466,7 @@ impl<G: Group> R1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    self.W.commit(&gens.gens)
+    gens.gens.commit(&self.W)
   }
 }
 
@@ -515,7 +523,10 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
-    (self.W.commit(&gens.gens), self.E.commit(&gens.gens))
+    (
+      CE::<G>::commit(&gens.gens, &self.W),
+      CE::<G>::commit(&gens.gens, &self.E),
+    )
   }
 
   /// Folds an incoming R1CSWitness into the current one
@@ -566,7 +577,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 impl<G: Group> RelaxedR1CSInstance<G> {
   /// Produces a default RelaxedR1CSInstance given R1CSGens and R1CSShape
   pub fn default(_gens: &R1CSGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
-    let (comm_W, comm_E) = (Commitment::default(), Commitment::default());
+    let (comm_W, comm_E) = (Commitment::<G>::default(), Commitment::<G>::default());
     RelaxedR1CSInstance {
       comm_W,
       comm_E,
@@ -605,7 +616,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
-    let comm_W = comm_W_1 + comm_W_2 * r;
+    let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
 

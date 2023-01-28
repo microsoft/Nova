@@ -12,6 +12,10 @@ use merlin::Transcript;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
+pub mod commitment;
+
+use commitment::CommitmentEngineTrait;
+
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
 pub trait Group:
@@ -47,7 +51,7 @@ pub trait Group:
     + for<'de> Deserialize<'de>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents a hash function that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -55,6 +59,9 @@ pub trait Group:
 
   /// An alternate implementation of Self::RO in the circuit model
   type ROCircuit: ROCircuitTrait<Self::Base> + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type that defines a commitment engine over scalars in the group
+  type CE: CommitmentEngineTrait<Self> + Serialize + for<'de> Deserialize<'de>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -212,4 +219,5 @@ impl<F: PrimeField> AppendToTranscriptTrait for [F] {
 }
 
 pub mod circuit;
+pub mod evaluation;
 pub mod snark;

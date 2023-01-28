@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct SumcheckProof<G: Group> {
+pub(crate) struct SumcheckProof<G: Group> {
   compressed_polys: Vec<CompressedUniPoly<G>>,
 }
 

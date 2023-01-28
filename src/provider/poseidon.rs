@@ -1,5 +1,5 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use super::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
+use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},

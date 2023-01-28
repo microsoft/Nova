@@ -1,6 +1,9 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::{
-  poseidon::{PoseidonRO, PoseidonROCircuit},
+  provider::{
+    pedersen::CommitmentEngine,
+    poseidon::{PoseidonRO, PoseidonROCircuit},
+  },
   traits::{ChallengeTrait, CompressedGroup, Group},
 };
 use digest::{ExtendableOutput, Input};
@@ -61,6 +64,7 @@ macro_rules! impl_traits {
       type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
+      type CE = CommitmentEngine<Self>;
 
       #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
       fn vartime_multiscalar_mul(

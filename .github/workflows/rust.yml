@@ -17,12 +17,8 @@ jobs:
       run: rustup component add rustfmt
     - name: Install clippy
       run: rustup component add clippy
-    - name: Install Wasm target
-      run: rustup target add wasm32-unknown-unknown
     - name: Build
       run: cargo build --verbose
-    - name: Wasm build
-      run: cargo build --target wasm32-unknown-unknown
     - name: Build examples
       run: cargo build --examples --verbose
     - name: Run tests
