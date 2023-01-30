@@ -14,8 +14,7 @@ use pasta_curves::{
   group::{Curve, Group as AnotherGroup, GroupEncoding},
   pallas, vesta, Ep, Eq,
 };
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
+use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use sha3::Shake256;
 use std::io::Read;
 

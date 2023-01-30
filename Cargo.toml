@@ -14,7 +14,6 @@ keywords = ["zkSNARKs", "cryptography", "proofs"]
 bellperson = { version = "0.24", default-features = false }
 ff = { version = "0.12.0", features = ["derive"]}
 merlin = "2.0.0"
-rand = "0.8.4"
 digest = "0.8.1"
 sha3 = "0.8.2"
 rayon = "1.3.0"
@@ -34,8 +33,12 @@ flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
 
+[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+pasta-msm = "0.1.3"
+
 [dev-dependencies]
 criterion = "0.3.1"
+rand = "0.8.4"
 
 [[bench]]
 name = "recursive-snark"
@@ -46,7 +49,4 @@ name = "compressed-snark"
 harness = false
 
 [features]
-default = ["bellperson/default", "neptune/default"]
-
-[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
-pasta-msm = "0.1.3"
+default = [ "bellperson/default", "neptune/default" ]
