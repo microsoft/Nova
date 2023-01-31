@@ -43,7 +43,7 @@ where
         &self
           .a
           .iter()
-          .map(|v| format!("Fr({:?})", v))
+          .map(|v| format!("Fr({v:?})"))
           .collect::<Vec<_>>(),
       )
       .field(
@@ -51,7 +51,7 @@ where
         &self
           .b
           .iter()
-          .map(|v| format!("Fr({:?})", v))
+          .map(|v| format!("Fr({v:?})"))
           .collect::<Vec<_>>(),
       )
       .field(
@@ -59,7 +59,7 @@ where
         &self
           .c
           .iter()
-          .map(|v| format!("Fr({:?})", v))
+          .map(|v| format!("Fr({v:?})"))
           .collect::<Vec<_>>(),
       )
       .field("input_assignment", &self.input_assignment)

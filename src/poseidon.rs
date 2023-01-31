@@ -224,9 +224,9 @@ mod tests {
       let num = S::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
-        AllocatedNum::alloc(cs.namespace(|| format!("data {}", i)), || Ok(num)).unwrap();
+        AllocatedNum::alloc(cs.namespace(|| format!("data {i}")), || Ok(num)).unwrap();
       num_gadget
-        .inputize(&mut cs.namespace(|| format!("input {}", i)))
+        .inputize(&mut cs.namespace(|| format!("input {i}")))
         .unwrap();
       ro_gadget.absorb(num_gadget);
     }

@@ -185,7 +185,7 @@ pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
     .into_iter()
     .map(|i| {
       AllocatedBit::alloc(
-        cs.namespace(|| format!("bit {}", i)),
+        cs.namespace(|| format!("bit {i}")),
         Some(bits.as_ref().unwrap()[i as usize]),
       )
     })

@@ -35,7 +35,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
 
-    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{}", num_cons));
+    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(10);
 
     // Produce public parameters
@@ -144,7 +144,7 @@ where
     let mut x = z[0].clone();
     let mut y = x.clone();
     for i in 0..self.num_cons {
-      y = x.square(cs.namespace(|| format!("x_sq_{}", i)))?;
+      y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
       x = y.clone();
     }
     Ok(vec![y])

@@ -148,7 +148,7 @@ where
     // Allocate z0
     let z_0 = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("z0_{}", i)), || {
+        AllocatedNum::alloc(cs.namespace(|| format!("z0_{i}")), || {
           Ok(self.inputs.get()?.z0[i])
         })
       })
@@ -158,7 +158,7 @@ where
     let zero = vec![G::Base::zero(); arity];
     let z_i = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("zi_{}", i)), || {
+        AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
           Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })

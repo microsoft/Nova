@@ -122,13 +122,13 @@ where
     let mut result = Vec::new();
 
     for input in &self.inputs {
-      result.push(format!("INPUT {}", input));
+      result.push(format!("INPUT {input}"));
     }
     for aux in &self.aux {
-      result.push(format!("AUX {}", aux));
+      result.push(format!("AUX {aux}"));
     }
 
-    for &(ref _a, ref _b, ref _c, ref name) in &self.constraints {
+    for (_a, _b, _c, name) in &self.constraints {
       result.push(name.to_string());
     }
 
@@ -164,12 +164,12 @@ where
         if coeff != <G::Scalar>::one() && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
-              write!(s, "2^{} . ", i).unwrap();
+              write!(s, "2^{i} . ").unwrap();
               break;
             }
           }
 
-          write!(s, "{:?} . ", coeff).unwrap()
+          write!(s, "{coeff:?} . ").unwrap()
         }
 
         match var.0.get_unchecked() {
@@ -188,10 +188,10 @@ where
       s.push(')');
     };
 
-    for &(ref a, ref b, ref c, ref name) in &self.constraints {
+    for (a, b, c, name) in &self.constraints {
       s.push('\n');
 
-      write!(s, "{}: ", name).unwrap();
+      write!(s, "{name}: ").unwrap();
       pp(&mut s, a);
       write!(s, " * ").unwrap();
       pp(&mut s, b);
@@ -209,8 +209,7 @@ where
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
     assert!(
       !self.named_objects.contains_key(&path),
-      "tried to create object at existing path: {}",
-      path
+      "tried to create object at existing path: {path}"
     );
 
     self.named_objects.insert(path, to);

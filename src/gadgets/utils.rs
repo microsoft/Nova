@@ -131,7 +131,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   #[allow(clippy::needless_range_loop)]
   for i in 0..n_limbs {
     cs.enforce(
-      || format!("check limb {}", i),
+      || format!("check limb {i}"),
       |lc| lc + &bignat.limbs[i],
       |lc| lc + CS::one(),
       |lc| lc + (limbs[i], CS::one()),
@@ -222,7 +222,7 @@ pub fn conditionally_select_vec<F: PrimeField, CS: ConstraintSystem<F>>(
     .zip(b.iter())
     .enumerate()
     .map(|(i, (a, b))| {
-      conditionally_select(cs.namespace(|| format!("select_{}", i)), a, b, condition)
+      conditionally_select(cs.namespace(|| format!("select_{i}")), a, b, condition)
     })
     .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()
 }
@@ -252,7 +252,7 @@ pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   // a * condition - b*condition = c - b
   for i in 0..c.limbs.len() {
     cs.enforce(
-      || format!("conditional select constraint {}", i),
+      || format!("conditional select constraint {i}"),
       |lc| lc + &a.limbs[i] - &b.limbs[i],
       |_| condition.lc(CS::one(), F::one()),
       |lc| lc + &c.limbs[i] - &b.limbs[i],

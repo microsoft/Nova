@@ -225,7 +225,7 @@ where
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[0] to num", i)))
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
@@ -241,7 +241,7 @@ where
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {} of X_r[1] to num", i)))
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[1] to num")))
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
