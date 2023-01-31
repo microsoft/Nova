@@ -444,15 +444,15 @@ where
 
     // perform the double-and-add loop to compute the scalar mul using incomplete addition law
     for (i, bit) in incomplete_bits.iter().enumerate().skip(1) {
-      let temp = acc.add_incomplete(cs.namespace(|| format!("add {}", i)), &p)?;
+      let temp = acc.add_incomplete(cs.namespace(|| format!("add {i}")), &p)?;
       acc = AllocatedPointNonInfinity::conditionally_select(
-        cs.namespace(|| format!("acc_iteration_{}", i)),
+        cs.namespace(|| format!("acc_iteration_{i}")),
         &temp,
         &acc,
         &Boolean::from(bit.clone()),
       )?;
 
-      p = p.double_incomplete(cs.namespace(|| format!("double {}", i)))?;
+      p = p.double_incomplete(cs.namespace(|| format!("double {i}")))?;
     }
 
     // convert back to AllocatedPoint
@@ -500,15 +500,15 @@ where
     let mut p_complete = p.to_allocated_point(&self.is_infinity)?;
 
     for (i, bit) in complete_bits.iter().enumerate() {
-      let temp = acc.add(cs.namespace(|| format!("add_complete {}", i)), &p_complete)?;
+      let temp = acc.add(cs.namespace(|| format!("add_complete {i}")), &p_complete)?;
       acc = AllocatedPoint::conditionally_select(
-        cs.namespace(|| format!("acc_complete_iteration_{}", i)),
+        cs.namespace(|| format!("acc_complete_iteration_{i}")),
         &temp,
         &acc,
         &Boolean::from(bit.clone()),
       )?;
 
-      p_complete = p_complete.double(cs.namespace(|| format!("double_complete {}", i)))?;
+      p_complete = p_complete.double(cs.namespace(|| format!("double_complete {i}")))?;
     }
 
     Ok(acc)
@@ -961,7 +961,7 @@ mod tests {
       .to_le_bits()
       .into_iter()
       .enumerate()
-      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), Some(bit)))
+      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), Some(bit)))
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
     let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), bits).unwrap();

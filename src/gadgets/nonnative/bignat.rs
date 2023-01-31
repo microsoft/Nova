@@ -53,8 +53,7 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
     )
   } else {
     eprintln!(
-      "nat {} does not fit in {} limbs of width {}",
-      nat, n_limbs, limb_width
+      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
     );
     Err(SynthesisError::Unsatisfiable)
   }
@@ -131,7 +130,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let limbs = (0..n_limbs)
       .map(|limb_i| {
         cs.alloc(
-          || format!("limb {}", limb_i),
+          || format!("limb {limb_i}"),
           || match values_cell {
             Ok(ref vs) => {
               if vs.len() != n_limbs {
@@ -149,7 +148,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
             // Hack b/c SynthesisError and io::Error don't implement Clone
             Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
               std::io::ErrorKind::Other,
-              format!("{}", e),
+              format!("{e}"),
             ))),
           },
         )
@@ -189,7 +188,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let limbs = (0..n_limbs)
       .map(|limb_i| {
         cs.alloc(
-          || format!("limb {}", limb_i),
+          || format!("limb {limb_i}"),
           || match all_values_cell {
             Ok((ref vs, ref v)) => {
               if value.is_none() {
@@ -201,7 +200,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
             // Hack b/c SynthesisError and io::Error don't implement Clone
             Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
               std::io::ErrorKind::Other,
-              format!("{}", e),
+              format!("{e}"),
             ))),
           },
         )
@@ -272,7 +271,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       (0..self.limbs.len()).map(|i| self.limb_values.as_ref().map(|vs| vs[i]));
     for (i, (limb, limb_value)) in self.limbs.iter().zip(limb_values_split).enumerate() {
       Num::new(limb_value, limb.clone())
-        .fits_in_bits(cs.namespace(|| format!("{}", i)), self.params.limb_width)?;
+        .fits_in_bits(cs.namespace(|| format!("{i}")), self.params.limb_width)?;
     }
     Ok(())
   }
@@ -291,7 +290,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       .enumerate()
       .map(|(i, (limb, limb_value))| {
         Num::new(limb_value, limb.clone()).decompose(
-          cs.namespace(|| format!("subdecmop {}", i)),
+          cs.namespace(|| format!("subdecmop {i}")),
           self.params.limb_width,
         )
       })
@@ -370,7 +369,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let mut carry_in = Num::new(Some(Scalar::zero()), LinearCombination::zero());
 
     for i in 0..n {
-      let carry = Num::alloc(cs.namespace(|| format!("carry value {}", i)), || {
+      let carry = Num::alloc(cs.namespace(|| format!("carry value {i}")), || {
         Ok(
           nat_to_f(
             &((f_to_nat(&self.limb_values.grab()?[i])
@@ -385,7 +384,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       accumulated_extra += max_word;
 
       cs.enforce(
-        || format!("carry {}", i),
+        || format!("carry {i}"),
         |lc| lc,
         |lc| lc,
         |lc| {
@@ -402,10 +401,10 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       accumulated_extra /= &target_base;
 
       if i < n - 1 {
-        carry.fits_in_bits(cs.namespace(|| format!("carry {} decomp", i)), carry_bits)?;
+        carry.fits_in_bits(cs.namespace(|| format!("carry {i} decomp")), carry_bits)?;
       } else {
         cs.enforce(
-          || format!("carry {} is out", i),
+          || format!("carry {i} is out"),
           |lc| lc,
           |lc| lc,
           |lc| lc + &carry.num - (nat_to_f(&accumulated_extra).unwrap(), CS::one()),
@@ -416,7 +415,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
 
     for (i, zero_limb) in self.limbs.iter().enumerate().skip(n) {
       cs.enforce(
-        || format!("zero self {}", i),
+        || format!("zero self {i}"),
         |lc| lc,
         |lc| lc,
         |lc| lc + zero_limb,
@@ -424,7 +423,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     }
     for (i, zero_limb) in other.limbs.iter().enumerate().skip(n) {
       cs.enforce(
-        || format!("zero other {}", i),
+        || format!("zero other {i}"),
         |lc| lc,
         |lc| lc,
         |lc| lc + zero_limb,
@@ -709,7 +708,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
       .map(|i| {
         Ok(
           LinearCombination::zero()
-            + cs.alloc(|| format!("prod {}", i), || Ok(values.grab()?[i]))?,
+            + cs.alloc(|| format!("prod {i}"), || Ok(values.grab()?[i]))?,
         )
       })
       .collect::<Result<Vec<LinearCombination<Scalar>>, SynthesisError>>()?;
@@ -722,7 +721,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     for _ in 1..(n_product_coeffs + 1) {
       x.add_assign(&one);
       cs.enforce(
-        || format!("pointwise product @ {:?}", x),
+        || format!("pointwise product @ {x:?}"),
         |lc| {
           let mut i = Scalar::one();
           self.coefficients.iter().fold(lc, |lc, c| {
@@ -807,7 +806,7 @@ mod tests {
           .iter()
           .enumerate()
           .map(|(i, x)| {
-            Ok(LinearCombination::zero() + cs.alloc(|| format!("coeff_a {}", i), || Ok(*x))?)
+            Ok(LinearCombination::zero() + cs.alloc(|| format!("coeff_a {i}"), || Ok(*x))?)
           })
           .collect::<Result<Vec<LinearCombination<Scalar>>, SynthesisError>>()?,
         values: Some(self.a),
@@ -818,7 +817,7 @@ mod tests {
           .iter()
           .enumerate()
           .map(|(i, x)| {
-            Ok(LinearCombination::zero() + cs.alloc(|| format!("coeff_b {}", i), || Ok(*x))?)
+            Ok(LinearCombination::zero() + cs.alloc(|| format!("coeff_b {i}"), || Ok(*x))?)
           })
           .collect::<Result<Vec<LinearCombination<Scalar>>, SynthesisError>>()?,
         values: Some(self.b),

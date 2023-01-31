@@ -106,7 +106,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let bits: Vec<Variable> = (1..n_bits)
       .map(|i| {
         cs.alloc(
-          || format!("bit {}", i),
+          || format!("bit {i}"),
           || {
             let r = if *v.grab()?.get_bit(i).grab()? {
               Scalar::one()
@@ -121,7 +121,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
 
     for (i, v) in bits.iter().enumerate() {
       cs.enforce(
-        || format!("{} is bit", i),
+        || format!("{i} is bit"),
         |lc| lc + *v,
         |lc| lc + CS::one() - *v,
         |lc| lc,
@@ -191,7 +191,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let allocations: Vec<Bit<Scalar>> = (0..n_bits)
       .map(|bit_i| {
         Bit::alloc(
-          cs.namespace(|| format!("bit{}", bit_i)),
+          cs.namespace(|| format!("bit{bit_i}")),
           values.as_ref().map(|vs| vs[bit_i]),
         )
       })
@@ -257,5 +257,5 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Convert a natural number to a field element.
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
-  Scalar::from_str_vartime(&format!("{}", n))
+  Scalar::from_str_vartime(&format!("{n}"))
 }
