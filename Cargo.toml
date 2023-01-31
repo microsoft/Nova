@@ -32,6 +32,7 @@ bincode = "1.2.1"
 flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
+thiserror = "1.0" 
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.0", package = "lurk-pasta-msm" }
