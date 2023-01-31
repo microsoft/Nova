@@ -9,7 +9,7 @@ use super::{
   traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait},
 };
 use core::cmp::max;
-use ff::{Field, PrimeField};
+use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use merlin::Transcript;
@@ -311,27 +311,28 @@ impl<G: Group> R1CSShape<G> {
     B: &[(usize, usize, G::Scalar)],
     C: &[(usize, usize, G::Scalar)],
   ) -> G::Scalar {
-    let shape_serialized = R1CSShapeSerialized {
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+    struct R1CSShapeWithoutDigest<G: Group> {
+      num_cons: usize,
+      num_vars: usize,
+      num_io: usize,
+      A: Vec<(usize, usize, G::Scalar)>,
+      B: Vec<(usize, usize, G::Scalar)>,
+      C: Vec<(usize, usize, G::Scalar)>,
+    }
+
+    let shape = R1CSShapeWithoutDigest::<G> {
       num_cons,
       num_vars,
       num_io,
-      A: A
-        .par_iter()
-        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
-        .collect(),
-      B: B
-        .par_iter()
-        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
-        .collect(),
-      C: C
-        .par_iter()
-        .map(|(i, j, v)| (*i, *j, v.to_repr().as_ref().to_vec()))
-        .collect(),
+      A: A.to_vec(),
+      B: B.to_vec(),
+      C: C.to_vec(),
     };
 
     // obtain a vector of bytes representing the R1CS shape
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &shape_serialized).unwrap();
+    bincode::serialize_into(&mut encoder, &shape).unwrap();
     let shape_bytes = encoder.finish().unwrap();
 
     // convert shape_bytes into a short digest
@@ -429,16 +430,6 @@ impl<G: Group> R1CSShape<G> {
       digest,
     }
   }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct R1CSShapeSerialized {
-  num_cons: usize,
-  num_vars: usize,
-  num_io: usize,
-  A: Vec<(usize, usize, Vec<u8>)>,
-  B: Vec<(usize, usize, Vec<u8>)>,
-  C: Vec<(usize, usize, Vec<u8>)>,
 }
 
 impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {

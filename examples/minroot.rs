@@ -5,6 +5,7 @@ type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
+use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialTestCircuit},
@@ -267,6 +268,14 @@ fn main() {
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
+
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
+    let compressed_snark_encoded = encoder.finish().unwrap();
+    println!(
+      "CompressedSNARK::len {:?} bytes",
+      compressed_snark_encoded.len()
+    );
 
     // verify the compressed SNARK
     println!("Verifying a CompressedSNARK...");
