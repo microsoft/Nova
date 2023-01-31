@@ -52,9 +52,7 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         .collect(),
     )
   } else {
-    eprintln!(
-      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
-    );
+    eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
     Err(SynthesisError::Unsatisfiable)
   }
 }
@@ -706,10 +704,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     });
     let coefficients = (0..n_product_coeffs)
       .map(|i| {
-        Ok(
-          LinearCombination::zero()
-            + cs.alloc(|| format!("prod {i}"), || Ok(values.grab()?[i]))?,
-        )
+        Ok(LinearCombination::zero() + cs.alloc(|| format!("prod {i}"), || Ok(values.grab()?[i]))?)
       })
       .collect::<Result<Vec<LinearCombination<Scalar>>, SynthesisError>>()?;
     let product = Polynomial {

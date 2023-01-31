@@ -105,8 +105,7 @@ where
       // (ii) y_i_plus_1 = x_i
       // (1) constraints for condition (i) are below
       // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
-      let x_i_plus_1_sq =
-        x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{i}")))?;
+      let x_i_plus_1_sq = x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{i}")))?;
       let x_i_plus_1_quad =
         x_i_plus_1_sq.square(cs.namespace(|| format!("x_i_plus_1_quad_{i}")))?;
       cs.enforce(
@@ -162,9 +161,7 @@ fn main() {
 
     let circuit_secondary = TrivialTestCircuit::default();
 
-    println!(
-      "Proving {num_iters_per_step} iterations of MinRoot per step"
-    );
+    println!("Proving {num_iters_per_step} iterations of MinRoot per step");
 
     // produce public parameters
     println!("Producing public parameters...");
