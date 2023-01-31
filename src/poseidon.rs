@@ -20,9 +20,10 @@ use neptune::{
   },
   Strength,
 };
+use serde::{Deserialize, Serialize};
 
 /// All Poseidon Constants that are used in Nova
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
 impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
@@ -37,6 +38,7 @@ where
 }
 
 /// A Poseidon-based RO to use outside circuits
+#[derive(Serialize, Deserialize)]
 pub struct PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits,
@@ -52,7 +54,7 @@ where
 
 impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
-  Base: PrimeField + PrimeFieldBits,
+  Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
   Scalar: PrimeField + PrimeFieldBits,
 {
   type Constants = PoseidonConstantsCircuit<Base>;
@@ -107,6 +109,7 @@ where
 }
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
+#[derive(Serialize, Deserialize)]
 pub struct PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits,
@@ -120,7 +123,7 @@ where
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
-  Scalar: PrimeField + PrimeFieldBits,
+  Scalar: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
   type Constants = PoseidonConstantsCircuit<Scalar>;
 

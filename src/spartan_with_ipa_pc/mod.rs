@@ -20,9 +20,12 @@ use itertools::concat;
 use merlin::Transcript;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use sumcheck::SumcheckProof;
 
 /// A type that represents the prover's key
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct ProverKey<G: Group> {
   gens_r1cs: R1CSGens<G>,
   gens_ipa: CommitGens<G>,
@@ -40,6 +43,8 @@ impl<G: Group> ProverKeyTrait<G> for ProverKey<G> {
 }
 
 /// A type that represents the verifier's key
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct VerifierKey<G: Group> {
   gens_r1cs: R1CSGens<G>,
   gens_ipa: CommitGens<G>,
@@ -59,6 +64,8 @@ impl<G: Group> VerifierKeyTrait<G> for VerifierKey<G> {
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct RelaxedR1CSSNARK<G: Group> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),

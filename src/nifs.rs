@@ -10,10 +10,11 @@ use super::{
   traits::{AbsorbInROTrait, Group, ROTrait},
 };
 use core::marker::PhantomData;
+use serde::{Deserialize, Serialize};
 
 /// A SNARK that holds the proof of a step of an incremental computation
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NIFS<G: Group> {
   pub(crate) comm_T: CompressedCommitment<G::CompressedGroupElement>,
   _p: PhantomData<G>,

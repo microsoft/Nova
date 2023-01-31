@@ -28,8 +28,9 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::Field;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NovaAugmentedCircuitParams {
   limb_width: usize,
   n_limbs: usize,
@@ -46,7 +47,8 @@ impl NovaAugmentedCircuitParams {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct NovaAugmentedCircuitInputs<G: Group> {
   params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   i: G::Base,

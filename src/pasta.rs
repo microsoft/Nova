@@ -15,6 +15,7 @@ use pasta_curves::{
   pallas, vesta, Ep, Eq,
 };
 use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
+use serde::{Deserialize, Serialize};
 use sha3::Shake256;
 use std::io::Read;
 
@@ -151,7 +152,7 @@ fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 //////////////////////////////////////Pallas///////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the pallas curve
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PallasCompressedElementWrapper {
   repr: [u8; 32],
 }
@@ -266,7 +267,7 @@ impl CompressedGroup for PallasCompressedElementWrapper {
 //////////////////////////////////////Vesta////////////////////////////////////////////////
 
 /// A wrapper for compressed group elements that come from the vesta curve
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VestaCompressedElementWrapper {
   repr: [u8; 32],
 }
