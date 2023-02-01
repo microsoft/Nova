@@ -6,9 +6,9 @@ Recursive SNARKs including Nova have a wide variety of applications such as Roll
 
 This repository provides `nova-snark,` a Rust library implementation of Nova.
 
-To run tests:
+To run tests (we recommend the release mode to drastically shorten run times):
 ```text
-cargo test
+cargo test --release
 ```
 
 ## References
