@@ -2,12 +2,15 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 
-use super::{
-  commitments::CompressedCommitment,
+use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{AbsorbInROTrait, Group, ROTrait},
+  traits::{
+    commitment::{CommitmentTrait, CompressedCommitmentTrait},
+    AbsorbInROTrait, Group, ROTrait,
+  },
+  CompressedCommitment,
 };
 use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
@@ -15,8 +18,9 @@ use serde::{Deserialize, Serialize};
 /// A SNARK that holds the proof of a step of an incremental computation
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct NIFS<G: Group> {
-  pub(crate) comm_T: CompressedCommitment<G::CompressedGroupElement>,
+  pub(crate) comm_T: CompressedCommitment<G>,
   _p: PhantomData<G>,
 }
 

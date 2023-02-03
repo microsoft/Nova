@@ -13,7 +13,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, ROCircuitTrait, ROConstantsCircuit},
+  traits::{commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
@@ -23,19 +23,13 @@ use ff::Field;
 
 /// An Allocated R1CS Instance
 #[derive(Clone)]
-pub struct AllocatedR1CSInstance<G>
-where
-  G: Group,
-{
+pub struct AllocatedR1CSInstance<G: Group> {
   pub(crate) W: AllocatedPoint<G>,
   pub(crate) X0: AllocatedNum<G::Base>,
   pub(crate) X1: AllocatedNum<G::Base>,
 }
 
-impl<G> AllocatedR1CSInstance<G>
-where
-  G: Group,
-{
+impl<G: Group> AllocatedR1CSInstance<G> {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
@@ -44,8 +38,7 @@ where
     // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
-      u.get()
-        .map_or(None, |u| Some(u.comm_W.comm.to_coordinates())),
+      u.get().map_or(None, |u| Some(u.comm_W.to_coordinates())),
     )?;
 
     let X0 = alloc_scalar_as_base::<G, _>(
@@ -71,10 +64,7 @@ where
 }
 
 /// An Allocated Relaxed R1CS Instance
-pub struct AllocatedRelaxedR1CSInstance<G>
-where
-  G: Group,
-{
+pub struct AllocatedRelaxedR1CSInstance<G: Group> {
   pub(crate) W: AllocatedPoint<G>,
   pub(crate) E: AllocatedPoint<G>,
   pub(crate) u: AllocatedNum<G::Base>,
@@ -82,10 +72,7 @@ where
   pub(crate) X1: BigNat<G::Base>,
 }
 
-impl<G> AllocatedRelaxedR1CSInstance<G>
-where
-  G: Group,
-{
+impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   /// Allocates the given RelaxedR1CSInstance as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
@@ -97,14 +84,14 @@ where
       cs.namespace(|| "allocate W"),
       inst
         .get()
-        .map_or(None, |inst| Some(inst.comm_W.comm.to_coordinates())),
+        .map_or(None, |inst| Some(inst.comm_W.to_coordinates())),
     )?;
 
     let E = AllocatedPoint::alloc(
       cs.namespace(|| "allocate E"),
       inst
         .get()
-        .map_or(None, |inst| Some(inst.comm_E.comm.to_coordinates())),
+        .map_or(None, |inst| Some(inst.comm_E.to_coordinates())),
     )?;
 
     // u << |G::Base| despite the fact that u is a scalar.

@@ -1,16 +1,19 @@
+//! This module defines basic types related to polynomials
 use core::ops::Index;
 use ff::PrimeField;
 use rayon::prelude::*;
 
-pub struct EqPolynomial<Scalar: PrimeField> {
+pub(crate) struct EqPolynomial<Scalar: PrimeField> {
   r: Vec<Scalar>,
 }
 
 impl<Scalar: PrimeField> EqPolynomial<Scalar> {
+  /// Creates a new polynomial from its succinct specification
   pub fn new(r: Vec<Scalar>) -> Self {
     EqPolynomial { r }
   }
 
+  /// Evaluates the polynomial at the specified point
   pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
     assert_eq!(self.r.len(), rx.len());
     (0..rx.len())
@@ -43,7 +46,7 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 }
 
 #[derive(Debug)]
-pub struct MultilinearPolynomial<Scalar: PrimeField> {
+pub(crate) struct MultilinearPolynomial<Scalar: PrimeField> {
   num_vars: usize, // the number of variables in the multilinear polynomial
   Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
@@ -105,7 +108,7 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
   }
 }
 
-pub struct SparsePolynomial<Scalar: PrimeField> {
+pub(crate) struct SparsePolynomial<Scalar: PrimeField> {
   num_vars: usize,
   Z: Vec<(usize, Scalar)>,
 }

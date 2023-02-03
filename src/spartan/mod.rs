@@ -1,21 +1,18 @@
-//! This module implements RelaxedR1CSSNARKTrait using a Spartan variant
-//! instantiated with an IPA-based polynomial commitment scheme
-mod ipa;
-mod polynomial;
+//! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
+//! over the polynomial commitment and evaluation argument (i.e., a PCS)
+pub mod polynomial;
 mod sumcheck;
 
-use super::{
-  commitments::CommitGens,
+use crate::{
   errors::NovaError,
   r1cs::{R1CSGens, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
+    evaluation::EvaluationEngineTrait,
     snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
     AppendToTranscriptTrait, ChallengeTrait, Group,
   },
 };
-use core::cmp::max;
 use ff::Field;
-use ipa::{InnerProductArgument, InnerProductInstance, InnerProductWitness, NIFSForInnerProduct};
 use itertools::concat;
 use merlin::Transcript;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
@@ -26,17 +23,15 @@ use sumcheck::SumcheckProof;
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group> {
-  gens_r1cs: R1CSGens<G>,
-  gens_ipa: CommitGens<G>,
+pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+  gens: EE::EvaluationGens,
   S: R1CSShape<G>,
 }
 
-impl<G: Group> ProverKeyTrait<G> for ProverKey<G> {
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> ProverKeyTrait<G> for ProverKey<G, EE> {
   fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self {
     ProverKey {
-      gens_r1cs: gens.clone(),
-      gens_ipa: CommitGens::new(b"ipa", 1),
+      gens: EE::setup(&gens.gens),
       S: S.clone(),
     }
   }
@@ -45,17 +40,17 @@ impl<G: Group> ProverKeyTrait<G> for ProverKey<G> {
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group> {
-  gens_r1cs: R1CSGens<G>,
-  gens_ipa: CommitGens<G>,
+pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+  gens: EE::EvaluationGens,
   S: R1CSShape<G>,
 }
 
-impl<G: Group> VerifierKeyTrait<G> for VerifierKey<G> {
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> VerifierKeyTrait<G>
+  for VerifierKey<G, EE>
+{
   fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self {
     VerifierKey {
-      gens_r1cs: gens.clone(),
-      gens_ipa: CommitGens::new(b"ipa", 1),
+      gens: EE::setup(&gens.gens),
       S: S.clone(),
     }
   }
@@ -66,19 +61,20 @@ impl<G: Group> VerifierKeyTrait<G> for VerifierKey<G> {
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group> {
+pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   sc_proof_inner: SumcheckProof<G>,
   eval_E: G::Scalar,
   eval_W: G::Scalar,
-  nifs_ip: NIFSForInnerProduct<G>,
-  ipa: InnerProductArgument<G>,
+  eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
-  type ProverKey = ProverKey<G>;
-  type VerifierKey = VerifierKey<G>;
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G>
+  for RelaxedR1CSSNARK<G, EE>
+{
+  type ProverKey = ProverKey<G, EE>;
+  type VerifierKey = VerifierKey<G, EE>;
 
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
   fn prove(
@@ -87,8 +83,6 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
     let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
-
-    debug_assert!(pk.S.is_sat_relaxed(&pk.gens_r1cs, U, W).is_ok());
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
@@ -230,24 +224,13 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
     eval_W.append_to_transcript(b"eval_W", &mut transcript);
 
-    let (nifs_ip, r_U, r_W) = NIFSForInnerProduct::prove(
-      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &eval_E),
-      &InnerProductWitness::new(&W.E),
-      &InnerProductInstance::new(
-        &U.comm_W,
-        &EqPolynomial::new(r_y[1..].to_vec()).evals(),
-        &eval_W,
-      ),
-      &InnerProductWitness::new(&W.W),
+    let eval_arg = EE::prove_batch(
+      &pk.gens,
       &mut transcript,
-    );
-
-    let ipa = InnerProductArgument::prove(
-      &pk.gens_r1cs.gens,
-      &pk.gens_ipa,
-      &r_U,
-      &r_W,
-      &mut transcript,
+      &[U.comm_E, U.comm_W],
+      &[W.E.clone(), W.W.clone()],
+      &[r_x, r_y[1..].to_vec()],
+      &[eval_E, eval_W],
     )?;
 
     Ok(RelaxedR1CSSNARK {
@@ -256,8 +239,7 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
       sc_proof_inner,
       eval_W,
       eval_E,
-      nifs_ip,
-      ipa,
+      eval_arg,
     })
   }
 
@@ -366,22 +348,13 @@ impl<G: Group> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G> {
     // verify eval_W and eval_E
     self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
 
-    let r_U = self.nifs_ip.verify(
-      &InnerProductInstance::new(&U.comm_E, &EqPolynomial::new(r_x).evals(), &self.eval_E),
-      &InnerProductInstance::new(
-        &U.comm_W,
-        &EqPolynomial::new(r_y[1..].to_vec()).evals(),
-        &self.eval_W,
-      ),
+    EE::verify_batch(
+      &vk.gens,
       &mut transcript,
-    );
-
-    self.ipa.verify(
-      &vk.gens_r1cs.gens,
-      &vk.gens_ipa,
-      max(vk.S.num_vars, vk.S.num_cons),
-      &r_U,
-      &mut transcript,
+      &[U.comm_E, U.comm_W],
+      &[r_x, r_y[1..].to_vec()],
+      &[self.eval_E, self.eval_W],
+      &self.eval_arg,
     )?;
 
     Ok(())

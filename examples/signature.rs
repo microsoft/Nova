@@ -182,7 +182,6 @@ pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
   bits: Option<Vec<bool>>,
 ) -> Result<Vec<AllocatedBit>, SynthesisError> {
   (0..F::NUM_BITS)
-    .into_iter()
     .map(|i| {
       AllocatedBit::alloc(
         cs.namespace(|| format!("bit {i}")),

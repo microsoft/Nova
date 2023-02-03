@@ -1,7 +1,15 @@
+//! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
 #![allow(clippy::too_many_arguments)]
-use crate::commitments::{CommitGens, CommitTrait, Commitment, CompressedCommitment};
-use crate::errors::NovaError;
-use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use crate::{
+  errors::NovaError,
+  spartan::polynomial::EqPolynomial,
+  traits::{
+    commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
+    evaluation::EvaluationEngineTrait,
+    AppendToTranscriptTrait, ChallengeTrait, Group,
+  },
+  Commitment, CommitmentGens, CompressedCommitment, CE,
+};
 use core::{cmp::max, iter};
 use ff::Field;
 use merlin::Transcript;
@@ -9,7 +17,131 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-pub fn inner_product<T>(a: &[T], b: &[T]) -> T
+/// Provides an implementation of generators for proving evaluations
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct EvaluationGens<G: Group> {
+  gens_v: CommitmentGens<G>,
+  gens_s: CommitmentGens<G>,
+}
+
+/// Provides an implementation of a polynomial evaluation argument
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct EvaluationArgument<G: Group> {
+  nifs: Vec<NIFSForInnerProduct<G>>,
+  ipa: InnerProductArgument<G>,
+}
+
+/// Provides an implementation of a polynomial evaluation engine using IPA
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EvaluationEngine<G: Group> {
+  _p: PhantomData<G>,
+}
+
+impl<G: Group> EvaluationEngineTrait<G> for EvaluationEngine<G> {
+  type CE = G::CE;
+  type EvaluationGens = EvaluationGens<G>;
+  type EvaluationArgument = EvaluationArgument<G>;
+
+  fn setup(gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens) -> Self::EvaluationGens {
+    EvaluationGens {
+      gens_v: gens.clone(),
+      gens_s: CommitmentGens::<G>::new(b"ipa", 1),
+    }
+  }
+
+  fn prove_batch(
+    gens: &Self::EvaluationGens,
+    transcript: &mut Transcript,
+    comms: &[Commitment<G>],
+    polys: &[Vec<G::Scalar>],
+    points: &[Vec<G::Scalar>],
+    evals: &[G::Scalar],
+  ) -> Result<Self::EvaluationArgument, NovaError> {
+    // sanity checks (these should never fail)
+    assert!(polys.len() >= 2);
+    assert_eq!(comms.len(), polys.len());
+    assert_eq!(comms.len(), points.len());
+    assert_eq!(comms.len(), evals.len());
+
+    let mut r_U = InnerProductInstance::new(
+      &comms[0],
+      &EqPolynomial::new(points[0].clone()).evals(),
+      &evals[0],
+    );
+    let mut r_W = InnerProductWitness::new(&polys[0]);
+    let mut nifs = Vec::new();
+
+    for i in 1..polys.len() {
+      let (n, u, w) = NIFSForInnerProduct::prove(
+        &r_U,
+        &r_W,
+        &InnerProductInstance::new(
+          &comms[i],
+          &EqPolynomial::new(points[i].clone()).evals(),
+          &evals[i],
+        ),
+        &InnerProductWitness::new(&polys[i]),
+        transcript,
+      );
+      nifs.push(n);
+      r_U = u;
+      r_W = w;
+    }
+
+    let ipa = InnerProductArgument::prove(&gens.gens_v, &gens.gens_s, &r_U, &r_W, transcript)?;
+
+    Ok(EvaluationArgument { nifs, ipa })
+  }
+
+  /// A method to verify purported evaluations of a batch of polynomials
+  fn verify_batch(
+    gens: &Self::EvaluationGens,
+    transcript: &mut Transcript,
+    comms: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
+    points: &[Vec<G::Scalar>],
+    evals: &[G::Scalar],
+    arg: &Self::EvaluationArgument,
+  ) -> Result<(), NovaError> {
+    // sanity checks (these should never fail)
+    assert!(comms.len() >= 2);
+    assert_eq!(comms.len(), points.len());
+    assert_eq!(comms.len(), evals.len());
+
+    let mut r_U = InnerProductInstance::new(
+      &comms[0],
+      &EqPolynomial::new(points[0].clone()).evals(),
+      &evals[0],
+    );
+    let mut num_vars = points[0].len();
+    for i in 1..comms.len() {
+      let u = arg.nifs[i - 1].verify(
+        &r_U,
+        &InnerProductInstance::new(
+          &comms[i],
+          &EqPolynomial::new(points[i].clone()).evals(),
+          &evals[i],
+        ),
+        transcript,
+      );
+      r_U = u;
+      num_vars = max(num_vars, points[i].len());
+    }
+
+    arg.ipa.verify(
+      &gens.gens_v,
+      &gens.gens_s,
+      (2_usize).pow(num_vars as u32),
+      &r_U,
+      transcript,
+    )?;
+
+    Ok(())
+  }
+}
+
+fn inner_product<T>(a: &[T], b: &[T]) -> T
 where
   T: Field + Send + Sync,
 {
@@ -29,7 +161,7 @@ pub struct InnerProductInstance<G: Group> {
 }
 
 impl<G: Group> InnerProductInstance<G> {
-  pub fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
+  fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
     InnerProductInstance {
       comm_a_vec: *comm_a_vec,
       b_vec: b_vec.to_vec(),
@@ -37,7 +169,7 @@ impl<G: Group> InnerProductInstance<G> {
     }
   }
 
-  pub fn pad(&self, n: usize) -> InnerProductInstance<G> {
+  fn pad(&self, n: usize) -> InnerProductInstance<G> {
     let mut b_vec = self.b_vec.clone();
     b_vec.resize(n, G::Scalar::zero());
     InnerProductInstance {
@@ -48,18 +180,18 @@ impl<G: Group> InnerProductInstance<G> {
   }
 }
 
-pub struct InnerProductWitness<G: Group> {
+struct InnerProductWitness<G: Group> {
   a_vec: Vec<G::Scalar>,
 }
 
 impl<G: Group> InnerProductWitness<G> {
-  pub fn new(a_vec: &[G::Scalar]) -> Self {
+  fn new(a_vec: &[G::Scalar]) -> Self {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
     }
   }
 
-  pub fn pad(&self, n: usize) -> InnerProductWitness<G> {
+  fn pad(&self, n: usize) -> InnerProductWitness<G> {
     let mut a_vec = self.a_vec.clone();
     a_vec.resize(n, G::Scalar::zero());
     InnerProductWitness { a_vec }
@@ -67,17 +199,17 @@ impl<G: Group> InnerProductWitness<G> {
 }
 
 /// A non-interactive folding scheme (NIFS) for inner product relations
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NIFSForInnerProduct<G: Group> {
   cross_term: G::Scalar,
 }
 
 impl<G: Group> NIFSForInnerProduct<G> {
-  pub fn protocol_name() -> &'static [u8] {
+  fn protocol_name() -> &'static [u8] {
     b"NIFSForInnerProduct"
   }
 
-  pub fn prove(
+  fn prove(
     U1: &InnerProductInstance<G>,
     W1: &InnerProductWitness<G>,
     U2: &InnerProductInstance<G>,
@@ -136,7 +268,7 @@ impl<G: Group> NIFSForInnerProduct<G> {
     (NIFSForInnerProduct { cross_term }, U, W)
   }
 
-  pub fn verify(
+  fn verify(
     &self,
     U1: &InnerProductInstance<G>,
     U2: &InnerProductInstance<G>,
@@ -183,10 +315,11 @@ impl<G: Group> NIFSForInnerProduct<G> {
 }
 
 /// An inner product argument
-#[derive(Debug, Serialize, Deserialize)]
-pub struct InnerProductArgument<G: Group> {
-  L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
-  R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+struct InnerProductArgument<G: Group> {
+  L_vec: Vec<CompressedCommitment<G>>,
+  R_vec: Vec<CompressedCommitment<G>>,
   a_hat: G::Scalar,
   _p: PhantomData<G>,
 }
@@ -196,9 +329,9 @@ impl<G: Group> InnerProductArgument<G> {
     b"inner product argument"
   }
 
-  pub fn prove(
-    gens: &CommitGens<G>,
-    gens_c: &CommitGens<G>,
+  fn prove(
+    gens: &CommitmentGens<G>,
+    gens_c: &CommitmentGens<G>,
     U: &InnerProductInstance<G>,
     W: &InnerProductWitness<G>,
     transcript: &mut Transcript,
@@ -220,15 +353,15 @@ impl<G: Group> InnerProductArgument<G> {
     // a closure that executes a step of the recursive inner product argument
     let prove_inner = |a_vec: &[G::Scalar],
                        b_vec: &[G::Scalar],
-                       gens: &CommitGens<G>,
+                       gens: &CommitmentGens<G>,
                        transcript: &mut Transcript|
      -> Result<
       (
-        CompressedCommitment<G::CompressedGroupElement>,
-        CompressedCommitment<G::CompressedGroupElement>,
+        CompressedCommitment<G>,
+        CompressedCommitment<G>,
         Vec<G::Scalar>,
         Vec<G::Scalar>,
-        CommitGens<G>,
+        CommitmentGens<G>,
       ),
       NovaError,
     > {
@@ -238,20 +371,24 @@ impl<G: Group> InnerProductArgument<G> {
       let c_L = inner_product(&a_vec[0..n / 2], &b_vec[n / 2..n]);
       let c_R = inner_product(&a_vec[n / 2..n], &b_vec[0..n / 2]);
 
-      let L = a_vec[0..n / 2]
-        .iter()
-        .chain(iter::once(&c_L))
-        .copied()
-        .collect::<Vec<G::Scalar>>()
-        .commit(&gens_R.combine(&gens_c))
-        .compress();
-      let R = a_vec[n / 2..n]
-        .iter()
-        .chain(iter::once(&c_R))
-        .copied()
-        .collect::<Vec<G::Scalar>>()
-        .commit(&gens_L.combine(&gens_c))
-        .compress();
+      let L = CE::<G>::commit(
+        &gens_R.combine(&gens_c),
+        &a_vec[0..n / 2]
+          .iter()
+          .chain(iter::once(&c_L))
+          .copied()
+          .collect::<Vec<G::Scalar>>(),
+      )
+      .compress();
+      let R = CE::<G>::commit(
+        &gens_L.combine(&gens_c),
+        &a_vec[n / 2..n]
+          .iter()
+          .chain(iter::once(&c_R))
+          .copied()
+          .collect::<Vec<G::Scalar>>(),
+      )
+      .compress();
 
       L.append_to_transcript(b"L", transcript);
       R.append_to_transcript(b"R", transcript);
@@ -278,8 +415,8 @@ impl<G: Group> InnerProductArgument<G> {
     };
 
     // two vectors to hold the logarithmic number of group elements
-    let mut L_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
-    let mut R_vec: Vec<CompressedCommitment<G::CompressedGroupElement>> = Vec::new();
+    let mut L_vec: Vec<CompressedCommitment<G>> = Vec::new();
+    let mut R_vec: Vec<CompressedCommitment<G>> = Vec::new();
 
     // we create mutable copies of vectors and generators
     let mut a_vec = W.a_vec.to_vec();
@@ -304,10 +441,10 @@ impl<G: Group> InnerProductArgument<G> {
     })
   }
 
-  pub fn verify(
+  fn verify(
     &self,
-    gens: &CommitGens<G>,
-    gens_c: &CommitGens<G>,
+    gens: &CommitmentGens<G>,
+    gens_c: &CommitmentGens<G>,
     n: usize,
     U: &InnerProductInstance<G>,
     transcript: &mut Transcript,
@@ -329,7 +466,7 @@ impl<G: Group> InnerProductArgument<G> {
     let r = G::Scalar::challenge(b"r", transcript);
     let gens_c = gens_c.scale(&r);
 
-    let P = U.comm_a_vec + [U.c].commit(&gens_c);
+    let P = U.comm_a_vec + CE::<G>::commit(&gens_c, &[U.c]);
 
     let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
       let mut products = vec![G::Scalar::zero(); v.len()];
@@ -396,29 +533,37 @@ impl<G: Group> InnerProductArgument<G> {
     };
 
     let gens_hat = {
-      let c = s.commit(gens).compress();
-      CommitGens::reinterpret_commitments_as_gens(&[c])?
+      let c = CE::<G>::commit(gens, &s).compress();
+      CommitmentGens::<G>::reinterpret_commitments_as_gens(&[c])?
     };
 
     let b_hat = inner_product(&U.b_vec, &s);
 
     let P_hat = {
       let gens_folded = {
-        let gens_L = CommitGens::reinterpret_commitments_as_gens(&self.L_vec)?;
-        let gens_R = CommitGens::reinterpret_commitments_as_gens(&self.R_vec)?;
-        let gens_P = CommitGens::reinterpret_commitments_as_gens(&[P.compress()])?;
+        let gens_L = CommitmentGens::<G>::reinterpret_commitments_as_gens(&self.L_vec)?;
+        let gens_R = CommitmentGens::<G>::reinterpret_commitments_as_gens(&self.R_vec)?;
+        let gens_P = CommitmentGens::<G>::reinterpret_commitments_as_gens(&[P.compress()])?;
         gens_L.combine(&gens_R).combine(&gens_P)
       };
-      r_square
-        .iter()
-        .chain(r_inverse_square.iter())
-        .chain(iter::once(&G::Scalar::one()))
-        .copied()
-        .collect::<Vec<G::Scalar>>()
-        .commit(&gens_folded)
+
+      CE::<G>::commit(
+        &gens_folded,
+        &r_square
+          .iter()
+          .chain(r_inverse_square.iter())
+          .chain(iter::once(&G::Scalar::one()))
+          .copied()
+          .collect::<Vec<G::Scalar>>(),
+      )
     };
 
-    if P_hat == [self.a_hat, self.a_hat * b_hat].commit(&gens_hat.combine(&gens_c)) {
+    if P_hat
+      == CE::<G>::commit(
+        &gens_hat.combine(&gens_c),
+        &[self.a_hat, self.a_hat * b_hat],
+      )
+    {
       Ok(())
     } else {
       Err(NovaError::InvalidIPA)

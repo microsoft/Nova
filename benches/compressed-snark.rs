@@ -15,8 +15,10 @@ use std::time::Duration;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type S1 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
-type S2 = nova_snark::spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
+type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
+type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
+type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
+type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
 type C1 = NonTrivialTestCircuit<<G1 as Group>::Scalar>;
 type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
 

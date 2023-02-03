@@ -6,17 +6,15 @@
 // private modules
 mod bellperson;
 mod circuit;
-mod commitments;
 mod constants;
 mod nifs;
-mod poseidon;
 mod r1cs;
 
 // public modules
 pub mod errors;
 pub mod gadgets;
-pub mod pasta;
-pub mod spartan_with_ipa_pc;
+pub mod provider;
+pub mod spartan;
 pub mod traits;
 
 use crate::bellperson::{
@@ -37,8 +35,10 @@ use r1cs::{
 };
 use serde::{Deserialize, Serialize};
 use traits::{
-  circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, AbsorbInROTrait, Group, ROConstants,
-  ROConstantsCircuit, ROConstantsTrait, ROTrait,
+  circuit::StepCircuit,
+  commitment::{CommitmentEngineTrait, CompressedCommitmentTrait},
+  snark::RelaxedR1CSSNARKTrait,
+  AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
 };
 
 /// A type that holds public parameters of Nova
@@ -717,13 +717,20 @@ where
   }
 }
 
+type CommitmentGens<G> = <<G as traits::Group>::CE as CommitmentEngineTrait<G>>::CommitmentGens;
+type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
+type CompressedCommitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::CompressedCommitment;
+type CE<G> = <G as Group>::CE;
+
 #[cfg(test)]
 mod tests {
   use super::*;
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
-  type S1 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G1>;
-  type S2 = spartan_with_ipa_pc::RelaxedR1CSSNARK<G2>;
+  type EE1 = provider::ipa_pc::EvaluationEngine<G1>;
+  type EE2 = provider::ipa_pc::EvaluationEngine<G2>;
+  type S1 = spartan::RelaxedR1CSSNARK<G1, EE1>;
+  type S2 = spartan::RelaxedR1CSSNARK<G2, EE2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
