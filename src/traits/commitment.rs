@@ -29,25 +29,6 @@ pub trait CommitmentGensTrait<G: Group>:
 
   /// Commits to a vector using the commitment key
   fn commit(&self, v: &[G::Scalar]) -> Self::Commitment;
-
-  /// Splits the commitment key into two pieces at a specified point
-  fn split_at(&self, n: usize) -> (Self, Self)
-  where
-    Self: Sized;
-
-  /// Combines two commitment keys into one
-  fn combine(&self, other: &Self) -> Self;
-
-  /// Folds the two commitment keys into one using the provided weights
-  fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> Self;
-
-  /// Scales the commitment key using the provided scalar
-  fn scale(&self, r: &G::Scalar) -> Self;
-
-  /// Reinterprets commitments as commitment keys
-  fn reinterpret_commitments_as_gens(c: &[Self::CompressedCommitment]) -> Result<Self, NovaError>
-  where
-    Self: Sized;
 }
 
 /// Defines basic operations on commitments
