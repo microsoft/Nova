@@ -32,7 +32,7 @@ impl<G: Group> fmt::Debug for SatisfyingAssignment<G>
 where
   G::Scalar: PrimeField,
 {
-  fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+  fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt
       .debug_struct("SatisfyingAssignment")
       .field("a_aux_density", &self.a_aux_density)

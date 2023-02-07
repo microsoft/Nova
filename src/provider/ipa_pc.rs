@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 use crate::{
   errors::NovaError,
+  provider::pedersen::CommitmentGensExtTrait,
   spartan::polynomial::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
@@ -39,7 +40,11 @@ pub struct EvaluationEngine<G: Group> {
   _p: PhantomData<G>,
 }
 
-impl<G: Group> EvaluationEngineTrait<G> for EvaluationEngine<G> {
+impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
+where
+  G: Group,
+  CommitmentGens<G>: CommitmentGensExtTrait<G, CE = G::CE>,
+{
   type CE = G::CE;
   type EvaluationGens = EvaluationGens<G>;
   type EvaluationArgument = EvaluationArgument<G>;
@@ -99,7 +104,7 @@ impl<G: Group> EvaluationEngineTrait<G> for EvaluationEngine<G> {
   fn verify_batch(
     gens: &Self::EvaluationGens,
     transcript: &mut Transcript,
-    comms: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
+    comms: &[Commitment<G>],
     points: &[Vec<G::Scalar>],
     evals: &[G::Scalar],
     arg: &Self::EvaluationArgument,
@@ -324,7 +329,11 @@ struct InnerProductArgument<G: Group> {
   _p: PhantomData<G>,
 }
 
-impl<G: Group> InnerProductArgument<G> {
+impl<G> InnerProductArgument<G>
+where
+  G: Group,
+  CommitmentGens<G>: CommitmentGensExtTrait<G, CE = G::CE>,
+{
   fn protocol_name() -> &'static [u8] {
     b"inner product argument"
   }

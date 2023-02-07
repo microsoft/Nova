@@ -247,7 +247,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == gens.gens.commit(&W.W);
+    let res_comm: bool = U.comm_W == CE::<G>::commit(&gens.gens, &W.W);
 
     if res_eq && res_comm {
       Ok(())
@@ -301,7 +301,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = gens.gens.commit(&T);
+    let comm_T = CE::<G>::commit(&gens.gens, &T);
 
     Ok((T, comm_T))
   }
@@ -466,7 +466,7 @@ impl<G: Group> R1CSWitness<G> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    gens.gens.commit(&self.W)
+    CE::<G>::commit(&gens.gens, &self.W)
   }
 }
 
