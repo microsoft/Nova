@@ -1,23 +1,21 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::{
   provider::{
+    keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
   },
-  traits::{ChallengeTrait, CompressedGroup, Group},
+  traits::{CompressedGroup, Group, PrimeFieldExt},
 };
 use digest::{ExtendableOutput, Input};
-use ff::Field;
-use merlin::Transcript;
 use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveAffine, CurveExt, Group as OtherGroup},
+  arithmetic::{CurveAffine, CurveExt, FieldExt, Group as OtherGroup},
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
-use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha3::Shake256;
@@ -64,6 +62,7 @@ macro_rules! impl_traits {
       type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
+      type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
@@ -171,12 +170,10 @@ macro_rules! impl_traits {
       }
     }
 
-    impl ChallengeTrait for $name::Scalar {
-      fn challenge(label: &'static [u8], transcript: &mut Transcript) -> Self {
-        let mut key: <ChaCha20Rng as SeedableRng>::Seed = Default::default();
-        transcript.challenge_bytes(label, &mut key);
-        let mut rng = ChaCha20Rng::from_seed(key);
-        $name::Scalar::random(&mut rng)
+    impl PrimeFieldExt for $name::Scalar {
+      fn from_uniform(bytes: &[u8]) -> Self {
+        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
+        $name::Scalar::from_bytes_wide(&bytes_arr)
       }
     }
 

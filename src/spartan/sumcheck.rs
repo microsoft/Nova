@@ -5,7 +5,6 @@ use crate::errors::NovaError;
 use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
 use core::marker::PhantomData;
 use ff::Field;
-use merlin::Transcript;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +20,7 @@ impl<G: Group> SumcheckProof<G> {
     claim: G::Scalar,
     num_rounds: usize,
     degree_bound: usize,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
   ) -> Result<(G::Scalar, Vec<G::Scalar>), NovaError> {
     let mut e = claim;
     let mut r: Vec<G::Scalar> = Vec::new();
@@ -48,7 +47,7 @@ impl<G: Group> SumcheckProof<G> {
       poly.append_to_transcript(b"poly", transcript);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript);
+      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript)?;
 
       r.push(r_i);
 
@@ -65,8 +64,8 @@ impl<G: Group> SumcheckProof<G> {
     poly_A: &mut MultilinearPolynomial<G::Scalar>,
     poly_B: &mut MultilinearPolynomial<G::Scalar>,
     comb_func: F,
-    transcript: &mut Transcript,
-  ) -> (Self, Vec<G::Scalar>, Vec<G::Scalar>)
+    transcript: &mut G::TE,
+  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
   where
     F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
@@ -103,7 +102,7 @@ impl<G: Group> SumcheckProof<G> {
       poly.append_to_transcript(b"poly", transcript);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript);
+      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript)?;
       r.push(r_i);
       polys.push(poly.compress());
 
@@ -115,13 +114,13 @@ impl<G: Group> SumcheckProof<G> {
       poly_B.bound_poly_var_top(&r_i);
     }
 
-    (
+    Ok((
       SumcheckProof {
         compressed_polys: polys,
       },
       r,
       vec![poly_A[0], poly_B[0]],
-    )
+    ))
   }
 
   pub fn prove_cubic_with_additive_term<F>(
@@ -132,8 +131,8 @@ impl<G: Group> SumcheckProof<G> {
     poly_C: &mut MultilinearPolynomial<G::Scalar>,
     poly_D: &mut MultilinearPolynomial<G::Scalar>,
     comb_func: F,
-    transcript: &mut Transcript,
-  ) -> (Self, Vec<G::Scalar>, Vec<G::Scalar>)
+    transcript: &mut G::TE,
+  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
   where
     F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
@@ -195,7 +194,7 @@ impl<G: Group> SumcheckProof<G> {
       poly.append_to_transcript(b"poly", transcript);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript);
+      let r_i = G::Scalar::challenge(b"challenge_nextround", transcript)?;
       r.push(r_i);
       polys.push(poly.compress());
 
@@ -209,13 +208,13 @@ impl<G: Group> SumcheckProof<G> {
       poly_D.bound_poly_var_top(&r_i);
     }
 
-    (
+    Ok((
       SumcheckProof {
         compressed_polys: polys,
       },
       r,
       vec![poly_A[0], poly_B[0], poly_C[0], poly_D[0]],
-    )
+    ))
   }
 }
 
@@ -322,12 +321,12 @@ impl<G: Group> CompressedUniPoly<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait for UniPoly<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
-    transcript.append_message(label, b"UniPoly_begin");
-    for i in 0..self.coeffs.len() {
-      self.coeffs[i].append_to_transcript(b"coeff", transcript);
-    }
-    transcript.append_message(label, b"UniPoly_end");
+impl<G: Group> AppendToTranscriptTrait<G> for UniPoly<G> {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
+    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.coeffs,
+      label,
+      transcript,
+    );
   }
 }

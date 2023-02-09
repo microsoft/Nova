@@ -41,4 +41,7 @@ pub enum NovaError {
   /// returned when the step execution produces an output whose length differs from a previously declared arity
   #[error("InvalidStepOutputLength")]
   InvalidStepOutputLength,
+  /// returned when the transcript engine encounters an overflow of the round number
+  #[error("InternalTranscriptError")]
+  InternalTranscriptError,
 }

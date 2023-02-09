@@ -71,7 +71,7 @@ pub trait CommitmentTrait<G: Group>:
   + Serialize
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<G>
-  + AppendToTranscriptTrait
+  + AppendToTranscriptTrait<G>
   + CommitmentOps
   + CommitmentOpsOwned
   + ScalarMul<G::Scalar>
@@ -96,7 +96,7 @@ pub trait CompressedCommitmentTrait<C: CompressedGroup>:
   + Sync
   + Serialize
   + for<'de> Deserialize<'de>
-  + AppendToTranscriptTrait
+  + AppendToTranscriptTrait<C::GroupElement>
 {
   /// Holds the type of the commitment that can be decompressed into
   type Commitment;

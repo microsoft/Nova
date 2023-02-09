@@ -6,6 +6,7 @@ use crate::{
       CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait, CompressedCommitmentTrait,
     },
     AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, ROTrait,
+    TranscriptEngineTrait,
   },
 };
 use core::{
@@ -13,8 +14,7 @@ use core::{
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use ff::Field;
-use merlin::Transcript;
+use ff::{Field, PrimeField};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -96,9 +96,17 @@ impl<C: CompressedGroup> CompressedCommitmentTrait<C> for CompressedCommitment<C
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait for Commitment<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
-    transcript.append_message(label, self.comm.compress().as_bytes());
+impl<G: Group> AppendToTranscriptTrait<G> for Commitment<G> {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let is_infinity_byte = if is_infinity { 0u8 } else { 1u8 };
+    let bytes = [
+      x.to_repr().as_ref(),
+      y.to_repr().as_ref(),
+      &[is_infinity_byte],
+    ]
+    .concat();
+    transcript.absorb_bytes(label, &bytes);
   }
 }
 
@@ -115,9 +123,16 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
   }
 }
 
-impl<C: CompressedGroup> AppendToTranscriptTrait for CompressedCommitment<C> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut Transcript) {
-    transcript.append_message(label, self.comm.as_bytes());
+impl<C: CompressedGroup> AppendToTranscriptTrait<C::GroupElement> for CompressedCommitment<C> {
+  fn append_to_transcript(
+    &self,
+    label: &'static [u8],
+    transcript: &mut <C::GroupElement as Group>::TE,
+  ) {
+    let comm = self.decompress().unwrap();
+    <Commitment<C::GroupElement> as AppendToTranscriptTrait<C::GroupElement>>::append_to_transcript(
+      &comm, label, transcript,
+    );
   }
 }
 

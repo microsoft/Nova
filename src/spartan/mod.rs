@@ -9,12 +9,11 @@ use crate::{
   traits::{
     evaluation::EvaluationEngineTrait,
     snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
-    AppendToTranscriptTrait, ChallengeTrait, Group,
+    AppendToTranscriptTrait, ChallengeTrait, Group, TranscriptEngineTrait,
   },
 };
 use ff::Field;
 use itertools::concat;
-use merlin::Transcript;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -82,7 +81,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
-    let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
+    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // sanity check that R1CSShape has certain size characteristics
     assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
@@ -105,7 +104,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     // outer sum-check
     let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
-      .collect();
+      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
 
     let mut poly_tau = MultilinearPolynomial::new(EqPolynomial::new(tau).evals());
     let (mut poly_Az, mut poly_Bz, poly_Cz, mut poly_uCz_E) = {
@@ -136,22 +135,39 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       &mut poly_uCz_E,
       comb_func_outer,
       &mut transcript,
-    );
+    )?;
 
     // claims from the end of sum-check
     let (claim_Az, claim_Bz): (G::Scalar, G::Scalar) = (claims_outer[1], claims_outer[2]);
-
-    claim_Az.append_to_transcript(b"claim_Az", &mut transcript);
-    claim_Bz.append_to_transcript(b"claim_Bz", &mut transcript);
     let claim_Cz = poly_Cz.evaluate(&r_x);
+
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &claim_Az,
+      b"claim_Az",
+      &mut transcript,
+    );
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &claim_Bz,
+      b"claim_Bz",
+      &mut transcript,
+    );
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &claim_Cz,
+      b"claim_Cz",
+      &mut transcript,
+    );
+
     let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
-    claim_Cz.append_to_transcript(b"claim_Cz", &mut transcript);
-    eval_E.append_to_transcript(b"eval_E", &mut transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &eval_E,
+      b"eval_E",
+      &mut transcript,
+    );
 
     // inner sum-check
-    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
-    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
-    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
+    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript)?;
+    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript)?;
+    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript)?;
     let claim_inner_joint = r_A * claim_Az + r_B * claim_Bz + r_C * claim_Cz;
 
     let poly_ABC = {
@@ -219,10 +235,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       &mut MultilinearPolynomial::new(poly_z),
       comb_func,
       &mut transcript,
-    );
+    )?;
 
     let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
-    eval_W.append_to_transcript(b"eval_W", &mut transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &eval_W,
+      b"eval_W",
+      &mut transcript,
+    );
 
     let eval_arg = EE::prove_batch(
       &pk.gens,
@@ -245,7 +265,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
   /// verifies a proof of satisfiability of a RelaxedR1CS instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
-    let mut transcript = Transcript::new(b"RelaxedR1CSSNARK");
+    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // append the R1CSShape and RelaxedR1CSInstance to the transcript
     vk.S.append_to_transcript(b"S", &mut transcript);
@@ -259,7 +279,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     // outer sum-check
     let tau = (0..num_rounds_x)
       .map(|_i| G::Scalar::challenge(b"challenge_tau", &mut transcript))
-      .collect::<Vec<G::Scalar>>();
+      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
 
     let (claim_outer_final, r_x) =
       self
@@ -275,24 +295,31 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       return Err(NovaError::InvalidSumcheckProof);
     }
 
-    self
-      .claims_outer
-      .0
-      .append_to_transcript(b"claim_Az", &mut transcript);
-    self
-      .claims_outer
-      .1
-      .append_to_transcript(b"claim_Bz", &mut transcript);
-    self
-      .claims_outer
-      .2
-      .append_to_transcript(b"claim_Cz", &mut transcript);
-    self.eval_E.append_to_transcript(b"eval_E", &mut transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.claims_outer.0,
+      b"claim_Az",
+      &mut transcript,
+    );
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.claims_outer.1,
+      b"claim_Bz",
+      &mut transcript,
+    );
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.claims_outer.2,
+      b"claim_Cz",
+      &mut transcript,
+    );
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.eval_E,
+      b"eval_E",
+      &mut transcript,
+    );
 
     // inner sum-check
-    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript);
-    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript);
-    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript);
+    let r_A = G::Scalar::challenge(b"challenge_rA", &mut transcript)?;
+    let r_B = G::Scalar::challenge(b"challenge_rB", &mut transcript)?;
+    let r_C = G::Scalar::challenge(b"challenge_rC", &mut transcript)?;
     let claim_inner_joint =
       r_A * self.claims_outer.0 + r_B * self.claims_outer.1 + r_C * self.claims_outer.2;
 
@@ -346,7 +373,11 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     }
 
     // verify eval_W and eval_E
-    self.eval_W.append_to_transcript(b"eval_W", &mut transcript); //eval_E is already in the transcript
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.eval_W,
+      b"eval_W",
+      &mut transcript,
+    ); //eval_E is already in the transcript
 
     EE::verify_batch(
       &vk.gens,
