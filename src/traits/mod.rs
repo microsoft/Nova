@@ -224,35 +224,28 @@ pub trait ChallengeTrait<G: Group> {
 
 /// Defines additional methods on PrimeField objects
 pub trait PrimeFieldExt: PrimeField {
-  /// Returns a Scalar representing the bytes
+  /// Returns a scalar representing the bytes
   fn from_uniform(bytes: &[u8]) -> Self;
 
-  /// Returns a byte representation
-  fn to_bytes(v: &[Self]) -> Vec<u8> {
-    (0..v.len())
-      .map(|i| v[i].to_repr().as_ref().to_vec())
-      .collect::<Vec<Vec<u8>>>()
-      .into_iter()
-      .flatten()
-      .collect::<Vec<u8>>()
-  }
+  /// Returns a vector of bytes representing the scalar
+  fn to_bytes(s: &Self) -> Vec<u8>;
 }
 
-impl<G: Group<Scalar = F>, F: PrimeField> ChallengeTrait<G> for F {
-  fn challenge(label: &'static [u8], transcript: &mut G::TE) -> Result<F, NovaError> {
-    transcript.squeeze_scalar(label)
-  }
-}
-
-impl<G: Group<Scalar = F>, F: PrimeField> AppendToTranscriptTrait<G> for F {
+impl<G: Group<Scalar = F>, F: PrimeField + PrimeFieldExt> AppendToTranscriptTrait<G> for F {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    transcript.absorb_bytes(label, self.to_repr().as_ref());
+    transcript.absorb_bytes(label, &<Self as PrimeFieldExt>::to_bytes(self));
   }
 }
 
 impl<G: Group<Scalar = F>, F: PrimeField + PrimeFieldExt> AppendToTranscriptTrait<G> for [F] {
   fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    transcript.absorb_bytes(label, &<F as PrimeFieldExt>::to_bytes(self));
+    let bytes = (0..self.len())
+      .map(|i| <F as PrimeFieldExt>::to_bytes(&self[i]))
+      .collect::<Vec<_>>()
+      .into_iter()
+      .flatten()
+      .collect::<Vec<u8>>();
+    transcript.absorb_bytes(label, &bytes);
   }
 }
 

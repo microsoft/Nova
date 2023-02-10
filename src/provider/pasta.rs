@@ -1,13 +1,15 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::{
+  errors::NovaError,
   provider::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
   },
-  traits::{CompressedGroup, Group, PrimeFieldExt},
+  traits::{ChallengeTrait, CompressedGroup, Group, PrimeFieldExt, TranscriptEngineTrait},
 };
 use digest::{ExtendableOutput, Input};
+use ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
@@ -175,6 +177,10 @@ macro_rules! impl_traits {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
         $name::Scalar::from_bytes_wide(&bytes_arr)
       }
+
+      fn to_bytes(s: &Self) -> Vec<u8> {
+        s.to_repr().as_ref().to_vec()
+      }
     }
 
     impl CompressedGroup for $name_compressed {
@@ -189,6 +195,12 @@ macro_rules! impl_traits {
       }
     }
   };
+}
+
+impl<G: Group<Scalar = F>, F: PrimeField> ChallengeTrait<G> for F {
+  fn challenge(label: &'static [u8], transcript: &mut G::TE) -> Result<F, NovaError> {
+    transcript.squeeze_scalar(label)
+  }
 }
 
 impl_traits!(
@@ -210,7 +222,6 @@ impl_traits!(
 /// Native implementation of fast multiexp for platforms that do not support pasta_msm/semolina
 /// Adapted from zcash/halo2
 fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
-  use ff::PrimeField;
   let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
   let c = if bases.len() < 4 {
