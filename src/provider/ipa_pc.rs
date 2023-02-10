@@ -7,13 +7,12 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    AppendToTranscriptTrait, ChallengeTrait, Group,
+    AppendToTranscriptTrait, ChallengeTrait, Group, TranscriptEngineTrait,
   },
   Commitment, CommitmentGens, CompressedCommitment, CE,
 };
 use core::{cmp::max, iter};
 use ff::Field;
-use merlin::Transcript;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -58,7 +57,7 @@ where
 
   fn prove_batch(
     gens: &Self::EvaluationGens,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
     comms: &[Commitment<G>],
     polys: &[Vec<G::Scalar>],
     points: &[Vec<G::Scalar>],
@@ -89,7 +88,7 @@ where
         ),
         &InnerProductWitness::new(&polys[i]),
         transcript,
-      );
+      )?;
       nifs.push(n);
       r_U = u;
       r_W = w;
@@ -103,7 +102,7 @@ where
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify_batch(
     gens: &Self::EvaluationGens,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
     comms: &[Commitment<G>],
     points: &[Vec<G::Scalar>],
     evals: &[G::Scalar],
@@ -129,7 +128,7 @@ where
           &evals[i],
         ),
         transcript,
-      );
+      )?;
       r_U = u;
       num_vars = max(num_vars, points[i].len());
     }
@@ -219,9 +218,9 @@ impl<G: Group> NIFSForInnerProduct<G> {
     W1: &InnerProductWitness<G>,
     U2: &InnerProductInstance<G>,
     W2: &InnerProductWitness<G>,
-    transcript: &mut Transcript,
-  ) -> (Self, InnerProductInstance<G>, InnerProductWitness<G>) {
-    transcript.append_message(b"protocol-name", Self::protocol_name());
+    transcript: &mut G::TE,
+  ) -> Result<(Self, InnerProductInstance<G>, InnerProductWitness<G>), NovaError> {
+    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
 
     // pad the instances and witness so they are of the same length
     let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
@@ -230,21 +229,25 @@ impl<G: Group> NIFSForInnerProduct<G> {
     let W2 = W2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
 
     // add the two commitments and two public vectors to the transcript
+    // we do not need to add public vectors as their compressed versions were
+    // read from the transcript
     U1.comm_a_vec
       .append_to_transcript(b"U1_comm_a_vec", transcript);
-    U1.b_vec.append_to_transcript(b"U1_b_vec", transcript);
     U2.comm_a_vec
       .append_to_transcript(b"U2_comm_a_vec", transcript);
-    U2.b_vec.append_to_transcript(b"U2_b_vec", transcript);
 
     // compute the cross-term
     let cross_term = inner_product(&W1.a_vec, &U2.b_vec) + inner_product(&W2.a_vec, &U1.b_vec);
 
     // add the cross-term to the transcript
-    cross_term.append_to_transcript(b"cross_term", transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &cross_term,
+      b"cross_term",
+      transcript,
+    );
 
     // obtain a random challenge
-    let r = G::Scalar::challenge(b"r", transcript);
+    let r = G::Scalar::challenge(b"r", transcript)?;
 
     // fold the vectors and their inner product
     let a_vec = W1
@@ -270,36 +273,38 @@ impl<G: Group> NIFSForInnerProduct<G> {
       c,
     };
 
-    (NIFSForInnerProduct { cross_term }, U, W)
+    Ok((NIFSForInnerProduct { cross_term }, U, W))
   }
 
   fn verify(
     &self,
     U1: &InnerProductInstance<G>,
     U2: &InnerProductInstance<G>,
-    transcript: &mut Transcript,
-  ) -> InnerProductInstance<G> {
-    transcript.append_message(b"protocol-name", Self::protocol_name());
+    transcript: &mut G::TE,
+  ) -> Result<InnerProductInstance<G>, NovaError> {
+    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
 
     // pad the instances so they are of the same length
     let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
     let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
 
     // add the two commitments and two public vectors to the transcript
+    // we do not need to add public vectors as their compressed representation
+    // were derived from the transcript
     U1.comm_a_vec
       .append_to_transcript(b"U1_comm_a_vec", transcript);
-    U1.b_vec.append_to_transcript(b"U1_b_vec", transcript);
     U2.comm_a_vec
       .append_to_transcript(b"U2_comm_a_vec", transcript);
-    U2.b_vec.append_to_transcript(b"U2_b_vec", transcript);
 
     // add the cross-term to the transcript
-    self
-      .cross_term
-      .append_to_transcript(b"cross_term", transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.cross_term,
+      b"cross_term",
+      transcript,
+    );
 
     // obtain a random challenge
-    let r = G::Scalar::challenge(b"r", transcript);
+    let r = G::Scalar::challenge(b"r", transcript)?;
 
     // fold the vectors and their inner product
     let b_vec = U1
@@ -311,11 +316,11 @@ impl<G: Group> NIFSForInnerProduct<G> {
     let c = U1.c + r * r * U2.c + r * self.cross_term;
     let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
 
-    InnerProductInstance {
+    Ok(InnerProductInstance {
       comm_a_vec,
       b_vec,
       c,
-    }
+    })
   }
 }
 
@@ -343,27 +348,26 @@ where
     gens_c: &CommitmentGens<G>,
     U: &InnerProductInstance<G>,
     W: &InnerProductWitness<G>,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
   ) -> Result<Self, NovaError> {
-    transcript.append_message(b"protocol-name", Self::protocol_name());
+    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
 
     if U.b_vec.len() != W.a_vec.len() {
       return Err(NovaError::InvalidInputLength);
     }
 
     U.comm_a_vec.append_to_transcript(b"comm_a_vec", transcript);
-    U.b_vec.append_to_transcript(b"b_vec", transcript);
-    U.c.append_to_transcript(b"c", transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(&U.c, b"c", transcript);
 
     // sample a random base for commiting to the inner product
-    let r = G::Scalar::challenge(b"r", transcript);
+    let r = G::Scalar::challenge(b"r", transcript)?;
     let gens_c = gens_c.scale(&r);
 
     // a closure that executes a step of the recursive inner product argument
     let prove_inner = |a_vec: &[G::Scalar],
                        b_vec: &[G::Scalar],
                        gens: &CommitmentGens<G>,
-                       transcript: &mut Transcript|
+                       transcript: &mut G::TE|
      -> Result<
       (
         CompressedCommitment<G>,
@@ -402,7 +406,7 @@ where
       L.append_to_transcript(b"L", transcript);
       R.append_to_transcript(b"R", transcript);
 
-      let r = G::Scalar::challenge(b"challenge_r", transcript);
+      let r = G::Scalar::challenge(b"challenge_r", transcript)?;
       let r_inverse = r.invert().unwrap();
 
       // fold the left half and the right half
@@ -456,9 +460,9 @@ where
     gens_c: &CommitmentGens<G>,
     n: usize,
     U: &InnerProductInstance<G>,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
   ) -> Result<(), NovaError> {
-    transcript.append_message(b"protocol-name", Self::protocol_name());
+    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
     if U.b_vec.len() != n
       || n != (1 << self.L_vec.len())
       || self.L_vec.len() != self.R_vec.len()
@@ -468,11 +472,10 @@ where
     }
 
     U.comm_a_vec.append_to_transcript(b"comm_a_vec", transcript);
-    U.b_vec.append_to_transcript(b"b_vec", transcript);
-    U.c.append_to_transcript(b"c", transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(&U.c, b"c", transcript);
 
     // sample a random base for commiting to the inner product
-    let r = G::Scalar::challenge(b"r", transcript);
+    let r = G::Scalar::challenge(b"r", transcript)?;
     let gens_c = gens_c.scale(&r);
 
     let P = U.comm_a_vec + CE::<G>::commit(&gens_c, &[U.c]);
@@ -511,7 +514,7 @@ where
         self.R_vec[i].append_to_transcript(b"R", transcript);
         G::Scalar::challenge(b"challenge_r", transcript)
       })
-      .collect::<Vec<G::Scalar>>();
+      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
 
     // precompute scalars necessary for verification
     let r_square: Vec<G::Scalar> = (0..self.L_vec.len())

@@ -17,7 +17,6 @@ use core::cmp::max;
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
-use merlin::Transcript;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
@@ -440,11 +439,13 @@ impl<G: Group> R1CSShape<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait for R1CSShape<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
-    self
-      .get_digest()
-      .append_to_transcript(b"R1CSShape", transcript);
+impl<G: Group> AppendToTranscriptTrait<G> for R1CSShape<G> {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
+    <<G as Group>::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
+      &self.get_digest(),
+      label,
+      transcript,
+    );
   }
 }
 
@@ -488,10 +489,10 @@ impl<G: Group> R1CSInstance<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait for R1CSInstance<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+impl<G: Group> AppendToTranscriptTrait<G> for R1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut G::TE) {
     self.comm_W.append_to_transcript(b"comm_W", transcript);
-    self.X.append_to_transcript(b"X", transcript);
+    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(&self.X, b"X", transcript);
   }
 }
 
@@ -629,12 +630,12 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait for RelaxedR1CSInstance<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut Transcript) {
+impl<G: Group> AppendToTranscriptTrait<G> for RelaxedR1CSInstance<G> {
+  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut G::TE) {
     self.comm_W.append_to_transcript(b"comm_W", transcript);
     self.comm_E.append_to_transcript(b"comm_E", transcript);
-    self.u.append_to_transcript(b"u", transcript);
-    self.X.append_to_transcript(b"X", transcript);
+    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(&self.u, b"u", transcript);
+    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(&self.X, b"X", transcript);
   }
 }
 

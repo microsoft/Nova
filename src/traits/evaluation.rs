@@ -5,7 +5,6 @@ use crate::{
   errors::NovaError,
   traits::{commitment::CommitmentEngineTrait, Group},
 };
-use merlin::Transcript;
 use serde::{Deserialize, Serialize};
 
 /// A trait that ties different pieces of the commitment evaluation together
@@ -27,7 +26,7 @@ pub trait EvaluationEngineTrait<G: Group>:
   /// A method to prove evaluations of a batch of polynomials
   fn prove_batch(
     gens: &Self::EvaluationGens,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
     comm: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
     polys: &[Vec<G::Scalar>],
     points: &[Vec<G::Scalar>],
@@ -37,7 +36,7 @@ pub trait EvaluationEngineTrait<G: Group>:
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify_batch(
     gens: &Self::EvaluationGens,
-    transcript: &mut Transcript,
+    transcript: &mut G::TE,
     comm: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
     points: &[Vec<G::Scalar>],
     evals: &[G::Scalar],
