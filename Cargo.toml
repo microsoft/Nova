@@ -51,3 +51,5 @@ harness = false
 
 [features]
 default = []
+cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
+opencl = ["neptune/opencl", "neptune/pasta", "neptune/arity24"]
