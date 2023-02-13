@@ -228,7 +228,7 @@ pub trait PrimeFieldExt: PrimeField {
   fn from_uniform(bytes: &[u8]) -> Self;
 
   /// Returns a vector of bytes representing the scalar
-  fn to_bytes(s: &Self) -> Vec<u8>;
+  fn to_bytes(&self) -> Vec<u8>;
 }
 
 impl<G: Group<Scalar = F>, F: PrimeField + PrimeFieldExt> AppendToTranscriptTrait<G> for F {

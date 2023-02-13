@@ -178,8 +178,8 @@ macro_rules! impl_traits {
         $name::Scalar::from_bytes_wide(&bytes_arr)
       }
 
-      fn to_bytes(s: &Self) -> Vec<u8> {
-        s.to_repr().as_ref().to_vec()
+      fn to_bytes(&self) -> Vec<u8> {
+        self.to_repr().as_ref().to_vec()
       }
     }
 
