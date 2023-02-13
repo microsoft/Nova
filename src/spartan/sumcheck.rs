@@ -38,10 +38,9 @@ impl<G: Group> SumcheckProof<G> {
         return Err(NovaError::InvalidSumcheckProof);
       }
 
-      // check if G_k(0) + G_k(1) = e
-      if poly.eval_at_zero() + poly.eval_at_one() != e {
-        return Err(NovaError::InvalidSumcheckProof);
-      }
+      // we do not need to check if poly(0) + poly(1) = e, as
+      // decompress() call above already ensures that hods
+      debug_assert_eq!(poly.eval_at_zero() + poly.eval_at_one(), e);
 
       // append the prover's message to the transcript
       poly.append_to_transcript(b"poly", transcript);
