@@ -6,11 +6,8 @@ use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{
-    commitment::{CommitmentTrait, CompressedCommitmentTrait},
-    AbsorbInROTrait, Group, ROTrait,
-  },
-  CompressedCommitment,
+  traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
+  Commitment, CompressedCommitment,
 };
 use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
@@ -101,7 +98,7 @@ impl<G: Group> NIFS<G> {
     U2.absorb_in_ro(&mut ro);
 
     // append `comm_T` to the transcript and obtain a challenge
-    let comm_T = self.comm_T.decompress()?;
+    let comm_T = Commitment::<G>::decompress(&self.comm_T)?;
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO

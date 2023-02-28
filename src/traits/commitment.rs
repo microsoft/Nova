@@ -2,7 +2,7 @@
 //! We require the commitment engine to provide a commitment to vectors with a single group element
 use crate::{
   errors::NovaError,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group},
+  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group},
 };
 use core::{
   fmt::Debug,
@@ -17,9 +17,6 @@ pub trait CommitmentGensTrait<G: Group>:
 {
   /// Holds the type of the commitment that can be produced
   type Commitment;
-
-  /// Holds the type of the compressed commitment
-  type CompressedCommitment;
 
   /// Samples a new commitment key of a specified size
   fn new(label: &'static [u8], n: usize) -> Self;
@@ -77,32 +74,24 @@ pub trait CommitmentTrait<G: Group>:
   + ScalarMul<G::Scalar>
 {
   /// Holds the type of the compressed commitment
-  type CompressedCommitment;
+  type CompressedCommitment: Clone
+    + Debug
+    + PartialEq
+    + Eq
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + AppendToTranscriptTrait<G>;
 
   /// Compresses self into a compressed commitment
   fn compress(&self) -> Self::CompressedCommitment;
 
   /// Returns the coordinate representation of the commitment
   fn to_coordinates(&self) -> (G::Base, G::Base, bool);
-}
 
-/// This trait defines the behavior of a compressed commitment
-pub trait CompressedCommitmentTrait<C: CompressedGroup>:
-  Clone
-  + Debug
-  + PartialEq
-  + Eq
-  + Send
-  + Sync
-  + Serialize
-  + for<'de> Deserialize<'de>
-  + AppendToTranscriptTrait<C::GroupElement>
-{
-  /// Holds the type of the commitment that can be decompressed into
-  type Commitment;
-
-  /// Decompresses self into a commitment
-  fn decompress(&self) -> Result<Self::Commitment, NovaError>;
+  /// Decompresses a compressed commitment into a commitment
+  fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError>;
 }
 
 /// A trait that ties different pieces of the commitment generation together
@@ -110,20 +99,10 @@ pub trait CommitmentEngineTrait<G: Group>:
   Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// Holds the type of the commitment key
-  type CommitmentGens: CommitmentGensTrait<
-    G,
-    Commitment = Self::Commitment,
-    CompressedCommitment = Self::CompressedCommitment,
-  >;
+  type CommitmentGens: CommitmentGensTrait<G, Commitment = Self::Commitment>;
 
   /// Holds the type of the commitment
-  type Commitment: CommitmentTrait<G, CompressedCommitment = Self::CompressedCommitment>;
-
-  /// Holds the type of the compressed commitment
-  type CompressedCommitment: CompressedCommitmentTrait<
-    G::CompressedGroupElement,
-    Commitment = Self::Commitment,
-  >;
+  type Commitment: CommitmentTrait<G>;
 
   /// Commits to the provided vector using the provided generators
   fn commit(gens: &Self::CommitmentGens, v: &[G::Scalar]) -> Self::Commitment;
