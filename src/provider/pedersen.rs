@@ -2,9 +2,7 @@
 use crate::{
   errors::NovaError,
   traits::{
-    commitment::{
-      CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait, CompressedCommitmentTrait,
-    },
+    commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
     AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, ROTrait,
     TranscriptEngineTrait,
   },
@@ -35,13 +33,12 @@ pub struct Commitment<G: Group> {
 /// A type that holds a compressed commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct CompressedCommitment<C: CompressedGroup> {
-  comm: C,
+pub struct CompressedCommitment<G: Group> {
+  comm: G::CompressedGroupElement,
 }
 
 impl<G: Group> CommitmentGensTrait<G> for CommitmentGens<G> {
   type Commitment = Commitment<G>;
-  type CompressedCommitment = CompressedCommitment<G::CompressedGroupElement>;
 
   fn new(label: &'static [u8], n: usize) -> Self {
     CommitmentGens {
@@ -63,9 +60,9 @@ impl<G: Group> CommitmentGensTrait<G> for CommitmentGens<G> {
 }
 
 impl<G: Group> CommitmentTrait<G> for Commitment<G> {
-  type CompressedCommitment = CompressedCommitment<G::CompressedGroupElement>;
+  type CompressedCommitment = CompressedCommitment<G>;
 
-  fn compress(&self) -> CompressedCommitment<G::CompressedGroupElement> {
+  fn compress(&self) -> Self::CompressedCommitment {
     CompressedCommitment {
       comm: self.comm.compress(),
     }
@@ -74,25 +71,21 @@ impl<G: Group> CommitmentTrait<G> for Commitment<G> {
   fn to_coordinates(&self) -> (G::Base, G::Base, bool) {
     self.comm.to_coordinates()
   }
-}
 
-impl<G: Group> Default for Commitment<G> {
-  fn default() -> Self {
-    Commitment { comm: G::zero() }
-  }
-}
-
-impl<C: CompressedGroup> CompressedCommitmentTrait<C> for CompressedCommitment<C> {
-  type Commitment = Commitment<C::GroupElement>;
-
-  fn decompress(&self) -> Result<Self::Commitment, NovaError> {
-    let comm = self.comm.decompress();
+  fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
+    let comm = c.comm.decompress();
     if comm.is_none() {
       return Err(NovaError::DecompressionError);
     }
     Ok(Commitment {
       comm: comm.unwrap(),
     })
+  }
+}
+
+impl<G: Group> Default for Commitment<G> {
+  fn default() -> Self {
+    Commitment { comm: G::zero() }
   }
 }
 
@@ -123,16 +116,9 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
   }
 }
 
-impl<C: CompressedGroup> AppendToTranscriptTrait<C::GroupElement> for CompressedCommitment<C> {
-  fn append_to_transcript(
-    &self,
-    label: &'static [u8],
-    transcript: &mut <C::GroupElement as Group>::TE,
-  ) {
-    let comm = self.decompress().unwrap();
-    <Commitment<C::GroupElement> as AppendToTranscriptTrait<C::GroupElement>>::append_to_transcript(
-      &comm, label, transcript,
-    );
+impl<G: Group> AppendToTranscriptTrait<G> for CompressedCommitment<G> {
+  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
+    transcript.absorb_bytes(label, &self.comm.as_bytes());
   }
 }
 
@@ -225,7 +211,6 @@ pub struct CommitmentEngine<G: Group> {
 impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
   type CommitmentGens = CommitmentGens<G>;
   type Commitment = Commitment<G>;
-  type CompressedCommitment = CompressedCommitment<G::CompressedGroupElement>;
 
   fn commit(gens: &Self::CommitmentGens, v: &[G::Scalar]) -> Self::Commitment {
     gens.commit(v)
@@ -251,7 +236,7 @@ pub(crate) trait CommitmentGensExtTrait<G: Group>: CommitmentGensTrait<G> {
 
   /// Reinterprets commitments as commitment keys
   fn reinterpret_commitments_as_gens(
-    c: &[<<Self as CommitmentGensExtTrait<G>>::CE as CommitmentEngineTrait<G>>::CompressedCommitment],
+    c: &[<<<Self as CommitmentGensExtTrait<G>>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
   ) -> Result<Self, NovaError>
   where
     Self: Sized;
@@ -320,12 +305,10 @@ impl<G: Group> CommitmentGensExtTrait<G> for CommitmentGens<G> {
   }
 
   /// reinterprets a vector of commitments as a set of generators
-  fn reinterpret_commitments_as_gens(
-    c: &[CompressedCommitment<G::CompressedGroupElement>],
-  ) -> Result<Self, NovaError> {
+  fn reinterpret_commitments_as_gens(c: &[CompressedCommitment<G>]) -> Result<Self, NovaError> {
     let d = (0..c.len())
       .into_par_iter()
-      .map(|i| c[i].decompress())
+      .map(|i| Commitment::<G>::decompress(&c[i]))
       .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
     let gens = (0..d.len())
       .into_par_iter()

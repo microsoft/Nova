@@ -106,7 +106,7 @@ pub trait CompressedGroup:
   fn decompress(&self) -> Option<Self::GroupElement>;
 
   /// Returns a byte array representing the compressed group element
-  fn as_bytes(&self) -> &[u8];
+  fn as_bytes(&self) -> Vec<u8>;
 }
 
 /// A helper trait to absorb different objects in RO

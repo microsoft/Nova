@@ -190,8 +190,8 @@ macro_rules! impl_traits {
         Some($name_curve::from_bytes(&self.repr).unwrap())
       }
 
-      fn as_bytes(&self) -> &[u8] {
-        &self.repr
+      fn as_bytes(&self) -> Vec<u8> {
+        self.repr.to_vec()
       }
     }
   };
