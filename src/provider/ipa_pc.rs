@@ -11,7 +11,7 @@ use crate::{
   },
   Commitment, CommitmentGens, CompressedCommitment, CE,
 };
-use core::{cmp::max, iter};
+use core::iter;
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,6 @@ pub struct EvaluationGens<G: Group> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<G: Group> {
-  nifs: Vec<NIFSForInnerProduct<G>>,
   ipa: InnerProductArgument<G>,
 }
 
@@ -55,89 +54,38 @@ where
     }
   }
 
-  fn prove_batch(
+  fn prove(
     gens: &Self::EvaluationGens,
     transcript: &mut G::TE,
-    comms: &[Commitment<G>],
-    polys: &[Vec<G::Scalar>],
-    points: &[Vec<G::Scalar>],
-    evals: &[G::Scalar],
+    comm: &Commitment<G>,
+    poly: &[G::Scalar],
+    point: &[G::Scalar],
+    eval: &G::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
-    // sanity checks (these should never fail)
-    assert!(polys.len() >= 2);
-    assert_eq!(comms.len(), polys.len());
-    assert_eq!(comms.len(), points.len());
-    assert_eq!(comms.len(), evals.len());
+    let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
+    let w = InnerProductWitness::new(poly);
 
-    let mut r_U = InnerProductInstance::new(
-      &comms[0],
-      &EqPolynomial::new(points[0].clone()).evals(),
-      &evals[0],
-    );
-    let mut r_W = InnerProductWitness::new(&polys[0]);
-    let mut nifs = Vec::new();
-
-    for i in 1..polys.len() {
-      let (n, u, w) = NIFSForInnerProduct::prove(
-        &r_U,
-        &r_W,
-        &InnerProductInstance::new(
-          &comms[i],
-          &EqPolynomial::new(points[i].clone()).evals(),
-          &evals[i],
-        ),
-        &InnerProductWitness::new(&polys[i]),
-        transcript,
-      )?;
-      nifs.push(n);
-      r_U = u;
-      r_W = w;
-    }
-
-    let ipa = InnerProductArgument::prove(&gens.gens_v, &gens.gens_s, &r_U, &r_W, transcript)?;
-
-    Ok(EvaluationArgument { nifs, ipa })
+    Ok(EvaluationArgument {
+      ipa: InnerProductArgument::prove(&gens.gens_v, &gens.gens_s, &u, &w, transcript)?,
+    })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
-  fn verify_batch(
+  fn verify(
     gens: &Self::EvaluationGens,
     transcript: &mut G::TE,
-    comms: &[Commitment<G>],
-    points: &[Vec<G::Scalar>],
-    evals: &[G::Scalar],
+    comm: &Commitment<G>,
+    point: &[G::Scalar],
+    eval: &G::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
-    // sanity checks (these should never fail)
-    assert!(comms.len() >= 2);
-    assert_eq!(comms.len(), points.len());
-    assert_eq!(comms.len(), evals.len());
-
-    let mut r_U = InnerProductInstance::new(
-      &comms[0],
-      &EqPolynomial::new(points[0].clone()).evals(),
-      &evals[0],
-    );
-    let mut num_vars = points[0].len();
-    for i in 1..comms.len() {
-      let u = arg.nifs[i - 1].verify(
-        &r_U,
-        &InnerProductInstance::new(
-          &comms[i],
-          &EqPolynomial::new(points[i].clone()).evals(),
-          &evals[i],
-        ),
-        transcript,
-      )?;
-      r_U = u;
-      num_vars = max(num_vars, points[i].len());
-    }
+    let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
 
     arg.ipa.verify(
       &gens.gens_v,
       &gens.gens_s,
-      (2_usize).pow(num_vars as u32),
-      &r_U,
+      (2_usize).pow(point.len() as u32),
+      &u,
       transcript,
     )?;
 
@@ -172,16 +120,6 @@ impl<G: Group> InnerProductInstance<G> {
       c: *c,
     }
   }
-
-  fn pad(&self, n: usize) -> InnerProductInstance<G> {
-    let mut b_vec = self.b_vec.clone();
-    b_vec.resize(n, G::Scalar::zero());
-    InnerProductInstance {
-      comm_a_vec: self.comm_a_vec,
-      b_vec,
-      c: self.c,
-    }
-  }
 }
 
 struct InnerProductWitness<G: Group> {
@@ -193,134 +131,6 @@ impl<G: Group> InnerProductWitness<G> {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
     }
-  }
-
-  fn pad(&self, n: usize) -> InnerProductWitness<G> {
-    let mut a_vec = self.a_vec.clone();
-    a_vec.resize(n, G::Scalar::zero());
-    InnerProductWitness { a_vec }
-  }
-}
-
-/// A non-interactive folding scheme (NIFS) for inner product relations
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NIFSForInnerProduct<G: Group> {
-  cross_term: G::Scalar,
-}
-
-impl<G: Group> NIFSForInnerProduct<G> {
-  fn protocol_name() -> &'static [u8] {
-    b"NIFSForInnerProduct"
-  }
-
-  fn prove(
-    U1: &InnerProductInstance<G>,
-    W1: &InnerProductWitness<G>,
-    U2: &InnerProductInstance<G>,
-    W2: &InnerProductWitness<G>,
-    transcript: &mut G::TE,
-  ) -> Result<(Self, InnerProductInstance<G>, InnerProductWitness<G>), NovaError> {
-    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
-
-    // pad the instances and witness so they are of the same length
-    let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-    let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-    let W1 = W1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-    let W2 = W2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-
-    // add the two commitments and two public vectors to the transcript
-    // we do not need to add public vectors as their compressed versions were
-    // read from the transcript
-    U1.comm_a_vec
-      .append_to_transcript(b"U1_comm_a_vec", transcript);
-    U2.comm_a_vec
-      .append_to_transcript(b"U2_comm_a_vec", transcript);
-
-    // compute the cross-term
-    let cross_term = inner_product(&W1.a_vec, &U2.b_vec) + inner_product(&W2.a_vec, &U1.b_vec);
-
-    // add the cross-term to the transcript
-    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &cross_term,
-      b"cross_term",
-      transcript,
-    );
-
-    // obtain a random challenge
-    let r = G::Scalar::challenge(b"r", transcript)?;
-
-    // fold the vectors and their inner product
-    let a_vec = W1
-      .a_vec
-      .par_iter()
-      .zip(W2.a_vec.par_iter())
-      .map(|(x1, x2)| *x1 + r * x2)
-      .collect::<Vec<G::Scalar>>();
-    let b_vec = U1
-      .b_vec
-      .par_iter()
-      .zip(U2.b_vec.par_iter())
-      .map(|(a1, a2)| *a1 + r * a2)
-      .collect::<Vec<G::Scalar>>();
-
-    let c = U1.c + r * r * U2.c + r * cross_term;
-    let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
-
-    let W = InnerProductWitness { a_vec };
-    let U = InnerProductInstance {
-      comm_a_vec,
-      b_vec,
-      c,
-    };
-
-    Ok((NIFSForInnerProduct { cross_term }, U, W))
-  }
-
-  fn verify(
-    &self,
-    U1: &InnerProductInstance<G>,
-    U2: &InnerProductInstance<G>,
-    transcript: &mut G::TE,
-  ) -> Result<InnerProductInstance<G>, NovaError> {
-    transcript.absorb_bytes(b"protocol-name", Self::protocol_name());
-
-    // pad the instances so they are of the same length
-    let U1 = U1.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-    let U2 = U2.pad(max(U1.b_vec.len(), U2.b_vec.len()));
-
-    // add the two commitments and two public vectors to the transcript
-    // we do not need to add public vectors as their compressed representation
-    // were derived from the transcript
-    U1.comm_a_vec
-      .append_to_transcript(b"U1_comm_a_vec", transcript);
-    U2.comm_a_vec
-      .append_to_transcript(b"U2_comm_a_vec", transcript);
-
-    // add the cross-term to the transcript
-    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &self.cross_term,
-      b"cross_term",
-      transcript,
-    );
-
-    // obtain a random challenge
-    let r = G::Scalar::challenge(b"r", transcript)?;
-
-    // fold the vectors and their inner product
-    let b_vec = U1
-      .b_vec
-      .par_iter()
-      .zip(U2.b_vec.par_iter())
-      .map(|(a1, a2)| *a1 + r * a2)
-      .collect::<Vec<G::Scalar>>();
-    let c = U1.c + r * r * U2.c + r * self.cross_term;
-    let comm_a_vec = U1.comm_a_vec + U2.comm_a_vec * r;
-
-    Ok(InnerProductInstance {
-      comm_a_vec,
-      b_vec,
-      c,
-    })
   }
 }
 
