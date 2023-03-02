@@ -976,7 +976,7 @@ mod tests {
     let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let gens = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -1018,7 +1018,7 @@ mod tests {
     let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let gens = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -1064,7 +1064,7 @@ mod tests {
     let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let gens = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();

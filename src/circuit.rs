@@ -400,7 +400,7 @@ mod tests {
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (shape1, gens1) = (cs.r1cs_shape(), cs.commitment_key());
     assert_eq!(cs.num_constraints(), 9815);
 
     // Initialize the shape and gens for the secondary
@@ -413,7 +413,7 @@ mod tests {
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (shape2, gens2) = (cs.r1cs_shape(), cs.commitment_key());
     assert_eq!(cs.num_constraints(), 10347);
 
     // Execute the base case for the primary

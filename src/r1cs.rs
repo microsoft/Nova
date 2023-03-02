@@ -13,7 +13,7 @@ use crate::{
   },
   Commitment, CommitmentGens, CE,
 };
-use core::cmp::max;
+use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
@@ -25,7 +25,7 @@ use sha3::{Digest, Sha3_256};
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSGens<G: Group> {
-  pub(crate) gens: CommitmentGens<G>,
+  _p: PhantomData<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
@@ -73,10 +73,8 @@ pub struct RelaxedR1CSInstance<G: Group> {
 
 impl<G: Group> R1CSGens<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
-  pub fn new(num_cons: usize, num_vars: usize) -> R1CSGens<G> {
-    R1CSGens {
-      gens: CommitmentGens::<G>::new(b"gens", max(num_vars, num_cons)),
-    }
+  pub fn new(num_cons: usize, num_vars: usize) -> CommitmentGens<G> {
+    CommitmentGens::<G>::new(b"gens", max(num_vars, num_cons))
   }
 }
 
@@ -181,7 +179,7 @@ impl<G: Group> R1CSShape<G> {
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat_relaxed(
     &self,
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<(), NovaError> {
@@ -207,8 +205,8 @@ impl<G: Group> R1CSShape<G> {
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
       let (comm_W, comm_E) = rayon::join(
-        || CE::<G>::commit(&gens.gens, &W.W),
-        || CE::<G>::commit(&gens.gens, &W.E),
+        || CE::<G>::commit(gens, &W.W),
+        || CE::<G>::commit(gens, &W.E),
       );
       U.comm_W == comm_W && U.comm_E == comm_E
     };
@@ -223,7 +221,7 @@ impl<G: Group> R1CSShape<G> {
   /// Checks if the R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat(
     &self,
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     U: &R1CSInstance<G>,
     W: &R1CSWitness<G>,
   ) -> Result<(), NovaError> {
@@ -246,7 +244,7 @@ impl<G: Group> R1CSShape<G> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == CE::<G>::commit(&gens.gens, &W.W);
+    let res_comm: bool = U.comm_W == CE::<G>::commit(gens, &W.W);
 
     if res_eq && res_comm {
       Ok(())
@@ -259,7 +257,7 @@ impl<G: Group> R1CSShape<G> {
   /// Relaxed R1CS instance-witness pair and an R1CS instance-witness pair
   pub fn commit_T(
     &self,
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
@@ -300,7 +298,7 @@ impl<G: Group> R1CSShape<G> {
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
       .collect::<Vec<G::Scalar>>();
 
-    let comm_T = CE::<G>::commit(&gens.gens, &T);
+    let comm_T = CE::<G>::commit(gens, &T);
 
     Ok((T, comm_T))
   }
@@ -466,8 +464,8 @@ impl<G: Group> R1CSWitness<G> {
   }
 
   /// Commits to the witness using the supplied generators
-  pub fn commit(&self, gens: &R1CSGens<G>) -> Commitment<G> {
-    CE::<G>::commit(&gens.gens, &self.W)
+  pub fn commit(&self, gens: &CommitmentGens<G>) -> Commitment<G> {
+    CE::<G>::commit(gens, &self.W)
   }
 }
 
@@ -523,10 +521,10 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   }
 
   /// Commits to the witness using the supplied generators
-  pub fn commit(&self, gens: &R1CSGens<G>) -> (Commitment<G>, Commitment<G>) {
+  pub fn commit(&self, gens: &CommitmentGens<G>) -> (Commitment<G>, Commitment<G>) {
     (
-      CE::<G>::commit(&gens.gens, &self.W),
-      CE::<G>::commit(&gens.gens, &self.E),
+      CE::<G>::commit(gens, &self.W),
+      CE::<G>::commit(gens, &self.E),
     )
   }
 
@@ -577,7 +575,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
 
 impl<G: Group> RelaxedR1CSInstance<G> {
   /// Produces a default RelaxedR1CSInstance given R1CSGens and R1CSShape
-  pub fn default(_gens: &R1CSGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
+  pub fn default(_gens: &CommitmentGens<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
     let (comm_W, comm_E) = (Commitment::<G>::default(), Commitment::<G>::default());
     RelaxedR1CSInstance {
       comm_W,
@@ -589,7 +587,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
 
   /// Initializes a new RelaxedR1CSInstance from an R1CSInstance
   pub fn from_r1cs_instance(
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     S: &R1CSShape<G>,
     instance: &R1CSInstance<G>,
   ) -> RelaxedR1CSInstance<G> {

@@ -21,7 +21,6 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProverKey<G: Group> {
-  gens_v: CommitmentGens<G>,
   gens_s: CommitmentGens<G>,
 }
 
@@ -60,7 +59,6 @@ where
     gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let pk = ProverKey {
-      gens_v: gens.clone(),
       gens_s: CommitmentGens::<G>::new(b"ipa", 1),
     };
 
@@ -73,7 +71,8 @@ where
   }
 
   fn prove(
-    gens: &Self::ProverKey,
+    ck: &CommitmentGens<G>,
+    pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
     poly: &[G::Scalar],
@@ -84,13 +83,13 @@ where
     let w = InnerProductWitness::new(poly);
 
     Ok(EvaluationArgument {
-      ipa: InnerProductArgument::prove(&gens.gens_v, &gens.gens_s, &u, &w, transcript)?,
+      ipa: InnerProductArgument::prove(ck, &pk.gens_s, &u, &w, transcript)?,
     })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify(
-    gens: &Self::VerifierKey,
+    vk: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
     point: &[G::Scalar],
@@ -100,8 +99,8 @@ where
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
 
     arg.ipa.verify(
-      &gens.gens_v,
-      &gens.gens_s,
+      &vk.gens_v,
+      &vk.gens_s,
       (2_usize).pow(point.len() as u32),
       &u,
       transcript,

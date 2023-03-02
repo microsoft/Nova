@@ -38,9 +38,7 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use r1cs::{
-  R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
-};
+use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit,
@@ -63,11 +61,11 @@ where
   F_arity_secondary: usize,
   ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
-  r1cs_gens_primary: R1CSGens<G1>,
+  ck_primary: CommitmentKey<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
-  r1cs_gens_secondary: R1CSGens<G2>,
+  ck_secondary: CommitmentKey<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
   augmented_circuit_params_primary: NovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
@@ -108,7 +106,7 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (r1cs_shape_primary, ck_primary) = (cs.r1cs_shape(), cs.commitment_key());
 
     // Initialize gens for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
@@ -119,18 +117,18 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (r1cs_shape_secondary, ck_secondary) = (cs.r1cs_shape(), cs.commitment_key());
 
     Self {
       F_arity_primary,
       F_arity_secondary,
       ro_consts_primary,
       ro_consts_circuit_primary,
-      r1cs_gens_primary,
+      ck_primary,
       r1cs_shape_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
-      r1cs_gens_secondary,
+      ck_secondary,
       r1cs_shape_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
@@ -224,7 +222,7 @@ where
         );
         let _ = circuit_primary.synthesize(&mut cs_primary);
         let (u_primary, w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
+          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
           .map_err(|_e| NovaError::UnSat)?;
 
         // base case for the secondary
@@ -246,7 +244,7 @@ where
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
         let (u_secondary, w_secondary) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
+          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
           .map_err(|_e| NovaError::UnSat)?;
 
         // IVC proof for the primary circuit
@@ -255,7 +253,7 @@ where
         let r_W_primary =
           RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
         let r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
-          &pp.r1cs_gens_primary,
+          &pp.ck_primary,
           &pp.r1cs_shape_primary,
           &l_u_primary,
         );
@@ -265,7 +263,7 @@ where
         let l_u_secondary = u_secondary;
         let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
         let r_U_secondary =
-          RelaxedR1CSInstance::<G2>::default(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
+          RelaxedR1CSInstance::<G2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
 
         // Outputs of the two circuits thus far
         let zi_primary = c_primary.output(&z0_primary);
@@ -294,7 +292,7 @@ where
       Some(r_snark) => {
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
-          &pp.r1cs_gens_secondary,
+          &pp.ck_secondary,
           &pp.ro_consts_secondary,
           &pp.r1cs_shape_secondary,
           &r_snark.r_U_secondary,
@@ -323,12 +321,12 @@ where
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
         let (l_u_primary, l_w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.r1cs_gens_primary)
+          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
           .map_err(|_e| NovaError::UnSat)?;
 
         // fold the primary circuit's instance
         let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
-          &pp.r1cs_gens_primary,
+          &pp.ck_primary,
           &pp.ro_consts_primary,
           &pp.r1cs_shape_primary,
           &r_snark.r_U_primary,
@@ -357,7 +355,7 @@ where
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
         let (l_u_secondary, l_w_secondary) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.r1cs_gens_secondary)
+          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
           .map_err(|_e| NovaError::UnSat)?;
 
         // update the running instances and witnesses
@@ -458,17 +456,14 @@ where
         rayon::join(
           || {
             pp.r1cs_shape_primary.is_sat_relaxed(
-              &pp.r1cs_gens_primary,
+              &pp.ck_primary,
               &self.r_U_primary,
               &self.r_W_primary,
             )
           },
           || {
-            pp.r1cs_shape_primary.is_sat(
-              &pp.r1cs_gens_primary,
-              &self.l_u_primary,
-              &self.l_w_primary,
-            )
+            pp.r1cs_shape_primary
+              .is_sat(&pp.ck_primary, &self.l_u_primary, &self.l_w_primary)
           },
         )
       },
@@ -476,14 +471,14 @@ where
         rayon::join(
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
-              &pp.r1cs_gens_secondary,
+              &pp.ck_secondary,
               &self.r_U_secondary,
               &self.r_W_secondary,
             )
           },
           || {
             pp.r1cs_shape_secondary.is_sat(
-              &pp.r1cs_gens_secondary,
+              &pp.ck_secondary,
               &self.l_u_secondary,
               &self.l_w_secondary,
             )
@@ -589,8 +584,8 @@ where
     ProverKey<G1, G2, C1, C2, S1, S2>,
     VerifierKey<G1, G2, C1, C2, S1, S2>,
   ) {
-    let (pk_primary, vk_primary) = S1::setup(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary);
-    let (pk_secondary, vk_secondary) = S2::setup(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
+    let (pk_primary, vk_primary) = S1::setup(&pp.ck_primary, &pp.r1cs_shape_primary);
+    let (pk_secondary, vk_secondary) = S2::setup(&pp.ck_secondary, &pp.r1cs_shape_secondary);
 
     let pk = ProverKey {
       pk_primary,
@@ -625,7 +620,7 @@ where
       // fold the primary circuit's instance
       || {
         NIFS::prove(
-          &pp.r1cs_gens_primary,
+          &pp.ck_primary,
           &pp.ro_consts_primary,
           &pp.r1cs_shape_primary,
           &recursive_snark.r_U_primary,
@@ -637,7 +632,7 @@ where
       || {
         // fold the secondary circuit's instance
         NIFS::prove(
-          &pp.r1cs_gens_secondary,
+          &pp.ck_secondary,
           &pp.ro_consts_secondary,
           &pp.r1cs_shape_secondary,
           &recursive_snark.r_U_secondary,
@@ -653,8 +648,15 @@ where
 
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
-      || S1::prove(&pk.pk_primary, &f_U_primary, &f_W_primary),
-      || S2::prove(&pk.pk_secondary, &f_U_secondary, &f_W_secondary),
+      || S1::prove(&pp.ck_primary, &pk.pk_primary, &f_U_primary, &f_W_primary),
+      || {
+        S2::prove(
+          &pp.ck_secondary,
+          &pk.pk_secondary,
+          &f_U_secondary,
+          &f_W_secondary,
+        )
+      },
     );
 
     Ok(Self {
@@ -771,7 +773,7 @@ where
   }
 }
 
-type CommitmentGens<G> = <<G as traits::Group>::CE as CommitmentEngineTrait<G>>::CommitmentGens;
+type CommitmentKey<G> = <<G as traits::Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey;
 type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
 type CompressedCommitment<G> = <<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment;
 type CE<G> = <G as Group>::CE;

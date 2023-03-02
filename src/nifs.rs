@@ -5,10 +5,10 @@
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
-  r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
-  Commitment, CompressedCommitment,
+  Commitment, CommitmentGens, CompressedCommitment,
 };
 use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ impl<G: Group> NIFS<G> {
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
@@ -116,7 +116,10 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::traits::{Group, ROConstantsTrait};
+  use crate::{
+    r1cs::R1CSGens,
+    traits::{Group, ROConstantsTrait},
+  };
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -169,7 +172,7 @@ mod tests {
     let mut cs: ShapeCS<G> = ShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let gens = cs.commitment_key();
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
@@ -194,7 +197,7 @@ mod tests {
   }
 
   fn execute_sequence(
-    gens: &R1CSGens<G>,
+    gens: &CommitmentGens<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
@@ -302,12 +305,12 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let gens = R1CSGens::new(num_cons, num_vars);
+    let gens = R1CSGens::<G>::new(num_cons, num_vars);
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     let rand_inst_witness_generator =
-      |gens: &R1CSGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
+      |gens: &CommitmentGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
         let i0 = *I;
 
         // compute a satisfying (vars, X) tuple

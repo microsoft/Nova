@@ -30,7 +30,8 @@ pub trait EvaluationEngineTrait<G: Group>:
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(
-    pp: &Self::ProverKey,
+    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+    pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
     poly: &[G::Scalar],
@@ -40,7 +41,7 @@ pub trait EvaluationEngineTrait<G: Group>:
 
   /// A method to verify the purported evaluation of a multilinear polynomials
   fn verify(
-    gens: &Self::VerifierKey,
+    vk: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
     point: &[G::Scalar],
