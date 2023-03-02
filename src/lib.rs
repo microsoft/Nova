@@ -65,12 +65,10 @@ where
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
   r1cs_gens_primary: R1CSGens<G1>,
   r1cs_shape_primary: R1CSShape<G1>,
-  r1cs_shape_padded_primary: R1CSShape<G1>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
   r1cs_gens_secondary: R1CSGens<G2>,
   r1cs_shape_secondary: R1CSShape<G2>,
-  r1cs_shape_padded_secondary: R1CSShape<G2>,
   augmented_circuit_params_primary: NovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
   _p_c1: PhantomData<C1>,
@@ -111,7 +109,6 @@ where
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, r1cs_gens_primary) = (cs.r1cs_shape(), cs.r1cs_gens());
-    let r1cs_shape_padded_primary = r1cs_shape_primary.pad();
 
     // Initialize gens for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
@@ -123,7 +120,6 @@ where
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, r1cs_gens_secondary) = (cs.r1cs_shape(), cs.r1cs_gens());
-    let r1cs_shape_padded_secondary = r1cs_shape_secondary.pad();
 
     Self {
       F_arity_primary,
@@ -132,12 +128,10 @@ where
       ro_consts_circuit_primary,
       r1cs_gens_primary,
       r1cs_shape_primary,
-      r1cs_shape_padded_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       r1cs_gens_secondary,
       r1cs_shape_secondary,
-      r1cs_shape_padded_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
       _p_c1: Default::default(),
@@ -595,9 +589,8 @@ where
     ProverKey<G1, G2, C1, C2, S1, S2>,
     VerifierKey<G1, G2, C1, C2, S1, S2>,
   ) {
-    let (pk_primary, vk_primary) = S1::setup(&pp.r1cs_gens_primary, &pp.r1cs_shape_padded_primary);
-    let (pk_secondary, vk_secondary) =
-      S2::setup(&pp.r1cs_gens_secondary, &pp.r1cs_shape_padded_secondary);
+    let (pk_primary, vk_primary) = S1::setup(&pp.r1cs_gens_primary, &pp.r1cs_shape_primary);
+    let (pk_secondary, vk_secondary) = S2::setup(&pp.r1cs_gens_secondary, &pp.r1cs_shape_secondary);
 
     let pk = ProverKey {
       pk_primary,
@@ -660,20 +653,8 @@ where
 
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
-      || {
-        S1::prove(
-          &pk.pk_primary,
-          &f_U_primary,
-          &f_W_primary.pad(&pp.r1cs_shape_padded_primary), // pad the witness since shape was padded
-        )
-      },
-      || {
-        S2::prove(
-          &pk.pk_secondary,
-          &f_U_secondary,
-          &f_W_secondary.pad(&pp.r1cs_shape_padded_secondary), // pad the witness since the shape was padded
-        )
-      },
+      || S1::prove(&pk.pk_primary, &f_U_primary, &f_W_primary),
+      || S2::prove(&pk.pk_secondary, &f_U_secondary, &f_W_secondary),
     );
 
     Ok(Self {

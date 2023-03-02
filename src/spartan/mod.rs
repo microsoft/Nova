@@ -60,15 +60,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
   fn setup(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey) {
     let (pk_ee, vk_ee) = EE::setup(&gens.gens);
 
-    let pk = ProverKey {
-      pk_ee,
-      S: S.clone(),
-    };
+    let pk = ProverKey { pk_ee, S: S.pad() };
 
-    let vk = VerifierKey {
-      vk_ee,
-      S: S.clone(),
-    };
+    let vk = VerifierKey { vk_ee, S: S.pad() };
 
     (pk, vk)
   }
@@ -79,6 +73,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
+    let W = W.pad(&pk.S); // pad the witness
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // sanity check that R1CSShape has certain size characteristics
