@@ -23,23 +23,23 @@ pub trait EvaluationEngineTrait<G: Group>:
   /// A method to perform any additional setup needed to produce proofs of evaluations
   fn setup(gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens) -> Self::EvaluationGens;
 
-  /// A method to prove evaluations of a batch of polynomials
-  fn prove_batch(
+  /// A method to prove the evaluation of a multilinear polynomial
+  fn prove(
     gens: &Self::EvaluationGens,
     transcript: &mut G::TE,
-    comm: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
-    polys: &[Vec<G::Scalar>],
-    points: &[Vec<G::Scalar>],
-    evals: &[G::Scalar],
+    comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
+    poly: &[G::Scalar],
+    point: &[G::Scalar],
+    eval: &G::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError>;
 
-  /// A method to verify purported evaluations of a batch of polynomials
-  fn verify_batch(
+  /// A method to verify the purported evaluation of a multilinear polynomials
+  fn verify(
     gens: &Self::EvaluationGens,
     transcript: &mut G::TE,
-    comm: &[<Self::CE as CommitmentEngineTrait<G>>::Commitment],
-    points: &[Vec<G::Scalar>],
-    evals: &[G::Scalar],
+    comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
+    point: &[G::Scalar],
+    eval: &G::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError>;
 }
