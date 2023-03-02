@@ -117,7 +117,7 @@ impl<G: Group> NIFS<G> {
 mod tests {
   use super::*;
   use crate::{
-    r1cs::R1CSGens,
+    r1cs::R1CS,
     traits::{Group, ROConstantsTrait},
   };
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
@@ -305,7 +305,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CSGens::<G>::commitment_key(num_cons, num_vars);
+    let ck = R1CS::<G>::commitment_key(num_cons, num_vars);
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 

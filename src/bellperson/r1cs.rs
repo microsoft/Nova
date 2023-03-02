@@ -5,7 +5,7 @@
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
 use crate::{
   errors::NovaError,
-  r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness},
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, R1CS},
   traits::Group,
   CommitmentKey,
 };
@@ -88,7 +88,7 @@ where
   }
 
   fn commitment_key(&self) -> CommitmentKey<G> {
-    R1CSGens::<G>::commitment_key(self.num_constraints(), self.num_aux())
+    R1CS::<G>::commitment_key(self.num_constraints(), self.num_aux())
   }
 }
 

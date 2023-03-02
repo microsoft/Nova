@@ -24,7 +24,7 @@ use sha3::{Digest, Sha3_256};
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CSGens<G: Group> {
+pub struct R1CS<G: Group> {
   _p: PhantomData<G>,
 }
 
@@ -71,7 +71,7 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) u: G::Scalar,
 }
 
-impl<G: Group> R1CSGens<G> {
+impl<G: Group> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn commitment_key(num_cons: usize, num_vars: usize) -> CommitmentKey<G> {
     CommitmentKey::<G>::new(b"ck", max(num_vars, num_cons))
