@@ -305,7 +305,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CSGens::<G>::new(num_cons, num_vars);
+    let ck = R1CSGens::<G>::commitment_key(num_cons, num_vars);
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 

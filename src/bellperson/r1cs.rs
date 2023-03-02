@@ -88,7 +88,7 @@ where
   }
 
   fn commitment_key(&self) -> CommitmentKey<G> {
-    R1CSGens::<G>::new(self.num_constraints(), self.num_aux())
+    R1CSGens::<G>::commitment_key(self.num_constraints(), self.num_aux())
   }
 }
 
