@@ -49,6 +49,9 @@ fn bench_compressed_snark(c: &mut Criterion) {
       TrivialTestCircuit::default(),
     );
 
+    // Produce prover and verifier keys for CompressedSNARK
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp);
+
     // produce a recursive SNARK
     let num_steps = 3;
     let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
@@ -84,12 +87,13 @@ fn bench_compressed_snark(c: &mut Criterion) {
       b.iter(|| {
         assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
           black_box(&pp),
+          black_box(&pk),
           black_box(&recursive_snark)
         )
         .is_ok());
       })
     });
-    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -98,7 +102,7 @@ fn bench_compressed_snark(c: &mut Criterion) {
       b.iter(|| {
         assert!(black_box(&compressed_snark)
           .verify(
-            black_box(&pp),
+            black_box(&vk),
             black_box(num_steps),
             black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
             black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
