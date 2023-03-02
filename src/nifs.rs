@@ -8,7 +8,7 @@ use crate::{
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
-  Commitment, CommitmentGens, CompressedCommitment,
+  Commitment, CommitmentKey, CompressedCommitment,
 };
 use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
@@ -28,12 +28,12 @@ type ROConstants<G> =
 impl<G: Group> NIFS<G> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
   /// an R1CS instance-witness tuple `(U2, W2)` with the same structure `shape`
-  /// and defined with respect to the same `gens`, and outputs
+  /// and defined with respect to the same `ck`, and outputs
   /// a folded Relaxed R1CS instance-witness tuple `(U, W)` of the same shape `shape`,
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   pub fn prove(
-    gens: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
     ro_consts: &ROConstants<G>,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
@@ -52,7 +52,7 @@ impl<G: Group> NIFS<G> {
     U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
-    let (T, comm_T) = S.commit_T(gens, U1, W1, U2, W2)?;
+    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2)?;
 
     // append `comm_T` to the transcript and obtain a challenge
     comm_T.absorb_in_ro(&mut ro);
@@ -172,32 +172,32 @@ mod tests {
     let mut cs: ShapeCS<G> = ShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let shape = cs.r1cs_shape();
-    let gens = cs.commitment_key();
+    let ck = cs.commitment_key();
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(5)));
-    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the first instance is satisfiable
-    assert!(shape.is_sat(&gens, &U1, &W1).is_ok());
+    assert!(shape.is_sat(&ck, &U1, &W1).is_ok());
 
     // Now get the instance and assignment for second instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(135)));
-    let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
-    assert!(shape.is_sat(&gens, &U2, &W2).is_ok());
+    assert!(shape.is_sat(&ck, &U2, &W2).is_ok());
 
     // execute a sequence of folds
-    execute_sequence(&gens, &ro_consts, &shape, &U1, &W1, &U2, &W2);
+    execute_sequence(&ck, &ro_consts, &shape, &U1, &W1, &U2, &W2);
   }
 
   fn execute_sequence(
-    gens: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
@@ -207,10 +207,10 @@ mod tests {
   ) {
     // produce a default running instance
     let mut r_W = RelaxedR1CSWitness::default(shape);
-    let mut r_U = RelaxedR1CSInstance::default(gens, shape);
+    let mut r_U = RelaxedR1CSInstance::default(ck, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let res = NIFS::prove(gens, ro_consts, shape, &r_U, &r_W, U1, W1);
+    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U1, W1);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
@@ -226,7 +226,7 @@ mod tests {
     r_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = NIFS::prove(gens, ro_consts, shape, &r_U, &r_W, U2, W2);
+    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U2, W2);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
@@ -242,7 +242,7 @@ mod tests {
     r_U = U;
 
     // check if the running instance is satisfiable
-    assert!(shape.is_sat_relaxed(gens, &r_U, &r_W).is_ok());
+    assert!(shape.is_sat_relaxed(ck, &r_U, &r_W).is_ok());
   }
 
   #[test]
@@ -305,12 +305,12 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let gens = R1CSGens::<G>::new(num_cons, num_vars);
+    let ck = R1CSGens::<G>::new(num_cons, num_vars);
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     let rand_inst_witness_generator =
-      |gens: &CommitmentGens<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
+      |ck: &CommitmentKey<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
         let i0 = *I;
 
         // compute a satisfying (vars, X) tuple
@@ -332,24 +332,24 @@ mod tests {
           res.unwrap()
         };
         let U = {
-          let comm_W = W.commit(gens);
+          let comm_W = W.commit(ck);
           let res = R1CSInstance::new(&S, &comm_W, &X);
           assert!(res.is_ok());
           res.unwrap()
         };
 
         // check that generated instance is satisfiable
-        assert!(S.is_sat(gens, &U, &W).is_ok());
+        assert!(S.is_sat(ck, &U, &W).is_ok());
 
         (O, U, W)
       };
 
     let mut csprng: OsRng = OsRng;
     let I = S::random(&mut csprng); // the first input is picked randomly for the first instance
-    let (O, U1, W1) = rand_inst_witness_generator(&gens, &I);
-    let (_O, U2, W2) = rand_inst_witness_generator(&gens, &O);
+    let (O, U1, W1) = rand_inst_witness_generator(&ck, &I);
+    let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
 
     // execute a sequence of folds
-    execute_sequence(&gens, &ro_consts, &S, &U1, &W1, &U2, &W2);
+    execute_sequence(&ck, &ro_consts, &S, &U1, &W1, &U2, &W2);
   }
 }

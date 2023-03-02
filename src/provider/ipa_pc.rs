@@ -2,14 +2,14 @@
 #![allow(clippy::too_many_arguments)]
 use crate::{
   errors::NovaError,
-  provider::pedersen::CommitmentGensExtTrait,
+  provider::pedersen::CommitmentKeyExtTrait,
   spartan::polynomial::EqPolynomial,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
     AppendToTranscriptTrait, ChallengeTrait, Group, TranscriptEngineTrait,
   },
-  Commitment, CommitmentGens, CompressedCommitment, CE,
+  Commitment, CommitmentKey, CompressedCommitment, CE,
 };
 use core::iter;
 use ff::Field;
@@ -21,15 +21,15 @@ use std::marker::PhantomData;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProverKey<G: Group> {
-  gens_s: CommitmentGens<G>,
+  ck_s: CommitmentKey<G>,
 }
 
 /// Provides an implementation of the verifier key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<G: Group> {
-  gens_v: CommitmentGens<G>,
-  gens_s: CommitmentGens<G>,
+  ck_v: CommitmentKey<G>,
+  ck_s: CommitmentKey<G>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
@@ -48,7 +48,7 @@ pub struct EvaluationEngine<G: Group> {
 impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
 where
   G: Group,
-  CommitmentGens<G>: CommitmentGensExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
 {
   type CE = G::CE;
   type ProverKey = ProverKey<G>;
@@ -56,22 +56,22 @@ where
   type EvaluationArgument = EvaluationArgument<G>;
 
   fn setup(
-    gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let pk = ProverKey {
-      gens_s: CommitmentGens::<G>::new(b"ipa", 1),
+      ck_s: CommitmentKey::<G>::new(b"ipa", 1),
     };
 
     let vk = VerifierKey {
-      gens_v: gens.clone(),
-      gens_s: CommitmentGens::<G>::new(b"ipa", 1),
+      ck_v: ck.clone(),
+      ck_s: CommitmentKey::<G>::new(b"ipa", 1),
     };
 
     (pk, vk)
   }
 
   fn prove(
-    ck: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
@@ -83,7 +83,7 @@ where
     let w = InnerProductWitness::new(poly);
 
     Ok(EvaluationArgument {
-      ipa: InnerProductArgument::prove(ck, &pk.gens_s, &u, &w, transcript)?,
+      ipa: InnerProductArgument::prove(ck, &pk.ck_s, &u, &w, transcript)?,
     })
   }
 
@@ -99,8 +99,8 @@ where
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
 
     arg.ipa.verify(
-      &vk.gens_v,
-      &vk.gens_s,
+      &vk.ck_v,
+      &vk.ck_s,
       (2_usize).pow(point.len() as u32),
       &u,
       transcript,
@@ -164,15 +164,15 @@ struct InnerProductArgument<G: Group> {
 impl<G> InnerProductArgument<G>
 where
   G: Group,
-  CommitmentGens<G>: CommitmentGensExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
 {
   fn protocol_name() -> &'static [u8] {
     b"inner product argument"
   }
 
   fn prove(
-    gens: &CommitmentGens<G>,
-    gens_c: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
+    ck_c: &CommitmentKey<G>,
     U: &InnerProductInstance<G>,
     W: &InnerProductWitness<G>,
     transcript: &mut G::TE,
@@ -188,12 +188,12 @@ where
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript)?;
-    let gens_c = gens_c.scale(&r);
+    let ck_c = ck_c.scale(&r);
 
     // a closure that executes a step of the recursive inner product argument
     let prove_inner = |a_vec: &[G::Scalar],
                        b_vec: &[G::Scalar],
-                       gens: &CommitmentGens<G>,
+                       ck: &CommitmentKey<G>,
                        transcript: &mut G::TE|
      -> Result<
       (
@@ -201,18 +201,18 @@ where
         CompressedCommitment<G>,
         Vec<G::Scalar>,
         Vec<G::Scalar>,
-        CommitmentGens<G>,
+        CommitmentKey<G>,
       ),
       NovaError,
     > {
       let n = a_vec.len();
-      let (gens_L, gens_R) = gens.split_at(n / 2);
+      let (ck_L, ck_R) = ck.split_at(n / 2);
 
       let c_L = inner_product(&a_vec[0..n / 2], &b_vec[n / 2..n]);
       let c_R = inner_product(&a_vec[n / 2..n], &b_vec[0..n / 2]);
 
       let L = CE::<G>::commit(
-        &gens_R.combine(&gens_c),
+        &ck_R.combine(&ck_c),
         &a_vec[0..n / 2]
           .iter()
           .chain(iter::once(&c_L))
@@ -221,7 +221,7 @@ where
       )
       .compress();
       let R = CE::<G>::commit(
-        &gens_L.combine(&gens_c),
+        &ck_L.combine(&ck_c),
         &a_vec[n / 2..n]
           .iter()
           .chain(iter::once(&c_R))
@@ -249,9 +249,9 @@ where
         .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
         .collect::<Vec<G::Scalar>>();
 
-      let gens_folded = gens.fold(&r_inverse, &r);
+      let ck_folded = ck.fold(&r_inverse, &r);
 
-      Ok((L, R, a_vec_folded, b_vec_folded, gens_folded))
+      Ok((L, R, a_vec_folded, b_vec_folded, ck_folded))
     };
 
     // two vectors to hold the logarithmic number of group elements
@@ -261,16 +261,16 @@ where
     // we create mutable copies of vectors and generators
     let mut a_vec = W.a_vec.to_vec();
     let mut b_vec = U.b_vec.to_vec();
-    let mut gens = gens.clone();
+    let mut ck = ck.clone();
     for _i in 0..(U.b_vec.len() as f64).log2() as usize {
-      let (L, R, a_vec_folded, b_vec_folded, gens_folded) =
-        prove_inner(&a_vec, &b_vec, &gens, transcript)?;
+      let (L, R, a_vec_folded, b_vec_folded, ck_folded) =
+        prove_inner(&a_vec, &b_vec, &ck, transcript)?;
       L_vec.push(L);
       R_vec.push(R);
 
       a_vec = a_vec_folded;
       b_vec = b_vec_folded;
-      gens = gens_folded;
+      ck = ck_folded;
     }
 
     Ok(InnerProductArgument {
@@ -283,8 +283,8 @@ where
 
   fn verify(
     &self,
-    gens: &CommitmentGens<G>,
-    gens_c: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
+    ck_c: &CommitmentKey<G>,
     n: usize,
     U: &InnerProductInstance<G>,
     transcript: &mut G::TE,
@@ -303,9 +303,9 @@ where
 
     // sample a random base for commiting to the inner product
     let r = G::Scalar::challenge(b"r", transcript)?;
-    let gens_c = gens_c.scale(&r);
+    let ck_c = ck_c.scale(&r);
 
-    let P = U.comm_a_vec + CE::<G>::commit(&gens_c, &[U.c]);
+    let P = U.comm_a_vec + CE::<G>::commit(&ck_c, &[U.c]);
 
     let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
       let mut products = vec![G::Scalar::zero(); v.len()];
@@ -371,23 +371,23 @@ where
       s
     };
 
-    let gens_hat = {
-      let c = CE::<G>::commit(gens, &s).compress();
-      CommitmentGens::<G>::reinterpret_commitments_as_gens(&[c])?
+    let ck_hat = {
+      let c = CE::<G>::commit(ck, &s).compress();
+      CommitmentKey::<G>::reinterpret_commitments_as_ck(&[c])?
     };
 
     let b_hat = inner_product(&U.b_vec, &s);
 
     let P_hat = {
-      let gens_folded = {
-        let gens_L = CommitmentGens::<G>::reinterpret_commitments_as_gens(&self.L_vec)?;
-        let gens_R = CommitmentGens::<G>::reinterpret_commitments_as_gens(&self.R_vec)?;
-        let gens_P = CommitmentGens::<G>::reinterpret_commitments_as_gens(&[P.compress()])?;
-        gens_L.combine(&gens_R).combine(&gens_P)
+      let ck_folded = {
+        let ck_L = CommitmentKey::<G>::reinterpret_commitments_as_ck(&self.L_vec)?;
+        let ck_R = CommitmentKey::<G>::reinterpret_commitments_as_ck(&self.R_vec)?;
+        let ck_P = CommitmentKey::<G>::reinterpret_commitments_as_ck(&[P.compress()])?;
+        ck_L.combine(&ck_R).combine(&ck_P)
       };
 
       CE::<G>::commit(
-        &gens_folded,
+        &ck_folded,
         &r_square
           .iter()
           .chain(r_inverse_square.iter())
@@ -397,12 +397,7 @@ where
       )
     };
 
-    if P_hat
-      == CE::<G>::commit(
-        &gens_hat.combine(&gens_c),
-        &[self.a_hat, self.a_hat * b_hat],
-      )
-    {
+    if P_hat == CE::<G>::commit(&ck_hat.combine(&ck_c), &[self.a_hat, self.a_hat * b_hat]) {
       Ok(())
     } else {
       Err(NovaError::InvalidIPA)

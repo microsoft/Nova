@@ -25,12 +25,12 @@ pub trait EvaluationEngineTrait<G: Group>:
 
   /// A method to perform any additional setup needed to produce proofs of evaluations
   fn setup(
-    gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey);
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(
-    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
     pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,

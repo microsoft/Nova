@@ -3,7 +3,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::Group,
-  CommitmentGens,
+  CommitmentKey,
 };
 
 use serde::{Deserialize, Serialize};
@@ -19,11 +19,11 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Produces the keys for the prover and the verifier
-  fn setup(gens: &CommitmentGens<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey);
+  fn setup(ck: &CommitmentKey<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey);
 
   /// Produces a new SNARK for a relaxed R1CS
   fn prove(
-    ck: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,

@@ -7,18 +7,18 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness},
   traits::Group,
-  CommitmentGens,
+  CommitmentKey,
 };
 use bellperson::{Index, LinearCombination};
 use ff::PrimeField;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<G: Group> {
-  /// Return an instance and witness, given a shape and gens.
+  /// Return an instance and witness, given a shape and ck.
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<G>,
-    gens: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
   ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError>;
 }
 
@@ -26,8 +26,8 @@ pub trait NovaWitness<G: Group> {
 pub trait NovaShape<G: Group> {
   /// Return an appropriate `R1CSShape` struct.
   fn r1cs_shape(&self) -> R1CSShape<G>;
-  /// Return an appropriate `CommitmentGens` struct.
-  fn commitment_key(&self) -> CommitmentGens<G>;
+  /// Return an appropriate `CommitmentKey` struct.
+  fn commitment_key(&self) -> CommitmentKey<G>;
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G>
@@ -37,12 +37,12 @@ where
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<G>,
-    gens: &CommitmentGens<G>,
+    ck: &CommitmentKey<G>,
   ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError> {
     let W = R1CSWitness::<G>::new(shape, &self.aux_assignment)?;
     let X = &self.input_assignment[1..];
 
-    let comm_W = W.commit(gens);
+    let comm_W = W.commit(ck);
 
     let instance = R1CSInstance::<G>::new(shape, &comm_W, X)?;
 
@@ -87,7 +87,7 @@ where
     S
   }
 
-  fn commitment_key(&self) -> CommitmentGens<G> {
+  fn commitment_key(&self) -> CommitmentKey<G> {
     R1CSGens::<G>::new(self.num_constraints(), self.num_aux())
   }
 }

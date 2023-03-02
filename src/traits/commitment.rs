@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 /// This trait defines the behavior of commitment key
 #[allow(clippy::len_without_is_empty)]
-pub trait CommitmentGensTrait<G: Group>:
+pub trait CommitmentKeyTrait<G: Group>:
   Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// Holds the type of the commitment that can be produced
@@ -99,11 +99,11 @@ pub trait CommitmentEngineTrait<G: Group>:
   Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// Holds the type of the commitment key
-  type CommitmentGens: CommitmentGensTrait<G, Commitment = Self::Commitment>;
+  type CommitmentKey: CommitmentKeyTrait<G, Commitment = Self::Commitment>;
 
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<G>;
 
   /// Commits to the provided vector using the provided generators
-  fn commit(gens: &Self::CommitmentGens, v: &[G::Scalar]) -> Self::Commitment;
+  fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment;
 }

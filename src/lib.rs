@@ -97,7 +97,7 @@ where
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
-    // Initialize gens for the primary
+    // Initialize ck for the primary
     let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
       augmented_circuit_params_primary.clone(),
       None,
@@ -108,7 +108,7 @@ where
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, ck_primary) = (cs.r1cs_shape(), cs.commitment_key());
 
-    // Initialize gens for the secondary
+    // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
       augmented_circuit_params_secondary.clone(),
       None,

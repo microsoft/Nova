@@ -47,14 +47,14 @@ mod tests {
     let mut cs: ShapeCS<G> = ShapeCS::new();
     let _ = synthesize_alloc_bit(&mut cs);
     let shape = cs.r1cs_shape();
-    let gens = cs.commitment_key();
+    let ck = cs.commitment_key();
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_alloc_bit(&mut cs);
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that this is satisfiable
-    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 }
