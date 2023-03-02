@@ -7,9 +7,8 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSGens, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
-    evaluation::EvaluationEngineTrait,
-    snark::{ProverKeyTrait, RelaxedR1CSSNARKTrait, VerifierKeyTrait},
-    AppendToTranscriptTrait, ChallengeTrait, Group, TranscriptEngineTrait,
+    evaluation::EvaluationEngineTrait, snark::RelaxedR1CSSNARKTrait, AppendToTranscriptTrait,
+    ChallengeTrait, Group, TranscriptEngineTrait,
   },
 };
 use ff::Field;
@@ -23,36 +22,16 @@ use sumcheck::SumcheckProof;
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
-  gens: EE::EvaluationGens,
+  pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
-}
-
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> ProverKeyTrait<G> for ProverKey<G, EE> {
-  fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self {
-    ProverKey {
-      gens: EE::setup(&gens.gens),
-      S: S.clone(),
-    }
-  }
 }
 
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
-  gens: EE::EvaluationGens,
+  vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
-}
-
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> VerifierKeyTrait<G>
-  for VerifierKey<G, EE>
-{
-  fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self {
-    VerifierKey {
-      gens: EE::setup(&gens.gens),
-      S: S.clone(),
-    }
-  }
 }
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
@@ -77,6 +56,22 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 {
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
+
+  fn setup(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey) {
+    let (pk_ee, vk_ee) = EE::setup(&gens.gens);
+
+    let pk = ProverKey {
+      pk_ee,
+      S: S.clone(),
+    };
+
+    let vk = VerifierKey {
+      vk_ee,
+      S: S.clone(),
+    };
+
+    (pk, vk)
+  }
 
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
   fn prove(
@@ -275,7 +270,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .collect::<Vec<G::Scalar>>();
     let eval = eval_E_prime + gamma * eval_W_prime;
 
-    let eval_arg = EE::prove(&pk.gens, &mut transcript, &comm, &poly, &r_z, &eval)?;
+    let eval_arg = EE::prove(&pk.pk_ee, &mut transcript, &comm, &poly, &r_z, &eval)?;
 
     Ok(RelaxedR1CSSNARK {
       sc_proof_outer,
@@ -428,7 +423,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // verify eval_W and eval_E
     EE::verify(
-      &vk.gens,
+      &vk.vk_ee,
       &mut transcript,
       &comm,
       &r_z,

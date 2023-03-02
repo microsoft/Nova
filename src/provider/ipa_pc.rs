@@ -17,10 +17,18 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-/// Provides an implementation of generators for proving evaluations
+/// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct EvaluationGens<G: Group> {
+pub struct ProverKey<G: Group> {
+  gens_v: CommitmentGens<G>,
+  gens_s: CommitmentGens<G>,
+}
+
+/// Provides an implementation of the verifier key
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct VerifierKey<G: Group> {
   gens_v: CommitmentGens<G>,
   gens_s: CommitmentGens<G>,
 }
@@ -44,18 +52,28 @@ where
   CommitmentGens<G>: CommitmentGensExtTrait<G, CE = G::CE>,
 {
   type CE = G::CE;
-  type EvaluationGens = EvaluationGens<G>;
+  type ProverKey = ProverKey<G>;
+  type VerifierKey = VerifierKey<G>;
   type EvaluationArgument = EvaluationArgument<G>;
 
-  fn setup(gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens) -> Self::EvaluationGens {
-    EvaluationGens {
+  fn setup(
+    gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+  ) -> (Self::ProverKey, Self::VerifierKey) {
+    let pk = ProverKey {
       gens_v: gens.clone(),
       gens_s: CommitmentGens::<G>::new(b"ipa", 1),
-    }
+    };
+
+    let vk = VerifierKey {
+      gens_v: gens.clone(),
+      gens_s: CommitmentGens::<G>::new(b"ipa", 1),
+    };
+
+    (pk, vk)
   }
 
   fn prove(
-    gens: &Self::EvaluationGens,
+    gens: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
     poly: &[G::Scalar],
@@ -72,7 +90,7 @@ where
 
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify(
-    gens: &Self::EvaluationGens,
+    gens: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
     point: &[G::Scalar],

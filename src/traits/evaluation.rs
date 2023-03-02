@@ -14,18 +14,23 @@ pub trait EvaluationEngineTrait<G: Group>:
   /// A type that holds the associated commitment engine
   type CE: CommitmentEngineTrait<G>;
 
-  /// A type that holds generators
-  type EvaluationGens: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  /// A type that holds the prover key
+  type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type that holds the verifier key
+  type VerifierKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that holds the evaluation argument
   type EvaluationArgument: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A method to perform any additional setup needed to produce proofs of evaluations
-  fn setup(gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens) -> Self::EvaluationGens;
+  fn setup(
+    gens: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentGens,
+  ) -> (Self::ProverKey, Self::VerifierKey);
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(
-    gens: &Self::EvaluationGens,
+    pp: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
     poly: &[G::Scalar],
@@ -35,7 +40,7 @@ pub trait EvaluationEngineTrait<G: Group>:
 
   /// A method to verify the purported evaluation of a multilinear polynomials
   fn verify(
-    gens: &Self::EvaluationGens,
+    gens: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
     point: &[G::Scalar],

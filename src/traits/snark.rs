@@ -7,37 +7,18 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 
-/// A trait that defines the behavior of a zkSNARK's prover key
-pub trait ProverKeyTrait<G: Group>: Send + Sync {
-  /// Produces a new prover's key
-  fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self;
-}
-
-/// A trait that defines the behavior of a zkSNARK's verifier key
-pub trait VerifierKeyTrait<G: Group>: Send + Sync {
-  /// Produces a new verifier's key
-  fn new(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self;
-}
-
 /// A trait that defines the behavior of a zkSNARK
 pub trait RelaxedR1CSSNARKTrait<G: Group>:
   Sized + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// A type that represents the prover's key
-  type ProverKey: ProverKeyTrait<G> + Serialize + for<'de> Deserialize<'de>;
+  type ProverKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents the verifier's key
-  type VerifierKey: VerifierKeyTrait<G> + Serialize + for<'de> Deserialize<'de>;
+  type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
-  /// Produces a prover key
-  fn prover_key(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self::ProverKey {
-    Self::ProverKey::new(gens, S)
-  }
-
-  /// Produces a verifier key
-  fn verifier_key(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> Self::VerifierKey {
-    Self::VerifierKey::new(gens, S)
-  }
+  /// Produces the keys for the prover and the verifier
+  fn setup(gens: &R1CSGens<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey);
 
   /// Produces a new SNARK for a relaxed R1CS
   fn prove(

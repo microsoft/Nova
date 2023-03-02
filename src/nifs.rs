@@ -6,6 +6,7 @@ use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSGens, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  scalar_as_base,
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CompressedCommitment,
 };
@@ -83,15 +84,15 @@ impl<G: Group> NIFS<G> {
   pub fn verify(
     &self,
     ro_consts: &ROConstants<G>,
-    S: &R1CSShape<G>,
+    S_digest: &G::Scalar,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
-    // append S to the transcript
-    S.absorb_in_ro(&mut ro);
+    // append the digest of S to the transcript
+    ro.absorb(scalar_as_base::<G>(*S_digest));
 
     // append U1 and U2 to transcript
     U1.absorb_in_ro(&mut ro);
@@ -211,7 +212,7 @@ mod tests {
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, shape, &r_U, U1);
+    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -227,7 +228,7 @@ mod tests {
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, shape, &r_U, U2);
+    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 
