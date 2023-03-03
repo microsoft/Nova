@@ -3,7 +3,7 @@
 //! only the primary executes the next step of the computation.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
 //! of the running instances. Each of these hashes is
-//! H(params = H(shape, gens), i, z0, zi, U). Each circuit folds the last invocation of
+//! H(params = H(shape, ck), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
 
 use crate::{
@@ -390,7 +390,7 @@ mod tests {
     let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
     let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
 
-    // Initialize the shape and gens for the primary
+    // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         params1.clone(),
@@ -400,10 +400,10 @@ mod tests {
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let (shape1, gens1) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (shape1, ck1) = (cs.r1cs_shape(), cs.commitment_key());
     assert_eq!(cs.num_constraints(), 9815);
 
-    // Initialize the shape and gens for the secondary
+    // Initialize the shape and ck for the secondary
     let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         params2.clone(),
@@ -413,7 +413,7 @@ mod tests {
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let (shape2, gens2) = (cs.r1cs_shape(), cs.r1cs_gens());
+    let (shape2, ck2) = (cs.r1cs_shape(), cs.commitment_key());
     assert_eq!(cs.num_constraints(), 10347);
 
     // Execute the base case for the primary
@@ -436,9 +436,9 @@ mod tests {
         ro_consts1,
       );
     let _ = circuit1.synthesize(&mut cs1);
-    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &gens1).unwrap();
+    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
-    assert!(shape1.is_sat(&gens1, &inst1, &witness1).is_ok());
+    assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
 
     // Execute the base case for the secondary
     let zero2 = <<G1 as Group>::Base as Field>::zero();
@@ -460,8 +460,8 @@ mod tests {
         ro_consts2,
       );
     let _ = circuit.synthesize(&mut cs2);
-    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &gens2).unwrap();
+    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
-    assert!(shape2.is_sat(&gens2, &inst2, &witness2).is_ok());
+    assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
   }
 }

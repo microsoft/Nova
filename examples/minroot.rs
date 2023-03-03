@@ -256,13 +256,15 @@ fn main() {
 
     // produce a compressed SNARK
     println!("Generating a CompressedSNARK using Spartan with IPA-PC...");
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp);
+
     let start = Instant::now();
     type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
     type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
     type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
     type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
 
-    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
     println!(
       "CompressedSNARK::prove: {:?}, took {:?}",
       res.is_ok(),
@@ -282,7 +284,7 @@ fn main() {
     // verify the compressed SNARK
     println!("Verifying a CompressedSNARK...");
     let start = Instant::now();
-    let res = compressed_snark.verify(&pp, num_steps, z0_primary, z0_secondary);
+    let res = compressed_snark.verify(&vk, num_steps, z0_primary, z0_secondary);
     println!(
       "CompressedSNARK::verify: {:?}, took {:?}",
       res.is_ok(),

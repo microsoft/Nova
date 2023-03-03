@@ -976,12 +976,12 @@ mod tests {
     let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let ck = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let (a, e, s) = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
@@ -996,7 +996,7 @@ mod tests {
     let e_new = a_p.scalar_mul(&s);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
     // Make sure that this is satisfiable
-    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 
   fn synthesize_add_equal<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>)
@@ -1018,12 +1018,12 @@ mod tests {
     let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let ck = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let (a, e) = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
@@ -1037,7 +1037,7 @@ mod tests {
     let e_new = a_p.add(&a_p);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
     // Make sure that it is satisfiable
-    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 
   fn synthesize_add_negation<G, CS>(mut cs: CS) -> AllocatedPoint<G>
@@ -1064,12 +1064,12 @@ mod tests {
     let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape();
-    let gens = cs.r1cs_gens();
+    let ck = cs.commitment_key();
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let e = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add negation"));
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &gens).unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
@@ -1077,6 +1077,6 @@ mod tests {
     );
     assert!(e_p.is_infinity);
     // Make sure that it is satisfiable
-    assert!(shape.is_sat(&gens, &inst, &witness).is_ok());
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 }

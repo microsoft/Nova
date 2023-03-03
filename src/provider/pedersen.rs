@@ -2,7 +2,7 @@
 use crate::{
   errors::NovaError,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentGensTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
     AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, ROTrait,
     TranscriptEngineTrait,
   },
@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommitmentGens<G: Group> {
-  gens: Vec<G::PreprocessedGroupElement>,
+pub struct CommitmentKey<G: Group> {
+  ck: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
 }
 
@@ -37,24 +37,24 @@ pub struct CompressedCommitment<G: Group> {
   comm: G::CompressedGroupElement,
 }
 
-impl<G: Group> CommitmentGensTrait<G> for CommitmentGens<G> {
+impl<G: Group> CommitmentKeyTrait<G> for CommitmentKey<G> {
   type Commitment = Commitment<G>;
 
   fn new(label: &'static [u8], n: usize) -> Self {
-    CommitmentGens {
-      gens: G::from_label(label, n.next_power_of_two()),
+    CommitmentKey {
+      ck: G::from_label(label, n.next_power_of_two()),
       _p: Default::default(),
     }
   }
 
   fn len(&self) -> usize {
-    self.gens.len()
+    self.ck.len()
   }
 
   fn commit(&self, v: &[G::Scalar]) -> Self::Commitment {
-    assert!(self.gens.len() >= v.len());
+    assert!(self.ck.len() >= v.len());
     Commitment {
-      comm: G::vartime_multiscalar_mul(v, &self.gens[..v.len()]),
+      comm: G::vartime_multiscalar_mul(v, &self.ck[..v.len()]),
     }
   }
 }
@@ -209,15 +209,15 @@ pub struct CommitmentEngine<G: Group> {
 }
 
 impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
-  type CommitmentGens = CommitmentGens<G>;
+  type CommitmentKey = CommitmentKey<G>;
   type Commitment = Commitment<G>;
 
-  fn commit(gens: &Self::CommitmentGens, v: &[G::Scalar]) -> Self::Commitment {
-    gens.commit(v)
+  fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment {
+    ck.commit(v)
   }
 }
 
-pub(crate) trait CommitmentGensExtTrait<G: Group>: CommitmentGensTrait<G> {
+pub(crate) trait CommitmentKeyExtTrait<G: Group>: CommitmentKeyTrait<G> {
   type CE: CommitmentEngineTrait<G>;
 
   /// Splits the commitment key into two pieces at a specified point
@@ -235,87 +235,87 @@ pub(crate) trait CommitmentGensExtTrait<G: Group>: CommitmentGensTrait<G> {
   fn scale(&self, r: &G::Scalar) -> Self;
 
   /// Reinterprets commitments as commitment keys
-  fn reinterpret_commitments_as_gens(
-    c: &[<<<Self as CommitmentGensExtTrait<G>>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
+  fn reinterpret_commitments_as_ck(
+    c: &[<<<Self as CommitmentKeyExtTrait<G>>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
   ) -> Result<Self, NovaError>
   where
     Self: Sized;
 }
 
-impl<G: Group> CommitmentGensExtTrait<G> for CommitmentGens<G> {
+impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   type CE = CommitmentEngine<G>;
 
-  fn split_at(&self, n: usize) -> (CommitmentGens<G>, CommitmentGens<G>) {
+  fn split_at(&self, n: usize) -> (CommitmentKey<G>, CommitmentKey<G>) {
     (
-      CommitmentGens {
-        gens: self.gens[0..n].to_vec(),
+      CommitmentKey {
+        ck: self.ck[0..n].to_vec(),
         _p: Default::default(),
       },
-      CommitmentGens {
-        gens: self.gens[n..].to_vec(),
+      CommitmentKey {
+        ck: self.ck[n..].to_vec(),
         _p: Default::default(),
       },
     )
   }
 
-  fn combine(&self, other: &CommitmentGens<G>) -> CommitmentGens<G> {
-    let gens = {
-      let mut c = self.gens.clone();
-      c.extend(other.gens.clone());
+  fn combine(&self, other: &CommitmentKey<G>) -> CommitmentKey<G> {
+    let ck = {
+      let mut c = self.ck.clone();
+      c.extend(other.ck.clone());
       c
     };
-    CommitmentGens {
-      gens,
+    CommitmentKey {
+      ck,
       _p: Default::default(),
     }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
-  fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> CommitmentGens<G> {
+  fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> CommitmentKey<G> {
     let w = vec![*w1, *w2];
     let (L, R) = self.split_at(self.len() / 2);
 
-    let gens = (0..self.len() / 2)
+    let ck = (0..self.len() / 2)
       .into_par_iter()
       .map(|i| {
-        let bases = [L.gens[i].clone(), R.gens[i].clone()].to_vec();
+        let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
         G::vartime_multiscalar_mul(&w, &bases).preprocessed()
       })
       .collect();
 
-    CommitmentGens {
-      gens,
+    CommitmentKey {
+      ck,
       _p: Default::default(),
     }
   }
 
   /// Scales each element in `self` by `r`
   fn scale(&self, r: &G::Scalar) -> Self {
-    let gens_scaled = self
-      .gens
+    let ck_scaled = self
+      .ck
       .clone()
       .into_par_iter()
       .map(|g| G::vartime_multiscalar_mul(&[*r], &[g]).preprocessed())
       .collect();
 
-    CommitmentGens {
-      gens: gens_scaled,
+    CommitmentKey {
+      ck: ck_scaled,
       _p: Default::default(),
     }
   }
 
   /// reinterprets a vector of commitments as a set of generators
-  fn reinterpret_commitments_as_gens(c: &[CompressedCommitment<G>]) -> Result<Self, NovaError> {
+  fn reinterpret_commitments_as_ck(c: &[CompressedCommitment<G>]) -> Result<Self, NovaError> {
     let d = (0..c.len())
       .into_par_iter()
       .map(|i| Commitment::<G>::decompress(&c[i]))
       .collect::<Result<Vec<Commitment<G>>, NovaError>>()?;
-    let gens = (0..d.len())
+    let ck = (0..d.len())
       .into_par_iter()
       .map(|i| d[i].comm.preprocessed())
       .collect();
-    Ok(CommitmentGens {
-      gens,
+    Ok(CommitmentKey {
+      ck,
       _p: Default::default(),
     })
   }

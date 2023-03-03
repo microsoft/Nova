@@ -105,7 +105,7 @@ macro_rules! impl_traits {
           reader.read_exact(&mut uniform_bytes).unwrap();
           uniform_bytes_vec.push(uniform_bytes);
         }
-        let gens_proj: Vec<$name_curve> = (0..n)
+        let ck_proj: Vec<$name_curve> = (0..n)
           .collect::<Vec<usize>>()
           .into_par_iter()
           .map(|i| {
@@ -115,22 +115,22 @@ macro_rules! impl_traits {
           .collect();
 
         let num_threads = rayon::current_num_threads();
-        if gens_proj.len() > num_threads {
-          let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
+        if ck_proj.len() > num_threads {
+          let chunk = (ck_proj.len() as f64 / num_threads as f64).ceil() as usize;
           (0..num_threads)
             .collect::<Vec<usize>>()
             .into_par_iter()
             .map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {
-                gens_proj.len()
+                ck_proj.len()
               } else {
-                core::cmp::min((i + 1) * chunk, gens_proj.len())
+                core::cmp::min((i + 1) * chunk, ck_proj.len())
               };
               if end > start {
-                let mut gens = vec![$name_curve_affine::identity(); end - start];
-                <Self as Curve>::batch_normalize(&gens_proj[start..end], &mut gens);
-                gens
+                let mut ck = vec![$name_curve_affine::identity(); end - start];
+                <Self as Curve>::batch_normalize(&ck_proj[start..end], &mut ck);
+                ck
               } else {
                 vec![]
               }
@@ -140,9 +140,9 @@ macro_rules! impl_traits {
             .flatten()
             .collect()
         } else {
-          let mut gens = vec![$name_curve_affine::identity(); n];
-          <Self as Curve>::batch_normalize(&gens_proj, &mut gens);
-          gens
+          let mut ck = vec![$name_curve_affine::identity(); n];
+          <Self as Curve>::batch_normalize(&ck_proj, &mut ck);
+          ck
         }
       }
 
@@ -353,14 +353,14 @@ mod tests {
     let mut shake = Shake256::default();
     shake.input(label);
     let mut reader = shake.xof_result();
-    let mut gens = Vec::new();
+    let mut ck = Vec::new();
     for _ in 0..n {
       let mut uniform_bytes = [0u8; 32];
       reader.read_exact(&mut uniform_bytes).unwrap();
       let hash = Ep::hash_to_curve("from_uniform_bytes");
-      gens.push(hash(&uniform_bytes).to_affine());
+      ck.push(hash(&uniform_bytes).to_affine());
     }
-    gens
+    ck
   }
 
   #[test]
@@ -369,11 +369,11 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let gens_par = <G as Group>::from_label(label, n);
-      let gens_ser = from_label_serial(label, n);
-      assert_eq!(gens_par.len(), n);
-      assert_eq!(gens_ser.len(), n);
-      assert_eq!(gens_par, gens_ser);
+      let ck_par = <G as Group>::from_label(label, n);
+      let ck_ser = from_label_serial(label, n);
+      assert_eq!(ck_par.len(), n);
+      assert_eq!(ck_ser.len(), n);
+      assert_eq!(ck_par, ck_ser);
     }
   }
 }
