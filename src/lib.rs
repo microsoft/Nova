@@ -269,7 +269,7 @@ where
         let zi_primary = c_primary.output(&z0_primary);
         let zi_secondary = c_secondary.output(&z0_secondary);
 
-        if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+        if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
           return Err(NovaError::InvalidStepOutputLength);
         }
 
