@@ -19,7 +19,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
     z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>;
 
-  /// return the output of the step when provided with with the step's input
+  /// return the output of the step when provided with the step's input
   fn output(&self, z: &[F]) -> Vec<F>;
 }
 

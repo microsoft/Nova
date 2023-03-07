@@ -1076,7 +1076,7 @@ mod tests {
       ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
         let x = &z[0];
 
-        // we allocate a variable and set it to the provided non-derministic advice.
+        // we allocate a variable and set it to the provided non-deterministic advice.
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(self.y))?;
 
         // We now check if y = x^{1/5} by checking if y^5 = x
