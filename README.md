@@ -11,6 +11,11 @@ To run tests (we recommend the release mode to drastically shorten run times):
 cargo test --release
 ```
 
+To run example:
+```text
+cargo run --example minroot
+```
+
 ## References
 [Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370) \
 Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
