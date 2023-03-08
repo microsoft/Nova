@@ -93,7 +93,7 @@ where
     let F_arity_primary = c_primary.arity();
     let F_arity_secondary = c_secondary.arity();
 
-    // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
+    // ro_consts_circuit_primary are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
