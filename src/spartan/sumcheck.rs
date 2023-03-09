@@ -2,7 +2,7 @@
 #![allow(clippy::type_complexity)]
 use super::polynomial::MultilinearPolynomial;
 use crate::errors::NovaError;
-use crate::traits::{AppendToTranscriptTrait, ChallengeTrait, Group};
+use crate::traits::{Group, TranscriptEngineTrait, TranscriptReprTrait};
 use core::marker::PhantomData;
 use ff::Field;
 use rayon::prelude::*;
@@ -43,10 +43,10 @@ impl<G: Group> SumcheckProof<G> {
       debug_assert_eq!(poly.eval_at_zero() + poly.eval_at_one(), e);
 
       // append the prover's message to the transcript
-      poly.append_to_transcript(b"poly", transcript);
+      transcript.absorb(b"p", &poly);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge", transcript)?;
+      let r_i = transcript.squeeze(b"c")?;
 
       r.push(r_i);
 
@@ -98,10 +98,10 @@ impl<G: Group> SumcheckProof<G> {
       };
 
       // append the prover's message to the transcript
-      poly.append_to_transcript(b"poly", transcript);
+      transcript.absorb(b"p", &poly);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge", transcript)?;
+      let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
       polys.push(poly.compress());
 
@@ -172,10 +172,10 @@ impl<G: Group> SumcheckProof<G> {
       };
 
       // append the prover's message to the transcript
-      poly.append_to_transcript(b"poly", transcript);
+      transcript.absorb(b"p", &poly);
 
-      //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge", transcript)?;
+      // derive the verifier's challenge for the next round
+      let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
       polys.push(poly.compress());
 
@@ -266,10 +266,10 @@ impl<G: Group> SumcheckProof<G> {
       };
 
       // append the prover's message to the transcript
-      poly.append_to_transcript(b"poly", transcript);
+      transcript.absorb(b"p", &poly);
 
       //derive the verifier's challenge for the next round
-      let r_i = G::Scalar::challenge(b"challenge", transcript)?;
+      let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
       polys.push(poly.compress());
 
@@ -396,12 +396,9 @@ impl<G: Group> CompressedUniPoly<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait<G> for UniPoly<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &self.coeffs,
-      label,
-      transcript,
-    );
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    let coeffs = self.compress().coeffs_except_linear_term;
+    coeffs.as_slice().to_transcript_bytes()
   }
 }

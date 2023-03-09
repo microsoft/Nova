@@ -2,13 +2,13 @@
 use crate::traits::PrimeFieldExt;
 use crate::{
   errors::NovaError,
-  traits::{Group, TranscriptEngineTrait},
+  traits::{Group, TranscriptEngineTrait, TranscriptReprTrait},
 };
 use core::marker::PhantomData;
 use sha3::{Digest, Keccak256};
 
-const PERSONA_TAG: &[u8] = b"NovaTranscript";
-const DOM_SEP_TAG: &[u8] = b"NovaRound";
+const PERSONA_TAG: &[u8] = b"NoTR";
+const DOM_SEP_TAG: &[u8] = b"NoDS";
 const KECCAK256_STATE_SIZE: usize = 64;
 const KECCAK256_PREFIX_CHALLENGE_LO: u8 = 0;
 const KECCAK256_PREFIX_CHALLENGE_HI: u8 = 1;
@@ -55,7 +55,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     }
   }
 
-  fn squeeze_scalar(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
     let input = [
       DOM_SEP_TAG,
       self.round.to_le_bytes().as_ref(),
@@ -81,8 +81,13 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     Ok(G::Scalar::from_uniform(&output))
   }
 
-  fn absorb_bytes(&mut self, label: &'static [u8], bytes: &[u8]) {
+  fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T) {
     self.transcript.extend_from_slice(label);
+    self.transcript.extend_from_slice(&o.to_transcript_bytes());
+  }
+
+  fn dom_sep(&mut self, bytes: &'static [u8]) {
+    self.transcript.extend_from_slice(DOM_SEP_TAG);
     self.transcript.extend_from_slice(bytes);
   }
 }
@@ -91,7 +96,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
 mod tests {
   use crate::{
     provider::keccak::Keccak256Transcript,
-    traits::{AppendToTranscriptTrait, ChallengeTrait, Group, TranscriptEngineTrait},
+    traits::{Group, TranscriptEngineTrait},
   };
   use ff::PrimeField;
   use sha3::{Digest, Keccak256};
@@ -100,50 +105,34 @@ mod tests {
 
   #[test]
   fn test_keccak_transcript() {
-    let mut transcript = Keccak256Transcript::new(b"test");
+    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(b"test");
 
     // two scalars
     let s1 = <G as Group>::Scalar::from(2u64);
     let s2 = <G as Group>::Scalar::from(5u64);
 
     // add the scalars to the transcript
-    <<G as Group>::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &s1,
-      b"s1",
-      &mut transcript,
-    );
-    <<G as Group>::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &s2,
-      b"s2",
-      &mut transcript,
-    );
+    transcript.absorb(b"s1", &s1);
+    transcript.absorb(b"s2", &s2);
 
     // make a challenge
-    let c1 =
-      <<G as Group>::Scalar as ChallengeTrait<G>>::challenge(b"challenge_c1", &mut transcript)
-        .unwrap();
+    let c1: <G as Group>::Scalar = transcript.squeeze(b"c1").unwrap();
     assert_eq!(
       hex::encode(c1.to_repr().as_ref()),
-      "51648083af5387a04a7aa2aec789ee78fdabe45dc1391d270a38fcb576447c01"
+      "432d5811c8be3d44d47f52108a8749ae18482efd1a37b830f966456b5d75340c"
     );
 
     // a scalar
     let s3 = <G as Group>::Scalar::from(128u64);
 
     // add the scalar to the transcript
-    <<G as Group>::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &s3,
-      b"s3",
-      &mut transcript,
-    );
+    transcript.absorb(b"s3", &s3);
 
     // make a challenge
-    let c2 =
-      <<G as Group>::Scalar as ChallengeTrait<G>>::challenge(b"challenge_c2", &mut transcript)
-        .unwrap();
+    let c2: <G as Group>::Scalar = transcript.squeeze(b"c2").unwrap();
     assert_eq!(
       hex::encode(c2.to_repr().as_ref()),
-      "9773f3349f7308153f6012e72b97fc304e48372bbd28bd122b37a8e46855d50f"
+      "65f7908d53abcd18f3b1d767456ef9009b91c7566a635e9ca7be26e21d4d7a10"
     );
   }
 

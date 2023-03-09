@@ -2,7 +2,7 @@
 //! We require the commitment engine to provide a commitment to vectors with a single group element
 use crate::{
   errors::NovaError,
-  traits::{AbsorbInROTrait, AppendToTranscriptTrait, Group},
+  traits::{AbsorbInROTrait, Group, TranscriptReprTrait},
 };
 use core::{
   fmt::Debug,
@@ -65,10 +65,10 @@ pub trait CommitmentTrait<G: Group>:
   + Eq
   + Send
   + Sync
+  + TranscriptReprTrait<G>
   + Serialize
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<G>
-  + AppendToTranscriptTrait<G>
   + CommitmentOps
   + CommitmentOpsOwned
   + ScalarMul<G::Scalar>
@@ -80,9 +80,9 @@ pub trait CommitmentTrait<G: Group>:
     + Eq
     + Send
     + Sync
+    + TranscriptReprTrait<G>
     + Serialize
-    + for<'de> Deserialize<'de>
-    + AppendToTranscriptTrait<G>;
+    + for<'de> Deserialize<'de>;
 
   /// Compresses self into a compressed commitment
   fn compress(&self) -> Self::CompressedCommitment;
