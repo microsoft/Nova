@@ -93,7 +93,7 @@ where
     let F_arity_primary = c_primary.arity();
     let F_arity_secondary = c_secondary.arity();
 
-    // ro_consts_circuit_primart are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
+    // ro_consts_circuit_primary are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
@@ -269,7 +269,7 @@ where
         let zi_primary = c_primary.output(&z0_primary);
         let zi_secondary = c_secondary.output(&z0_secondary);
 
-        if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+        if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
           return Err(NovaError::InvalidStepOutputLength);
         }
 
@@ -1076,7 +1076,7 @@ mod tests {
       ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
         let x = &z[0];
 
-        // we allocate a variable and set it to the provided non-derministic advice.
+        // we allocate a variable and set it to the provided non-deterministic advice.
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(self.y))?;
 
         // We now check if y = x^{1/5} by checking if y^5 = x
