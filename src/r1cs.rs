@@ -8,8 +8,7 @@ use crate::{
     utils::scalar_as_base,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentKeyTrait},
-    AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CE,
 };
@@ -74,7 +73,7 @@ pub struct RelaxedR1CSInstance<G: Group> {
 impl<G: Group> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn commitment_key(num_cons: usize, num_vars: usize) -> CommitmentKey<G> {
-    CommitmentKey::<G>::new(b"ck", max(num_vars, num_cons))
+    G::CE::setup(b"ck", max(num_vars, num_cons))
   }
 }
 
