@@ -9,7 +9,7 @@ use crate::{
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentKeyTrait},
-    AbsorbInROTrait, AppendToTranscriptTrait, Group, ROTrait,
+    AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CE,
 };
@@ -435,13 +435,9 @@ impl<G: Group> R1CSShape<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait<G> for R1CSShape<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    <<G as Group>::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(
-      &self.get_digest(),
-      label,
-      transcript,
-    );
+impl<G: Group> TranscriptReprTrait<G> for R1CSShape<G> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    self.get_digest().to_transcript_bytes()
   }
 }
 
@@ -482,13 +478,6 @@ impl<G: Group> R1CSInstance<G> {
         X: X.to_owned(),
       })
     }
-  }
-}
-
-impl<G: Group> AppendToTranscriptTrait<G> for R1CSInstance<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut G::TE) {
-    self.comm_W.append_to_transcript(b"comm_W", transcript);
-    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(&self.X, b"X", transcript);
   }
 }
 
@@ -623,12 +612,15 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait<G> for RelaxedR1CSInstance<G> {
-  fn append_to_transcript(&self, _label: &'static [u8], transcript: &mut G::TE) {
-    self.comm_W.append_to_transcript(b"comm_W", transcript);
-    self.comm_E.append_to_transcript(b"comm_E", transcript);
-    <G::Scalar as AppendToTranscriptTrait<G>>::append_to_transcript(&self.u, b"u", transcript);
-    <[G::Scalar] as AppendToTranscriptTrait<G>>::append_to_transcript(&self.X, b"X", transcript);
+impl<G: Group> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    [
+      self.comm_W.to_transcript_bytes(),
+      self.comm_E.to_transcript_bytes(),
+      self.u.to_transcript_bytes(),
+      self.X.as_slice().to_transcript_bytes(),
+    ]
+    .concat()
   }
 }
 

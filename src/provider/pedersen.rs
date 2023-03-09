@@ -3,8 +3,7 @@ use crate::{
   errors::NovaError,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
-    AbsorbInROTrait, AppendToTranscriptTrait, CompressedGroup, Group, ROTrait,
-    TranscriptEngineTrait,
+    AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -12,7 +11,7 @@ use core::{
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use ff::{Field, PrimeField};
+use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -89,17 +88,16 @@ impl<G: Group> Default for Commitment<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait<G> for Commitment<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
+impl<G: Group> TranscriptReprTrait<G> for Commitment<G> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
     let is_infinity_byte = if is_infinity { 0u8 } else { 1u8 };
-    let bytes = [
-      x.to_repr().as_ref(),
-      y.to_repr().as_ref(),
-      &[is_infinity_byte],
+    [
+      x.to_transcript_bytes(),
+      y.to_transcript_bytes(),
+      [is_infinity_byte].to_vec(),
     ]
-    .concat();
-    transcript.absorb_bytes(label, &bytes);
+    .concat()
   }
 }
 
@@ -116,9 +114,9 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
   }
 }
 
-impl<G: Group> AppendToTranscriptTrait<G> for CompressedCommitment<G> {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    transcript.absorb_bytes(label, &self.comm.as_bytes());
+impl<G: Group> TranscriptReprTrait<G> for CompressedCommitment<G> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    self.comm.to_transcript_bytes()
   }
 }
 

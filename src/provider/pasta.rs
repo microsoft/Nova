@@ -1,12 +1,11 @@
 //! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
 use crate::{
-  errors::NovaError,
   provider::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
   },
-  traits::{ChallengeTrait, CompressedGroup, Group, PrimeFieldExt, TranscriptEngineTrait},
+  traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Input};
 use ff::PrimeField;
@@ -177,9 +176,11 @@ macro_rules! impl_traits {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
         $name::Scalar::from_bytes_wide(&bytes_arr)
       }
+    }
 
-      fn to_bytes(&self) -> Vec<u8> {
-        self.to_repr().as_ref().to_vec()
+    impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
+      fn to_transcript_bytes(&self) -> Vec<u8> {
+        self.repr.to_vec()
       }
     }
 
@@ -189,17 +190,19 @@ macro_rules! impl_traits {
       fn decompress(&self) -> Option<$name::Point> {
         Some($name_curve::from_bytes(&self.repr).unwrap())
       }
-
-      fn as_bytes(&self) -> Vec<u8> {
-        self.repr.to_vec()
-      }
     }
   };
 }
 
-impl<G: Group<Scalar = F>, F: PrimeField> ChallengeTrait<G> for F {
-  fn challenge(label: &'static [u8], transcript: &mut G::TE) -> Result<F, NovaError> {
-    transcript.squeeze_scalar(label)
+impl<G: Group> TranscriptReprTrait<G> for pallas::Base {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    self.to_repr().to_vec()
+  }
+}
+
+impl<G: Group> TranscriptReprTrait<G> for pallas::Scalar {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    self.to_repr().to_vec()
   }
 }
 

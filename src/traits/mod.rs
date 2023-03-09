@@ -34,15 +34,19 @@ pub trait Group:
   + for<'de> Deserialize<'de>
 {
   /// A type representing an element of the base field of the group
-  type Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeField
+    + PrimeFieldBits
+    + TranscriptReprTrait<Self>
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeField
     + PrimeFieldBits
     + PrimeFieldExt
-    + ChallengeTrait<Self>
     + Send
     + Sync
+    + TranscriptReprTrait<Self>
     + Serialize
     + for<'de> Deserialize<'de>;
 
@@ -97,16 +101,23 @@ pub trait Group:
 
 /// Represents a compressed version of a group element
 pub trait CompressedGroup:
-  Clone + Copy + Debug + Eq + Sized + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static
+  Clone
+  + Copy
+  + Debug
+  + Eq
+  + Sized
+  + Send
+  + Sync
+  + TranscriptReprTrait<Self::GroupElement>
+  + Serialize
+  + for<'de> Deserialize<'de>
+  + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
   type GroupElement: Group + Serialize + for<'de> Deserialize<'de>;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
-
-  /// Returns a byte array representing the compressed group element
-  fn as_bytes(&self) -> Vec<u8>;
 }
 
 /// A helper trait to absorb different objects in RO
@@ -196,56 +207,43 @@ impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Out
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
+/// This trait allows types to implement how they want to be added to TranscriptEngine
+pub trait TranscriptReprTrait<G: Group>: Send + Sync {
+  /// returns a byte representation of self to be added to the transcript
+  fn to_transcript_bytes(&self) -> Vec<u8>;
+}
+
 /// This trait defines the behavior of a transcript engine compatible with Spartan
 pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
   /// initializes the transcript
   fn new(label: &'static [u8]) -> Self;
 
   /// returns a scalar element of the group as a challenge
-  fn squeeze_scalar(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
 
-  /// absorbs a label and a sequence of bytes
-  fn absorb_bytes(&mut self, label: &'static [u8], bytes: &[u8]);
-}
+  /// absorbs any type that implements TranscriptReprTrait under a label
+  fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T);
 
-/// A helper trait to append different types to the transcript
-pub trait AppendToTranscriptTrait<G: Group> {
-  /// appends the value to the transcript under the provided label
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE);
-}
-
-/// A helper trait to generate challenges using a transcript object
-pub trait ChallengeTrait<G: Group> {
-  /// Returns a challenge from the transcript
-  fn challenge(label: &'static [u8], transcript: &mut G::TE) -> Result<Self, NovaError>
-  where
-    Self: Sized;
+  /// adds a domain separator
+  fn dom_sep(&mut self, bytes: &'static [u8]);
 }
 
 /// Defines additional methods on PrimeField objects
 pub trait PrimeFieldExt: PrimeField {
   /// Returns a scalar representing the bytes
   fn from_uniform(bytes: &[u8]) -> Self;
-
-  /// Returns a vector of bytes representing the scalar
-  fn to_bytes(&self) -> Vec<u8>;
 }
 
-impl<G: Group<Scalar = F>, F: PrimeField + PrimeFieldExt> AppendToTranscriptTrait<G> for F {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    transcript.absorb_bytes(label, &<Self as PrimeFieldExt>::to_bytes(self));
-  }
-}
-
-impl<G: Group<Scalar = F>, F: PrimeField + PrimeFieldExt> AppendToTranscriptTrait<G> for [F] {
-  fn append_to_transcript(&self, label: &'static [u8], transcript: &mut G::TE) {
-    let bytes = (0..self.len())
-      .map(|i| <F as PrimeFieldExt>::to_bytes(&self[i]))
+impl<G: Group<Scalar = F>, F: PrimeField + TranscriptReprTrait<G>> TranscriptReprTrait<G>
+  for &[F]
+{
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    (0..self.len())
+      .map(|i| <F as TranscriptReprTrait<G>>::to_transcript_bytes(&self[i]))
       .collect::<Vec<_>>()
       .into_iter()
       .flatten()
-      .collect::<Vec<u8>>();
-    transcript.absorb_bytes(label, &bytes);
+      .collect::<Vec<u8>>()
   }
 }
 
