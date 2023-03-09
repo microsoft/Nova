@@ -5,7 +5,7 @@ use crate::{
   provider::pedersen::CommitmentKeyExtTrait,
   spartan::polynomial::EqPolynomial,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
     Group, TranscriptEngineTrait, TranscriptReprTrait,
   },
@@ -59,12 +59,12 @@ where
     ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let pk = ProverKey {
-      ck_s: CommitmentKey::<G>::new(b"ipa", 1),
+      ck_s: G::CE::setup(b"ipa", 1),
     };
 
     let vk = VerifierKey {
       ck_v: ck.clone(),
-      ck_s: CommitmentKey::<G>::new(b"ipa", 1),
+      ck_s: G::CE::setup(b"ipa", 1),
     };
 
     (pk, vk)

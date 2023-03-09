@@ -2,7 +2,7 @@
 use crate::{
   errors::NovaError,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentKeyTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentTrait},
     AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
   },
 };
@@ -34,28 +34,6 @@ pub struct Commitment<G: Group> {
 #[serde(bound = "")]
 pub struct CompressedCommitment<G: Group> {
   comm: G::CompressedGroupElement,
-}
-
-impl<G: Group> CommitmentKeyTrait<G> for CommitmentKey<G> {
-  type Commitment = Commitment<G>;
-
-  fn new(label: &'static [u8], n: usize) -> Self {
-    CommitmentKey {
-      ck: G::from_label(label, n.next_power_of_two()),
-      _p: Default::default(),
-    }
-  }
-
-  fn len(&self) -> usize {
-    self.ck.len()
-  }
-
-  fn commit(&self, v: &[G::Scalar]) -> Self::Commitment {
-    assert!(self.ck.len() >= v.len());
-    Commitment {
-      comm: G::vartime_multiscalar_mul(v, &self.ck[..v.len()]),
-    }
-  }
 }
 
 impl<G: Group> CommitmentTrait<G> for Commitment<G> {
@@ -210,12 +188,22 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
   type CommitmentKey = CommitmentKey<G>;
   type Commitment = Commitment<G>;
 
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    Self::CommitmentKey {
+      ck: G::from_label(label, n.next_power_of_two()),
+      _p: Default::default(),
+    }
+  }
+
   fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment {
-    ck.commit(v)
+    assert!(ck.ck.len() >= v.len());
+    Commitment {
+      comm: G::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+    }
   }
 }
 
-pub(crate) trait CommitmentKeyExtTrait<G: Group>: CommitmentKeyTrait<G> {
+pub(crate) trait CommitmentKeyExtTrait<G: Group> {
   type CE: CommitmentEngineTrait<G>;
 
   /// Splits the commitment key into two pieces at a specified point
@@ -271,9 +259,9 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
   fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> CommitmentKey<G> {
     let w = vec![*w1, *w2];
-    let (L, R) = self.split_at(self.len() / 2);
+    let (L, R) = self.split_at(self.ck.len() / 2);
 
-    let ck = (0..self.len() / 2)
+    let ck = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
         let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
