@@ -234,12 +234,10 @@ pub trait PrimeFieldExt: PrimeField {
   fn from_uniform(bytes: &[u8]) -> Self;
 }
 
-impl<G: Group<Scalar = F>, F: PrimeField + TranscriptReprTrait<G>> TranscriptReprTrait<G>
-  for &[F]
-{
+impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     (0..self.len())
-      .map(|i| <F as TranscriptReprTrait<G>>::to_transcript_bytes(&self[i]))
+      .map(|i| self[i].to_transcript_bytes())
       .collect::<Vec<_>>()
       .into_iter()
       .flatten()
