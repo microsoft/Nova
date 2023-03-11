@@ -364,28 +364,22 @@ impl<G: Group> R1CSShape<G> {
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&self) -> Self {
+    // equalize the number of variables and constraints
+    let m = max(self.num_vars, self.num_cons).next_power_of_two();
+
     // check if the provided R1CSShape is already as required
-    if self.num_vars.next_power_of_two() == self.num_vars
-      && self.num_cons.next_power_of_two() == self.num_cons
-    {
+    if self.num_vars == m && self.num_cons == m {
       return self.clone();
     }
 
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
-    if self.num_vars.next_power_of_two() == self.num_vars {
-      let digest = Self::compute_digest(
-        self.num_cons.next_power_of_two(),
-        self.num_vars,
-        self.num_io,
-        &self.A,
-        &self.B,
-        &self.C,
-      );
+    if self.num_vars == m {
+      let digest = Self::compute_digest(m, self.num_vars, self.num_io, &self.A, &self.B, &self.C);
 
       return R1CSShape {
-        num_cons: self.num_cons.next_power_of_two(),
-        num_vars: self.num_vars,
+        num_cons: m,
+        num_vars: m,
         num_io: self.num_io,
         A: self.A.clone(),
         B: self.B.clone(),
@@ -395,8 +389,8 @@ impl<G: Group> R1CSShape<G> {
     }
 
     // otherwise, we need to pad the number of variables and renumber variable accesses
-    let num_vars_padded = self.num_vars.next_power_of_two();
-    let num_cons_padded = self.num_cons.next_power_of_two();
+    let num_vars_padded = m;
+    let num_cons_padded = m;
     let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
       M.par_iter()
         .map(|(r, c, v)| {
