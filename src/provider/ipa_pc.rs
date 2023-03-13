@@ -190,6 +190,8 @@ where
   ) -> Result<Self, NovaError> {
     transcript.dom_sep(Self::protocol_name());
 
+    let (ck, _) = ck.split_at(U.b_vec.len());
+
     if U.b_vec.len() != W.a_vec.len() {
       return Err(NovaError::InvalidInputLength);
     }
@@ -272,7 +274,7 @@ where
     // we create mutable copies of vectors and generators
     let mut a_vec = W.a_vec.to_vec();
     let mut b_vec = U.b_vec.to_vec();
-    let mut ck = ck.clone();
+    let mut ck = ck;
     for _i in 0..(U.b_vec.len() as f64).log2() as usize {
       let (L, R, a_vec_folded, b_vec_folded, ck_folded) =
         prove_inner(&a_vec, &b_vec, &ck, transcript)?;
@@ -300,6 +302,8 @@ where
     U: &InnerProductInstance<G>,
     transcript: &mut G::TE,
   ) -> Result<(), NovaError> {
+    let (ck, _) = ck.split_at(U.b_vec.len());
+
     transcript.dom_sep(Self::protocol_name());
     if U.b_vec.len() != n
       || n != (1 << self.L_vec.len())
@@ -383,7 +387,7 @@ where
     };
 
     let ck_hat = {
-      let c = CE::<G>::commit(ck, &s).compress();
+      let c = CE::<G>::commit(&ck, &s).compress();
       CommitmentKey::<G>::reinterpret_commitments_as_ck(&[c])?
     };
 

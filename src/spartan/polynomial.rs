@@ -2,6 +2,7 @@
 use core::ops::Index;
 use ff::PrimeField;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 pub(crate) struct EqPolynomial<Scalar: PrimeField> {
   r: Vec<Scalar>,
@@ -45,8 +46,8 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   }
 }
 
-#[derive(Debug)]
-pub(crate) struct MultilinearPolynomial<Scalar: PrimeField> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultilinearPolynomial<Scalar: PrimeField> {
   num_vars: usize, // the number of variables in the multilinear polynomial
   Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
@@ -96,6 +97,23 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .into_par_iter()
       .map(|i| chis[i] * self.Z[i])
       .reduce(Scalar::zero, |x, y| x + y)
+  }
+
+  pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
+    EqPolynomial::new(r.to_vec())
+      .evals()
+      .into_par_iter()
+      .zip(Z.into_par_iter())
+      .map(|(a, b)| a * b)
+      .reduce(Scalar::zero, |x, y| x + y)
+  }
+
+  pub fn split(&self, idx: usize) -> (Self, Self) {
+    assert!(idx < self.len());
+    (
+      Self::new(self.Z[..idx].to_vec()),
+      Self::new(self.Z[idx..2 * idx].to_vec()),
+    )
   }
 }
 

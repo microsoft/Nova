@@ -72,8 +72,11 @@ pub struct RelaxedR1CSInstance<G: Group> {
 
 impl<G: Group> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
-  pub fn commitment_key(num_cons: usize, num_vars: usize) -> CommitmentKey<G> {
-    G::CE::setup(b"ck", max(num_vars, num_cons))
+  pub fn commitment_key(S: &R1CSShape<G>) -> CommitmentKey<G> {
+    let num_cons = S.num_cons;
+    let num_vars = S.num_vars;
+    let num_nz = max(max(S.A.len(), S.B.len()), S.C.len());
+    G::CE::setup(b"ck", max(max(num_cons, num_vars), num_nz))
   }
 }
 

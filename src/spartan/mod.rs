@@ -1,6 +1,8 @@
 //! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
-pub mod polynomial;
+mod math;
+pub(crate) mod polynomial;
+pub mod spark;
 mod sumcheck;
 
 use crate::{
@@ -8,6 +10,7 @@ use crate::{
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     evaluation::EvaluationEngineTrait, snark::RelaxedR1CSSNARKTrait, Group, TranscriptEngineTrait,
+    TranscriptReprTrait,
   },
   CommitmentKey,
 };
@@ -18,20 +21,75 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sumcheck::SumcheckProof;
 
+/// A trait that defines the behavior of a computation commitment engine
+pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+  /// A type that holds opening hint
+  type Decommitment: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type that holds a commitment
+  type Commitment: Clone
+    + Send
+    + Sync
+    + TranscriptReprTrait<G>
+    + Serialize
+    + for<'de> Deserialize<'de>;
+
+  /// A type that holds an evaluation argument
+  type EvaluationArgument: Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// commits to R1CS matrices
+  fn commit(
+    ck: &CommitmentKey<G>,
+    S: &R1CSShape<G>,
+  ) -> Result<(Self::Commitment, Self::Decommitment), NovaError>;
+
+  /// proves an evaluation of R1CS matrices viewed as polynomials
+  fn prove(
+    ck: &CommitmentKey<G>,
+    ek: &EE::ProverKey,
+    S: &R1CSShape<G>,
+    decomm: &Self::Decommitment,
+    comm: &Self::Commitment,
+    r: &(&[G::Scalar], &[G::Scalar]),
+    transcript: &mut G::TE,
+  ) -> Result<Self::EvaluationArgument, NovaError>;
+
+  /// verifies an evaluation of R1CS matrices viewed as polynomials and returns verified evaluations
+  fn verify(
+    vk: &EE::VerifierKey,
+    comm: &Self::Commitment,
+    r: &(&[G::Scalar], &[G::Scalar]),
+    arg: &Self::EvaluationArgument,
+    transcript: &mut G::TE,
+  ) -> Result<(G::Scalar, G::Scalar, G::Scalar), NovaError>;
+}
+
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct ProverKey<
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  CC: CompCommitmentEngineTrait<G, EE>,
+> {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
+  decomm: CC::Decommitment,
+  comm: CC::Commitment,
 }
 
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct VerifierKey<
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  CC: CompCommitmentEngineTrait<G, EE>,
+> {
+  num_cons: usize,
+  num_vars: usize,
   vk_ee: EE::VerifierKey,
-  S: R1CSShape<G>,
+  comm: CC::Commitment,
 }
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
@@ -39,7 +97,11 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct RelaxedR1CSSNARK<
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  CC: CompCommitmentEngineTrait<G, EE>,
+> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   eval_E: G::Scalar,
@@ -49,20 +111,40 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> 
   eval_E_prime: G::Scalar,
   eval_W_prime: G::Scalar,
   eval_arg: EE::EvaluationArgument,
+  eval_arg_cc: CC::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G>
-  for RelaxedR1CSSNARK<G, EE>
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngineTrait<G, EE>>
+  RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE, CC>
 {
-  type ProverKey = ProverKey<G, EE>;
-  type VerifierKey = VerifierKey<G, EE>;
+  type ProverKey = ProverKey<G, EE, CC>;
+  type VerifierKey = VerifierKey<G, EE, CC>;
 
-  fn setup(ck: &CommitmentKey<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey) {
+  fn setup(
+    ck: &CommitmentKey<G>,
+    S: &R1CSShape<G>,
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
     let (pk_ee, vk_ee) = EE::setup(ck);
-    let pk = ProverKey { pk_ee, S: S.pad() };
-    let vk = VerifierKey { vk_ee, S: S.pad() };
 
-    (pk, vk)
+    let S = S.pad();
+
+    let (comm, decomm) = CC::commit(ck, &S)?;
+
+    let vk = VerifierKey {
+      num_cons: S.num_cons,
+      num_vars: S.num_vars,
+      vk_ee,
+      comm: comm.clone(),
+    };
+
+    let pk = ProverKey {
+      pk_ee,
+      S,
+      comm,
+      decomm,
+    };
+
+    Ok((pk, vk))
   }
 
   /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
@@ -81,8 +163,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
     assert!(pk.S.num_io < pk.S.num_vars);
 
-    // append the R1CSShape and RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"S", &pk.S);
+    // append the commitment to R1CS matrices and the RelaxedR1CSInstance to the transcript
+    transcript.absorb(b"C", &pk.comm);
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
@@ -209,6 +291,17 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       &mut transcript,
     )?;
 
+    // we now prove evaluations of R1CS matrices at (r_x, r_y)
+    let eval_arg_cc = CC::prove(
+      ck,
+      &pk.pk_ee,
+      &pk.S,
+      &pk.decomm,
+      &pk.comm,
+      &(&r_x, &r_y),
+      &mut transcript,
+    )?;
+
     let eval_W = MultilinearPolynomial::new(W.W.clone()).evaluate(&r_y[1..]);
     transcript.absorb(b"eval_W", &eval_W);
 
@@ -231,7 +324,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let (sc_proof_batch, r_z, claims_batch) = SumcheckProof::prove_quad_sum(
       &claim_batch_joint,
       num_rounds_z,
-      &mut MultilinearPolynomial::new(EqPolynomial::new(r_x).evals()),
+      &mut MultilinearPolynomial::new(EqPolynomial::new(r_x.clone()).evals()),
       &mut MultilinearPolynomial::new(W.E.clone()),
       &mut MultilinearPolynomial::new(EqPolynomial::new(r_y[1..].to_vec()).evals()),
       &mut MultilinearPolynomial::new(W.W.clone()),
@@ -266,6 +359,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       eval_E_prime,
       eval_W_prime,
       eval_arg,
+      eval_arg_cc,
     })
   }
 
@@ -273,13 +367,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
-    // append the R1CSShape and RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"S", &vk.S);
+    // append the commitment to R1CS matrices and the RelaxedR1CSInstance to the transcript
+    transcript.absorb(b"C", &vk.comm);
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (
-      (vk.S.num_cons as f64).log2() as usize,
-      ((vk.S.num_vars as f64).log2() as usize + 1),
+      (vk.num_cons as f64).log2() as usize,
+      ((vk.num_vars as f64).log2() as usize + 1),
     );
 
     // outer sum-check
@@ -333,37 +427,21 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.S.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
+        SparsePolynomial::new((vk.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
       };
       (G::Scalar::one() - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };
 
-    let evaluate_as_sparse_polynomial = |S: &R1CSShape<G>,
-                                         r_x: &[G::Scalar],
-                                         r_y: &[G::Scalar]|
-     -> (G::Scalar, G::Scalar, G::Scalar) {
-      let evaluate_with_table =
-        |M: &[(usize, usize, G::Scalar)], T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
-          (0..M.len())
-            .collect::<Vec<usize>>()
-            .par_iter()
-            .map(|&i| {
-              let (row, col, val) = M[i];
-              T_x[row] * T_y[col] * val
-            })
-            .reduce(G::Scalar::zero, |acc, x| acc + x)
-        };
+    // verify evaluation argument to retrieve evaluations of R1CS matrices
+    let (eval_A, eval_B, eval_C) = CC::verify(
+      &vk.vk_ee,
+      &vk.comm,
+      &(&r_x, &r_y),
+      &self.eval_arg_cc,
+      &mut transcript,
+    )?;
 
-      let T_x = EqPolynomial::new(r_x.to_vec()).evals();
-      let T_y = EqPolynomial::new(r_y.to_vec()).evals();
-      let eval_A_r = evaluate_with_table(&S.A, &T_x, &T_y);
-      let eval_B_r = evaluate_with_table(&S.B, &T_x, &T_y);
-      let eval_C_r = evaluate_with_table(&S.C, &T_x, &T_y);
-      (eval_A_r, eval_B_r, eval_C_r)
-    };
-
-    let (eval_A_r, eval_B_r, eval_C_r) = evaluate_as_sparse_polynomial(&vk.S, &r_x, &r_y);
-    let claim_inner_final_expected = (eval_A_r + r * eval_B_r + r * r * eval_C_r) * eval_Z;
+    let claim_inner_final_expected = (eval_A + r * eval_B + r * r * eval_C) * eval_Z;
     if claim_inner_final != claim_inner_final_expected {
       return Err(NovaError::InvalidSumcheckProof);
     }

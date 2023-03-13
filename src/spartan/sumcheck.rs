@@ -8,13 +8,17 @@ use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub(crate) struct SumcheckProof<G: Group> {
   compressed_polys: Vec<CompressedUniPoly<G>>,
 }
 
 impl<G: Group> SumcheckProof<G> {
+  pub fn new(compressed_polys: Vec<CompressedUniPoly<G>>) -> Self {
+    Self { compressed_polys }
+  }
+
   pub fn verify(
     &self,
     claim: G::Scalar,
@@ -302,7 +306,7 @@ pub struct UniPoly<G: Group> {
 
 // ax^2 + bx + c stored as vec![a,c]
 // ax^3 + bx^2 + cx + d stored as vec![a,c,d]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompressedUniPoly<G: Group> {
   coeffs_except_linear_term: Vec<G::Scalar>,
   _p: PhantomData<G>,
