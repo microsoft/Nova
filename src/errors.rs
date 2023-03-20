@@ -47,4 +47,7 @@ pub enum NovaError {
   /// returned when the multiset check fails
   #[error("InvalidMultisetProof")]
   InvalidMultisetProof,
+  /// returned when the product proof check fails
+  #[error("InvalidProductProof")]
+  InvalidProductProof,
 }

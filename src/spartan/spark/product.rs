@@ -309,8 +309,6 @@ impl<G: Group> ProductArgumentBatched<G> {
       .map(|i| ProductArgumentInputs::<G>::new(poly_vec[i]))
       .collect();
 
-    assert!(!prod_circuit_vec.is_empty());
-
     let mut proof_layers: Vec<LayerProofBatched<G>> = Vec::new();
     let num_layers = prod_circuit_vec[0].left_vec.len();
     let evals = (0..prod_circuit_vec.len())
@@ -408,7 +406,9 @@ impl<G: Group> ProductArgumentBatched<G> {
     let num_layers = len.log_2();
 
     let mut rand: Vec<G::Scalar> = Vec::new();
-    assert_eq!(self.proof.len(), num_layers);
+    if self.proof.len() != num_layers {
+      return Err(NovaError::InvalidProductProof);
+    }
 
     let mut claims_to_verify = claims_prod_vec.to_owned();
     for (num_rounds, i) in (0..num_layers).enumerate() {
@@ -431,8 +431,11 @@ impl<G: Group> ProductArgumentBatched<G> {
 
       let claims_prod_left = &self.proof[i].claims_prod_left;
       let claims_prod_right = &self.proof[i].claims_prod_right;
-      assert_eq!(claims_prod_left.len(), claims_prod_vec.len());
-      assert_eq!(claims_prod_right.len(), claims_prod_vec.len());
+      if claims_prod_left.len() != claims_prod_vec.len()
+        || claims_prod_right.len() != claims_prod_vec.len()
+      {
+        return Err(NovaError::InvalidProductProof);
+      }
 
       let v = {
         let mut v = claims_prod_left.clone();
@@ -441,7 +444,10 @@ impl<G: Group> ProductArgumentBatched<G> {
       };
       transcript.absorb(b"p", &v.as_slice());
 
-      assert_eq!(rand.len(), rand_prod.len());
+      if rand.len() != rand_prod.len() {
+        return Err(NovaError::InvalidProductProof);
+      }
+
       let eq: G::Scalar = (0..rand.len())
         .map(|i| {
           rand[i] * rand_prod[i] + (G::Scalar::one() - rand[i]) * (G::Scalar::one() - rand_prod[i])
@@ -451,7 +457,9 @@ impl<G: Group> ProductArgumentBatched<G> {
         .map(|i| coeff_vec[i] * (claims_prod_left[i] * claims_prod_right[i] * eq))
         .fold(G::Scalar::zero(), |acc, item| acc + item);
 
-      assert_eq!(claim_expected, claim_last);
+      if claim_expected != claim_last {
+        return Err(NovaError::InvalidProductProof);
+      }
 
       // produce a random challenge
       let r_layer = transcript.squeeze(b"c")?;
