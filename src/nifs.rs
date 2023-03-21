@@ -171,8 +171,7 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
-    let shape = cs.r1cs_shape();
-    let ck = cs.commitment_key();
+    let (shape, ck) = cs.r1cs_shape();
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
@@ -305,7 +304,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<G>::commitment_key(num_cons, num_vars);
+    let ck = R1CS::<G>::commitment_key(&S);
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 

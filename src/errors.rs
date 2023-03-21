@@ -44,4 +44,10 @@ pub enum NovaError {
   /// returned when the transcript engine encounters an overflow of the round number
   #[error("InternalTranscriptError")]
   InternalTranscriptError,
+  /// returned when the multiset check fails
+  #[error("InvalidMultisetProof")]
+  InvalidMultisetProof,
+  /// returned when the product proof check fails
+  #[error("InvalidProductProof")]
+  InvalidProductProof,
 }

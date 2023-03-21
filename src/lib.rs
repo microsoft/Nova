@@ -106,7 +106,7 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, ck_primary) = (cs.r1cs_shape(), cs.commitment_key());
+    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
 
     // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
@@ -117,7 +117,7 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, ck_secondary) = (cs.r1cs_shape(), cs.commitment_key());
+    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
 
     Self {
       F_arity_primary,
@@ -580,12 +580,15 @@ where
   /// Creates prover and verifier keys for `CompressedSNARK`
   pub fn setup(
     pp: &PublicParams<G1, G2, C1, C2>,
-  ) -> (
-    ProverKey<G1, G2, C1, C2, S1, S2>,
-    VerifierKey<G1, G2, C1, C2, S1, S2>,
-  ) {
-    let (pk_primary, vk_primary) = S1::setup(&pp.ck_primary, &pp.r1cs_shape_primary);
-    let (pk_secondary, vk_secondary) = S2::setup(&pp.ck_secondary, &pp.r1cs_shape_secondary);
+  ) -> Result<
+    (
+      ProverKey<G1, G2, C1, C2, S1, S2>,
+      VerifierKey<G1, G2, C1, C2, S1, S2>,
+    ),
+    NovaError,
+  > {
+    let (pk_primary, vk_primary) = S1::setup(&pp.ck_primary, &pp.r1cs_shape_primary)?;
+    let (pk_secondary, vk_secondary) = S2::setup(&pp.ck_secondary, &pp.r1cs_shape_secondary)?;
 
     let pk = ProverKey {
       pk_primary,
@@ -607,7 +610,7 @@ where
       _p_c2: Default::default(),
     };
 
-    (pk, vk)
+    Ok((pk, vk))
   }
 
   /// Create a new `CompressedSNARK`
@@ -785,8 +788,10 @@ mod tests {
   type G2 = pasta_curves::vesta::Point;
   type EE1 = provider::ipa_pc::EvaluationEngine<G1>;
   type EE2 = provider::ipa_pc::EvaluationEngine<G2>;
-  type S1 = spartan::RelaxedR1CSSNARK<G1, EE1>;
-  type S2 = spartan::RelaxedR1CSSNARK<G2, EE2>;
+  type CC1 = spartan::spark::TrivialCompComputationEngine<G1, EE1>;
+  type CC2 = spartan::spark::TrivialCompComputationEngine<G2, EE2>;
+  type S1 = spartan::RelaxedR1CSSNARK<G1, EE1, CC1>;
+  type S2 = spartan::RelaxedR1CSSNARK<G2, EE2, CC2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -1011,10 +1016,95 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp);
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
     let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+
+    // verify the compressed SNARK
+    let res = compressed_snark.verify(
+      &vk,
+      num_steps,
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
+    );
+    assert!(res.is_ok());
+  }
+
+  #[test]
+  fn test_ivc_nontrivial_with_spark_compression() {
+    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_secondary = CubicCircuit::default();
+
+    // produce public parameters
+    let pp = PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+
+    let num_steps = 3;
+
+    // produce a recursive SNARK
+    let mut recursive_snark: Option<
+      RecursiveSNARK<
+        G1,
+        G2,
+        TrivialTestCircuit<<G1 as Group>::Scalar>,
+        CubicCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
+
+    for _i in 0..num_steps {
+      let res = RecursiveSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        circuit_primary.clone(),
+        circuit_secondary.clone(),
+        vec![<G1 as Group>::Scalar::one()],
+        vec![<G2 as Group>::Scalar::zero()],
+      );
+      assert!(res.is_ok());
+      recursive_snark = Some(res.unwrap());
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
+    );
+    assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
+    for _i in 0..num_steps {
+      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
+    }
+    assert_eq!(zn_secondary, zn_secondary_direct);
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
+
+    // run the compressed snark with Spark compiler
+    type CC1Prime = spartan::spark::SparkEngine<G1, EE1>;
+    type CC2Prime = spartan::spark::SparkEngine<G2, EE2>;
+    type S1Prime = spartan::RelaxedR1CSSNARK<G1, EE1, CC1Prime>;
+    type S2Prime = spartan::RelaxedR1CSSNARK<G2, EE2, CC2Prime>;
+
+    // produce the prover and verifier keys for compressed snark
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1Prime, S2Prime>::setup(&pp).unwrap();
+
+    // produce a compressed SNARK
+    let res = CompressedSNARK::<_, _, _, _, S1Prime, S2Prime>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1162,7 +1252,7 @@ mod tests {
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp);
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
     let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);

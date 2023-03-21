@@ -22,12 +22,10 @@ pub trait NovaWitness<G: Group> {
   ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError>;
 }
 
-/// `NovaShape` provides methods for acquiring `R1CSShape` and `R1CSGens` from implementers.
+/// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
 pub trait NovaShape<G: Group> {
-  /// Return an appropriate `R1CSShape` struct.
-  fn r1cs_shape(&self) -> R1CSShape<G>;
-  /// Return an appropriate `CommitmentKey` struct.
-  fn commitment_key(&self) -> CommitmentKey<G>;
+  /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
+  fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G>
@@ -54,7 +52,7 @@ impl<G: Group> NovaShape<G> for ShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
-  fn r1cs_shape(&self) -> R1CSShape<G> {
+  fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
     let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
@@ -84,11 +82,9 @@ where
       res.unwrap()
     };
 
-    S
-  }
+    let ck = R1CS::<G>::commitment_key(&S);
 
-  fn commitment_key(&self) -> CommitmentKey<G> {
-    R1CS::<G>::commitment_key(self.num_constraints(), self.num_aux())
+    (S, ck)
   }
 }
 

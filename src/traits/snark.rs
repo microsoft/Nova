@@ -19,7 +19,10 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Produces the keys for the prover and the verifier
-  fn setup(ck: &CommitmentKey<G>, S: &R1CSShape<G>) -> (Self::ProverKey, Self::VerifierKey);
+  fn setup(
+    ck: &CommitmentKey<G>,
+    S: &R1CSShape<G>,
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError>;
 
   /// Produces a new SNARK for a relaxed R1CS
   fn prove(
