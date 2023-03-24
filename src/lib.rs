@@ -17,6 +17,7 @@ mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
+mod parallel_circuit;
 
 // public modules
 pub mod errors;
