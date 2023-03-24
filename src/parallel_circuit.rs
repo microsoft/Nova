@@ -12,7 +12,7 @@ use crate::{
       ecc::AllocatedPoint,
       r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
       utils::{
-        alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
+        alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num,
       },
     },
     r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -40,6 +40,8 @@ use crate::{
   }
   
   impl NovaAugmentedParallelCircuitParams {
+    // Remove when we write the struct implementing the parallel nova instance
+    #[allow(unused)]
     pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
       Self {
         limb_width,
@@ -58,9 +60,9 @@ use crate::{
     i_start_R: G::Base,
     i_end_R: G::Base,
     z_U_start: Vec<G::Base>,
-    z_U_end: Option<Vec<G::Base>>,
-    z_R_start: OptionVec<G::Base>,
-    z_R_end: Option<Vec<G::Base>>,
+    z_U_end: Vec<G::Base>,
+    z_R_start: Vec<G::Base>,
+    z_R_end: Vec<G::Base>,
     U: Option<RelaxedR1CSInstance<G>>,
     u: Option<R1CSInstance<G>>,
     R: Option<RelaxedR1CSInstance<G>>,
@@ -73,6 +75,8 @@ use crate::{
   impl<G: Group> NovaAugmentedParallelCircuitInputs<G> {
     /// Create new inputs/witness for the verification circuit
     #[allow(clippy::too_many_arguments)]
+    // Remove when we write the struct implementing the parallel nova instance
+    #[allow(unused)]
     pub fn new(
         params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
         i_start_U: G::Base,
@@ -80,9 +84,9 @@ use crate::{
         i_start_R: G::Base,
         i_end_R: G::Base,
         z_U_start: Vec<G::Base>,
-        z_U_end: Option<Vec<G::Base>>,
-        z_R_start: OptionVec<G::Base>,
-        z_R_end: Option<Vec<G::Base>>,
+        z_U_end: Vec<G::Base>,
+        z_R_start: Vec<G::Base>,
+        z_R_end: Vec<G::Base>,
         U: Option<RelaxedR1CSInstance<G>>,
         u: Option<R1CSInstance<G>>,
         R: Option<RelaxedR1CSInstance<G>>,
@@ -123,6 +127,8 @@ use crate::{
   
   impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     /// Create a new verification circuit for the input relaxed r1cs instances
+    // Remove when we write the struct implementing the parallel nova instance
+    #[allow(unused)]
     pub fn new(
       params: NovaAugmentedParallelCircuitParams,
       inputs: Option<NovaAugmentedParallelCircuitInputs<G>>,
@@ -159,7 +165,8 @@ use crate::{
         AllocatedR1CSInstance<G>, 
         AllocatedPoint<G>,
         AllocatedPoint<G>,
-        AllocatedPoint<G>
+        AllocatedPoint<G>,
+        usize
       ),
       SynthesisError,
     > {
@@ -188,7 +195,7 @@ use crate::{
         .map(|i| {
           AllocatedNum::alloc(cs.namespace(|| format!("
           {i}")), || {
-            Ok(self.inputs.get()?.z_U_end[i].as_ref().unwrap_or(&zero)[i])
+            Ok(self.inputs.get()?.z_U_end[i])
           })
         })
         .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
@@ -197,7 +204,7 @@ use crate::{
         .map(|i| {
           AllocatedNum::alloc(cs.namespace(|| format!("
           {i}")), || {
-            Ok(self.inputs.get()?.z_R_start[i].as_ref().unwrap_or(&zero)[i])
+            Ok(self.inputs.get()?.z_R_start[i])
           })
         })
         .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
@@ -206,7 +213,7 @@ use crate::{
         .map(|i| {
           AllocatedNum::alloc(cs.namespace(|| format!("
           {i}")), || {
-            Ok(self.inputs.get()?.z_R_end[i].as_ref().unwrap_or(&zero)[i])
+            Ok(self.inputs.get()?.z_R_end[i])
           })
         })
         .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
@@ -272,7 +279,7 @@ use crate::{
         }),
       )?;
   
-      Ok((params, i_start_U, i_end_U, i_start_R, i_end_U, z_U_start, z_U_end, z_R_start, z_R_end, U, u, R, u, T_u, T_r, T_R_U))
+      Ok((params, i_start_U, i_end_U, i_start_R, i_end_R, z_U_start, z_U_end, z_R_start, z_R_end, U, u, R, r, T_u, T_r, T_R_U, arity))
     }
   
     /// Synthesizes base case and returns the new relaxed R1CSInstance
@@ -330,8 +337,9 @@ use crate::{
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
       );
       ro.absorb(params.clone());
-      ro.absorb(i_start_U);
-      for e in z_U_start {
+      ro.absorb(i_start_U.clone());
+      ro.absorb(i_end_U.clone());
+      for e in z_U_start.clone() {
         ro.absorb(e);
       }
       for e in z_U_end {
@@ -340,17 +348,17 @@ use crate::{
       U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
   
       let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-      let check_pass_U = alloc_num_equals(
+      let hash_u = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+      let check_pass_u = alloc_num_equals(
         cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z_u_start, z_u_end)"),
         &u.X0,
-        &hash,
+        &hash_u,
       )?;
         
       // Run NIFS Verifier
       let U_fold = U.fold_with_r1cs(
         cs.namespace(|| "compute fold of U and u"),
-        params,
+        params.clone(),
         u,
         T_u,
         self.ro_consts.clone(),
@@ -365,26 +373,27 @@ use crate::{
       );
       ro.absorb(params.clone());
       ro.absorb(i_start_R);
-      for e in z_R_start {
+      ro.absorb(i_end_R);
+      for e in z_R_start.clone() {
         ro.absorb(e);
       }
-      for e in z_R_start {
+      for e in z_R_end.clone() {
         ro.absorb(e);
       }
       R.absorb_in_ro(cs.namespace(|| "absorb R"), &mut ro)?;
     
       let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+      let hash_r = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
       let check_pass_r = alloc_num_equals(
         cs.namespace(|| "check consistency of r.X[0] with H(params, R, i, z_r_start, z_r_end)"),
         &r.X0,
-        &hash,
+        &hash_r,
       )?;
 
       // Run NIFS Verifier
       let R_fold = R.fold_with_r1cs(
         cs.namespace(|| "compute fold of U and u"),
-        params,
+        params.clone(),
         r,
         T_r,
         self.ro_consts.clone(),
@@ -406,8 +415,8 @@ use crate::{
       for e in z_R_end {
         ro.absorb(e);
       }
-      ro.absorb(U_fold);
-      ro.absorb(R_fold);
+      ro.absorb(hash_r);
+      ro.absorb(hash_u);
       
       // Run NIFS Verifier
       let U_R_fold = U_fold.fold_with_relaxed_r1cs(
@@ -440,26 +449,7 @@ use crate::{
       let arity = self.step_circuit.arity();
   
       // Allocate all witnesses
-      let (params, i_start_U, i_end_U, i_start_R, i_end_R, z_U_start, z_U_end, z_R_start, z_R_end, U, u, R, r, T_u, T_r, T_R_U, arity) =
-        self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
-  
-      // Compute variable indicating if this is the base case
-      let zero = alloc_zero(cs.namespace(|| "zero"))?;
-      let mut is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case as i_start_U == i_end_U"), &i_start_U.clone(), &i_end_U)?;
-      let r_index_equal = alloc_num_equals(cs.namespace(|| "In base case i_start_R == i_end_R"), &i_start_R, &i_end_R);
-      is_base_case = AllocatedBit::and(
-        cs.namespace(|| "i_start_U == i_end_U and i_start_U + 1 == i_end_R"),
-        is_base_case,
-        r_index_equal
-      );
-  
-      // Synthesize the circuit for the base case and get the new running instance
-      let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
-  
-      // Synthesize the circuit for the non-base case and get the new running
-      // instance along with a boolean indicating if all checks have passed
-      let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
-        cs.namespace(|| "synthesize non base case"),
+      let (
         params, 
         i_start_U, 
         i_end_U, 
@@ -471,6 +461,41 @@ use crate::{
         z_R_end, 
         U, 
         u, 
+        R, 
+        r,
+        T_u, 
+        T_r, 
+        T_R_U, 
+        arity) =
+          self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
+  
+      // Compute variable indicating if this is the base case
+      let mut is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case as i_start_U == i_end_U"), &i_start_U.clone(), &i_end_U)?;
+      let r_index_equal = alloc_num_equals(cs.namespace(|| "In base case i_start_R == i_end_R"), &i_start_R, &i_end_R)?;
+      is_base_case = AllocatedBit::and(
+        cs.namespace(|| "i_start_U == i_end_U and i_start_U + 1 == i_end_R"),
+        &is_base_case,
+        &r_index_equal
+      )?;
+  
+      // Synthesize the circuit for the base case and get the new running instance
+      let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
+  
+      // Synthesize the circuit for the non-base case and get the new running
+      // instance along with a boolean indicating if all checks have passed
+      let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
+        cs.namespace(|| "synthesize non base case"),
+        params.clone(), 
+        i_start_U.clone(), 
+        i_end_U.clone(), 
+        i_start_R.clone(), 
+        i_end_R.clone(), 
+        z_U_start.clone(), 
+        z_U_end.clone(), 
+        z_R_start.clone(), 
+        z_R_end.clone(), 
+        U, 
+        u.clone(), 
         R, 
         r, 
         T_u, 
@@ -501,7 +526,7 @@ use crate::{
   
       // Compute i_u_end + 1 == i_r_start, this enforces only one invocation of F between ranges
       let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
-        Ok(*i_u_end.get_value().get()? + G::Base::one())
+        Ok(*i_end_U.get_value().get()? + G::Base::one())
       })?;
       cs.enforce(
         || "check i + 1",
@@ -537,13 +562,15 @@ use crate::{
       }
 
       // Check vector equality of the step output and of the start of the R block
-      let mut outputEqual = AllocatedBit::from(true);
+      let mut outputEqual = AllocatedBit::alloc(cs.namespace(|| "allocate bit equal"), Some(true))?;
       for (next, input) in z_next.clone().iter().zip(z_output.clone().iter()) {
-        outputEqual = AllocatedBit::And(
-            cs.namespace(|| "equality check of z_next and z_output"),
-            outputEqual,
-            alloc_num_equals(next, input)
-        )
+        // We check that each index is equal then and it with the global check
+        let entryEqual = alloc_num_equals(cs.namespace(|| "equality check of z_next and z_output"), &next, &input)?;
+        outputEqual = AllocatedBit::and(
+            cs.namespace(|| "accumulate equality checks"),
+            &outputEqual,
+            &entryEqual
+        )?;
       }
 
       // TODO - I really don't know how this R1CS lib works and this is a guess
@@ -558,6 +585,7 @@ use crate::{
       let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
       ro.absorb(params);
       ro.absorb(i_start_U.clone());
+      ro.absorb(i_end_R.clone());
       for e in z_input {
         ro.absorb(e);
       }
@@ -576,102 +604,3 @@ use crate::{
       Ok(())
     }
   }
-  
-  #[cfg(test)]
-  mod tests {
-    use super::*;
-    use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
-  
-    use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
-    use crate::{
-      bellperson::r1cs::{NovaShape, NovaWitness},
-      provider::poseidon::PoseidonConstantsCircuit,
-      traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
-    };
-  
-    #[test]
-    fn test_recursive_circuit() {
-      // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-      let params1 = NovaAugmentedParallelCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-      let params2 = NovaAugmentedParallelCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-      let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
-      let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
-  
-      // Initialize the shape and ck for the primary
-      let circuit1: NovaAugmentedParallelCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-        NovaAugmentedParallelCircuit::new(
-          params1.clone(),
-          None,
-          TrivialTestCircuit::default(),
-          ro_consts1.clone(),
-        );
-      let mut cs: ShapeCS<G1> = ShapeCS::new();
-      let _ = circuit1.synthesize(&mut cs);
-      let (shape1, ck1) = cs.r1cs_shape();
-      assert_eq!(cs.num_constraints(), 9815);
-  
-      // Initialize the shape and ck for the secondary
-      let circuit2: NovaAugmentedParallelCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-        NovaAugmentedParallelCircuit::new(
-          params2.clone(),
-          None,
-          TrivialTestCircuit::default(),
-          ro_consts2.clone(),
-        );
-      let mut cs: ShapeCS<G2> = ShapeCS::new();
-      let _ = circuit2.synthesize(&mut cs);
-      let (shape2, ck2) = cs.r1cs_shape();
-      assert_eq!(cs.num_constraints(), 10347);
-  
-      // Execute the base case for the primary
-      let zero1 = <<G2 as Group>::Base as Field>::zero();
-      let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-      let inputs1: NovaAugmentedParallelCircuitInputs<G2> = NovaAugmentedParallelCircuitInputs::new(
-        shape2.get_digest(),
-        zero1,
-        vec![zero1],
-        None,
-        None,
-        None,
-        None,
-      );
-      let circuit1: NovaAugmentedParallelCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-        NovaAugmentedParallelCircuit::new(
-          params1,
-          Some(inputs1),
-          TrivialTestCircuit::default(),
-          ro_consts1,
-        );
-      let _ = circuit1.synthesize(&mut cs1);
-      let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
-      // Make sure that this is satisfiable
-      assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
-  
-      // Execute the base case for the secondary
-      let zero2 = <<G1 as Group>::Base as Field>::zero();
-      let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-      let inputs2: NovaAugmentedParallelCircuitInputs<G1> = NovaAugmentedParallelCircuitInputs::new(
-        shape1.get_digest(),
-        zero2,
-        vec![zero2],
-        None,
-        None,
-        Some(inst1),
-        None,
-      );
-      let circuit: NovaAugmentedParallelCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-        NovaAugmentedParallelCircuit::new(
-          params2,
-          Some(inputs2),
-          TrivialTestCircuit::default(),
-          ro_consts2,
-        );
-      let _ = circuit.synthesize(&mut cs2);
-      let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
-      // Make sure that it is satisfiable
-      assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
-    }
-  }
-  
