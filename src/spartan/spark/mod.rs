@@ -3,7 +3,7 @@
 use crate::{
   errors::NovaError,
   r1cs::R1CSShape,
-  spartan::{math::Math, CompCommitmentEngineTrait},
+  spartan::{math::Math, CompCommitmentEngineTrait, PolyEvalInstance, PolyEvalWitness},
   traits::{evaluation::EvaluationEngineTrait, Group, TranscriptReprTrait},
   CommitmentKey,
 };
@@ -72,10 +72,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
     _comm: &Self::Commitment,
     _r: &(&[G::Scalar], &[G::Scalar]),
     _transcript: &mut G::TE,
-  ) -> Result<Self::EvaluationArgument, NovaError> {
-    Ok(TrivialEvaluationArgument {
-      _p: Default::default(),
-    })
+  ) -> Result<
+    (
+      Self::EvaluationArgument,
+      Vec<(PolyEvalWitness<G>, PolyEvalInstance<G>)>,
+    ),
+    NovaError,
+  > {
+    Ok((
+      TrivialEvaluationArgument {
+        _p: Default::default(),
+      },
+      Vec::new(),
+    ))
   }
 
   /// verifies an evaluation of R1CS matrices viewed as polynomials
@@ -85,10 +94,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
     r: &(&[G::Scalar], &[G::Scalar]),
     _arg: &Self::EvaluationArgument,
     _transcript: &mut G::TE,
-  ) -> Result<(G::Scalar, G::Scalar, G::Scalar), NovaError> {
+  ) -> Result<(G::Scalar, G::Scalar, G::Scalar, Vec<PolyEvalInstance<G>>), NovaError> {
     let (r_x, r_y) = r;
     let evals = SparsePolynomial::<G>::multi_evaluate(&[&comm.S.A, &comm.S.B, &comm.S.C], r_x, r_y);
-    Ok((evals[0], evals[1], evals[2]))
+    Ok((evals[0], evals[1], evals[2], Vec::new()))
   }
 }
 
@@ -188,19 +197,35 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
     comm: &Self::Commitment,
     r: &(&[G::Scalar], &[G::Scalar]),
     transcript: &mut G::TE,
-  ) -> Result<Self::EvaluationArgument, NovaError> {
-    let arg_A =
+  ) -> Result<
+    (
+      Self::EvaluationArgument,
+      Vec<(PolyEvalWitness<G>, PolyEvalInstance<G>)>,
+    ),
+    NovaError,
+  > {
+    let (arg_A, u_w_vec_A) =
       SparseEvaluationArgument::prove(ck, pk_ee, &decomm.A, &S.A, &comm.comm_A, r, transcript)?;
-    let arg_B =
+    let (arg_B, u_w_vec_B) =
       SparseEvaluationArgument::prove(ck, pk_ee, &decomm.B, &S.B, &comm.comm_B, r, transcript)?;
-    let arg_C =
+    let (arg_C, u_w_vec_C) =
       SparseEvaluationArgument::prove(ck, pk_ee, &decomm.C, &S.C, &comm.comm_C, r, transcript)?;
 
-    Ok(SparkEvaluationArgument {
-      arg_A,
-      arg_B,
-      arg_C,
-    })
+    let u_w_vec = {
+      let mut u_w_vec = u_w_vec_A;
+      u_w_vec.extend(u_w_vec_B);
+      u_w_vec.extend(u_w_vec_C);
+      u_w_vec
+    };
+
+    Ok((
+      SparkEvaluationArgument {
+        arg_A,
+        arg_B,
+        arg_C,
+      },
+      u_w_vec,
+    ))
   }
 
   /// verifies an evaluation of R1CS matrices viewed as polynomials
@@ -210,11 +235,18 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
     r: &(&[G::Scalar], &[G::Scalar]),
     arg: &Self::EvaluationArgument,
     transcript: &mut G::TE,
-  ) -> Result<(G::Scalar, G::Scalar, G::Scalar), NovaError> {
-    let eval_A = arg.arg_A.verify(vk_ee, &comm.comm_A, r, transcript)?;
-    let eval_B = arg.arg_B.verify(vk_ee, &comm.comm_B, r, transcript)?;
-    let eval_C = arg.arg_C.verify(vk_ee, &comm.comm_C, r, transcript)?;
+  ) -> Result<(G::Scalar, G::Scalar, G::Scalar, Vec<PolyEvalInstance<G>>), NovaError> {
+    let (eval_A, u_vec_A) = arg.arg_A.verify(vk_ee, &comm.comm_A, r, transcript)?;
+    let (eval_B, u_vec_B) = arg.arg_B.verify(vk_ee, &comm.comm_B, r, transcript)?;
+    let (eval_C, u_vec_C) = arg.arg_C.verify(vk_ee, &comm.comm_C, r, transcript)?;
 
-    Ok((eval_A, eval_B, eval_C))
+    let u_vec = {
+      let mut u_vec = u_vec_A;
+      u_vec.extend(u_vec_B);
+      u_vec.extend(u_vec_C);
+      u_vec
+    };
+
+    Ok((eval_A, eval_B, eval_C, u_vec))
   }
 }

@@ -7,7 +7,7 @@ use crate::{
     math::Math,
     polynomial::{EqPolynomial, MultilinearPolynomial},
     spark::product::{IdentityPolynomial, ProductArgumentBatched},
-    SumcheckProof,
+    PolyEvalInstance, PolyEvalWitness, SumcheckProof,
   },
   traits::{
     commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait, Group,
@@ -276,7 +276,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
     comm: &SparsePolynomialCommitment<G>,
     r: &(&[G::Scalar], &[G::Scalar]),
     transcript: &mut G::TE,
-  ) -> Result<Self, NovaError> {
+  ) -> Result<(Self, Vec<(PolyEvalWitness<G>, PolyEvalInstance<G>)>), NovaError> {
     let (r_x, r_y) = r;
     let eval = SparsePolynomial::<G>::multi_evaluate(&[sparse], r_x, r_y)[0];
 
@@ -492,7 +492,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       &eval_col_audit_ts,
     )?;
 
-    Ok(Self {
+    let eval_arg = Self {
       // claimed evaluation
       eval,
 
@@ -530,7 +530,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       arg_row_col_joint,
       arg_row_audit_ts,
       arg_col_audit_ts,
-    })
+    };
+
+    Ok((eval_arg, Vec::new()))
   }
 
   pub fn verify(
@@ -539,7 +541,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
     comm: &SparsePolynomialCommitment<G>,
     r: &(&[G::Scalar], &[G::Scalar]),
     transcript: &mut G::TE,
-  ) -> Result<G::Scalar, NovaError> {
+  ) -> Result<(G::Scalar, Vec<PolyEvalInstance<G>>), NovaError> {
     let (r_x, r_y) = r;
 
     // append the transcript and scalar
@@ -727,6 +729,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       &self.arg_col_audit_ts,
     )?;
 
-    Ok(self.eval)
+    Ok((self.eval, Vec::new()))
   }
 }
