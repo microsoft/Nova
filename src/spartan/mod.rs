@@ -81,7 +81,7 @@ impl<G: Group> PolyEvalInstance<G> {
 }
 
 /// A trait that defines the behavior of a computation commitment engine
-pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub trait CompCommitmentEngineTrait<G: Group> {
   /// A type that holds opening hint
   type Decommitment: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
@@ -105,7 +105,6 @@ pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = 
   /// proves an evaluation of R1CS matrices viewed as polynomials
   fn prove(
     ck: &CommitmentKey<G>,
-    ek: &EE::ProverKey,
     S: &R1CSShape<G>,
     decomm: &Self::Decommitment,
     comm: &Self::Commitment,
@@ -121,7 +120,6 @@ pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = 
 
   /// verifies an evaluation of R1CS matrices viewed as polynomials and returns verified evaluations
   fn verify(
-    vk: &EE::VerifierKey,
     comm: &Self::Commitment,
     r: &(&[G::Scalar], &[G::Scalar]),
     arg: &Self::EvaluationArgument,
@@ -135,7 +133,7 @@ pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = 
 pub struct ProverKey<
   G: Group,
   EE: EvaluationEngineTrait<G, CE = G::CE>,
-  CC: CompCommitmentEngineTrait<G, EE>,
+  CC: CompCommitmentEngineTrait<G>,
 > {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
@@ -149,7 +147,7 @@ pub struct ProverKey<
 pub struct VerifierKey<
   G: Group,
   EE: EvaluationEngineTrait<G, CE = G::CE>,
-  CC: CompCommitmentEngineTrait<G, EE>,
+  CC: CompCommitmentEngineTrait<G>,
 > {
   num_cons: usize,
   num_vars: usize,
@@ -165,7 +163,7 @@ pub struct VerifierKey<
 pub struct RelaxedR1CSSNARK<
   G: Group,
   EE: EvaluationEngineTrait<G, CE = G::CE>,
-  CC: CompCommitmentEngineTrait<G, EE>,
+  CC: CompCommitmentEngineTrait<G>,
 > {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
@@ -178,7 +176,7 @@ pub struct RelaxedR1CSSNARK<
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngineTrait<G, EE>>
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngineTrait<G>>
   RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE, CC>
 {
   type ProverKey = ProverKey<G, EE, CC>;
@@ -358,7 +356,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngin
     // we now prove evaluations of R1CS matrices at (r_x, r_y)
     let (eval_arg_cc, mut w_u_vec) = CC::prove(
       ck,
-      &pk.pk_ee,
       &pk.S,
       &pk.decomm,
       &pk.comm,
@@ -555,13 +552,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngin
     };
 
     // verify evaluation argument to retrieve evaluations of R1CS matrices
-    let (eval_A, eval_B, eval_C, mut u_vec) = CC::verify(
-      &vk.vk_ee,
-      &vk.comm,
-      &(&r_x, &r_y),
-      &self.eval_arg_cc,
-      &mut transcript,
-    )?;
+    let (eval_A, eval_B, eval_C, mut u_vec) =
+      CC::verify(&vk.comm, &(&r_x, &r_y), &self.eval_arg_cc, &mut transcript)?;
 
     let claim_inner_final_expected = (eval_A + r * eval_B + r * r * eval_C) * eval_Z;
     if claim_inner_final != claim_inner_final_expected {

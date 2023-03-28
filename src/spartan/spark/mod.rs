@@ -43,7 +43,7 @@ impl<G: Group> TranscriptReprTrait<G> for TrivialCommitment<G> {
   }
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTrait<G, EE>
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTrait<G>
   for TrivialCompComputationEngine<G, EE>
 {
   type Decommitment = TrivialDecommitment<G>;
@@ -66,7 +66,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
   /// proves an evaluation of R1CS matrices viewed as polynomials
   fn prove(
     _ck: &CommitmentKey<G>,
-    _ek: &EE::ProverKey,
     _S: &R1CSShape<G>,
     _decomm: &Self::Decommitment,
     _comm: &Self::Commitment,
@@ -89,7 +88,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
 
   /// verifies an evaluation of R1CS matrices viewed as polynomials
   fn verify(
-    _vk: &EE::VerifierKey,
     comm: &Self::Commitment,
     r: &(&[G::Scalar], &[G::Scalar]),
     _arg: &Self::EvaluationArgument,
@@ -107,9 +105,8 @@ mod sparse;
 use sparse::{SparseEvaluationArgument, SparsePolynomial, SparsePolynomialCommitment};
 
 /// A non-trivial implementation of `CompCommitmentEngineTrait` using Spartan's SPARK compiler
-pub struct SparkEngine<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct SparkEngine<G: Group> {
   _p: PhantomData<G>,
-  _p2: PhantomData<EE>,
 }
 
 /// An implementation of Spark decommitment
@@ -165,18 +162,16 @@ impl<G: Group> TranscriptReprTrait<G> for SparkCommitment<G> {
 /// Provides an implementation of a trivial evaluation argument
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct SparkEvaluationArgument<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
-  arg_A: SparseEvaluationArgument<G, EE>,
-  arg_B: SparseEvaluationArgument<G, EE>,
-  arg_C: SparseEvaluationArgument<G, EE>,
+pub struct SparkEvaluationArgument<G: Group> {
+  arg_A: SparseEvaluationArgument<G>,
+  arg_B: SparseEvaluationArgument<G>,
+  arg_C: SparseEvaluationArgument<G>,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTrait<G, EE>
-  for SparkEngine<G, EE>
-{
+impl<G: Group> CompCommitmentEngineTrait<G> for SparkEngine<G> {
   type Decommitment = SparkDecommitment<G>;
   type Commitment = SparkCommitment<G>;
-  type EvaluationArgument = SparkEvaluationArgument<G, EE>;
+  type EvaluationArgument = SparkEvaluationArgument<G>;
 
   /// commits to R1CS matrices
   fn commit(
@@ -191,7 +186,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
   /// proves an evaluation of R1CS matrices viewed as polynomials
   fn prove(
     ck: &CommitmentKey<G>,
-    pk_ee: &EE::ProverKey,
     S: &R1CSShape<G>,
     decomm: &Self::Decommitment,
     comm: &Self::Commitment,
@@ -205,11 +199,11 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
     NovaError,
   > {
     let (arg_A, u_w_vec_A) =
-      SparseEvaluationArgument::prove(ck, pk_ee, &decomm.A, &S.A, &comm.comm_A, r, transcript)?;
+      SparseEvaluationArgument::prove(ck, &decomm.A, &S.A, &comm.comm_A, r, transcript)?;
     let (arg_B, u_w_vec_B) =
-      SparseEvaluationArgument::prove(ck, pk_ee, &decomm.B, &S.B, &comm.comm_B, r, transcript)?;
+      SparseEvaluationArgument::prove(ck, &decomm.B, &S.B, &comm.comm_B, r, transcript)?;
     let (arg_C, u_w_vec_C) =
-      SparseEvaluationArgument::prove(ck, pk_ee, &decomm.C, &S.C, &comm.comm_C, r, transcript)?;
+      SparseEvaluationArgument::prove(ck, &decomm.C, &S.C, &comm.comm_C, r, transcript)?;
 
     let u_w_vec = {
       let mut u_w_vec = u_w_vec_A;
@@ -230,15 +224,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> CompCommitmentEngineTra
 
   /// verifies an evaluation of R1CS matrices viewed as polynomials
   fn verify(
-    vk_ee: &EE::VerifierKey,
     comm: &Self::Commitment,
     r: &(&[G::Scalar], &[G::Scalar]),
     arg: &Self::EvaluationArgument,
     transcript: &mut G::TE,
   ) -> Result<(G::Scalar, G::Scalar, G::Scalar, Vec<PolyEvalInstance<G>>), NovaError> {
-    let (eval_A, u_vec_A) = arg.arg_A.verify(vk_ee, &comm.comm_A, r, transcript)?;
-    let (eval_B, u_vec_B) = arg.arg_B.verify(vk_ee, &comm.comm_B, r, transcript)?;
-    let (eval_C, u_vec_C) = arg.arg_C.verify(vk_ee, &comm.comm_C, r, transcript)?;
+    let (eval_A, u_vec_A) = arg.arg_A.verify(&comm.comm_A, r, transcript)?;
+    let (eval_B, u_vec_B) = arg.arg_B.verify(&comm.comm_B, r, transcript)?;
+    let (eval_C, u_vec_C) = arg.arg_C.verify(&comm.comm_C, r, transcript)?;
 
     let u_vec = {
       let mut u_vec = u_vec_A;
