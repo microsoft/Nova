@@ -375,7 +375,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, CC: CompCommitmentEngin
     ));
 
     w_u_vec.push((
-      PolyEvalWitness { p: W.E.clone() },
+      PolyEvalWitness { p: W.E },
       PolyEvalInstance {
         c: U.comm_E,
         x: r_x,
