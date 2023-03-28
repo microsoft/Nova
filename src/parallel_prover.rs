@@ -14,15 +14,23 @@
 //! z_end that the output is z_start of the right node
 
 use crate::{
+  bellperson::{
+    r1cs::{NovaShape, NovaWitness},
+    shape_cs::ShapeCS,
+    solver::SatisfyingAssignment,
+  },
+  circuit::NovaAugmentedCircuitParams,
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  errors::NovaError,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
-    utils::{
-      alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num,
-    },
+    utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num},
   },
-  r1cs::{RelaxedR1CSInstance, R1CSShape, RelaxedR1CSWitness},
+  nifs::NIFS,
+  parallel_circuit::{NovaAugmentedParallelCircuit, NovaAugmentedParallelCircuitInputs},
+  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     circuit::StepCircuit,
     commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -30,15 +38,6 @@ use crate::{
     AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
   },
   Commitment,
-  parallel_circuit::{NovaAugmentedParallelCircuit, NovaAugmentedParallelCircuitInputs},
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
-  circuit::NovaAugmentedCircuitParams,
-  bellperson::{
-    r1cs::{NovaShape, NovaWitness},
-    shape_cs::ShapeCS,
-    solver::SatisfyingAssignment},
-  errors::NovaError,
-  nifs::NIFS,
 };
 use bellperson::{
   gadgets::{
@@ -48,10 +47,10 @@ use bellperson::{
   },
   Circuit, ConstraintSystem, SynthesisError,
 };
-use rayon::prelude::*;
-use ff::Field;
-use serde::{Deserialize, Serialize};
 use core::marker::PhantomData;
+use ff::Field;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 // TODO - This is replicated from lib but we should actually instead have another file for it and use both here and there
 
@@ -61,11 +60,11 @@ type CommitmentKey<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitme
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar>,
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   F_arity_primary: usize,
   F_arity_secondary: usize,
@@ -84,11 +83,11 @@ pub struct PublicParams<G1, G2, C1, C2>
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar>,
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
@@ -166,17 +165,16 @@ impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
 
 // This ends the 1 to 1 copied code
 
-
 /// A type that holds one node the tree based nova proof. This will have both running instances and fresh instances
 /// of the primary and secondary circuit.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NovaTreeNode<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar>,
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   // The running instance of the primary
   r_W_primary: RelaxedR1CSWitness<G1>,
@@ -201,11 +199,11 @@ pub struct NovaTreeNode<G1, G2, C1, C2>
 }
 
 impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar>,
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Creates a tree node which proves one computation and runs a base case F' proof. The running instances
   /// are set to defaults and the new proofs are set ot this base case proof.
@@ -221,24 +219,25 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
   ) -> Result<Self, NovaError> {
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: NovaAugmentedParallelCircuitInputs<G2> = NovaAugmentedParallelCircuitInputs::new(
-      pp.r1cs_shape_secondary.get_digest(),
-      G1::Scalar::from(i.try_into().unwrap()),
-      G1::Scalar::from((i + 1).try_into().unwrap()),
-      G1::Scalar::from((i).try_into().unwrap()),
-      G1::Scalar::from((i + 1).try_into().unwrap()),
-      z_start_primary.clone(),
-      z_start_primary.clone(),
-      z_end_primary.clone(),
-      z_end_primary.clone(),
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-    );
+    let inputs_primary: NovaAugmentedParallelCircuitInputs<G2> =
+      NovaAugmentedParallelCircuitInputs::new(
+        pp.r1cs_shape_secondary.get_digest(),
+        G1::Scalar::from(i.try_into().unwrap()),
+        G1::Scalar::from((i + 1).try_into().unwrap()),
+        G1::Scalar::from((i).try_into().unwrap()),
+        G1::Scalar::from((i + 1).try_into().unwrap()),
+        z_start_primary.clone(),
+        z_start_primary.clone(),
+        z_end_primary.clone(),
+        z_end_primary.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+      );
 
     let circuit_primary: NovaAugmentedParallelCircuit<G2, C1> = NovaAugmentedParallelCircuit::new(
       pp.augmented_circuit_params_primary.clone(),
@@ -254,24 +253,25 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
 
-    let inputs_secondary: NovaAugmentedParallelCircuitInputs<G1> = NovaAugmentedParallelCircuitInputs::new(
-      pp.r1cs_shape_primary.get_digest(),
-      G2::Scalar::from(i.try_into().unwrap()),
-      G2::Scalar::from((i + 1).try_into().unwrap()),
-      G2::Scalar::from((i).try_into().unwrap()),
-      G2::Scalar::from((i + 1).try_into().unwrap()),
-      z_start_secondary.clone(),
-      z_start_secondary.clone(),
-      z_end_secondary.clone(),
-      z_end_secondary.clone(),
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-    );
+    let inputs_secondary: NovaAugmentedParallelCircuitInputs<G1> =
+      NovaAugmentedParallelCircuitInputs::new(
+        pp.r1cs_shape_primary.get_digest(),
+        G2::Scalar::from(i.try_into().unwrap()),
+        G2::Scalar::from((i + 1).try_into().unwrap()),
+        G2::Scalar::from((i).try_into().unwrap()),
+        G2::Scalar::from((i + 1).try_into().unwrap()),
+        z_start_secondary.clone(),
+        z_start_secondary.clone(),
+        z_end_secondary.clone(),
+        z_end_secondary.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+      );
     let circuit_secondary: NovaAugmentedParallelCircuit<G1, C2> = NovaAugmentedParallelCircuit::new(
       pp.augmented_circuit_params_secondary.clone(),
       Some(inputs_secondary),
@@ -284,13 +284,9 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
       .map_err(|_e| NovaError::UnSat)?;
 
     // IVC proof for the primary circuit
-    let l_w_primary =
-      RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
-    let l_u_primary = RelaxedR1CSInstance::from_r1cs_instance(
-      &pp.ck_primary,
-      &pp.r1cs_shape_primary,
-      &u_primary,
-    );
+    let l_w_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
+    let l_u_primary =
+      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &u_primary);
     let r_W_primary = l_w_primary.clone();
     let r_U_primary = l_u_primary.clone();
 
@@ -305,8 +301,9 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
     let r_W_secondary = l_w_secondary.clone();
     let r_U_secondary = l_u_secondary.clone();
 
-
-    if z_start_primary.len() != pp.F_arity_primary || z_start_secondary.len() != pp.F_arity_secondary {
+    if z_start_primary.len() != pp.F_arity_primary
+      || z_start_secondary.len() != pp.F_arity_secondary
+    {
       return Err(NovaError::InvalidStepOutputLength);
     }
 
@@ -337,12 +334,11 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
   /// consumed is treated as the right node.
   pub fn merge(
     self,
-    right: NovaTreeNode<G1, G2, C1, C2>,
+    right: &NovaTreeNode<G1, G2, C1, C2>,
     pp: &PublicParams<G1, G2, C1, C2>,
-    c_primary: C1,
-    c_secondary: C2,
+    c_primary: &C1,
+    c_secondary: &C2,
   ) -> Result<Self, NovaError> {
-
     // We have to merge two proofs where the right starts one index after the left ends
     // note that this would fail in the proof step but we error earlier here for debugging clarity.
     if self.i_end + 1 != right.i_start {
@@ -378,7 +374,6 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
       &right_W_secondary,
     )?;
 
-
     return Err(NovaError::InvalidStepOutputLength);
   }
 }
@@ -386,64 +381,68 @@ impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
 /// Structure for parallelization
 #[derive(Debug, Clone)]
 pub struct ParallelSNARK<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar> {
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
   nodes: Vec<Vec<NovaTreeNode<G1, G2, C1, C2>>>,
 }
 
 /// Implementation for parallelization SNARK
 impl<G1, G2, C1, C2> ParallelSNARK<G1, G2, C1, C2>
-  where
-    G1: Group<Base=<G2 as Group>::Scalar>,
-    G2: Group<Base=<G1 as Group>::Scalar>,
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar> {
-  pub fn new(pp: &PublicParams<G1, G2, C1, C2>, steps: usize, z0_primary: Vec<G1::Scalar>, z0_secondary: Vec<G2::Scalar>, c_primary: C1, c_secondary: C2) -> Self {
-    c_primary.output(&z0_primary);
-    let mut zi_primary = Vec::<Vec<G1::Scalar>>::new();
-    let mut zi_secondary = Vec::<Vec<G1::Scalar>>::new();
-    zi_primary.push(z0_primary.clone());
-    zi_secondary.push(z0_secondary.clone());
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
+  /// Create a new instance of parallel SNARK
+  pub fn new(
+    pp: &PublicParams<G1, G2, C1, C2>,
+    steps: usize,
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
+    c_primary: C1,
+    c_secondary: C2,
+  ) -> Self {
+    let mut zi = Vec::<(usize, Vec<G1::Scalar>, Vec<G2::Scalar>)>::new();
+    zi.push((0, z0_primary.clone(), z0_secondary.clone()));
     for i in 1..steps {
-      zi_primary.push(c_primary.output(&zi_primary[i - 1]));
-      zi_secondary.push(c_primary.output(&zi_secondary[i - 1]));
+      let (index, prev_primary, prev_secondary) = &zi[i - 1];
+      zi.push((
+        i,
+        c_primary.output(&prev_primary),
+        c_secondary.output(&prev_secondary),
+      ));
     }
-    // Do calculate argumeted input in parallel
-    let leafs_vec = zi_primary.par_iter().map(|index, item| {
-      NovaTreeNode::new(
-        &pp,
-        c_primary,
-        c_secondary,
-        0,
-        z0_primary,
-        zi_primary[zi_primary.len() - 1].clone(),
-        z0_secondary,
-        zi_secondary[zi_secondary.len() - 1].clone(),
-      )
-    }).collect();
+    // Do calculate argumeted inputs in parallel
+    let leafs_vec = zi
+      .par_iter()
+      .map(|item| {
+        let (index, zi_primary, zi_secondary) = item;
+        NovaTreeNode::new(
+          &pp,
+          c_primary.clone(),
+          c_secondary.clone(),
+          *index,
+          z0_primary.clone(),
+          (*zi_primary).clone(),
+          z0_secondary.clone(),
+          (*zi_secondary).clone(),
+        )
+        .expect("Unable to create basic leaf")
+      })
+      .collect();
     // Create a new parallel prover wit basic leafs
     Self {
-      nodes: vec![leafs_vec]
+      nodes: vec![leafs_vec],
     }
   }
 
-
-  /// Prove a single step
-  pub fn prove_step(&self,
-                    pp: &PublicParams<G1, G2, C1, C2>,
-                    c_primary: C1,
-                    c_secondary: C2,
-                    left: &NovaTreeNode<G1, G2, C1, C2>,
-                    right: &NovaTreeNode<G1, G2, C1, C2>) -> Result<NovaTreeNode<G1, G2, C1, C2>, NovaError> {
-    left.clone().merge((*right).clone(), pp, c_primary, c_secondary)
-  }
-
-
   /// Perform the proving in parallel
-  pub fn prove(&mut self, pp: &PublicParams<G1, G2, C1, C2>, c_primary: C1, c_secondary: C2) {
+  pub fn prove(&mut self, pp: &PublicParams<G1, G2, C1, C2>, c_primary: &C1, c_secondary: &C2) {
     // Calculate the max height of the tree
     // ⌈log2(n) + 1⌉
     let max_height = ((self.nodes[0].len() as f64).log2().ceil() + 1f64) as usize;
@@ -451,7 +450,7 @@ impl<G1, G2, C1, C2> ParallelSNARK<G1, G2, C1, C2>
     // Build up the tree with max given height
     for level in 0..max_height {
       // Create new instance of nodes in the next level
-      let mut leafs = Vec::<(&NovaTreeNode<C1, C2, G1, G2>, &NovaTreeNode<C1, C2, G1, G2>)>::new();
+      let mut leafs = Vec::<(&NovaTreeNode<G1, G2, C1, C2>, &NovaTreeNode<G1, G2, C1, C2>)>::new();
 
       // Calculate for current level
       for i in (0..self.nodes[level].len()).step_by(2) {
@@ -463,14 +462,23 @@ impl<G1, G2, C1, C2> ParallelSNARK<G1, G2, C1, C2>
       }
 
       // Push leafs to the next level
-      self.nodes.push(leafs.par_iter().map(|item| {
-        let (l, r) = item;
-        if *l == *r {
-          self.prove_step(pp, c_primary, c_secondary, *l, *l)
-        } else {
-          self.prove_step(pp, c_primary, c_secondary, *l, *r)
-        }
-      }).collect());
+      self.nodes.push(
+        leafs
+          .par_iter()
+          .map(|item| {
+            let (l, r) = item;
+            if std::ptr::eq(*l, *r) {
+              (**l).clone()
+            } else {
+              // self.prove_step(pp, c_primary, c_secondary, *l, *r)
+              (**l)
+                .clone()
+                .merge(*r, pp, c_primary, c_secondary)
+                .expect("Merge the left and right should work")
+            }
+          })
+          .collect(),
+      );
     }
   }
 }
