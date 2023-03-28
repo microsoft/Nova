@@ -17,6 +17,7 @@ mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
+mod parallel_circuit;
 
 // public modules
 pub mod errors;
@@ -24,6 +25,7 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+pub mod parallel_prover;
 
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
@@ -38,7 +40,7 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
+use r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit,
@@ -166,12 +168,12 @@ where
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
-  l_w_primary: R1CSWitness<G1>,
-  l_u_primary: R1CSInstance<G1>,
+  l_w_primary: RelaxedR1CSWitness<G1>,
+  l_u_primary: RelaxedR1CSInstance<G1>,
   r_W_secondary: RelaxedR1CSWitness<G2>,
   r_U_secondary: RelaxedR1CSInstance<G2>,
-  l_w_secondary: R1CSWitness<G2>,
-  l_u_secondary: R1CSInstance<G2>,
+  l_w_secondary: RelaxedR1CSWitness<G2>,
+  l_u_secondary: RelaxedR1CSInstance<G2>,
   i: usize,
   zi_primary: Vec<G1::Scalar>,
   zi_secondary: Vec<G2::Scalar>,
@@ -225,6 +227,9 @@ where
           .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
           .map_err(|_e| NovaError::UnSat)?;
 
+        let u_primary = RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &u_primary);
+        let w_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
+        
         // base case for the secondary
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
@@ -248,19 +253,14 @@ where
           .map_err(|_e| NovaError::UnSat)?;
 
         // IVC proof for the primary circuit
-        let l_w_primary = w_primary;
-        let l_u_primary = u_primary;
-        let r_W_primary =
-          RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
-        let r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
-          &pp.ck_primary,
-          &pp.r1cs_shape_primary,
-          &l_u_primary,
-        );
+        let l_w_primary = w_primary.clone();
+        let l_u_primary = u_primary.clone();
+        let r_W_primary = w_primary;
+        let r_U_primary = u_primary;
 
         // IVC proof of the secondary circuit
-        let l_w_secondary = w_secondary;
-        let l_u_secondary = u_secondary;
+        let l_w_secondary = RelaxedR1CSWitness::<G2>::from_r1cs_witness(&pp.r1cs_shape_secondary, &w_secondary);
+        let l_u_secondary = RelaxedR1CSInstance::<G2>::from_r1cs_instance( &pp.ck_secondary,&pp.r1cs_shape_secondary,&u_secondary);
         let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
         let r_U_secondary =
           RelaxedR1CSInstance::<G2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
@@ -324,6 +324,9 @@ where
           .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
           .map_err(|_e| NovaError::UnSat)?;
 
+        let l_u_primary = RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+        let l_w_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+
         // fold the primary circuit's instance
         let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
           &pp.ck_primary,
@@ -357,6 +360,9 @@ where
         let (l_u_secondary, l_w_secondary) = cs_secondary
           .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
           .map_err(|_e| NovaError::UnSat)?;
+
+        let l_w_secondary = RelaxedR1CSWitness::<G2>::from_r1cs_witness(&pp.r1cs_shape_secondary, &l_w_secondary);
+        let l_u_secondary = RelaxedR1CSInstance::<G2>::from_r1cs_instance( &pp.ck_secondary,&pp.r1cs_shape_secondary,&l_u_secondary);
 
         // update the running instances and witnesses
         let zi_primary = c_primary.output(&r_snark.zi_primary);
@@ -463,7 +469,7 @@ where
           },
           || {
             pp.r1cs_shape_primary
-              .is_sat(&pp.ck_primary, &self.l_u_primary, &self.l_w_primary)
+              .is_sat_relaxed(&pp.ck_primary, &self.l_u_primary, &self.l_w_primary)
           },
         )
       },
@@ -477,7 +483,7 @@ where
             )
           },
           || {
-            pp.r1cs_shape_secondary.is_sat(
+            pp.r1cs_shape_secondary.is_sat_relaxed(
               &pp.ck_secondary,
               &self.l_u_secondary,
               &self.l_w_secondary,
@@ -552,12 +558,12 @@ where
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
-  l_u_primary: R1CSInstance<G1>,
+  l_u_primary: RelaxedR1CSInstance<G1>,
   nifs_primary: NIFS<G1>,
   f_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
-  l_u_secondary: R1CSInstance<G2>,
+  l_u_secondary: RelaxedR1CSInstance<G2>,
   nifs_secondary: NIFS<G2>,
   f_W_snark_secondary: S2,
 

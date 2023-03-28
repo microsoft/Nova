@@ -5,7 +5,7 @@
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
@@ -38,8 +38,8 @@ impl<G: Group> NIFS<G> {
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
-    U2: &R1CSInstance<G>,
-    W2: &R1CSWitness<G>,
+    U2: &RelaxedR1CSInstance<G>,
+    W2: &RelaxedR1CSWitness<G>,
   ) -> Result<(NIFS<G>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
@@ -86,7 +86,7 @@ impl<G: Group> NIFS<G> {
     ro_consts: &ROConstants<G>,
     S_digest: &G::Scalar,
     U1: &RelaxedR1CSInstance<G>,
-    U2: &R1CSInstance<G>,
+    U2: &RelaxedR1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
@@ -117,7 +117,7 @@ impl<G: Group> NIFS<G> {
 mod tests {
   use super::*;
   use crate::{
-    r1cs::R1CS,
+    r1cs::{R1CS, R1CSInstance, R1CSWitness},
     traits::{Group, ROConstantsTrait},
   };
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
@@ -208,13 +208,17 @@ mod tests {
     let mut r_W = RelaxedR1CSWitness::default(shape);
     let mut r_U = RelaxedR1CSInstance::default(ck, shape);
 
+    // Force them into relaxed format
+    let U1 = RelaxedR1CSInstance::from_r1cs_instance(ck, shape, U1);
+    let W1 = RelaxedR1CSWitness::from_r1cs_witness(shape, W1);
+
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U1, W1);
+    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, &U1, &W1);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U1);
+    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, &U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -224,13 +228,17 @@ mod tests {
     r_W = W;
     r_U = U;
 
+    // Get instances with e0 from the inputs
+    let U2 = RelaxedR1CSInstance::from_r1cs_instance(ck, shape, U2);
+    let W2 = RelaxedR1CSWitness::from_r1cs_witness(shape, W2);
+
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U2, W2);
+    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, &U2, &W2);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U2);
+    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, &U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 
