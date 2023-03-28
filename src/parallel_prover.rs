@@ -178,17 +178,17 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
     // The running instance of the primary
-    r_W_primary: RelaxedR1CSWitness<G1>,
-    r_U_primary: RelaxedR1CSInstance<G1>,
+    W_primary: RelaxedR1CSWitness<G1>,
+    U_primary: RelaxedR1CSInstance<G1>,
     // The new instance of the primary
-    l_w_primary: RelaxedR1CSWitness<G1>,
-    l_u_primary: RelaxedR1CSInstance<G1>,
+    w_primary: RelaxedR1CSWitness<G1>,
+    u_primary: RelaxedR1CSInstance<G1>,
     // The running instance of the secondary
-    r_W_secondary: RelaxedR1CSWitness<G2>,
-    r_U_secondary: RelaxedR1CSInstance<G2>,
+    W_secondary: RelaxedR1CSWitness<G2>,
+    U_secondary: RelaxedR1CSInstance<G2>,
     // The running instance of the secondary
-    l_w_secondary: RelaxedR1CSWitness<G2>,
-    l_u_secondary: RelaxedR1CSInstance<G2>,
+    w_secondary: RelaxedR1CSWitness<G2>,
+    u_secondary: RelaxedR1CSInstance<G2>,
     i_start: usize,
     i_end: usize,
     z_start_primary: Vec<G1::Scalar>,
@@ -283,26 +283,26 @@ where
       .map_err(|_e| NovaError::UnSat)?;
 
     // IVC proof for the primary circuit
-    let l_w_primary =
+    let w_primary =
       RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
-    let l_u_primary = RelaxedR1CSInstance::from_r1cs_instance(
+    let u_primary = RelaxedR1CSInstance::from_r1cs_instance(
       &pp.ck_primary,
       &pp.r1cs_shape_primary,
       &u_primary,
     );
-    let r_W_primary = l_w_primary.clone();
-    let r_U_primary = l_u_primary.clone();
+    let W_primary = w_primary.clone();
+    let U_primary = u_primary.clone();
 
     // IVC proof of the secondary circuit
-    let l_w_secondary =
+    let w_secondary =
       RelaxedR1CSWitness::<G2>::from_r1cs_witness(&pp.r1cs_shape_secondary, &w_secondary);
-    let l_u_secondary = RelaxedR1CSInstance::<G2>::from_r1cs_instance(
+    let u_secondary = RelaxedR1CSInstance::<G2>::from_r1cs_instance(
       &pp.ck_secondary,
       &pp.r1cs_shape_secondary,
       &u_secondary,
     );
-    let r_W_secondary = l_w_secondary.clone();
-    let r_U_secondary = l_u_secondary.clone();
+    let W_secondary = w_secondary.clone();
+    let U_secondary = u_secondary.clone();
 
 
     if z_start_primary.len() != pp.F_arity_primary || z_start_secondary.len() != pp.F_arity_secondary {
@@ -313,14 +313,14 @@ where
     let i_end = i+1;
 
     Ok(Self {
-      r_W_primary,
-      r_U_primary,
-      l_w_primary,
-      l_u_primary,
-      r_W_secondary,
-      r_U_secondary,
-      l_w_secondary,
-      l_u_secondary,
+      W_primary,
+      U_primary,
+      w_primary,
+      u_primary,
+      W_secondary,
+      U_secondary,
+      w_secondary,
+      u_secondary,
       i_start,
       i_end,
       z_start_primary,
@@ -348,24 +348,24 @@ where
         return Err(NovaError::InvalidNodeMerge);
     }
 
-    // First we fold the secondary instances of both the left and right children
+    // First we fold the secondary instances of both the left and right children in the secondary curve
     let (nifs_left_secondary, (left_U_secondary, left_W_secondary)) = NIFS::prove(
         &pp.ck_secondary,
         &pp.ro_consts_secondary,
         &pp.r1cs_shape_secondary,
-        &self.r_U_secondary,
-        &self.r_W_secondary,
-        &self.l_u_secondary,
-        &self.l_w_secondary,
+        &self.U_secondary,
+        &self.W_secondary,
+        &self.u_secondary,
+        &self.w_secondary,
     )?;
     let (nifs_right_secondary, (right_U_secondary, right_W_secondary)) = NIFS::prove(
         &pp.ck_secondary,
         &pp.ro_consts_secondary,
         &pp.r1cs_shape_secondary,
-        &right.r_U_secondary,
-        &right.r_W_secondary,
-        &right.l_u_secondary,
-        &right.l_w_secondary,
+        &right.U_secondary,
+        &right.W_secondary,
+        &right.u_secondary,
+        &right.w_secondary,
     )?;
     let (nifs_secondary, (U_secondary, W_secondary)) = NIFS::prove(
         &pp.ck_secondary,
@@ -377,7 +377,141 @@ where
         &right_W_secondary,
     )?;
 
+    // Next we construct a proof of this folding and of the invocation of F
 
-    return Err(NovaError::InvalidStepOutputLength);
+    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+
+    let inputs_primary: NovaAugmentedParallelCircuitInputs<G2> = NovaAugmentedParallelCircuitInputs::new(
+      pp.r1cs_shape_secondary.get_digest(),
+      G1::Scalar::from(self.i_start as u64),
+      G1::Scalar::from(self.i_end as u64),
+      G1::Scalar::from(right.i_start as u64),
+      G1::Scalar::from(right.i_end as u64),
+      self.z_start_primary.clone(),
+      self.z_end_primary,
+      right.z_start_primary,
+      right.z_end_primary.clone(),
+      Some(self.U_secondary),
+      Some(self.u_secondary),
+      Some(right.U_secondary),
+      Some(right.u_secondary),
+      Some(Commitment::<G2>::decompress(&nifs_left_secondary.comm_T)?),
+      Some(Commitment::<G2>::decompress(&nifs_right_secondary.comm_T)?),
+      Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?)
+    );
+
+    let circuit_primary: NovaAugmentedParallelCircuit<G2, C1> = NovaAugmentedParallelCircuit::new(
+      pp.augmented_circuit_params_primary.clone(),
+      Some(inputs_primary),
+      c_primary.clone(),
+      pp.ro_consts_circuit_primary.clone(),
+    );
+    let _ = circuit_primary.synthesize(&mut cs_primary);
+
+    let (u_primary, w_primary) = cs_primary
+        .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
+        .map_err(|_e| NovaError::UnSat)?;
+
+    let u_primary = RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &u_primary);
+    let w_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);    
+
+    // Now we fold the instances of the primary proof
+    let (nifs_left_primary, (left_U_primary, left_W_primary)) = NIFS::prove(
+        &pp.ck_primary,
+        &pp.ro_consts_primary,
+        &pp.r1cs_shape_primary,
+        &self.U_primary,
+        &self.W_primary,
+        &self.u_primary,
+        &self.w_primary,
+    )?;
+    let (nifs_right_primary, (right_U_primary, right_W_primary)) = NIFS::prove(
+        &pp.ck_primary,
+        &pp.ro_consts_primary,
+        &pp.r1cs_shape_primary,
+        &right.U_primary,
+        &right.W_primary,
+        &right.u_primary,
+        &right.w_primary,
+    )?;
+    let (nifs_primary, (U_primary, W_primary)) = NIFS::prove(
+        &pp.ck_primary,
+        &pp.ro_consts_primary,
+        &pp.r1cs_shape_primary,
+        &left_U_primary,
+        &left_W_primary,
+        &right_U_primary,
+        &right_W_primary,
+    )?;
+
+    // Next we construct a proof of this folding in the secondary curve
+    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+
+    let inputs_secondary: NovaAugmentedParallelCircuitInputs<G1> = NovaAugmentedParallelCircuitInputs::<G1>::new(
+      pp.r1cs_shape_primary.get_digest(),
+      G2::Scalar::from(self.i_start as u64),
+      G2::Scalar::from(self.i_end as u64),
+      G2::Scalar::from(right.i_start as u64),
+      G2::Scalar::from(right.i_end as u64),
+      self.z_start_secondary.clone(),
+      self.z_end_secondary,
+      right.z_start_secondary,
+      right.z_end_secondary.clone(),
+      Some(self.U_primary),
+      Some(self.u_primary),
+      Some(right.U_primary),
+      Some(right.u_primary),
+      Some(Commitment::<G1>::decompress(&nifs_left_primary.comm_T)?),
+      Some(Commitment::<G1>::decompress(&nifs_right_primary.comm_T)?),
+      Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?)
+    );
+
+    let circuit_secondary: NovaAugmentedParallelCircuit<G1, C2> = NovaAugmentedParallelCircuit::new(
+      pp.augmented_circuit_params_primary.clone(),
+      Some(inputs_secondary),
+      c_secondary.clone(),
+      pp.ro_consts_circuit_secondary.clone(),
+    );
+    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+
+    let (u_secondary, w_secondary) = cs_secondary
+        .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
+        .map_err(|_e| NovaError::UnSat)?;
+
+    // Give these a trivial error vector
+    let u_secondary = RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_secondary, &pp.r1cs_shape_secondary, &u_secondary);
+    let w_secondary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_secondary, &w_secondary);    
+
+    // Name each of these to match struct fields
+    let i_start = self.i_start.clone();
+    let i_end = right.i_end.clone();
+    let z_start_primary = self.z_start_primary;
+    let z_end_primary = right.z_end_primary;
+    let z_start_secondary = self.z_start_secondary;
+    let z_end_secondary = right.z_end_secondary;
+
+    Ok(Self {
+        // Primary running instance
+        W_primary,
+        U_primary,
+        // Primary new instance
+        w_primary,
+        u_primary,
+        // The running instance of the secondary
+        W_secondary,
+        U_secondary,
+        // The running instance of the secondary
+        w_secondary,
+        u_secondary,
+        // The range data
+        i_start,
+        i_end,
+        z_start_primary,
+        z_end_primary,
+        z_start_secondary,
+        z_end_secondary,
+        _p_c1: Default::default(),
+        _p_c2: Default::default()
+    })
   } 
 }
