@@ -12,7 +12,7 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  r1cs::{R1CSInstance, RelaxedR1CSInstance},
+  r1cs::{RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellperson::{
@@ -33,7 +33,7 @@ impl<G: Group> AllocatedR1CSInstance<G> {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
-    u: Option<R1CSInstance<G>>,
+    u: Option<RelaxedR1CSInstance<G>>,
   ) -> Result<Self, SynthesisError> {
     // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(

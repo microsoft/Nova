@@ -15,11 +15,12 @@ use crate::{
         alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num,
       },
     },
-    r1cs::{R1CSInstance, RelaxedR1CSInstance},
+    r1cs::{RelaxedR1CSInstance},
     traits::{
       circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
     },
     Commitment,
+    circuit::{NovaAugmentedCircuitParams}
   };
   use bellperson::{
     gadgets::{
@@ -31,25 +32,6 @@ use crate::{
   };
   use ff::Field;
   use serde::{Deserialize, Serialize};
-  
-  #[derive(Debug, Clone, Serialize, Deserialize)]
-  pub struct NovaAugmentedParallelCircuitParams {
-    limb_width: usize,
-    n_limbs: usize,
-    is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
-  }
-  
-  impl NovaAugmentedParallelCircuitParams {
-    // Remove when we write the struct implementing the parallel nova instance
-    #[allow(unused)]
-    pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
-      Self {
-        limb_width,
-        n_limbs,
-        is_primary_circuit,
-      }
-    }
-  }
   
   #[derive(Debug, Serialize, Deserialize)]
   #[serde(bound = "")]
@@ -64,9 +46,9 @@ use crate::{
     z_R_start: Vec<G::Base>,
     z_R_end: Vec<G::Base>,
     U: Option<RelaxedR1CSInstance<G>>,
-    u: Option<R1CSInstance<G>>,
+    u: Option<RelaxedR1CSInstance<G>>,
     R: Option<RelaxedR1CSInstance<G>>,
-    r: Option<R1CSInstance<G>>,
+    r: Option<RelaxedR1CSInstance<G>>,
     T_u: Option<Commitment<G>>,
     T_r: Option<Commitment<G>>,
     T_R_U: Option<Commitment<G>>
@@ -88,9 +70,9 @@ use crate::{
         z_R_start: Vec<G::Base>,
         z_R_end: Vec<G::Base>,
         U: Option<RelaxedR1CSInstance<G>>,
-        u: Option<R1CSInstance<G>>,
+        u: Option<RelaxedR1CSInstance<G>>,
         R: Option<RelaxedR1CSInstance<G>>,
-        r: Option<R1CSInstance<G>>,
+        r: Option<RelaxedR1CSInstance<G>>,
         T_u: Option<Commitment<G>>,
         T_r: Option<Commitment<G>>,
         T_R_U: Option<Commitment<G>>
@@ -119,7 +101,7 @@ use crate::{
   /// The augmented circuit F' in Nova that includes a step circuit F
   /// and the circuit for the verifier in Nova's non-interactive folding scheme
   pub struct NovaAugmentedParallelCircuit<G: Group, SC: StepCircuit<G::Base>> {
-    params: NovaAugmentedParallelCircuitParams,
+    params: NovaAugmentedCircuitParams,
     ro_consts: ROConstantsCircuit<G>,
     inputs: Option<NovaAugmentedParallelCircuitInputs<G>>,
     step_circuit: SC, // The function that is applied for each step
@@ -130,7 +112,7 @@ use crate::{
     // Remove when we write the struct implementing the parallel nova instance
     #[allow(unused)]
     pub fn new(
-      params: NovaAugmentedParallelCircuitParams,
+      params: NovaAugmentedCircuitParams,
       inputs: Option<NovaAugmentedParallelCircuitInputs<G>>,
       step_circuit: SC,
       ro_consts: ROConstantsCircuit<G>,
