@@ -407,6 +407,7 @@ where
     c_primary: C1,
     c_secondary: C2,
   ) -> Self {
+    // Tuple's structure is (index, zi_primary, zi_secondary)
     let mut zi = Vec::<(usize, Vec<G1::Scalar>, Vec<G2::Scalar>)>::new();
     // First input value of Z0, these steps can't be done in parallel
     zi.push((0, z0_primary.clone(), z0_secondary.clone()));
@@ -436,20 +437,17 @@ where
           )
           .expect("Unable to create base node"),
           // Just 1 node left
-          [l] => {
-            let (index, z_end_primary, z_end_secondary) = l;
-            NovaTreeNode::new(
-              &pp,
-              c_primary.clone(),
-              c_secondary.clone(),
-              (l.0 as f64 / 2f64).ceil() as usize,
-              zi[l.0 - 1].1.clone(),
-              z_end_primary.clone(),
-              zi[l.0 - 1].2.clone(),
-              z_end_secondary.clone(),
-            )
-            .expect("Unable to create the last base node")
-          }
+          [l] => NovaTreeNode::new(
+            &pp,
+            c_primary.clone(),
+            c_secondary.clone(),
+            l.0 / 2,
+            zi[l.0 - 1].1.clone(),
+            l.1.clone(),
+            zi[l.0 - 1].2.clone(),
+            l.2.clone(),
+          )
+          .expect("Unable to create the last base node"),
           _ => panic!("Unexpected chunk size"),
         }
       })
