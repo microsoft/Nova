@@ -49,7 +49,7 @@ impl<G: Group> NIFS<G> {
 
     // append U1 and U2 to transcript
     U1.absorb_in_ro(&mut ro);
-    U2.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro_as_R1CS(&mut ro);
 
     // compute a commitment to the cross-term
     let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2)?;
@@ -96,7 +96,7 @@ impl<G: Group> NIFS<G> {
 
     // append U1 and U2 to transcript
     U1.absorb_in_ro(&mut ro);
-    U2.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro_as_R1CS(&mut ro);
 
     // append `comm_T` to the transcript and obtain a challenge
     let comm_T = Commitment::<G>::decompress(&self.comm_T)?;
