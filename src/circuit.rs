@@ -15,7 +15,7 @@ use crate::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
   },
-  r1cs::{RelaxedR1CSInstance},
+  r1cs::RelaxedR1CSInstance,
   traits::{
     circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
   },
@@ -377,7 +377,7 @@ mod tests {
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::r1cs::RelaxedR1CSWitness;
-use crate::{
+  use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     provider::poseidon::PoseidonConstantsCircuit,
     traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
