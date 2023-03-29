@@ -7,12 +7,9 @@ use crate::{
     math::Math,
     polynomial::{EqPolynomial, MultilinearPolynomial},
     spark::product::{IdentityPolynomial, ProductArgumentBatched},
-    SumcheckProof,
+    PolyEvalInstance, PolyEvalWitness, SumcheckProof,
   },
-  traits::{
-    commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait, Group,
-    TranscriptEngineTrait, TranscriptReprTrait,
-  },
+  traits::{commitment::CommitmentEngineTrait, Group, TranscriptEngineTrait, TranscriptReprTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -227,7 +224,7 @@ impl<G: Group> SparsePolynomial<G> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct SparseEvaluationArgument<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct SparseEvaluationArgument<G: Group> {
   // claimed evaluation
   eval: G::Scalar,
 
@@ -240,7 +237,6 @@ pub struct SparseEvaluationArgument<G: Group, EE: EvaluationEngineTrait<G, CE = 
   eval_E_row: G::Scalar,
   eval_E_col: G::Scalar,
   eval_val: G::Scalar,
-  arg_eval: EE::EvaluationArgument,
 
   // proof that E_row is well-formed
   eval_init_row: G::Scalar,
@@ -262,23 +258,22 @@ pub struct SparseEvaluationArgument<G: Group, EE: EvaluationEngineTrait<G, CE = 
   eval_col_read_ts: G::Scalar,
   eval_E_col2: G::Scalar,
   eval_col_audit_ts: G::Scalar,
-  arg_row_col_joint: EE::EvaluationArgument,
-  arg_row_audit_ts: EE::EvaluationArgument,
-  arg_col_audit_ts: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgument<G, EE> {
+impl<G: Group> SparseEvaluationArgument<G> {
   pub fn prove(
     ck: &CommitmentKey<G>,
-    pk_ee: &EE::ProverKey,
     poly: &SparsePolynomial<G>,
     sparse: &[(usize, usize, G::Scalar)],
     comm: &SparsePolynomialCommitment<G>,
     r: &(&[G::Scalar], &[G::Scalar]),
     transcript: &mut G::TE,
-  ) -> Result<Self, NovaError> {
+  ) -> Result<(Self, Vec<(PolyEvalWitness<G>, PolyEvalInstance<G>)>), NovaError> {
     let (r_x, r_y) = r;
     let eval = SparsePolynomial::<G>::multi_evaluate(&[sparse], r_x, r_y)[0];
+
+    // keep track of evaluation claims
+    let mut w_u_vec: Vec<(PolyEvalWitness<G>, PolyEvalInstance<G>)> = Vec::new();
 
     // compute oracles to prove the correctness of `eval`
     let (E_row, E_col, T_x, T_y) = SparsePolynomial::<G>::evaluation_oracles(sparse, r_x, r_y);
@@ -316,15 +311,16 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       .zip(val.iter())
       .map(|((a, b), c)| *a + rho * *b + rho * rho * *c)
       .collect::<Vec<G::Scalar>>();
-    let arg_eval = EE::prove(
-      ck,
-      pk_ee,
-      transcript,
-      &comm_joint,
-      &poly_eval,
-      &r_eval,
-      &eval_joint,
-    )?;
+
+    // add the claim to prove for later
+    w_u_vec.push((
+      PolyEvalWitness { p: poly_eval },
+      PolyEvalInstance {
+        c: comm_joint,
+        x: r_eval,
+        e: eval_joint,
+      },
+    ));
 
     // we now need to prove that E_row and E_col are well-formed
     // we use memory checking: H(INIT) * H(WS) =? H(RS) * H(FINAL)
@@ -462,37 +458,41 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       })
       .collect::<Vec<_>>();
 
-    let arg_row_col_joint = EE::prove(
-      ck,
-      pk_ee,
-      transcript,
-      &comm_joint,
-      &poly_joint,
-      &r_read_write_row_col,
-      &eval_joint,
-    )?;
+    // add the claim to prove for later
+    w_u_vec.push((
+      PolyEvalWitness { p: poly_joint },
+      PolyEvalInstance {
+        c: comm_joint,
+        x: r_read_write_row_col,
+        e: eval_joint,
+      },
+    ));
 
-    let arg_row_audit_ts = EE::prove(
-      ck,
-      pk_ee,
-      transcript,
-      &comm.comm_row_audit_ts,
-      &poly.row_audit_ts,
-      &r_init_audit_row,
-      &eval_row_audit_ts,
-    )?;
+    transcript.absorb(b"a", &eval_row_audit_ts); // add evaluation to transcript, commitment is already in
+    w_u_vec.push((
+      PolyEvalWitness {
+        p: poly.row_audit_ts.clone(),
+      },
+      PolyEvalInstance {
+        c: comm.comm_row_audit_ts,
+        x: r_init_audit_row,
+        e: eval_row_audit_ts,
+      },
+    ));
 
-    let arg_col_audit_ts = EE::prove(
-      ck,
-      pk_ee,
-      transcript,
-      &comm.comm_col_audit_ts,
-      &poly.col_audit_ts,
-      &r_init_audit_col,
-      &eval_col_audit_ts,
-    )?;
+    transcript.absorb(b"a", &eval_col_audit_ts); // add evaluation to transcript, commitment is already in
+    w_u_vec.push((
+      PolyEvalWitness {
+        p: poly.col_audit_ts.clone(),
+      },
+      PolyEvalInstance {
+        c: comm.comm_col_audit_ts,
+        x: r_init_audit_col,
+        e: eval_col_audit_ts,
+      },
+    ));
 
-    Ok(Self {
+    let eval_arg = Self {
       // claimed evaluation
       eval,
 
@@ -505,7 +505,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       eval_E_row: claims_eval[0],
       eval_E_col: claims_eval[1],
       eval_val: claims_eval[2],
-      arg_eval,
 
       // proof that E_row and E_row are well-formed
       eval_init_row: eval_init_audit_row[0],
@@ -527,20 +526,21 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       eval_col_read_ts,
       eval_E_col2,
       eval_col_audit_ts,
-      arg_row_col_joint,
-      arg_row_audit_ts,
-      arg_col_audit_ts,
-    })
+    };
+
+    Ok((eval_arg, w_u_vec))
   }
 
   pub fn verify(
     &self,
-    vk_ee: &EE::VerifierKey,
     comm: &SparsePolynomialCommitment<G>,
     r: &(&[G::Scalar], &[G::Scalar]),
     transcript: &mut G::TE,
-  ) -> Result<G::Scalar, NovaError> {
+  ) -> Result<(G::Scalar, Vec<PolyEvalInstance<G>>), NovaError> {
     let (r_x, r_y) = r;
+
+    // keep track of evaluation claims
+    let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
     // append the transcript and scalar
     transcript.absorb(b"E", &vec![self.comm_E_row, self.comm_E_col].as_slice());
@@ -562,14 +562,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
     let rho = transcript.squeeze(b"r")?;
     let comm_joint = self.comm_E_row + self.comm_E_col * rho + comm.comm_val * rho * rho;
     let eval_joint = self.eval_E_row + rho * self.eval_E_col + rho * rho * self.eval_val;
-    EE::verify(
-      vk_ee,
-      transcript,
-      &comm_joint,
-      &r_eval,
-      &eval_joint,
-      &self.arg_eval,
-    )?;
+
+    // add the claim to prove for later
+    u_vec.push(PolyEvalInstance {
+      c: comm_joint,
+      x: r_eval,
+      e: eval_joint,
+    });
 
     // (2) verify if E_row and E_col are well formed
     let gamma_1 = transcript.squeeze(b"g1")?;
@@ -700,33 +699,26 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> SparseEvaluationArgumen
       + comm.comm_col_read_ts * c * c * c * c
       + self.comm_E_col * c * c * c * c * c;
 
-    EE::verify(
-      vk_ee,
-      transcript,
-      &comm_joint,
-      &r_read_write_row_col,
-      &eval_joint,
-      &self.arg_row_col_joint,
-    )?;
+    u_vec.push(PolyEvalInstance {
+      c: comm_joint,
+      x: r_read_write_row_col,
+      e: eval_joint,
+    });
 
-    EE::verify(
-      vk_ee,
-      transcript,
-      &comm.comm_row_audit_ts,
-      &r_init_audit_row,
-      &self.eval_row_audit_ts,
-      &self.arg_row_audit_ts,
-    )?;
+    transcript.absorb(b"a", &self.eval_row_audit_ts); // add evaluation to transcript, commitment is already in
+    u_vec.push(PolyEvalInstance {
+      c: comm.comm_row_audit_ts,
+      x: r_init_audit_row,
+      e: self.eval_row_audit_ts,
+    });
 
-    EE::verify(
-      vk_ee,
-      transcript,
-      &comm.comm_col_audit_ts,
-      &r_init_audit_col,
-      &self.eval_col_audit_ts,
-      &self.arg_col_audit_ts,
-    )?;
+    transcript.absorb(b"a", &self.eval_col_audit_ts); // add evaluation to transcript, commitment is already in
+    u_vec.push(PolyEvalInstance {
+      c: comm.comm_col_audit_ts,
+      x: r_init_audit_col,
+      e: self.eval_col_audit_ts,
+    });
 
-    Ok(self.eval)
+    Ok((self.eval, u_vec))
   }
 }

@@ -1129,8 +1129,8 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // run the compressed snark with Spark compiler
-    type CC1Prime = spartan::spark::SparkEngine<G1, EE1>;
-    type CC2Prime = spartan::spark::SparkEngine<G2, EE2>;
+    type CC1Prime = spartan::spark::SparkEngine<G1>;
+    type CC2Prime = spartan::spark::SparkEngine<G2>;
     type S1Prime = spartan::RelaxedR1CSSNARK<G1, EE1, CC1Prime>;
     type S2Prime = spartan::RelaxedR1CSSNARK<G2, EE2, CC2Prime>;
 
