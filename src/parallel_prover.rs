@@ -353,6 +353,7 @@ where
       &self.W_secondary,
       &self.u_secondary,
       &self.w_secondary,
+      false
     )?;
     let (nifs_right_secondary, (right_U_secondary, right_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
@@ -362,6 +363,7 @@ where
       &right.W_secondary,
       &right.u_secondary,
       &right.w_secondary,
+      false
     )?;
     let (nifs_secondary, (U_secondary, W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
@@ -371,6 +373,7 @@ where
       &left_W_secondary,
       &right_U_secondary,
       &right_W_secondary,
+      true
     )?;
 
     // Next we construct a proof of this folding and of the invocation of F
@@ -422,6 +425,7 @@ where
       &self.W_primary,
       &self.u_primary,
       &self.w_primary,
+      false
     )?;
     let (nifs_right_primary, (right_U_primary, right_W_primary)) = NIFS::prove(
       &pp.ck_primary,
@@ -431,6 +435,7 @@ where
       &right.W_primary,
       &right.u_primary,
       &right.w_primary,
+      false
     )?;
     let (nifs_primary, (U_primary, W_primary)) = NIFS::prove(
       &pp.ck_primary,
@@ -440,6 +445,7 @@ where
       &left_W_primary,
       &right_U_primary,
       &right_W_primary,
+      true
     )?;
 
     // Next we construct a proof of this folding in the secondary curve

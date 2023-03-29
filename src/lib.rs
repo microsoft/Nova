@@ -308,6 +308,7 @@ where
           &r_snark.r_W_secondary,
           &r_snark.l_u_secondary,
           &r_snark.l_w_secondary,
+          false
         )?;
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
@@ -350,6 +351,7 @@ where
           &r_snark.r_W_primary,
           &l_u_primary,
           &l_w_primary,
+          false
         )?;
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -658,6 +660,7 @@ where
           &recursive_snark.r_W_primary,
           &recursive_snark.l_u_primary,
           &recursive_snark.l_w_primary,
+          false
         )
       },
       || {
@@ -670,6 +673,7 @@ where
           &recursive_snark.r_W_secondary,
           &recursive_snark.l_u_secondary,
           &recursive_snark.l_w_secondary,
+          false
         )
       },
     );
@@ -779,12 +783,14 @@ where
       &vk.r1cs_shape_primary_digest,
       &self.r_U_primary,
       &self.l_u_primary,
+      false
     )?;
     let f_U_secondary = self.nifs_secondary.verify(
       &vk.ro_consts_secondary,
       &vk.r1cs_shape_secondary_digest,
       &self.r_U_secondary,
       &self.l_u_secondary,
+      false
     )?;
 
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
