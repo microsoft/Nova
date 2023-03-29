@@ -788,10 +788,8 @@ mod tests {
   type G2 = pasta_curves::vesta::Point;
   type EE1 = provider::ipa_pc::EvaluationEngine<G1>;
   type EE2 = provider::ipa_pc::EvaluationEngine<G2>;
-  type CC1 = spartan::spark::TrivialCompComputationEngine<G1, EE1>;
-  type CC2 = spartan::spark::TrivialCompComputationEngine<G2, EE2>;
-  type S1 = spartan::RelaxedR1CSSNARK<G1, EE1, CC1>;
-  type S2 = spartan::RelaxedR1CSSNARK<G2, EE2, CC2>;
+  type S1 = spartan::RelaxedR1CSSNARK<G1, EE1>;
+  type S2 = spartan::RelaxedR1CSSNARK<G2, EE2>;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -1095,10 +1093,8 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // run the compressed snark with Spark compiler
-    type CC1Prime = spartan::spark::SparkEngine<G1>;
-    type CC2Prime = spartan::spark::SparkEngine<G2>;
-    type S1Prime = spartan::RelaxedR1CSSNARK<G1, EE1, CC1Prime>;
-    type S2Prime = spartan::RelaxedR1CSSNARK<G2, EE2, CC2Prime>;
+    type S1Prime = spartan::pp::RelaxedR1CSSNARK<G1, EE1>;
+    type S2Prime = spartan::pp::RelaxedR1CSSNARK<G2, EE2>;
 
     // produce the prover and verifier keys for compressed snark
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S1Prime, S2Prime>::setup(&pp).unwrap();
