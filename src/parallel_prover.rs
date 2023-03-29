@@ -333,7 +333,7 @@ where
   /// consumed is treated as the right node.
   pub fn merge(
     self,
-    right: &NovaTreeNode<G1, G2, C1, C2>,
+    right: NovaTreeNode<G1, G2, C1, C2>,
     pp: &PublicParams<G1, G2, C1, C2>,
     c_primary: &C1,
     c_secondary: &C2,
