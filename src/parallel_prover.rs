@@ -14,43 +14,43 @@
 //! z_end that the output is z_start of the right node
 
 use crate::{
-    constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
-    gadgets::{
-      ecc::AllocatedPoint,
-      r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
-      utils::{
-        alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num,
-      },
-    },
-    r1cs::{RelaxedR1CSInstance, R1CSShape, RelaxedR1CSWitness},
-    traits::{
-        circuit::StepCircuit,
-        commitment::{CommitmentEngineTrait, CommitmentTrait},
-        snark::RelaxedR1CSSNARKTrait,
-        AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
-    },
-    Commitment,
-    parallel_circuit::{NovaAugmentedParallelCircuit, NovaAugmentedParallelCircuitInputs},
-    constants::{BN_LIMB_WIDTH, BN_N_LIMBS}, 
-    circuit::NovaAugmentedCircuitParams,
-    bellperson::{
-        r1cs::{NovaShape, NovaWitness},
-        shape_cs::ShapeCS,
-        solver::SatisfyingAssignment},
-    errors::NovaError,
-    nifs::NIFS
-  };
-  use bellperson::{
-    gadgets::{
-      boolean::{AllocatedBit, Boolean},
-      num::AllocatedNum,
-      Assignment,
-    },
-    Circuit, ConstraintSystem, SynthesisError,
-  };
-  use ff::Field;
-  use serde::{Deserialize, Serialize};
-  use core::marker::PhantomData;
+  bellperson::{
+    r1cs::{NovaShape, NovaWitness},
+    shape_cs::ShapeCS,
+    solver::SatisfyingAssignment,
+  },
+  circuit::NovaAugmentedCircuitParams,
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  errors::NovaError,
+  gadgets::{
+    ecc::AllocatedPoint,
+    r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
+    utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num},
+  },
+  nifs::NIFS,
+  parallel_circuit::{NovaAugmentedParallelCircuit, NovaAugmentedParallelCircuitInputs},
+  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  traits::{
+    circuit::StepCircuit,
+    commitment::{CommitmentEngineTrait, CommitmentTrait},
+    snark::RelaxedR1CSSNARKTrait,
+    AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
+  },
+  Commitment,
+};
+use bellperson::{
+  gadgets::{
+    boolean::{AllocatedBit, Boolean},
+    num::AllocatedNum,
+    Assignment,
+  },
+  Circuit, ConstraintSystem, Index, SynthesisError,
+};
+use core::marker::PhantomData;
+use ff::Field;
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 
 // TODO - This is replicated from lib but we should actually instead have another file for it and use both here and there
 
@@ -92,9 +92,9 @@ where
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
     let augmented_circuit_params_primary =
-    NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
-    NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
@@ -165,10 +165,9 @@ where
 
 // This ends the 1 to 1 copied code
 
-
 /// A type that holds one node the tree based nova proof. This will have both running instances and fresh instances
 /// of the primary and secondary circuit.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NovaTreeNode<G1, G2, C1, C2>
 where
@@ -177,26 +176,26 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-    // The running instance of the primary
-    r_W_primary: RelaxedR1CSWitness<G1>,
-    r_U_primary: RelaxedR1CSInstance<G1>,
-    // The new instance of the primary
-    l_w_primary: RelaxedR1CSWitness<G1>,
-    l_u_primary: RelaxedR1CSInstance<G1>,
-    // The running instance of the secondary
-    r_W_secondary: RelaxedR1CSWitness<G2>,
-    r_U_secondary: RelaxedR1CSInstance<G2>,
-    // The running instance of the secondary
-    l_w_secondary: RelaxedR1CSWitness<G2>,
-    l_u_secondary: RelaxedR1CSInstance<G2>,
-    i_start: usize,
-    i_end: usize,
-    z_start_primary: Vec<G1::Scalar>,
-    z_end_primary: Vec<G1::Scalar>,
-    z_start_secondary: Vec<G2::Scalar>,
-    z_end_secondary: Vec<G2::Scalar>,
-    _p_c1: PhantomData<C1>,
-    _p_c2: PhantomData<C2>,
+  // The running instance of the primary
+  r_W_primary: RelaxedR1CSWitness<G1>,
+  r_U_primary: RelaxedR1CSInstance<G1>,
+  // The new instance of the primary
+  l_w_primary: RelaxedR1CSWitness<G1>,
+  l_u_primary: RelaxedR1CSInstance<G1>,
+  // The running instance of the secondary
+  r_W_secondary: RelaxedR1CSWitness<G2>,
+  r_U_secondary: RelaxedR1CSInstance<G2>,
+  // The running instance of the secondary
+  l_w_secondary: RelaxedR1CSWitness<G2>,
+  l_u_secondary: RelaxedR1CSInstance<G2>,
+  i_start: usize,
+  i_end: usize,
+  z_start_primary: Vec<G1::Scalar>,
+  z_end_primary: Vec<G1::Scalar>,
+  z_start_secondary: Vec<G2::Scalar>,
+  z_end_secondary: Vec<G2::Scalar>,
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
 }
 
 impl<G1, G2, C1, C2> NovaTreeNode<G1, G2, C1, C2>
@@ -216,28 +215,29 @@ where
     z_start_primary: Vec<G1::Scalar>,
     z_end_primary: Vec<G1::Scalar>,
     z_start_secondary: Vec<G2::Scalar>,
-    z_end_secondary: Vec<G2::Scalar>
-  ) -> Result<Self, NovaError> { 
+    z_end_secondary: Vec<G2::Scalar>,
+  ) -> Result<Self, NovaError> {
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: NovaAugmentedParallelCircuitInputs<G2> = NovaAugmentedParallelCircuitInputs::new(
-      pp.r1cs_shape_secondary.get_digest(),
-      G1::Scalar::from(i.try_into().unwrap()),
-      G1::Scalar::from((i+1).try_into().unwrap()),
-      G1::Scalar::from((i).try_into().unwrap()),
-      G1::Scalar::from((i+1).try_into().unwrap()),
-      z_start_primary.clone(),
-      z_start_primary.clone(),
-      z_end_primary.clone(), 
-      z_end_primary.clone(),
-      None,
-      None,
-      None,
-      None,
-      None,
-      None,
-      None
-    );
+    let inputs_primary: NovaAugmentedParallelCircuitInputs<G2> =
+      NovaAugmentedParallelCircuitInputs::new(
+        pp.r1cs_shape_secondary.get_digest(),
+        G1::Scalar::from(i.try_into().unwrap()),
+        G1::Scalar::from((i + 1).try_into().unwrap()),
+        G1::Scalar::from((i).try_into().unwrap()),
+        G1::Scalar::from((i + 1).try_into().unwrap()),
+        z_start_primary.clone(),
+        z_start_primary.clone(),
+        z_end_primary.clone(),
+        z_end_primary.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+      );
 
     let circuit_primary: NovaAugmentedParallelCircuit<G2, C1> = NovaAugmentedParallelCircuit::new(
       pp.augmented_circuit_params_primary.clone(),
@@ -253,24 +253,25 @@ where
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
 
-    let inputs_secondary: NovaAugmentedParallelCircuitInputs<G1> = NovaAugmentedParallelCircuitInputs::new(
-      pp.r1cs_shape_primary.get_digest(),
-      G2::Scalar::from(i.try_into().unwrap()),
-      G2::Scalar::from((i+1).try_into().unwrap()),
-      G2::Scalar::from((i).try_into().unwrap()),
-      G2::Scalar::from((i+1).try_into().unwrap()),
-      z_start_secondary.clone(),
-      z_start_secondary.clone(),
-      z_end_secondary.clone(),
-      z_end_secondary.clone(),
+    let inputs_secondary: NovaAugmentedParallelCircuitInputs<G1> =
+      NovaAugmentedParallelCircuitInputs::new(
+        pp.r1cs_shape_primary.get_digest(),
+        G2::Scalar::from(i.try_into().unwrap()),
+        G2::Scalar::from((i + 1).try_into().unwrap()),
+        G2::Scalar::from((i).try_into().unwrap()),
+        G2::Scalar::from((i + 1).try_into().unwrap()),
+        z_start_secondary.clone(),
+        z_start_secondary.clone(),
+        z_end_secondary.clone(),
+        z_end_secondary.clone(),
         None,
         None,
         None,
         None,
         None,
         None,
-        None
-    );
+        None,
+      );
     let circuit_secondary: NovaAugmentedParallelCircuit<G1, C2> = NovaAugmentedParallelCircuit::new(
       pp.augmented_circuit_params_secondary.clone(),
       Some(inputs_secondary),
@@ -283,13 +284,9 @@ where
       .map_err(|_e| NovaError::UnSat)?;
 
     // IVC proof for the primary circuit
-    let l_w_primary =
-      RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
-    let l_u_primary = RelaxedR1CSInstance::from_r1cs_instance(
-      &pp.ck_primary,
-      &pp.r1cs_shape_primary,
-      &u_primary,
-    );
+    let l_w_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &w_primary);
+    let l_u_primary =
+      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &u_primary);
     let r_W_primary = l_w_primary.clone();
     let r_U_primary = l_u_primary.clone();
 
@@ -304,13 +301,14 @@ where
     let r_W_secondary = l_w_secondary.clone();
     let r_U_secondary = l_u_secondary.clone();
 
-
-    if z_start_primary.len() != pp.F_arity_primary || z_start_secondary.len() != pp.F_arity_secondary {
+    if z_start_primary.len() != pp.F_arity_primary
+      || z_start_secondary.len() != pp.F_arity_secondary
+    {
       return Err(NovaError::InvalidStepOutputLength);
     }
 
     let i_start = i;
-    let i_end = i+1;
+    let i_end = i + 1;
 
     Ok(Self {
       r_W_primary,
@@ -336,48 +334,157 @@ where
   /// consumed is treated as the right node.
   pub fn merge(
     self,
-    right: NovaTreeNode<G1, G2, C1, C2>,
+    right: &NovaTreeNode<G1, G2, C1, C2>,
     pp: &PublicParams<G1, G2, C1, C2>,
-    c_primary: C1,
-    c_secondary: C2
-  ) -> Result<Self, NovaError> { 
-
+    c_primary: &C1,
+    c_secondary: &C2,
+  ) -> Result<Self, NovaError> {
     // We have to merge two proofs where the right starts one index after the left ends
     // note that this would fail in the proof step but we error earlier here for debugging clarity.
     if self.i_end + 1 != right.i_start {
-        return Err(NovaError::InvalidNodeMerge);
+      return Err(NovaError::InvalidNodeMerge);
     }
 
     // First we fold the secondary instances of both the left and right children
     let (nifs_left_secondary, (left_U_secondary, left_W_secondary)) = NIFS::prove(
-        &pp.ck_secondary,
-        &pp.ro_consts_secondary,
-        &pp.r1cs_shape_secondary,
-        &self.r_U_secondary,
-        &self.r_W_secondary,
-        &self.l_u_secondary,
-        &self.l_w_secondary,
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &pp.r1cs_shape_secondary,
+      &self.r_U_secondary,
+      &self.r_W_secondary,
+      &self.l_u_secondary,
+      &self.l_w_secondary,
     )?;
     let (nifs_right_secondary, (right_U_secondary, right_W_secondary)) = NIFS::prove(
-        &pp.ck_secondary,
-        &pp.ro_consts_secondary,
-        &pp.r1cs_shape_secondary,
-        &right.r_U_secondary,
-        &right.r_W_secondary,
-        &right.l_u_secondary,
-        &right.l_w_secondary,
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &pp.r1cs_shape_secondary,
+      &right.r_U_secondary,
+      &right.r_W_secondary,
+      &right.l_u_secondary,
+      &right.l_w_secondary,
     )?;
     let (nifs_secondary, (U_secondary, W_secondary)) = NIFS::prove(
-        &pp.ck_secondary,
-        &pp.ro_consts_secondary,
-        &pp.r1cs_shape_secondary,
-        &left_U_secondary,
-        &left_W_secondary,
-        &right_U_secondary,
-        &right_W_secondary,
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &pp.r1cs_shape_secondary,
+      &left_U_secondary,
+      &left_W_secondary,
+      &right_U_secondary,
+      &right_W_secondary,
     )?;
 
-
     return Err(NovaError::InvalidStepOutputLength);
-  } 
+  }
+}
+
+/// Structure for parallelization
+#[derive(Debug, Clone)]
+pub struct ParallelSNARK<G1, G2, C1, C2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
+  nodes: Vec<Vec<NovaTreeNode<G1, G2, C1, C2>>>,
+}
+
+/// Implementation for parallelization SNARK
+impl<G1, G2, C1, C2> ParallelSNARK<G1, G2, C1, C2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
+  /// Create a new instance of parallel SNARK
+  pub fn new(
+    pp: &PublicParams<G1, G2, C1, C2>,
+    steps: usize,
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
+    c_primary: C1,
+    c_secondary: C2,
+  ) -> Self {
+    // Tuple's structure is (index, zi_primary, zi_secondary)
+    let mut zi = Vec::<(usize, Vec<G1::Scalar>, Vec<G2::Scalar>)>::new();
+    // First input value of Z0, these steps can't be done in parallel
+    zi.push((0, z0_primary.clone(), z0_secondary.clone()));
+    for i in 1..steps {
+      let (index, prev_primary, prev_secondary) = &zi[i - 1];
+      zi.push((
+        i,
+        c_primary.output(&prev_primary),
+        c_secondary.output(&prev_secondary),
+      ));
+    }
+    // Do calculate node tree in parallel
+    let leafs_vec = zi
+      .par_chunks(2)
+      .map(|item| {
+        match item {
+          // There are 2 nodes
+          [l, r] => NovaTreeNode::new(
+            &pp,
+            c_primary.clone(),
+            c_secondary.clone(),
+            l.0,
+            l.1.clone(),
+            r.1.clone(),
+            l.2.clone(),
+            r.2.clone(),
+          )
+          .expect("Unable to create base node"),
+          // Just 1 node left
+          [l] => NovaTreeNode::new(
+            &pp,
+            c_primary.clone(),
+            c_secondary.clone(),
+            l.0,
+            zi[l.0 - 1].1.clone(),
+            l.1.clone(),
+            zi[l.0 - 1].2.clone(),
+            l.2.clone(),
+          )
+          .expect("Unable to create the last base node"),
+          _ => panic!("Unexpected chunk size"),
+        }
+      })
+      .collect();
+    // Create a new parallel prover wit basic leafs
+    Self {
+      nodes: vec![leafs_vec],
+    }
+  }
+
+  /// Perform the proving in parallel
+  pub fn prove(&mut self, pp: &PublicParams<G1, G2, C1, C2>, c_primary: &C1, c_secondary: &C2) {
+    // Calculate the max height of the tree
+    // ⌈log2(n)⌉ + 1
+    let max_height = ((self.nodes[0].len() as f64).log2().ceil() + 1f64) as usize;
+
+    // Build up the tree with max given height
+    for level in 0..max_height {
+      // Create new instance of nodes in the next level
+      let mut leafs = Vec::<(&NovaTreeNode<G1, G2, C1, C2>, &NovaTreeNode<G1, G2, C1, C2>)>::new();
+
+      // Push leafs to the next level
+      self.nodes.push(
+        self.nodes[level]
+          .par_chunks(2)
+          .map(|item| match item {
+            // There are 2 nodes in the chunk
+            [vl, vr] => (*vl)
+              .clone()
+              .merge(vr, pp, c_primary, c_secondary)
+              .expect("Merge the left and right should work"),
+            // Just 1 node left, we carry it to the next level
+            [vl] => (*vl).clone(),
+            _ => panic!("Invalid chunk size"),
+          })
+          .collect(),
+      );
+    }
+  }
 }
