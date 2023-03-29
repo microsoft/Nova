@@ -531,7 +531,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
       .par_iter()
       .zip(T)
       .zip(E2)
-      .map(|((a, b), c)| *a + *r * * b + *r * *r * *c)
+      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
       .collect::<Vec<G::Scalar>>();
     Ok(RelaxedR1CSWitness { W, E })
   }
@@ -588,8 +588,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
-    let (X2, u2, comm_W_2, comm_E_2) =  
-      (&U2.X, &U2.u, &U2.comm_W.clone(), &U2.comm_E.clone());
+    let (X2, u2, comm_W_2, comm_E_2) = (&U2.X, &U2.u, &U2.comm_W.clone(), &U2.comm_E.clone());
 
     // weighted sum of X, comm_W, comm_E, and u
     let X = X1

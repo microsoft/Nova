@@ -117,7 +117,7 @@ impl<G: Group> NIFS<G> {
 mod tests {
   use super::*;
   use crate::{
-    r1cs::{R1CS, R1CSInstance, R1CSWitness},
+    r1cs::{R1CSInstance, R1CSWitness, R1CS},
     traits::{Group, ROConstantsTrait},
   };
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
