@@ -473,22 +473,15 @@ where
       self.nodes.push(
         self.nodes[level]
           .par_chunks(2)
-          .map(|item| {
-            let [l, r] = match item {
-              [vl, vr] => [vl, vr],
-              [vl] => [vl, vl],
-              _ => panic!("Can not map data"),
-            };
-            // Same node pointer
-            if std::ptr::eq(l, r) {
-              (*l).clone()
-            } else {
-              // self.prove_step(pp, c_primary, c_secondary, *l, *r)
-              (*l)
-                .clone()
-                .merge(r, pp, c_primary, c_secondary)
-                .expect("Merge the left and right should work")
-            }
+          .map(|item| match item {
+            // There are 2 nodes in the chunk
+            [vl, vr] => (*vl)
+              .clone()
+              .merge(vr, pp, c_primary, c_secondary)
+              .expect("Merge the left and right should work"),
+            // Just 1 node left, we carry it to the next level
+            [vl] => (*vl).clone(),
+            _ => panic!("Invalid chunk size"),
           })
           .collect(),
       );
