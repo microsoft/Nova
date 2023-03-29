@@ -45,7 +45,7 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  Circuit, ConstraintSystem, SynthesisError,
+  Circuit, ConstraintSystem, Index, SynthesisError,
 };
 use core::marker::PhantomData;
 use ff::Field;
@@ -408,6 +408,7 @@ where
     c_secondary: C2,
   ) -> Self {
     let mut zi = Vec::<(usize, Vec<G1::Scalar>, Vec<G2::Scalar>)>::new();
+    // First input value of Z0, these steps can't be done in parallel
     zi.push((0, z0_primary.clone(), z0_secondary.clone()));
     for i in 1..steps {
       let (index, prev_primary, prev_secondary) = &zi[i - 1];
@@ -417,22 +418,40 @@ where
         c_secondary.output(&prev_secondary),
       ));
     }
-    // Do calculate argumeted inputs in parallel
+    // Do calculate node tree in parallel
     let leafs_vec = zi
-      .par_iter()
+      .par_chunks(2)
       .map(|item| {
-        let (index, zi_primary, zi_secondary) = item;
-        NovaTreeNode::new(
-          &pp,
-          c_primary.clone(),
-          c_secondary.clone(),
-          *index,
-          z0_primary.clone(),
-          (*zi_primary).clone(),
-          z0_secondary.clone(),
-          (*zi_secondary).clone(),
-        )
-        .expect("Unable to create basic leaf")
+        match item {
+          // There are 2 nodes
+          [l, r] => NovaTreeNode::new(
+            &pp,
+            c_primary.clone(),
+            c_secondary.clone(),
+            l.0 / 2,
+            l.1.clone(),
+            r.1.clone(),
+            l.2.clone(),
+            r.2.clone(),
+          )
+          .expect("Unable to create base node"),
+          // Just 1 node left
+          [l] => {
+            let (index, z_end_primary, z_end_secondary) = l;
+            NovaTreeNode::new(
+              &pp,
+              c_primary.clone(),
+              c_secondary.clone(),
+              (l.0 as f64 / 2f64).ceil() as usize,
+              zi[l.0 - 1].1.clone(),
+              z_end_primary.clone(),
+              zi[l.0 - 1].2.clone(),
+              z_end_secondary.clone(),
+            )
+            .expect("Unable to create the last base node")
+          }
+          _ => panic!("Unexpected chunk size"),
+        }
       })
       .collect();
     // Create a new parallel prover wit basic leafs
@@ -444,7 +463,7 @@ where
   /// Perform the proving in parallel
   pub fn prove(&mut self, pp: &PublicParams<G1, G2, C1, C2>, c_primary: &C1, c_secondary: &C2) {
     // Calculate the max height of the tree
-    // ⌈log2(n) + 1⌉
+    // ⌈log2(n)⌉ + 1
     let max_height = ((self.nodes[0].len() as f64).log2().ceil() + 1f64) as usize;
 
     // Build up the tree with max given height
@@ -452,28 +471,24 @@ where
       // Create new instance of nodes in the next level
       let mut leafs = Vec::<(&NovaTreeNode<G1, G2, C1, C2>, &NovaTreeNode<G1, G2, C1, C2>)>::new();
 
-      // Calculate for current level
-      for i in (0..self.nodes[level].len()).step_by(2) {
-        if i + 1 < self.nodes[level].len() {
-          leafs.push((&self.nodes[level][i], &self.nodes[level][i + 1]));
-        } else {
-          leafs.push((&self.nodes[level][i], &self.nodes[level][i]));
-        }
-      }
-
       // Push leafs to the next level
       self.nodes.push(
-        leafs
-          .par_iter()
+        self.nodes[level]
+          .par_chunks(2)
           .map(|item| {
-            let (l, r) = item;
-            if std::ptr::eq(*l, *r) {
-              (**l).clone()
+            let [l, r] = match item {
+              [vl, vr] => [vl, vr],
+              [vl] => [vl, vl],
+              _ => panic!("Can not map data"),
+            };
+            // Same node pointer
+            if std::ptr::eq(l, r) {
+              (*l).clone()
             } else {
               // self.prove_step(pp, c_primary, c_secondary, *l, *r)
-              (**l)
+              (*l)
                 .clone()
-                .merge(*r, pp, c_primary, c_secondary)
+                .merge(r, pp, c_primary, c_secondary)
                 .expect("Merge the left and right should work")
             }
           })
