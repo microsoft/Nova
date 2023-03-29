@@ -166,7 +166,7 @@ where
 
 /// A type that holds one node the tree based nova proof. This will have both running instances and fresh instances
 /// of the primary and secondary circuit.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NovaTreeNode<G1, G2, C1, C2>
 where
@@ -333,10 +333,10 @@ where
   /// consumed is treated as the right node.
   pub fn merge(
     self,
-    right: NovaTreeNode<G1, G2, C1, C2>,
+    right: &NovaTreeNode<G1, G2, C1, C2>,
     pp: &PublicParams<G1, G2, C1, C2>,
-    c_primary: C1,
-    c_secondary: C2,
+    c_primary: &C1,
+    c_secondary: &C2,
   ) -> Result<Self, NovaError> {
     // We have to merge two proofs where the right starts one index after the left ends
     // note that this would fail in the proof step but we error earlier here for debugging clarity.
