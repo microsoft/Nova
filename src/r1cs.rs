@@ -566,6 +566,13 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     }
   }
 
+   pub fn absorb_in_ro_as_R1CS(&self, ro: &mut G::RO) {
+      self.comm_W.absorb_in_ro(ro);
+      for x in &self.X {
+        ro.absorb(scalar_as_base::<G>(*x));
+      }
+    }
+
   /// Initializes a new RelaxedR1CSInstance from an R1CSInstance
   pub fn from_r1cs_instance(
     ck: &CommitmentKey<G>,
