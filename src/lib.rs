@@ -308,7 +308,7 @@ where
           &r_snark.r_W_secondary,
           &r_snark.l_u_secondary,
           &r_snark.l_w_secondary,
-          false
+          false,
         )?;
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
@@ -351,7 +351,7 @@ where
           &r_snark.r_W_primary,
           &l_u_primary,
           &l_w_primary,
-          false
+          false,
         )?;
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -660,7 +660,7 @@ where
           &recursive_snark.r_W_primary,
           &recursive_snark.l_u_primary,
           &recursive_snark.l_w_primary,
-          false
+          false,
         )
       },
       || {
@@ -673,7 +673,7 @@ where
           &recursive_snark.r_W_secondary,
           &recursive_snark.l_u_secondary,
           &recursive_snark.l_w_secondary,
-          false
+          false,
         )
       },
     );
@@ -783,14 +783,14 @@ where
       &vk.r1cs_shape_primary_digest,
       &self.r_U_primary,
       &self.l_u_primary,
-      false
+      false,
     )?;
     let f_U_secondary = self.nifs_secondary.verify(
       &vk.ro_consts_secondary,
       &vk.r1cs_shape_secondary_digest,
       &self.r_U_secondary,
       &self.l_u_secondary,
-      false
+      false,
     )?;
 
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
@@ -1335,5 +1335,32 @@ mod tests {
 
     assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(5u64)]);
+  }
+
+  #[test]
+  fn test_parallel_ivc_nontrivial() {
+    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_secondary = CubicCircuit::default();
+
+    // produce public parameters
+    let pp = parallel_prover::PublicParams::<
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+
+    let num_steps = 20;
+
+    let mut prover = parallel_prover::ParallelSNARK::new(
+      &pp,
+      num_steps,
+      vec![<G1 as Group>::Scalar::one()],
+      vec![<G2 as Group>::Scalar::zero()],
+      circuit_primary.clone(),
+      circuit_secondary.clone(),
+    );
+
+    prover.prove(&pp, &circuit_primary, &circuit_secondary);
   }
 }

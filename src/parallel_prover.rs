@@ -490,4 +490,14 @@ where
         .collect();
     }
   }
+
+  /// Get all nodes from given instance
+  pub fn get_nodes(&self) -> Vec<NovaTreeNode<G1, G2, C1, C2>> {
+    self.nodes.clone()
+  }
+
+  /// Get current length of current level
+  pub fn get_tree_size(&self) -> usize {
+    self.nodes.len()
+  }
 }
