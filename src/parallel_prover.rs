@@ -49,6 +49,7 @@ use bellperson::{
 };
 use core::marker::PhantomData;
 use ff::Field;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // TODO - This is replicated from lib but we should actually instead have another file for it and use both here and there
@@ -187,8 +188,8 @@ where
   // The running instance of the secondary
   l_w_secondary: RelaxedR1CSWitness<G2>,
   l_u_secondary: RelaxedR1CSInstance<G2>,
-  i_start: usize,
-  i_end: usize,
+  i_start: u64,
+  i_end: u64,
   z_start_primary: Vec<G1::Scalar>,
   z_end_primary: Vec<G1::Scalar>,
   z_start_secondary: Vec<G2::Scalar>,
@@ -353,6 +354,7 @@ where
       &self.r_W_secondary,
       &self.l_u_secondary,
       &self.l_w_secondary,
+      false,
     )?;
     let (nifs_right_secondary, (right_U_secondary, right_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
@@ -362,6 +364,7 @@ where
       &right.r_W_secondary,
       &right.l_u_secondary,
       &right.l_w_secondary,
+      false,
     )?;
     let (nifs_secondary, (U_secondary, W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
@@ -371,7 +374,7 @@ where
       &left_W_secondary,
       &right_U_secondary,
       &right_W_secondary,
-      true
+      true,
     )?;
 
     // Next we construct a proof of this folding and of the invocation of F
@@ -414,7 +417,7 @@ where
     // First input value of Z0, these steps can't be done in parallel
     zi.push((0, z0_primary.clone(), z0_secondary.clone()));
     for i in 1..steps {
-      let (index, prev_primary, prev_secondary) = &zi[i - 1];
+      let (index, prev_primary, prev_secondary) = &zi[i as usize - 1];
       zi.push((
         i,
         c_primary.output(&prev_primary),
@@ -431,7 +434,7 @@ where
             &pp,
             c_primary.clone(),
             c_secondary.clone(),
-            l.0,
+            l.0 as u64,
             l.1.clone(),
             r.1.clone(),
             l.2.clone(),
@@ -443,7 +446,7 @@ where
             &pp,
             c_primary.clone(),
             c_secondary.clone(),
-            l.0,
+            l.0 as u64,
             zi[l.0 - 1].1.clone(),
             l.1.clone(),
             zi[l.0 - 1].2.clone(),
