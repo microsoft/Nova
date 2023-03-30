@@ -173,56 +173,32 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     // Allocate input and output vectors
     let z_U_start = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_U_start[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_U_start_{i}")), || {
+          Ok(self.inputs.get()?.z_U_start[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     let z_U_end = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_U_end[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_U_end_{i}")), || {
+          Ok(self.inputs.get()?.z_U_end[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     // Allocate z_R_start
     let z_R_start = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_R_start[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_R_start_{i}")), || {
+          Ok(self.inputs.get()?.z_R_start[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     // Allocate z_R_end
     let z_R_end = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_R_end[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_R_end_{i}")), || {
+          Ok(self.inputs.get()?.z_R_end[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
@@ -248,7 +224,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     let R: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate R"),
       self.inputs.get().map_or(None, |inputs| {
-        inputs.R.get().map_or(None, |U| Some(U.clone()))
+        inputs.R.get().map_or(None, |R| Some(R.clone()))
       }),
       self.params.limb_width,
       self.params.n_limbs,
@@ -258,7 +234,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     let r = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance r to fold"),
       self.inputs.get().map_or(None, |inputs| {
-        inputs.u.get().map_or(None, |u| Some(u.clone()))
+        inputs.r.get().map_or(None, |r| Some(r.clone()))
       }),
     )?;
 
