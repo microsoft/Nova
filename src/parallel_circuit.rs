@@ -224,7 +224,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     let R: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate R"),
       self.inputs.get().map_or(None, |inputs| {
-        inputs.R.get().map_or(None, |U| Some(U.clone()))
+        inputs.R.get().map_or(None, |R| Some(R.clone()))
       }),
       self.params.limb_width,
       self.params.n_limbs,
@@ -234,7 +234,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     let r = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance r to fold"),
       self.inputs.get().map_or(None, |inputs| {
-        inputs.u.get().map_or(None, |u| Some(u.clone()))
+        inputs.u.get().map_or(None, |r| Some(r.clone()))
       }),
     )?;
 
