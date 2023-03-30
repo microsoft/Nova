@@ -173,56 +173,32 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedParallelCircuit<G, SC> {
     // Allocate input and output vectors
     let z_U_start = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_U_start[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_U_start_{i}")), || {
+          Ok(self.inputs.get()?.z_U_start[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     let z_U_end = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_U_end[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_U_end_{i}")), || {
+          Ok(self.inputs.get()?.z_U_end[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     // Allocate z_R_start
     let z_R_start = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_R_start[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_R_start_{i}")), || {
+          Ok(self.inputs.get()?.z_R_start[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
     // Allocate z_R_end
     let z_R_end = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(
-          cs.namespace(|| {
-            format!(
-              "
-          {i}"
-            )
-          }),
-          || Ok(self.inputs.get()?.z_R_end[i]),
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("z_R_end_{i}")), || {
+          Ok(self.inputs.get()?.z_R_end[i])
+        })
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
