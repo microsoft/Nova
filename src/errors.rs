@@ -50,4 +50,7 @@ pub enum NovaError {
   /// returned when the product proof check fails
   #[error("InvalidProductProof")]
   InvalidProductProof,
+  /// returned when the consistency with public IO and assignment used fails
+  #[error("IncorrectWitness")]
+  IncorrectWitness,
 }

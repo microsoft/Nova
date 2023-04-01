@@ -107,14 +107,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .map(|(a, b)| a * b)
       .reduce(Scalar::zero, |x, y| x + y)
   }
-
-  pub fn split(&self, idx: usize) -> (Self, Self) {
-    assert!(idx < self.len());
-    (
-      Self::new(self.Z[..idx].to_vec()),
-      Self::new(self.Z[idx..2 * idx].to_vec()),
-    )
-  }
 }
 
 impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
@@ -149,7 +141,7 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
     chi_i
   }
 
-  // Takes O(n log n). TODO: do this in O(n) where n is the number of entries in Z
+  // Takes O(n log n)
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.num_vars, r.len());
 

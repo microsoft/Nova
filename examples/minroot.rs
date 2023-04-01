@@ -261,10 +261,8 @@ fn main() {
     let start = Instant::now();
     type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
     type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
-    type CC1 = nova_snark::spartan::spark::TrivialCompComputationEngine<G1, EE1>;
-    type CC2 = nova_snark::spartan::spark::TrivialCompComputationEngine<G2, EE2>;
-    type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1, CC1>;
-    type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2, CC2>;
+    type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
+    type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
 
     let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
     println!(
