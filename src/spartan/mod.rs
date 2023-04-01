@@ -501,19 +501,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       return Err(NovaError::InvalidSumcheckProof);
     }
 
-    // add additional claims about W and E polynomials
-    let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
-    u_vec.push(PolyEvalInstance {
-      c: U.comm_W,
-      x: r_y[1..].to_vec(),
-      e: self.eval_W,
-    });
-
-    u_vec.push(PolyEvalInstance {
-      c: U.comm_E,
-      x: r_x,
-      e: self.eval_E,
-    });
+    // add claims about W and E polynomials
+    let u_vec: Vec<PolyEvalInstance<G>> = vec![
+      PolyEvalInstance {
+        c: U.comm_W,
+        x: r_y[1..].to_vec(),
+        e: self.eval_W,
+      },
+      PolyEvalInstance {
+        c: U.comm_E,
+        x: r_x,
+        e: self.eval_E,
+      },
+    ];
 
     let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
