@@ -259,7 +259,6 @@ impl<G: Group> ProductArgument<G> {
       .collect::<Vec<_>>();
 
     // absorb the output commitment and the claimed product
-    //transcript.absorb(b"i", &comm_input_vec.to_vec().as_slice());
     transcript.absorb(b"o", &comm_output_vec.as_slice());
     transcript.absorb(b"r", &prod_vec.as_slice());
 
