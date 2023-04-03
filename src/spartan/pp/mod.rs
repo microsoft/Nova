@@ -1,6 +1,11 @@
 //! This module implements RelaxedR1CSSNARK traits using a spark-based approach to prove evaluations of
 //! sparse multilinear polynomials involved in Spartan's sum-check protocol, thereby providing a preprocessing SNARK
 use crate::{
+  bellperson::{
+    r1cs::{NovaShape, NovaWitness},
+    shape_cs::ShapeCS,
+    solver::SatisfyingAssignment,
+  },
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
@@ -10,12 +15,13 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
-    commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait,
+    circuit::StepCircuit, commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait,
     snark::RelaxedR1CSSNARKTrait, Group, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey,
 };
-use core::cmp::max;
+use bellperson::{gadgets::num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
+use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use itertools::concat;
 use rayon::prelude::*;
@@ -1315,3 +1321,252 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 }
 
 // provides direct interfaces to call the SNARK implemented in this module
+struct SpartanCircuit<G: Group, SC: StepCircuit<G::Scalar>> {
+  z_i: Option<Vec<G::Scalar>>, // inputs to the circuit
+  sc: SC,                      // step circuit to be executed
+}
+
+impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for SpartanCircuit<G, SC> {
+  fn synthesize<CS: ConstraintSystem<G::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+    // obtain the arity information
+    let arity = self.sc.arity();
+
+    // Allocate zi. If inputs.zi is not provided, allocate default value 0
+    let zero = vec![G::Scalar::zero(); arity];
+    let z_i = (0..arity)
+      .map(|i| {
+        AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
+          Ok(self.z_i.as_ref().unwrap_or(&zero)[i])
+        })
+      })
+      .collect::<Result<Vec<AllocatedNum<G::Scalar>>, _>>()?;
+
+    let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| "F"), &z_i)?;
+
+    // inputize both z_i and z_i_plus_one
+    for (j, input) in z_i.iter().enumerate().take(arity) {
+      let _ = input.inputize(cs.namespace(|| format!("input {j}")));
+    }
+    for (j, output) in z_i_plus_one.iter().enumerate().take(arity) {
+      let _ = output.inputize(cs.namespace(|| format!("output {j}")));
+    }
+
+    Ok(())
+  }
+}
+
+/// A type that holds Spartan's prover key
+pub struct SpartanProverKey<G, EE>
+where
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+{
+  F_arity: usize,
+  S: R1CSShape<G>,
+  ck: CommitmentKey<G>,
+  pk: ProverKey<G, EE>,
+}
+
+/// A type that holds Spartan's verifier key
+pub struct SpartanVerifierKey<G, EE>
+where
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+{
+  F_arity: usize,
+  vk: VerifierKey<G, EE>,
+}
+
+/// A direct SNARK proving a step circuit
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct SpartanSNARK<G, EE, C>
+where
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  C: StepCircuit<G::Scalar>,
+{
+  comm_W: Commitment<G>,          // commitment to the witness
+  snark: RelaxedR1CSSNARK<G, EE>, // snark proving the witness is satisfying
+  _p: PhantomData<C>,
+}
+
+impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, C: StepCircuit<G::Scalar>>
+  SpartanSNARK<G, EE, C>
+{
+  /// Produces prover and verifier keys for Spartan
+  pub fn setup(sc: C) -> Result<(SpartanProverKey<G, EE>, SpartanVerifierKey<G, EE>), NovaError> {
+    let F_arity = sc.arity();
+
+    // construct a circuit that can be synthesized
+    let circuit: SpartanCircuit<G, C> = SpartanCircuit { z_i: None, sc };
+
+    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (S, ck) = cs.r1cs_shape();
+
+    let (pk, vk) = RelaxedR1CSSNARK::setup(&ck, &S)?;
+
+    let pk = SpartanProverKey { F_arity, S, ck, pk };
+
+    let vk = SpartanVerifierKey { F_arity, vk };
+
+    Ok((pk, vk))
+  }
+
+  /// Produces a proof of satisfiability of the provided circuit
+  pub fn prove(
+    pk: &SpartanProverKey<G, EE>,
+    sc: C,
+    z_i: Vec<G::Scalar>,
+  ) -> Result<Self, NovaError> {
+    if z_i.len() != pk.F_arity || sc.output(&z_i).len() != pk.F_arity {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
+
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+
+    let circuit: SpartanCircuit<G, C> = SpartanCircuit { z_i: Some(z_i), sc };
+
+    let _ = circuit.synthesize(&mut cs);
+    let (u, w) = cs
+      .r1cs_instance_and_witness(&pk.S, &pk.ck)
+      .map_err(|_e| NovaError::UnSat)?;
+
+    // convert the instance and witness to relaxed form
+    let (u_relaxed, w_relaxed) = (
+      RelaxedR1CSInstance::from_r1cs_instance_unchecked(&u.comm_W, &u.X),
+      RelaxedR1CSWitness::from_r1cs_witness(&pk.S, &w),
+    );
+
+    // prove the instance using Spartan
+    let snark = RelaxedR1CSSNARK::prove(&pk.ck, &pk.pk, &u_relaxed, &w_relaxed)?;
+
+    Ok(SpartanSNARK {
+      comm_W: u.comm_W,
+      snark,
+      _p: Default::default(),
+    })
+  }
+
+  /// Verifies a proof of satisfiability
+  pub fn verify(
+    &self,
+    vk: &SpartanVerifierKey<G, EE>,
+    z_i: Vec<G::Scalar>,
+    z_i_plus_one: Vec<G::Scalar>,
+  ) -> Result<(), NovaError> {
+    // check if z_i and z_i_plus_one have lengths according to the provided arity
+    if z_i.len() != vk.F_arity || z_i_plus_one.len() != vk.F_arity {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
+
+    // construct an instance using the provided commitment to the witness and z_i and z_{i+1}
+    let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(
+      &self.comm_W,
+      &z_i
+        .into_iter()
+        .chain(z_i_plus_one.into_iter())
+        .collect::<Vec<G::Scalar>>(),
+    );
+
+    // verify the snark using the constructed instance
+    self.snark.verify(&vk.vk, &u_relaxed)?;
+
+    Ok(())
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  type G = pasta_curves::pallas::Point;
+  type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
+  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use core::marker::PhantomData;
+  use ff::PrimeField;
+
+  #[derive(Clone, Debug, Default)]
+  struct CubicCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F> StepCircuit<F> for CubicCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn arity(&self) -> usize {
+      1
+    }
+
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      cs: &mut CS,
+      z: &[AllocatedNum<F>],
+    ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      let x = &z[0];
+      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
+      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), x)?;
+      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+        Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
+      })?;
+
+      cs.enforce(
+        || "y = x^3 + x + 5",
+        |lc| {
+          lc + x_cu.get_variable()
+            + x.get_variable()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+        },
+        |lc| lc + CS::one(),
+        |lc| lc + y.get_variable(),
+      );
+
+      Ok(vec![y])
+    }
+
+    fn output(&self, z: &[F]) -> Vec<F> {
+      vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
+    }
+  }
+
+  #[test]
+  fn test_spartan_snark() {
+    let circuit = CubicCircuit::default();
+
+    // produce keys
+    let (pk, vk) =
+      SpartanSNARK::<G, EE, CubicCircuit<<G as Group>::Scalar>>::setup(circuit.clone()).unwrap();
+
+    let num_steps = 3;
+
+    // setup inputs
+    let z0 = vec![<G as Group>::Scalar::zero()];
+    let mut z_i = z0;
+
+    for _i in 0..num_steps {
+      // produce a SNARK
+      let res = SpartanSNARK::prove(&pk, circuit.clone(), z_i.clone());
+      assert!(res.is_ok());
+
+      let z_i_plus_one = circuit.output(&z_i);
+
+      let snark = res.unwrap();
+
+      // verify the SNARK
+      let res = snark.verify(&vk, z_i.clone(), z_i_plus_one.clone());
+      assert!(res.is_ok());
+
+      // set input to the next step
+      z_i = z_i_plus_one.clone();
+    }
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(z_i, vec![<G as Group>::Scalar::from(2460515u64)]);
+  }
+}

@@ -578,6 +578,19 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     r_instance
   }
 
+  /// Initializes a new RelaxedR1CSInstance from an R1CSInstance
+  pub fn from_r1cs_instance_unchecked(
+    comm_W: &Commitment<G>,
+    X: &[G::Scalar],
+  ) -> RelaxedR1CSInstance<G> {
+    RelaxedR1CSInstance {
+      comm_W: *comm_W,
+      comm_E: Commitment::<G>::default(),
+      u: G::Scalar::one(),
+      X: X.to_vec(),
+    }
+  }
+
   /// Folds an incoming RelaxedR1CSInstance into the current one
   pub fn fold(
     &self,
