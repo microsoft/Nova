@@ -302,7 +302,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 }
 
 /// A type that represents the memory-checking argument
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct MemcheckProof<G: Group> {
   sc_prod: ProductArgument<G>,
@@ -685,7 +685,7 @@ impl<G: Group> MemcheckProof<G> {
 }
 
 /// A type that represents the prover's key
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   pk_ee: EE::ProverKey,
@@ -695,7 +695,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 }
 
 /// A type that represents the verifier's key
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   num_cons: usize,
@@ -707,7 +707,7 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   // outer sum-check
@@ -1356,6 +1356,8 @@ impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for SpartanCircuit
 }
 
 /// A type that holds Spartan's prover key
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct SpartanProverKey<G, EE>
 where
   G: Group,
@@ -1368,6 +1370,8 @@ where
 }
 
 /// A type that holds Spartan's verifier key
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct SpartanVerifierKey<G, EE>
 where
   G: Group,
@@ -1378,7 +1382,7 @@ where
 }
 
 /// A direct SNARK proving a step circuit
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct SpartanSNARK<G, EE, C>
 where
