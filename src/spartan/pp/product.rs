@@ -163,7 +163,7 @@ impl<G: Group> SumcheckProof<G> {
 }
 
 /// Provides a product argument using the algorithm described by Setty-Lee, 2020
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProductArgument<G: Group> {
   comm_output_vec: Vec<Commitment<G>>,
