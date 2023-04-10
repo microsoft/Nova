@@ -20,6 +20,16 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sumcheck::SumcheckProof;
 
+fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
+  assert!(n >= 1);
+  let mut powers = Vec::new();
+  powers.push(G::Scalar::one());
+  for i in 1..n {
+    powers.push(powers[i - 1] * s);
+  }
+  powers
+}
+
 /// A type that holds a witness to a polynomial evaluation instance
 pub struct PolyEvalWitness<G: Group> {
   p: Vec<G::Scalar>, // polynomial
@@ -51,6 +61,17 @@ impl<G: Group> PolyEvalWitness<G> {
     }
     PolyEvalWitness { p }
   }
+
+  fn batch(p_vec: &[&Vec<G::Scalar>], s: &G::Scalar) -> PolyEvalWitness<G> {
+    let powers_of_s = powers::<G>(s, p_vec.len());
+    let mut p = vec![G::Scalar::zero(); p_vec[0].len()];
+    for i in 0..p_vec.len() {
+      for (j, item) in p.iter_mut().enumerate().take(p_vec[i].len()) {
+        *item += p_vec[i][j] * powers_of_s[i]
+      }
+    }
+    PolyEvalWitness { p }
+  }
 }
 
 /// A type that holds a polynomial evaluation instance
@@ -73,6 +94,31 @@ impl<G: Group> PolyEvalInstance<G> {
         .collect()
     } else {
       Vec::new()
+    }
+  }
+
+  fn batch(
+    c_vec: &[Commitment<G>],
+    x: &[G::Scalar],
+    e_vec: &[G::Scalar],
+    s: &G::Scalar,
+  ) -> PolyEvalInstance<G> {
+    let powers_of_s = powers::<G>(s, c_vec.len());
+    let e = e_vec
+      .iter()
+      .zip(powers_of_s.iter())
+      .map(|(e, p)| *e * p)
+      .fold(G::Scalar::zero(), |acc, item| acc + item);
+    let c = c_vec
+      .iter()
+      .zip(powers_of_s.iter())
+      .map(|(c, p)| *c * *p)
+      .fold(Commitment::<G>::default(), |acc, item| acc + item);
+
+    PolyEvalInstance {
+      c,
+      x: x.to_vec(),
+      e,
     }
   }
 }
@@ -312,20 +358,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let w_vec_padded = PolyEvalWitness::pad(&w_vec); // pad the polynomials to be of the same size
     let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
-    let powers = |s: &G::Scalar, n: usize| -> Vec<G::Scalar> {
-      assert!(n >= 1);
-      let mut powers = Vec::new();
-      powers.push(G::Scalar::one());
-      for i in 1..n {
-        powers.push(powers[i - 1] * s);
-      }
-      powers
-    };
-
     // generate a challenge
     let rho = transcript.squeeze(b"r")?;
     let num_claims = w_vec_padded.len();
-    let powers_of_rho = powers(&rho, num_claims);
+    let powers_of_rho = powers::<G>(&rho, num_claims);
     let claim_batch_joint = u_vec_padded
       .iter()
       .zip(powers_of_rho.iter())
@@ -361,7 +397,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // we now combine evaluation claims at the same point rz into one
     let gamma = transcript.squeeze(b"g")?;
-    let powers_of_gamma: Vec<G::Scalar> = powers(&gamma, num_claims);
+    let powers_of_gamma: Vec<G::Scalar> = powers::<G>(&gamma, num_claims);
     let comm_joint = u_vec_padded
       .iter()
       .zip(powers_of_gamma.iter())
@@ -517,20 +553,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
-    let powers = |s: &G::Scalar, n: usize| -> Vec<G::Scalar> {
-      assert!(n >= 1);
-      let mut powers = Vec::new();
-      powers.push(G::Scalar::one());
-      for i in 1..n {
-        powers.push(powers[i - 1] * s);
-      }
-      powers
-    };
-
     // generate a challenge
     let rho = transcript.squeeze(b"r")?;
     let num_claims = u_vec.len();
-    let powers_of_rho = powers(&rho, num_claims);
+    let powers_of_rho = powers::<G>(&rho, num_claims);
     let claim_batch_joint = u_vec
       .iter()
       .zip(powers_of_rho.iter())
@@ -566,7 +592,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // we now combine evaluation claims at the same point rz into one
     let gamma = transcript.squeeze(b"g")?;
-    let powers_of_gamma: Vec<G::Scalar> = powers(&gamma, num_claims);
+    let powers_of_gamma: Vec<G::Scalar> = powers::<G>(&gamma, num_claims);
     let comm_joint = u_vec_padded
       .iter()
       .zip(powers_of_gamma.iter())
