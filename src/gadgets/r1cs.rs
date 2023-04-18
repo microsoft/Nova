@@ -106,7 +106,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       cs.namespace(|| "allocate X[0]"),
       || {
         Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[0]),
+          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[0]),
         ))
       },
       limb_width,
@@ -117,7 +117,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       cs.namespace(|| "allocate X[1]"),
       || {
         Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::zero(), |inst| inst.X[1]),
+          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[1]),
         ))
       },
       limb_width,
@@ -141,14 +141,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
-      || Ok(f_to_nat(&G::Scalar::zero())),
+      || Ok(f_to_nat(&G::Scalar::ZERO)),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[1]"),
-      || Ok(f_to_nat(&G::Scalar::zero())),
+      || Ok(f_to_nat(&G::Scalar::ZERO)),
       limb_width,
       n_limbs,
     )?;

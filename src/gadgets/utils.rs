@@ -24,8 +24,8 @@ where
   // We loop over the input bits and construct the constraint
   // and the field element that corresponds to the result
   let mut lc = LinearCombination::zero();
-  let mut coeff = Scalar::one();
-  let mut fe = Some(Scalar::zero());
+  let mut coeff = Scalar::ONE;
+  let mut fe = Some(Scalar::ZERO);
   for bit in bits.iter() {
     lc = lc + (coeff, bit.get_variable());
     fe = bit.get_value().map(|val| {
@@ -49,7 +49,7 @@ where
 pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
-  let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::zero()))?;
+  let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::ZERO))?;
   cs.enforce(
     || "check zero is valid",
     |lc| lc,
@@ -63,7 +63,7 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
 pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
-  let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::one()))?;
+  let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::ONE))?;
   cs.enforce(
     || "check one is valid",
     |lc| lc + CS::one(),
@@ -85,9 +85,9 @@ where
   CS: ConstraintSystem<<G as Group>::Base>,
 {
   AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
-    let input_bits = input.unwrap_or_else(G::Scalar::zero).clone().to_le_bits();
-    let mut mult = G::Base::one();
-    let mut val = G::Base::zero();
+    let input_bits = input.unwrap_or(G::Scalar::ZERO).clone().to_le_bits();
+    let mut mult = G::Base::ONE;
+    let mut val = G::Base::ZERO;
     for bit in input_bits {
       if bit {
         val += mult;
@@ -101,8 +101,8 @@ where
 /// interepret scalar as base
 pub fn scalar_as_base<G: Group>(input: G::Scalar) -> G::Base {
   let input_bits = input.to_le_bits();
-  let mut mult = G::Base::one();
-  let mut val = G::Base::zero();
+  let mut mult = G::Base::ONE;
+  let mut val = G::Base::ZERO;
   for bit in input_bits {
     if bit {
       val += mult;
@@ -159,7 +159,7 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
 
   let t = AllocatedNum::alloc(cs.namespace(|| "t"), || {
     Ok(if *a.get_value().get()? == *b.get_value().get()? {
-      F::one()
+      F::ONE
     } else {
       (*a.get_value().get()? - *b.get_value().get()?)
         .invert()
@@ -204,7 +204,7 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable() - b.get_variable(),
-    |_| condition.lc(CS::one(), F::one()),
+    |_| condition.lc(CS::one(), F::ONE),
     |lc| lc + c.get_variable() - b.get_variable(),
   );
 
@@ -254,7 +254,7 @@ pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
     cs.enforce(
       || format!("conditional select constraint {i}"),
       |lc| lc + &a.limbs[i] - &b.limbs[i],
-      |_| condition.lc(CS::one(), F::one()),
+      |_| condition.lc(CS::one(), F::ONE),
       |lc| lc + &c.limbs[i] - &b.limbs[i],
     );
   }
@@ -270,7 +270,7 @@ pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   condition: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
-    if *condition.get_value().get()? == F::one() {
+    if *condition.get_value().get()? == F::ONE {
       Ok(*a.get_value().get()?)
     } else {
       Ok(*b.get_value().get()?)
@@ -296,8 +296,8 @@ pub fn select_zero_or_num2<F: PrimeField, CS: ConstraintSystem<F>>(
   condition: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
-    if *condition.get_value().get()? == F::one() {
-      Ok(F::zero())
+    if *condition.get_value().get()? == F::ONE {
+      Ok(F::ZERO)
     } else {
       Ok(*a.get_value().get()?)
     }
@@ -321,10 +321,10 @@ pub fn select_num_or_zero2<F: PrimeField, CS: ConstraintSystem<F>>(
   condition: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
-    if *condition.get_value().get()? == F::one() {
+    if *condition.get_value().get()? == F::ONE {
       Ok(*a.get_value().get()?)
     } else {
-      Ok(F::zero())
+      Ok(F::ZERO)
     }
   })?;
 
@@ -348,14 +348,14 @@ pub fn select_num_or_zero<F: PrimeField, CS: ConstraintSystem<F>>(
     if *condition.get_value().get()? {
       Ok(*a.get_value().get()?)
     } else {
-      Ok(F::zero())
+      Ok(F::ZERO)
     }
   })?;
 
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable(),
-    |_| condition.lc(CS::one(), F::one()),
+    |_| condition.lc(CS::one(), F::ONE),
     |lc| lc + c.get_variable(),
   );
 
@@ -369,8 +369,8 @@ pub fn select_one_or_num2<F: PrimeField, CS: ConstraintSystem<F>>(
   condition: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
-    if *condition.get_value().get()? == F::one() {
-      Ok(F::one())
+    if *condition.get_value().get()? == F::ONE {
+      Ok(F::ONE)
     } else {
       Ok(*a.get_value().get()?)
     }
@@ -393,8 +393,8 @@ pub fn select_one_or_diff2<F: PrimeField, CS: ConstraintSystem<F>>(
   condition: &AllocatedNum<F>,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
   let c = AllocatedNum::alloc(cs.namespace(|| "conditional select result"), || {
-    if *condition.get_value().get()? == F::one() {
-      Ok(F::one())
+    if *condition.get_value().get()? == F::ONE {
+      Ok(F::ONE)
     } else {
       Ok(*a.get_value().get()? - *b.get_value().get()?)
     }
@@ -419,14 +419,14 @@ pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
     if *condition.get_value().get()? {
       Ok(*a.get_value().get()?)
     } else {
-      Ok(F::one())
+      Ok(F::ONE)
     }
   })?;
 
   cs.enforce(
     || "conditional select constraint",
     |lc| lc + a.get_variable() - CS::one(),
-    |_| condition.lc(CS::one(), F::one()),
+    |_| condition.lc(CS::one(), F::ONE),
     |lc| lc + c.get_variable() - CS::one(),
   );
 

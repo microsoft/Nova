@@ -118,7 +118,7 @@ where
   (0..a.len())
     .into_par_iter()
     .map(|i| a[i] * b[i])
-    .reduce(T::zero, |x, y| x + y)
+    .reduce(|| T::ZERO, |x, y| x + y)
 }
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
@@ -323,8 +323,8 @@ where
     let P = U.comm_a_vec + CE::<G>::commit(&ck_c, &[U.c]);
 
     let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
-      let mut products = vec![G::Scalar::zero(); v.len()];
-      let mut acc = G::Scalar::one();
+      let mut products = vec![G::Scalar::ZERO; v.len()];
+      let mut acc = G::Scalar::ONE;
 
       for i in 0..v.len() {
         products[i] = acc;
@@ -332,14 +332,14 @@ where
       }
 
       // we can compute an inversion only if acc is non-zero
-      if acc == G::Scalar::zero() {
+      if acc == G::Scalar::ZERO {
         return Err(NovaError::InvalidInputLength);
       }
 
       // compute the inverse once for all entries
       acc = acc.invert().unwrap();
 
-      let mut inv = vec![G::Scalar::zero(); v.len()];
+      let mut inv = vec![G::Scalar::ZERO; v.len()];
       for i in 0..v.len() {
         let tmp = acc * v[v.len() - 1 - i];
         inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
@@ -371,9 +371,9 @@ where
 
     // compute the vector with the tensor structure
     let s = {
-      let mut s = vec![G::Scalar::zero(); n];
+      let mut s = vec![G::Scalar::ZERO; n];
       s[0] = {
-        let mut v = G::Scalar::one();
+        let mut v = G::Scalar::ONE;
         for r_inverse_i in &r_inverse {
           v *= r_inverse_i;
         }
@@ -406,7 +406,7 @@ where
         &r_square
           .iter()
           .chain(r_inverse_square.iter())
-          .chain(iter::once(&G::Scalar::one()))
+          .chain(iter::once(&G::Scalar::ONE))
           .copied()
           .collect::<Vec<G::Scalar>>(),
       )

@@ -96,8 +96,8 @@ where
 
     // Only return `num_bits`
     let bits = hash[0].to_le_bits();
-    let mut res = Scalar::zero();
-    let mut coeff = Scalar::one();
+    let mut res = Scalar::ZERO;
+    let mut coeff = Scalar::ONE;
     for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;

@@ -53,7 +53,7 @@ impl<Scalar: PrimeField> IdentityPolynomial<Scalar> {
     assert_eq!(self.ell, r.len());
     (0..self.ell)
       .map(|i| Scalar::from(2_usize.pow((self.ell - i - 1) as u32) as u64) * r[i])
-      .fold(Scalar::zero(), |acc, item| acc + item)
+      .fold(Scalar::ZERO, |acc, item| acc + item)
   }
 }
 
@@ -149,25 +149,25 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 
     let val_A = {
       let mut val = S.A.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>();
-      val.resize(N, G::Scalar::zero());
+      val.resize(N, G::Scalar::ZERO);
       val
     };
 
     let val_B = {
       // prepend zeros
-      let mut val = vec![G::Scalar::zero(); S.A.len()];
+      let mut val = vec![G::Scalar::ZERO; S.A.len()];
       val.extend(S.B.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
       // append zeros
-      val.resize(N, G::Scalar::zero());
+      val.resize(N, G::Scalar::ZERO);
       val
     };
 
     let val_C = {
       // prepend zeros
-      let mut val = vec![G::Scalar::zero(); S.A.len() + S.B.len()];
+      let mut val = vec![G::Scalar::ZERO; S.A.len() + S.B.len()];
       val.extend(S.C.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
       // append zeros
-      val.resize(N, G::Scalar::zero());
+      val.resize(N, G::Scalar::ZERO);
       val
     };
 
@@ -262,7 +262,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     Vec<G::Scalar>,
   ) {
     let r_x_padded = {
-      let mut x = vec![G::Scalar::zero(); self.N.log_2() - r_x.len()];
+      let mut x = vec![G::Scalar::ZERO; self.N.log_2() - r_x.len()];
       x.extend(r_x);
       x
     };
@@ -270,7 +270,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     let mem_row = EqPolynomial::new(r_x_padded).evals();
     let mem_col = {
       let mut z = z.to_vec();
-      z.resize(self.N, G::Scalar::zero());
+      z.resize(self.N, G::Scalar::ZERO);
       z
     };
 
@@ -374,8 +374,8 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
         // add a dummy product operation to make the left.len() == right.len() == output.len() == input.len()
         left.push(output[output.len() - 1]);
-        right.push(G::Scalar::zero());
-        output.push(G::Scalar::zero());
+        right.push(G::Scalar::ZERO);
+        output.push(G::Scalar::ZERO);
 
         // output is stored at the last but one position
         let product = output[output.len() - 2];
@@ -445,7 +445,7 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
 impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
-    vec![G::Scalar::zero(); 8]
+    vec![G::Scalar::ZERO; 8]
   }
 
   fn degree(&self) -> usize {
@@ -515,7 +515,7 @@ impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
             (eval_point_0, eval_point_2, eval_point_3)
           })
           .reduce(
-            || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
+            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
           );
         vec![eval_point_0, eval_point_2, eval_point_3]
@@ -561,7 +561,7 @@ struct OuterSumcheckInstance<G: Group> {
 
 impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
-    vec![G::Scalar::zero()]
+    vec![G::Scalar::ZERO]
   }
 
   fn degree(&self) -> usize {
@@ -623,7 +623,7 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
         (eval_point_0, eval_point_2, eval_point_3)
       })
       .reduce(
-        || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
+        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       );
 
@@ -706,7 +706,7 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
         (eval_point_0, eval_point_2, eval_point_3)
       })
       .reduce(
-        || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
+        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       );
 
@@ -860,7 +860,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARK<G, EE>
       .iter()
       .zip(coeffs.iter())
       .map(|(c_1, c_2)| *c_1 * c_2)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let mut e = claim;
     let mut r: Vec<G::Scalar> = Vec::new();
@@ -875,13 +875,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARK<G, EE>
 
       let evals_combined_0 = (0..evals.len())
         .map(|i| evals[i][0] * coeffs[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
+        .fold(G::Scalar::ZERO, |acc, item| acc + item);
       let evals_combined_2 = (0..evals.len())
         .map(|i| evals[i][1] * coeffs[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
+        .fold(G::Scalar::ZERO, |acc, item| acc + item);
       let evals_combined_3 = (0..evals.len())
         .map(|i| evals[i][2] * coeffs[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
+        .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
       let evals = vec![
         evals_combined_0,
@@ -1000,12 +1000,12 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
     let (Az, Bz, Cz, E) = {
-      Az.resize(pk.S_repr.N, G::Scalar::zero());
-      Bz.resize(pk.S_repr.N, G::Scalar::zero());
-      Cz.resize(pk.S_repr.N, G::Scalar::zero());
+      Az.resize(pk.S_repr.N, G::Scalar::ZERO);
+      Bz.resize(pk.S_repr.N, G::Scalar::ZERO);
+      Cz.resize(pk.S_repr.N, G::Scalar::ZERO);
 
       let mut E = W.E.clone();
-      E.resize(pk.S_repr.N, G::Scalar::zero());
+      E.resize(pk.S_repr.N, G::Scalar::ZERO);
 
       (Az, Bz, Cz, E)
     };
@@ -1092,7 +1092,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     };
 
     let init_row = (0..mem_row.len())
-      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_row[i], &G::Scalar::zero()))
+      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_row[i], &G::Scalar::ZERO))
       .collect::<Vec<G::Scalar>>();
     let read_row = (0..E_row.len())
       .map(|i| hash_func(&pk.S_repr.row[i], &E_row[i], &pk.S_repr.row_read_ts[i]))
@@ -1102,7 +1102,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         hash_func(
           &pk.S_repr.row[i],
           &E_row[i],
-          &(pk.S_repr.row_read_ts[i] + G::Scalar::one()),
+          &(pk.S_repr.row_read_ts[i] + G::Scalar::ONE),
         )
       })
       .collect::<Vec<G::Scalar>>();
@@ -1117,7 +1117,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .collect::<Vec<G::Scalar>>();
 
     let init_col = (0..mem_col.len())
-      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_col[i], &G::Scalar::zero()))
+      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_col[i], &G::Scalar::ZERO))
       .collect::<Vec<G::Scalar>>();
     let read_col = (0..E_col.len())
       .map(|i| hash_func(&pk.S_repr.col[i], &E_col[i], &pk.S_repr.col_read_ts[i]))
@@ -1127,7 +1127,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         hash_func(
           &pk.S_repr.col[i],
           &E_col[i],
-          &(pk.S_repr.col_read_ts[i] + G::Scalar::one()),
+          &(pk.S_repr.col_read_ts[i] + G::Scalar::ONE),
         )
       })
       .collect::<Vec<G::Scalar>>();
@@ -1190,7 +1190,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     // into claims about input and output
     let c = transcript.squeeze(b"c")?;
 
-    // eval = (G::Scalar::one() - c) * eval_left + c * eval_right
+    // eval = (G::Scalar::ONE - c) * eval_left + c * eval_right
     // eval is claimed evaluation of input||output(r, c), which can be proven by proving input(r[1..], c) and output(r[1..], c)
     let rand_ext = {
       let mut r = r_sat.clone();
@@ -1233,13 +1233,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let eval_output = eval_output_vec
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let comm_output = mem_sc_inst
       .comm_output_vec
@@ -1250,7 +1250,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     let weighted_sum = |W: &[Vec<G::Scalar>], s: &[G::Scalar]| -> Vec<G::Scalar> {
       assert_eq!(W.len(), s.len());
-      let mut p = vec![G::Scalar::zero(); W[0].len()];
+      let mut p = vec![G::Scalar::ZERO; W[0].len()];
       for i in 0..W.len() {
         for (j, item) in W[i].iter().enumerate().take(W[i].len()) {
           p[j] += *item * s[i]
@@ -1265,7 +1265,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     // eval_output = output(r_sat)
     w_u_vec.push((
@@ -1281,8 +1281,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // claimed_product = output(1, ..., 1, 0)
     let x = {
-      let mut x = vec![G::Scalar::one(); r_sat.len()];
-      x[r_sat.len() - 1] = G::Scalar::zero();
+      let mut x = vec![G::Scalar::ONE; r_sat.len()];
+      x[r_sat.len() - 1] = G::Scalar::ZERO;
       x
     };
     w_u_vec.push((
@@ -1457,7 +1457,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let mut polys_left: Vec<MultilinearPolynomial<G::Scalar>> = w_vec_padded
       .iter()
@@ -1499,7 +1499,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let eval_arg = EE::prove(
       ck,
@@ -1674,7 +1674,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
           * rand_eq_bound_r_sat
           * (self.eval_left_arr[i] * self.eval_right_arr[i] - self.eval_output_arr[i])
       })
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
     let claim_outer_final_expected = coeffs[8]
       * taus_bound_r_sat
       * (self.eval_Az * self.eval_Bz - U.u * self.eval_Cz - self.eval_E);
@@ -1712,7 +1712,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     // into claims about input and output
     let c = transcript.squeeze(b"c")?;
 
-    // eval = (G::Scalar::one() - c) * eval_left + c * eval_right
+    // eval = (G::Scalar::ONE - c) * eval_left + c * eval_right
     // eval is claimed evaluation of input||output(r, c), which can be proven by proving input(r[1..], c) and output(r[1..], c)
     let rand_ext = {
       let mut r = r_sat.clone();
@@ -1744,14 +1744,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let eval_output = self
       .eval_output_arr
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let comm_output = comm_output_vec
       .iter()
@@ -1764,7 +1764,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     // eval_output = output(r_sat)
     u_vec.push(PolyEvalInstance {
@@ -1775,8 +1775,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     // claimed_product = output(1, ..., 1, 0)
     let x = {
-      let mut x = vec![G::Scalar::one(); r_sat.len()];
-      x[r_sat.len() - 1] = G::Scalar::zero();
+      let mut x = vec![G::Scalar::ONE; r_sat.len()];
+      x[r_sat.len() - 1] = G::Scalar::ZERO;
       x
     };
     u_vec.push(PolyEvalInstance {
@@ -1842,9 +1842,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       let (factor, r_prod_unpad) = {
         let l = vk.S_comm.N.log_2() - (2 * vk.num_vars).log_2();
 
-        let mut factor = G::Scalar::one();
+        let mut factor = G::Scalar::ONE;
         for r_p in r_prod.iter().take(l) {
-          factor *= G::Scalar::one() - r_p
+          factor *= G::Scalar::ONE - r_p
         }
 
         let r_prod_unpad = {
@@ -1868,7 +1868,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
           .evaluate(&r_prod_unpad[1..])
       };
       let eval_Z =
-        factor * ((G::Scalar::one() - r_prod_unpad[0]) * self.eval_W + r_prod_unpad[0] * eval_X);
+        factor * ((G::Scalar::ONE - r_prod_unpad[0]) * self.eval_W + r_prod_unpad[0] * eval_X);
 
       (eval_Z, r_prod_unpad)
     };
@@ -1884,7 +1884,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       let addr = IdentityPolynomial::new(r_prod.len()).evaluate(&r_prod);
       let val = EqPolynomial::new(tau.to_vec()).evaluate(&r_prod);
       (
-        hash_func(&addr, &val, &G::Scalar::zero()),
+        hash_func(&addr, &val, &G::Scalar::ZERO),
         hash_func(&addr, &val, &self.eval_row_audit_ts),
       )
     };
@@ -1899,7 +1899,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         hash_func(
           &self.eval_row,
           &self.eval_E_row_at_r_prod,
-          &(self.eval_row_read_ts + G::Scalar::one()),
+          &(self.eval_row_read_ts + G::Scalar::ONE),
         ),
       )
     };
@@ -1917,7 +1917,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       let addr = IdentityPolynomial::new(r_prod.len()).evaluate(&r_prod);
       let val = eval_Z;
       (
-        hash_func(&addr, &val, &G::Scalar::zero()),
+        hash_func(&addr, &val, &G::Scalar::ZERO),
         hash_func(&addr, &val, &self.eval_col_audit_ts),
       )
     };
@@ -1932,7 +1932,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         hash_func(
           &self.eval_col,
           &self.eval_E_col_at_r_prod,
-          &(self.eval_col_read_ts + G::Scalar::one()),
+          &(self.eval_col_read_ts + G::Scalar::ONE),
         ),
       )
     };
@@ -1985,7 +1985,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let num_rounds_z = u_vec_padded[0].x.len();
     let (claim_batch_final, r_z) =
@@ -2005,7 +2005,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         .zip(self.evals_batch_arr.iter())
         .zip(powers_of_rho.iter())
         .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
-        .fold(G::Scalar::zero(), |acc, item| acc + item)
+        .fold(G::Scalar::ZERO, |acc, item| acc + item)
     };
 
     if claim_batch_final != claim_batch_final_expected {
@@ -2027,7 +2027,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     // verify
     EE::verify(
@@ -2055,7 +2055,7 @@ impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for SpartanCircuit
     let arity = self.sc.arity();
 
     // Allocate zi. If inputs.zi is not provided, allocate default value 0
-    let zero = vec![G::Scalar::zero(); arity];
+    let zero = vec![G::Scalar::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
@@ -2248,7 +2248,7 @@ mod tests {
     let num_steps = 3;
 
     // setup inputs
-    let z0 = vec![<G as Group>::Scalar::zero()];
+    let z0 = vec![<G as Group>::Scalar::ZERO];
     let mut z_i = z0;
 
     for _i in 0..num_steps {

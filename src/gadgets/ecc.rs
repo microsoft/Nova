@@ -43,16 +43,16 @@ where
     CS: ConstraintSystem<G::Base>,
   {
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-      Ok(coords.map_or(G::Base::zero(), |c| c.0))
+      Ok(coords.map_or(G::Base::ZERO, |c| c.0))
     })?;
     let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-      Ok(coords.map_or(G::Base::zero(), |c| c.1))
+      Ok(coords.map_or(G::Base::ZERO, |c| c.1))
     })?;
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
       Ok(if coords.map_or(true, |c| c.2) {
-        G::Base::one()
+        G::Base::ONE
       } else {
-        G::Base::zero()
+        G::Base::ZERO
       })
     })?;
     cs.enforce(
@@ -177,9 +177,9 @@ where
     // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
     let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
       Ok(
-        G::Base::one()
-          - (G::Base::one() - *self.is_infinity.get_value().get()?)
-            * (G::Base::one() - *other.is_infinity.get_value().get()?),
+        G::Base::ONE
+          - (G::Base::ONE - *self.is_infinity.get_value().get()?)
+            * (G::Base::ONE - *other.is_infinity.get_value().get()?),
       )
     })?;
     cs.enforce(
@@ -193,7 +193,7 @@ where
     let x_diff_is_actual =
       AllocatedNum::alloc(cs.namespace(|| "allocate x_diff_is_actual"), || {
         Ok(if *equal_x.get_value().get()? {
-          G::Base::one()
+          G::Base::ONE
         } else {
           *at_least_one_inf.get_value().get()?
         })
@@ -215,9 +215,9 @@ where
     )?;
 
     let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-      let x_diff_inv = if *x_diff_is_actual.get_value().get()? == G::Base::one() {
+      let x_diff_inv = if *x_diff_is_actual.get_value().get()? == G::Base::ONE {
         // Set to default
-        G::Base::one()
+        G::Base::ONE
       } else {
         // Set to the actual inverse
         (*other.x.get_value().get()? - *self.x.get_value().get()?)
@@ -328,7 +328,7 @@ where
     //  * (G::Base::from(2)) * self.y).invert().unwrap();
     /*************************************************************/
 
-    // Compute tmp = (G::Base::one() + G::Base::one())* self.y ? self != inf : 1
+    // Compute tmp = (G::Base::ONE + G::Base::ONE)* self.y ? self != inf : 1
     let tmp_actual = AllocatedNum::alloc(cs.namespace(|| "tmp_actual"), || {
       Ok(*self.y.get_value().get()? + *self.y.get_value().get()?)
     })?;
@@ -354,9 +354,9 @@ where
     );
 
     let lambda = AllocatedNum::alloc(cs.namespace(|| "alloc lambda"), || {
-      let tmp_inv = if *self.is_infinity.get_value().get()? == G::Base::one() {
+      let tmp_inv = if *self.is_infinity.get_value().get()? == G::Base::ONE {
         // Return default value 1
-        G::Base::one()
+        G::Base::ONE
       } else {
         // Return the actual inverse
         (*tmp.get_value().get()?).invert().unwrap()
@@ -622,7 +622,7 @@ where
     // allocate a free variable that an honest prover sets to lambda = (y2-y1)/(x2-x1)
     let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
       if *other.x.get_value().get()? == *self.x.get_value().get()? {
-        Ok(G::Base::one())
+        Ok(G::Base::ONE)
       } else {
         Ok(
           (*other.y.get_value().get()? - *self.y.get_value().get()?)
@@ -688,8 +688,8 @@ where
     let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
       let n = G::Base::from(3) * x_sq.get_value().get()? + G::get_curve_params().0;
       let d = G::Base::from(2) * *self.y.get_value().get()?;
-      if d == G::Base::zero() {
-        Ok(G::Base::one())
+      if d == G::Base::ZERO {
+        Ok(G::Base::ONE)
       } else {
         Ok(n * d.invert().unwrap())
       }
@@ -803,8 +803,8 @@ mod tests {
         } else {
           // if self.x == other.x and self.y != other.y then return infinity
           Self {
-            x: G::Base::zero(),
-            y: G::Base::zero(),
+            x: G::Base::ZERO,
+            y: G::Base::ZERO,
             is_infinity: true,
           }
         }
@@ -836,8 +836,8 @@ mod tests {
     pub fn double(&self) -> Self {
       if self.is_infinity {
         return Self {
-          x: G::Base::zero(),
-          y: G::Base::zero(),
+          x: G::Base::ZERO,
+          y: G::Base::ZERO,
           is_infinity: true,
         };
       }
@@ -845,9 +845,7 @@ mod tests {
       let lambda = G::Base::from(3)
         * self.x
         * self.x
-        * ((G::Base::one() + G::Base::one()) * self.y)
-          .invert()
-          .unwrap();
+        * ((G::Base::ONE + G::Base::ONE) * self.y).invert().unwrap();
       let x = lambda * lambda - self.x - self.x;
       let y = lambda * (self.x - x) - self.y;
       Self {
@@ -859,8 +857,8 @@ mod tests {
 
     pub fn scalar_mul(&self, scalar: &G::Scalar) -> Self {
       let mut res = Self {
-        x: G::Base::zero(),
-        y: G::Base::zero(),
+        x: G::Base::ZERO,
+        y: G::Base::ZERO,
         is_infinity: true,
       };
 
@@ -985,12 +983,12 @@ mod tests {
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
-      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::one(),
+      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
     );
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::one(),
+      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
     );
     let e_new = a_p.scalar_mul(&s);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
@@ -1025,12 +1023,12 @@ mod tests {
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
-      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::one(),
+      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
     );
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::one(),
+      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
     );
     let e_new = a_p.add(&a_p);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
@@ -1047,7 +1045,7 @@ mod tests {
     inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
     let mut b = a.clone();
     b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
-      Ok(G::Base::zero())
+      Ok(G::Base::ZERO)
     })
     .unwrap();
     inputize_allocted_point(&b, cs.namespace(|| "inputize b")).unwrap();
@@ -1070,7 +1068,7 @@ mod tests {
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::one(),
+      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
     );
     assert!(e_p.is_infinity);
     // Make sure that it is satisfiable

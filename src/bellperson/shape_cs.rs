@@ -73,7 +73,7 @@ fn proc_lc<Scalar: PrimeField>(
   for (var, &coeff) in terms.iter() {
     map
       .entry(OrderedVariable(var))
-      .or_insert_with(Scalar::zero)
+      .or_insert_with(|| Scalar::ZERO)
       .add_assign(&coeff);
   }
 
@@ -144,7 +144,7 @@ where
       writeln!(s, "INPUT {}", &input).unwrap()
     }
 
-    let negone = -<G::Scalar>::one();
+    let negone = -<G::Scalar>::ONE;
 
     let powers_of_two = (0..G::Scalar::NUM_BITS)
       .map(|i| G::Scalar::from(2u64).pow_vartime([u64::from(i)]))
@@ -161,7 +161,7 @@ where
         }
         is_first = false;
 
-        if coeff != <G::Scalar>::one() && coeff != negone {
+        if coeff != <G::Scalar>::ONE && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
               write!(s, "2^{i} . ").unwrap();

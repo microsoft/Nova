@@ -364,7 +364,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let carry_bits = (((max_word.to_f64().unwrap() * 2.0).log2() - self.params.limb_width as f64)
       .ceil()
       + 0.1) as usize;
-    let mut carry_in = Num::new(Some(Scalar::zero()), LinearCombination::zero());
+    let mut carry_in = Num::new(Some(Scalar::ZERO), LinearCombination::zero());
 
     for i in 0..n {
       let carry = Num::alloc(cs.namespace(|| format!("carry value {i}")), || {
@@ -617,15 +617,15 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   pub fn group_limbs(&self, limbs_per_group: usize) -> BigNat<Scalar> {
     let n_groups = (self.limbs.len() - 1) / limbs_per_group + 1;
     let limb_values = self.limb_values.as_ref().map(|vs| {
-      let mut values: Vec<Scalar> = vec![Scalar::zero(); n_groups];
-      let mut shift = Scalar::one();
-      let limb_block = (0..self.params.limb_width).fold(Scalar::one(), |mut l, _| {
+      let mut values: Vec<Scalar> = vec![Scalar::ZERO; n_groups];
+      let mut shift = Scalar::ONE;
+      let limb_block = (0..self.params.limb_width).fold(Scalar::ONE, |mut l, _| {
         l = l.double();
         l
       });
       for (i, v) in vs.iter().enumerate() {
         if i % limbs_per_group == 0 {
-          shift = Scalar::one();
+          shift = Scalar::ONE;
         }
         let mut a = shift;
         a *= v;
@@ -636,14 +636,14 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     });
     let limbs = {
       let mut limbs: Vec<LinearCombination<Scalar>> = vec![LinearCombination::zero(); n_groups];
-      let mut shift = Scalar::one();
-      let limb_block = (0..self.params.limb_width).fold(Scalar::one(), |mut l, _| {
+      let mut shift = Scalar::ONE;
+      let limb_block = (0..self.params.limb_width).fold(Scalar::ONE, |mut l, _| {
         l = l.double();
         l
       });
       for (i, limb) in self.limbs.iter().enumerate() {
         if i % limbs_per_group == 0 {
-          shift = Scalar::one();
+          shift = Scalar::ONE;
         }
         limbs[i / limbs_per_group] =
           std::mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero())
@@ -689,7 +689,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     let n_product_coeffs = self.coefficients.len() + other.coefficients.len() - 1;
     let values = self.values.as_ref().and_then(|self_vs| {
       other.values.as_ref().map(|other_vs| {
-        let mut values: Vec<Scalar> = std::iter::repeat_with(Scalar::zero)
+        let mut values: Vec<Scalar> = std::iter::repeat_with(|| Scalar::ZERO)
           .take(n_product_coeffs)
           .collect();
         for (self_i, self_v) in self_vs.iter().enumerate() {
@@ -711,14 +711,14 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
       coefficients,
       values,
     };
-    let one = Scalar::one();
-    let mut x = Scalar::zero();
+    let one = Scalar::ONE;
+    let mut x = Scalar::ZERO;
     for _ in 1..(n_product_coeffs + 1) {
       x.add_assign(&one);
       cs.enforce(
         || format!("pointwise product @ {x:?}"),
         |lc| {
-          let mut i = Scalar::one();
+          let mut i = Scalar::ONE;
           self.coefficients.iter().fold(lc, |lc, c| {
             let r = lc + (i, c);
             i.mul_assign(&x);
@@ -726,7 +726,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
           })
         },
         |lc| {
-          let mut i = Scalar::one();
+          let mut i = Scalar::ONE;
           other.coefficients.iter().fold(lc, |lc, c| {
             let r = lc + (i, c);
             i.mul_assign(&x);
@@ -734,7 +734,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
           })
         },
         |lc| {
-          let mut i = Scalar::one();
+          let mut i = Scalar::ONE;
           product.coefficients.iter().fold(lc, |lc, c| {
             let r = lc + (i, c);
             i.mul_assign(&x);
@@ -752,7 +752,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
       other.values.as_ref().map(|other_vs| {
         (0..n_coeffs)
           .map(|i| {
-            let mut s = Scalar::zero();
+            let mut s = Scalar::ZERO;
             if i < self_vs.len() {
               s.add_assign(&self_vs[i]);
             }
