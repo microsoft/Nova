@@ -53,5 +53,7 @@ harness = false
 
 [features]
 default = []
+# Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
+portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
 opencl = ["neptune/opencl", "neptune/pasta", "neptune/arity24"]
