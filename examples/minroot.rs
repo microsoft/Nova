@@ -172,7 +172,7 @@ fn main() {
       G2,
       MinRootCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary, circuit_secondary.clone());
+    >::setup(circuit_primary.clone(), circuit_secondary.clone());
     println!("PublicParams::setup, took {:?} ", start.elapsed());
 
     println!(
@@ -218,15 +218,20 @@ fn main() {
     type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
     // produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
-    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
+    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::<G1, G2, C1, C2>::new(
+      &pp,
+      &circuit_primary,
+      &circuit_secondary,
+      z0_primary.clone(),
+      z0_secondary.clone(),
+    );
 
     for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
       let start = Instant::now();
-      let res = RecursiveSNARK::prove_step(
+      let res = recursive_snark.prove_step(
         &pp,
-        recursive_snark,
-        circuit_primary.clone(),
-        circuit_secondary.clone(),
+        &circuit_primary,
+        &circuit_secondary,
         z0_primary.clone(),
         z0_secondary.clone(),
       );
@@ -237,11 +242,7 @@ fn main() {
         res.is_ok(),
         start.elapsed()
       );
-      recursive_snark = Some(res.unwrap());
     }
-
-    assert!(recursive_snark.is_some());
-    let recursive_snark = recursive_snark.unwrap();
 
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
