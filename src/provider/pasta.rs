@@ -155,8 +155,8 @@ macro_rules! impl_traits {
       }
 
       fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
-        let A = Self::Base::zero();
-        let B = Self::Base::from(5);
+        let A = $name::Point::a();
+        let B = $name::Point::b();
         let order = BigInt::from_str_radix($order_str, 16).unwrap();
 
         (A, B, order)
