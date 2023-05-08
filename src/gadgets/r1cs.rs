@@ -208,7 +208,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Analyze X0 as limbs
     let X0_bn = self
       .X0
-      .as_limbs::<CS>()
+      .as_limbs()
       .iter()
       .enumerate()
       .map(|(i, limb)| {
@@ -224,7 +224,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Analyze X1 as limbs
     let X1_bn = self
       .X1
-      .as_limbs::<CS>()
+      .as_limbs()
       .iter()
       .enumerate()
       .map(|(i, limb)| {
@@ -310,7 +310,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Fold self.X[0] + r * X[0]
     let (_, r_0) = X0_bn.mult_mod(cs.namespace(|| "r*X[0]"), &r_bn, &m_bn)?;
     // add X_r[0]
-    let r_new_0 = self.X0.add::<CS>(&r_0)?;
+    let r_new_0 = self.X0.add(&r_0)?;
     // Now reduce
     let X0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X[0]"), &m_bn)?;
 
@@ -325,7 +325,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Fold self.X[1] + r * X[1]
     let (_, r_1) = X1_bn.mult_mod(cs.namespace(|| "r*X[1]"), &r_bn, &m_bn)?;
     // add X_r[1]
-    let r_new_1 = self.X1.add::<CS>(&r_1)?;
+    let r_new_1 = self.X1.add(&r_1)?;
     // Now reduce
     let X1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X[1]"), &m_bn)?;
 

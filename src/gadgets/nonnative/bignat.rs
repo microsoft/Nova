@@ -249,7 +249,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     Ok(bignat)
   }
 
-  pub fn as_limbs<CS: ConstraintSystem<Scalar>>(&self) -> Vec<Num<Scalar>> {
+  pub fn as_limbs(&self) -> Vec<Num<Scalar>> {
     let mut limbs = Vec::new();
     for (i, lc) in self.limbs.iter().enumerate() {
       limbs.push(Num::new(
@@ -449,10 +449,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     self_grouped.equal_when_carried(cs.namespace(|| "grouped"), &other_grouped)
   }
 
-  pub fn add<CS: ConstraintSystem<Scalar>>(
-    &self,
-    other: &Self,
-  ) -> Result<BigNat<Scalar>, SynthesisError> {
+  pub fn add(&self, other: &Self) -> Result<BigNat<Scalar>, SynthesisError> {
     self.enforce_limb_width_agreement(other, "add")?;
     let n_limbs = max(self.params.n_limbs, other.params.n_limbs);
     let max_word = &self.params.max_word + &other.params.max_word;
