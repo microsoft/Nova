@@ -93,7 +93,7 @@ impl<G: Group> SumcheckProof<G> {
             (eval_point_0, eval_point_2)
           })
           .reduce(
-            || (G::Scalar::zero(), G::Scalar::zero()),
+            || (G::Scalar::ZERO, G::Scalar::ZERO),
             |a, b| (a.0 + b.0, a.1 + b.1),
           );
 
@@ -146,8 +146,8 @@ impl<G: Group> SumcheckProof<G> {
       let mut evals: Vec<(G::Scalar, G::Scalar)> = Vec::new();
 
       for (poly_A, poly_B) in poly_A_vec.iter().zip(poly_B_vec.iter()) {
-        let mut eval_point_0 = G::Scalar::zero();
-        let mut eval_point_2 = G::Scalar::zero();
+        let mut eval_point_0 = G::Scalar::ZERO;
+        let mut eval_point_2 = G::Scalar::ZERO;
 
         let len = poly_A.len() / 2;
         for i in 0..len {
@@ -165,10 +165,10 @@ impl<G: Group> SumcheckProof<G> {
 
       let evals_combined_0 = (0..evals.len())
         .map(|i| evals[i].0 * coeffs[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
+        .fold(G::Scalar::ZERO, |acc, item| acc + item);
       let evals_combined_2 = (0..evals.len())
         .map(|i| evals[i].1 * coeffs[i])
-        .fold(G::Scalar::zero(), |acc, item| acc + item);
+        .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
       let evals = vec![evals_combined_0, e - evals_combined_0, evals_combined_2];
       let poly = UniPoly::from_evals(&evals);
@@ -251,7 +251,7 @@ impl<G: Group> SumcheckProof<G> {
             (eval_point_0, eval_point_2, eval_point_3)
           })
           .reduce(
-            || (G::Scalar::zero(), G::Scalar::zero(), G::Scalar::zero()),
+            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
           );
 
@@ -353,7 +353,7 @@ impl<G: Group> UniPoly<G> {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
-      .reduce(G::Scalar::zero, |a, b| a + b)
+      .reduce(|| G::Scalar::ZERO, |a, b| a + b)
   }
 
   pub fn evaluate(&self, r: &G::Scalar) -> G::Scalar {

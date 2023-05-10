@@ -73,7 +73,7 @@ where
   }
 
   fn mul_bits<B: AsRef<[u64]>>(s: &G::Scalar, bits: BitIterator<B>) -> G::Scalar {
-    let mut x = G::Scalar::zero();
+    let mut x = G::Scalar::ZERO;
     for bit in bits {
       x = x.double();
 
@@ -88,14 +88,14 @@ where
     assert_eq!(digest.len(), 64);
     let mut bits: [u64; 8] = [0; 8];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::one(), BitIterator::new(bits))
+    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
   }
 
   pub fn to_uniform_32(digest: &[u8]) -> G::Scalar {
     assert_eq!(digest.len(), 32);
     let mut bits: [u64; 4] = [0; 4];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::one(), BitIterator::new(bits))
+    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
   }
 
   pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> G::Scalar {

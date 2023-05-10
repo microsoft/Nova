@@ -20,7 +20,7 @@ mod tests {
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     // get two bits as input and check that they are indeed bits
-    let a = AllocatedNum::alloc(cs.namespace(|| "a"), || Ok(Fr::one()))?;
+    let a = AllocatedNum::alloc(cs.namespace(|| "a"), || Ok(Fr::ONE))?;
     let _ = a.inputize(cs.namespace(|| "a is input"));
     cs.enforce(
       || "check a is 0 or 1",
@@ -28,7 +28,7 @@ mod tests {
       |lc| lc + a.get_variable(),
       |lc| lc,
     );
-    let b = AllocatedNum::alloc(cs.namespace(|| "b"), || Ok(Fr::one()))?;
+    let b = AllocatedNum::alloc(cs.namespace(|| "b"), || Ok(Fr::ONE))?;
     let _ = b.inputize(cs.namespace(|| "b is input"));
     cs.enforce(
       || "check b is 0 or 1",

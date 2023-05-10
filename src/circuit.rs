@@ -146,7 +146,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-    let zero = vec![G::Base::zero(); arity];
+    let zero = vec![G::Base::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
@@ -318,7 +318,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
-      Ok(*i.get_value().get()? + G::Base::one())
+      Ok(*i.get_value().get()? + G::Base::ONE)
     })?;
     cs.enforce(
       || "check i + 1",
@@ -417,7 +417,7 @@ mod tests {
     assert_eq!(cs.num_constraints(), 10347);
 
     // Execute the base case for the primary
-    let zero1 = <<G2 as Group>::Base as Field>::zero();
+    let zero1 = <<G2 as Group>::Base as Field>::ZERO;
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       shape2.get_digest(),
@@ -441,7 +441,7 @@ mod tests {
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
 
     // Execute the base case for the secondary
-    let zero2 = <<G1 as Group>::Base as Field>::zero();
+    let zero2 = <<G1 as Group>::Base as Field>::ZERO;
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       shape1.get_digest(),

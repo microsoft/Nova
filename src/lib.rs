@@ -206,7 +206,7 @@ where
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_secondary.get_digest(),
-          G1::Scalar::zero(),
+          G1::Scalar::ZERO,
           z0_primary.clone(),
           None,
           None,
@@ -229,7 +229,7 @@ where
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
           pp.r1cs_shape_primary.get_digest(),
-          G2::Scalar::zero(),
+          G2::Scalar::ZERO,
           z0_secondary.clone(),
           None,
           None,
@@ -862,8 +862,8 @@ mod tests {
       None,
       TrivialTestCircuit::default(),
       TrivialTestCircuit::default(),
-      vec![<G1 as Group>::Scalar::zero()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ZERO],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
@@ -872,8 +872,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::zero()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ZERO],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -909,8 +909,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        vec![<G1 as Group>::Scalar::one()],
-        vec![<G2 as Group>::Scalar::zero()],
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
       let recursive_snark_unwrapped = res.unwrap();
@@ -919,8 +919,8 @@ mod tests {
       let res = recursive_snark_unwrapped.verify(
         &pp,
         i + 1,
-        vec![<G1 as Group>::Scalar::one()],
-        vec![<G2 as Group>::Scalar::zero()],
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
 
@@ -935,16 +935,16 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
-    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
@@ -983,8 +983,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        vec![<G1 as Group>::Scalar::one()],
-        vec![<G2 as Group>::Scalar::zero()],
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
       recursive_snark = Some(res.unwrap());
@@ -997,16 +997,16 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
-    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
@@ -1025,8 +1025,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1062,8 +1062,8 @@ mod tests {
         recursive_snark,
         circuit_primary.clone(),
         circuit_secondary.clone(),
-        vec![<G1 as Group>::Scalar::one()],
-        vec![<G2 as Group>::Scalar::zero()],
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
       recursive_snark = Some(res.unwrap());
@@ -1076,16 +1076,16 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
-    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::zero()];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
@@ -1108,8 +1108,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1198,7 +1198,7 @@ mod tests {
     }
 
     let circuit_primary = FifthRootCheckingCircuit {
-      y: <G1 as Group>::Scalar::zero(),
+      y: <G1 as Group>::Scalar::ZERO,
     };
 
     let circuit_secondary = TrivialTestCircuit::default();
@@ -1215,7 +1215,7 @@ mod tests {
 
     // produce non-deterministic advice
     let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
-    let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
+    let z0_secondary = vec![<G2 as Group>::Scalar::ZERO];
 
     // produce a recursive SNARK
     let mut recursive_snark: Option<
@@ -1278,8 +1278,8 @@ mod tests {
       None,
       TrivialTestCircuit::default(),
       CubicCircuit::default(),
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
     let recursive_snark = res.unwrap();
@@ -1288,14 +1288,14 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::one()],
-      vec![<G2 as Group>::Scalar::zero()],
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
-    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::one()]);
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(5u64)]);
   }
 }

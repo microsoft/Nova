@@ -85,9 +85,9 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
     ro.absorb(x);
     ro.absorb(y);
     ro.absorb(if is_infinity {
-      G::Base::one()
+      G::Base::ONE
     } else {
-      G::Base::zero()
+      G::Base::ZERO
     });
   }
 }

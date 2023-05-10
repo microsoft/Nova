@@ -102,7 +102,7 @@ fn add_constraint<S: PrimeField>(
 ) {
   let (A, B, C, nn) = X;
   let n = **nn;
-  let one = S::one();
+  let one = S::ONE;
 
   let add_constraint_component = |index: Index, coeff, V: &mut Vec<_>| {
     match index {

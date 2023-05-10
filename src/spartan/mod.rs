@@ -23,7 +23,7 @@ use sumcheck::SumcheckProof;
 fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);
   let mut powers = Vec::new();
-  powers.push(G::Scalar::one());
+  powers.push(G::Scalar::ONE);
   for i in 1..n {
     powers.push(powers[i - 1] * s);
   }
@@ -42,7 +42,7 @@ impl<G: Group> PolyEvalWitness<G> {
       W.iter()
         .map(|w| {
           let mut p = w.p.clone();
-          p.resize(n, G::Scalar::zero());
+          p.resize(n, G::Scalar::ZERO);
           PolyEvalWitness { p }
         })
         .collect()
@@ -53,7 +53,7 @@ impl<G: Group> PolyEvalWitness<G> {
 
   fn weighted_sum(W: &[PolyEvalWitness<G>], s: &[G::Scalar]) -> PolyEvalWitness<G> {
     assert_eq!(W.len(), s.len());
-    let mut p = vec![G::Scalar::zero(); W[0].p.len()];
+    let mut p = vec![G::Scalar::ZERO; W[0].p.len()];
     for i in 0..W.len() {
       for j in 0..W[i].p.len() {
         p[j] += W[i].p[j] * s[i]
@@ -64,7 +64,7 @@ impl<G: Group> PolyEvalWitness<G> {
 
   fn batch(p_vec: &[&Vec<G::Scalar>], s: &G::Scalar) -> PolyEvalWitness<G> {
     let powers_of_s = powers::<G>(s, p_vec.len());
-    let mut p = vec![G::Scalar::zero(); p_vec[0].len()];
+    let mut p = vec![G::Scalar::ZERO; p_vec[0].len()];
     for i in 0..p_vec.len() {
       for (j, item) in p.iter_mut().enumerate().take(p_vec[i].len()) {
         *item += p_vec[i][j] * powers_of_s[i]
@@ -87,7 +87,7 @@ impl<G: Group> PolyEvalInstance<G> {
     if let Some(ell) = U.iter().map(|u| u.x.len()).max() {
       U.iter()
         .map(|u| {
-          let mut x = vec![G::Scalar::zero(); ell - u.x.len()];
+          let mut x = vec![G::Scalar::ZERO; ell - u.x.len()];
           x.extend(u.x.clone());
           PolyEvalInstance { c: u.c, x, e: u.e }
         })
@@ -108,7 +108,7 @@ impl<G: Group> PolyEvalInstance<G> {
       .iter()
       .zip(powers_of_s.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
     let c = c_vec
       .iter()
       .zip(powers_of_s.iter())
@@ -233,7 +233,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
        poly_D_comp: &G::Scalar|
        -> G::Scalar { *poly_A_comp * (*poly_B_comp * *poly_C_comp - *poly_D_comp) };
     let (sc_proof_outer, r_x, claims_outer) = SumcheckProof::prove_cubic_with_additive_term(
-      &G::Scalar::zero(), // claim is zero
+      &G::Scalar::ZERO, // claim is zero
       num_rounds_x,
       &mut poly_tau,
       &mut poly_Az,
@@ -273,19 +273,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
           let (A_evals, (B_evals, C_evals)) = rayon::join(
             || {
-              let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+              let mut A_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.num_vars];
               inner(&S.A, &mut A_evals);
               A_evals
             },
             || {
               rayon::join(
                 || {
-                  let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+                  let mut B_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.num_vars];
                   inner(&S.B, &mut B_evals);
                   B_evals
                 },
                 || {
-                  let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::zero(); 2 * S.num_vars];
+                  let mut C_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.num_vars];
                   inner(&S.C, &mut C_evals);
                   C_evals
                 },
@@ -307,7 +307,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     };
 
     let poly_z = {
-      z.resize(pk.S.num_vars * 2, G::Scalar::zero());
+      z.resize(pk.S.num_vars * 2, G::Scalar::ZERO);
       z
     };
 
@@ -366,7 +366,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let mut polys_left: Vec<MultilinearPolynomial<G::Scalar>> = w_vec_padded
       .iter()
@@ -408,7 +408,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let eval_arg = EE::prove(
       ck,
@@ -453,7 +453,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let (claim_outer_final, r_x) =
       self
         .sc_proof_outer
-        .verify(G::Scalar::zero(), num_rounds_x, 3, &mut transcript)?;
+        .verify(G::Scalar::ZERO, num_rounds_x, 3, &mut transcript)?;
 
     // verify claim_outer_final
     let (claim_Az, claim_Bz, claim_Cz) = self.claims_outer;
@@ -498,7 +498,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         );
         SparsePolynomial::new((vk.S.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
       };
-      (G::Scalar::one() - r_y[0]) * self.eval_W + r_y[0] * eval_X
+      (G::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };
 
     // compute evaluations of R1CS matrices
@@ -515,7 +515,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
               let (row, col, val) = M[i];
               T_x[row] * T_y[col] * val
             })
-            .reduce(G::Scalar::zero, |acc, x| acc + x)
+            .reduce(|| G::Scalar::ZERO, |acc, x| acc + x)
         };
 
       let (T_x, T_y) = rayon::join(
@@ -561,7 +561,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     let num_rounds_z = u_vec_padded[0].x.len();
     let (claim_batch_final, r_z) =
@@ -581,7 +581,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         .zip(self.evals_batch.iter())
         .zip(powers_of_rho.iter())
         .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
-        .fold(G::Scalar::zero(), |acc, item| acc + item)
+        .fold(G::Scalar::ZERO, |acc, item| acc + item)
     };
 
     if claim_batch_final != claim_batch_final_expected {
@@ -603,7 +603,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::zero(), |acc, item| acc + item);
+      .fold(G::Scalar::ZERO, |acc, item| acc + item);
 
     // verify
     EE::verify(

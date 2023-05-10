@@ -91,7 +91,7 @@ where
   type Root = Self;
 
   fn new() -> Self {
-    let input_assignment = vec![G::Scalar::one()];
+    let input_assignment = vec![G::Scalar::ONE];
     let mut d = DensityTracker::new();
     d.add_element();
 
