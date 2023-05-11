@@ -457,6 +457,7 @@ where
 
     if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
+      || scalar_as_base::<G1>(self.l_u_primary.X[1]) != self.l_u_secondary.X[0]
     {
       return Err(NovaError::ProofVerifyError);
     }
