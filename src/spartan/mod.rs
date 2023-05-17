@@ -6,6 +6,7 @@ pub mod pp;
 mod sumcheck;
 
 use crate::{
+  compute_digest,
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
@@ -129,6 +130,7 @@ impl<G: Group> PolyEvalInstance<G> {
 pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
+  vk_digest: G::Scalar, // digest of the verifier's key
 }
 
 /// A type that represents the verifier's key
@@ -137,6 +139,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
+  digest: G::Scalar,
 }
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
@@ -169,12 +172,21 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
 
     let S = S.pad();
 
-    let vk = VerifierKey {
-      vk_ee,
-      S: S.clone(),
+    let vk = {
+      let mut vk = VerifierKey {
+        vk_ee,
+        S: S.clone(),
+        digest: G::Scalar::ZERO,
+      };
+      vk.digest = compute_digest::<G, VerifierKey<G, EE>>(&vk);
+      vk
     };
 
-    let pk = ProverKey { pk_ee, S };
+    let pk = ProverKey {
+      pk_ee,
+      S,
+      vk_digest: vk.digest,
+    };
 
     Ok((pk, vk))
   }
@@ -195,8 +207,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
     assert!(pk.S.num_io < pk.S.num_vars);
 
-    // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"S", &pk.S);
+    // append the digest of vk (which includes R1CS matrices) and the RelaxedR1CSInstance to the transcript
+    transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
@@ -437,7 +449,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"S", &vk.S);
+    transcript.absorb(b"vk", &vk.digest);
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (

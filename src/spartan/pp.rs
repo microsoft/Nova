@@ -6,6 +6,7 @@ use crate::{
     shape_cs::ShapeCS,
     solver::SatisfyingAssignment,
   },
+  compute_digest,
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
@@ -736,6 +737,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   S: R1CSShape<G>,
   S_repr: R1CSShapeSparkRepr<G>,
   S_comm: R1CSShapeSparkCommitment<G>,
+  vk_digest: G::Scalar, // digest of verifier's key
 }
 
 /// A type that represents the verifier's key
@@ -746,6 +748,7 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   num_vars: usize,
   vk_ee: EE::VerifierKey,
   S_comm: R1CSShapeSparkCommitment<G>,
+  digest: G::Scalar,
 }
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
@@ -938,11 +941,16 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let S_repr = R1CSShapeSparkRepr::new(&S);
     let S_comm = S_repr.commit(ck);
 
-    let vk = VerifierKey {
-      num_cons: S.num_cons,
-      num_vars: S.num_vars,
-      S_comm: S_comm.clone(),
-      vk_ee,
+    let vk = {
+      let mut vk = VerifierKey {
+        num_cons: S.num_cons,
+        num_vars: S.num_vars,
+        S_comm: S_comm.clone(),
+        vk_ee,
+        digest: G::Scalar::ZERO,
+      };
+      vk.digest = compute_digest::<G, VerifierKey<G, EE>>(&vk);
+      vk
     };
 
     let pk = ProverKey {
@@ -950,6 +958,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       S,
       S_repr,
       S_comm,
+      vk_digest: vk.digest,
     };
 
     Ok((pk, vk))
@@ -974,8 +983,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
     assert!(pk.S.num_io < pk.S.num_vars);
 
-    // append the commitment to R1CS matrices and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"C", &pk.S_comm);
+    // append the verifier key (which includes commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
+    transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
@@ -1568,8 +1577,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
-    // append the commitment to R1CS matrices and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"C", &vk.S_comm);
+    // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
+    transcript.absorb(b"vk", &vk.digest);
     transcript.absorb(b"U", U);
 
     let comm_Az = Commitment::<G>::decompress(&self.comm_Az)?;
