@@ -32,9 +32,11 @@ impl<G: Group> NIFS<G> {
   /// a folded Relaxed R1CS instance-witness tuple `(U, W)` of the same shape `shape`,
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
+  #[allow(clippy::too_many_arguments)]
   pub fn prove(
     ck: &CommitmentKey<G>,
     ro_consts: &ROConstants<G>,
+    pp_digest: &G::Scalar,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
@@ -44,8 +46,8 @@ impl<G: Group> NIFS<G> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
-    // append S to the transcript
-    S.absorb_in_ro(&mut ro);
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
 
     // append U1 and U2 to transcript
     U1.absorb_in_ro(&mut ro);
@@ -84,15 +86,15 @@ impl<G: Group> NIFS<G> {
   pub fn verify(
     &self,
     ro_consts: &ROConstants<G>,
-    S_digest: &G::Scalar,
+    pp_digest: &G::Scalar,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
-    // append the digest of S to the transcript
-    ro.absorb(scalar_as_base::<G>(*S_digest));
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
 
     // append U1 and U2 to transcript
     U1.absorb_in_ro(&mut ro);
@@ -192,12 +194,23 @@ mod tests {
     assert!(shape.is_sat(&ck, &U2, &W2).is_ok());
 
     // execute a sequence of folds
-    execute_sequence(&ck, &ro_consts, &shape, &U1, &W1, &U2, &W2);
+    execute_sequence(
+      &ck,
+      &ro_consts,
+      &<G as Group>::Scalar::ZERO,
+      &shape,
+      &U1,
+      &W1,
+      &U2,
+      &W2,
+    );
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn execute_sequence(
     ck: &CommitmentKey<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
+    pp_digest: &<G as Group>::Scalar,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
     W1: &R1CSWitness<G>,
@@ -209,12 +222,12 @@ mod tests {
     let mut r_U = RelaxedR1CSInstance::default(ck, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U1, W1);
+    let res = NIFS::prove(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U1, W1);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U1);
+    let res = nifs.verify(ro_consts, pp_digest, &r_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -225,12 +238,12 @@ mod tests {
     r_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = NIFS::prove(ck, ro_consts, shape, &r_U, &r_W, U2, W2);
+    let res = NIFS::prove(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U2, W2);
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify(ro_consts, &shape.get_digest(), &r_U, U2);
+    let res = nifs.verify(ro_consts, pp_digest, &r_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -349,6 +362,15 @@ mod tests {
     let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
 
     // execute a sequence of folds
-    execute_sequence(&ck, &ro_consts, &S, &U1, &W1, &U2, &W2);
+    execute_sequence(
+      &ck,
+      &ro_consts,
+      &<G as Group>::Scalar::ZERO,
+      &S,
+      &U1,
+      &W1,
+      &U2,
+      &W2,
+    );
   }
 }

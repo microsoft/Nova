@@ -378,6 +378,7 @@ mod tests {
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
+    gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
     traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
   };
@@ -420,7 +421,7 @@ mod tests {
     let zero1 = <<G2 as Group>::Base as Field>::ZERO;
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
-      shape2.get_digest(),
+      scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
       vec![zero1],
       None,
@@ -444,7 +445,7 @@ mod tests {
     let zero2 = <<G1 as Group>::Base as Field>::ZERO;
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
-      shape1.get_digest(),
+      scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,
       vec![zero2],
       None,

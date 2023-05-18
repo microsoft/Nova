@@ -1,7 +1,7 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 #![allow(clippy::type_complexity)]
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   errors::NovaError,
   gadgets::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
@@ -14,11 +14,9 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
 
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
@@ -36,7 +34,6 @@ pub struct R1CSShape<G: Group> {
   pub(crate) A: Vec<(usize, usize, G::Scalar)>,
   pub(crate) B: Vec<(usize, usize, G::Scalar)>,
   pub(crate) C: Vec<(usize, usize, G::Scalar)>,
-  digest: G::Scalar, // digest of the rest of R1CSShape
 }
 
 /// A type that holds a witness for a given R1CS instance
@@ -126,19 +123,14 @@ impl<G: Group> R1CSShape<G> {
       return Err(NovaError::OddInputLength);
     }
 
-    let digest = Self::compute_digest(num_cons, num_vars, num_io, A, B, C);
-
-    let shape = R1CSShape {
+    Ok(R1CSShape {
       num_cons,
       num_vars,
       num_io,
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
-      digest,
-    };
-
-    Ok(shape)
+    })
   }
 
   pub fn multiply_vec(
@@ -303,67 +295,6 @@ impl<G: Group> R1CSShape<G> {
     Ok((T, comm_T))
   }
 
-  /// returns the digest of R1CSShape
-  pub fn get_digest(&self) -> G::Scalar {
-    self.digest
-  }
-
-  fn compute_digest(
-    num_cons: usize,
-    num_vars: usize,
-    num_io: usize,
-    A: &[(usize, usize, G::Scalar)],
-    B: &[(usize, usize, G::Scalar)],
-    C: &[(usize, usize, G::Scalar)],
-  ) -> G::Scalar {
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    struct R1CSShapeWithoutDigest<G: Group> {
-      num_cons: usize,
-      num_vars: usize,
-      num_io: usize,
-      A: Vec<(usize, usize, G::Scalar)>,
-      B: Vec<(usize, usize, G::Scalar)>,
-      C: Vec<(usize, usize, G::Scalar)>,
-    }
-
-    let shape = R1CSShapeWithoutDigest::<G> {
-      num_cons,
-      num_vars,
-      num_io,
-      A: A.to_vec(),
-      B: B.to_vec(),
-      C: C.to_vec(),
-    };
-
-    // obtain a vector of bytes representing the R1CS shape
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &shape).unwrap();
-    let shape_bytes = encoder.finish().unwrap();
-
-    // convert shape_bytes into a short digest
-    let mut hasher = Sha3_256::new();
-    hasher.input(&shape_bytes);
-    let digest = hasher.result();
-
-    // truncate the digest to 250 bits
-    let bv = (0..NUM_HASH_BITS).map(|i| {
-      let (byte_pos, bit_pos) = (i / 8, i % 8);
-      let bit = (digest[byte_pos] >> bit_pos) & 1;
-      bit == 1
-    });
-
-    // turn the bit vector into a scalar
-    let mut res = G::Scalar::ZERO;
-    let mut coeff = G::Scalar::ONE;
-    for bit in bv {
-      if bit {
-        res += coeff;
-      }
-      coeff += coeff;
-    }
-    res
-  }
-
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&self) -> Self {
@@ -378,8 +309,6 @@ impl<G: Group> R1CSShape<G> {
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.num_vars == m {
-      let digest = Self::compute_digest(m, self.num_vars, self.num_io, &self.A, &self.B, &self.C);
-
       return R1CSShape {
         num_cons: m,
         num_vars: m,
@@ -387,7 +316,6 @@ impl<G: Group> R1CSShape<G> {
         A: self.A.clone(),
         B: self.B.clone(),
         C: self.C.clone(),
-        digest,
       };
     }
 
@@ -414,15 +342,6 @@ impl<G: Group> R1CSShape<G> {
     let B_padded = apply_pad(&self.B);
     let C_padded = apply_pad(&self.C);
 
-    let digest = Self::compute_digest(
-      num_cons_padded,
-      num_vars_padded,
-      self.num_io,
-      &A_padded,
-      &B_padded,
-      &C_padded,
-    );
-
     R1CSShape {
       num_cons: num_cons_padded,
       num_vars: num_vars_padded,
@@ -430,20 +349,7 @@ impl<G: Group> R1CSShape<G> {
       A: A_padded,
       B: B_padded,
       C: C_padded,
-      digest,
     }
-  }
-}
-
-impl<G: Group> TranscriptReprTrait<G> for R1CSShape<G> {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.get_digest().to_transcript_bytes()
-  }
-}
-
-impl<G: Group> AbsorbInROTrait<G> for R1CSShape<G> {
-  fn absorb_in_ro(&self, ro: &mut G::RO) {
-    ro.absorb(scalar_as_base::<G>(self.get_digest()));
   }
 }
 
