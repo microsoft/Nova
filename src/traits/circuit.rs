@@ -1,8 +1,8 @@
 //! This module defines traits that a step function must implement
+use abomonation_derive::Abomonation;
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
-use abomonation_derive::Abomonation;
 
 /// A helper trait for a step of the incremental computation (i.e., circuit for F)
 pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {

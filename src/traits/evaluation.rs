@@ -5,6 +5,7 @@ use crate::{
   errors::NovaError,
   traits::{commitment::CommitmentEngineTrait, Group},
 };
+use abomonation::Abomonation;
 use serde::{Deserialize, Serialize};
 
 /// A trait that ties different pieces of the commitment evaluation together
@@ -15,10 +16,10 @@ pub trait EvaluationEngineTrait<G: Group>:
   type CE: CommitmentEngineTrait<G>;
 
   /// A type that holds the prover key
-  type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + Abomonation;
 
   /// A type that holds the verifier key
-  type VerifierKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type VerifierKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + Abomonation;
 
   /// A type that holds the evaluation argument
   type EvaluationArgument: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;

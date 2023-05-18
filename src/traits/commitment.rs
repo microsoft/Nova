@@ -4,6 +4,7 @@ use crate::{
   errors::NovaError,
   traits::{AbsorbInROTrait, Group, TranscriptReprTrait},
 };
+use abomonation::Abomonation;
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign},
@@ -50,6 +51,7 @@ pub trait CommitmentTrait<G: Group>:
   + TranscriptReprTrait<G>
   + Serialize
   + for<'de> Deserialize<'de>
+  + Abomonation
   + AbsorbInROTrait<G>
   + CommitmentOps
   + CommitmentOpsOwned
@@ -81,7 +83,14 @@ pub trait CommitmentEngineTrait<G: Group>:
   Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// Holds the type of the commitment key
-  type CommitmentKey: Clone + PartialEq + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type CommitmentKey: Clone
+    + PartialEq
+    + Debug
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + Abomonation;
 
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<G>;

@@ -1,5 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
+use abomonation::Abomonation;
 use bellperson::{
   gadgets::{boolean::AllocatedBit, num::AllocatedNum},
   ConstraintSystem, SynthesisError,
@@ -56,7 +57,13 @@ pub trait Group:
     + for<'de> Deserialize<'de>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + PartialEq + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type PreprocessedGroupElement: Clone
+    + PartialEq
+    + Debug
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -135,7 +142,8 @@ pub trait ROTrait<Base, Scalar> {
     + Send
     + Sync
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + Abomonation;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -156,7 +164,8 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     + Send
     + Sync
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + Abomonation;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;

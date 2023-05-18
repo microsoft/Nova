@@ -6,6 +6,7 @@ use crate::{
   CommitmentKey,
 };
 
+use abomonation::Abomonation;
 use serde::{Deserialize, Serialize};
 
 /// A trait that defines the behavior of a zkSNARK
@@ -13,10 +14,10 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   Sized + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// A type that represents the prover's key
-  type ProverKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type ProverKey: Send + Sync + Serialize + for<'de> Deserialize<'de> + Abomonation;
 
   /// A type that represents the verifier's key
-  type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de> + Abomonation;
 
   /// Produces the keys for the prover and the verifier
   fn setup(

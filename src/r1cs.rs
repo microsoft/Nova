@@ -10,11 +10,11 @@ use crate::{
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CE, unsafe_serde,
+  unsafe_serde, Commitment, CommitmentKey, CE,
 };
-use core::{cmp::max, marker::PhantomData};
 use abomonation::Abomonation;
 use abomonation_derive::Abomonation;
+use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
@@ -42,46 +42,44 @@ pub struct R1CSShape<G: Group> {
   digest: G::Scalar, // digest of the rest of R1CSShape
 }
 
-macro_rules! r1cs_shape_abomonation {
-  ($type:ty) => {
-    impl Abomonation for R1CSShape<$type> {
-      unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
-        self.num_cons.entomb(bytes)?;
-        self.num_vars.entomb(bytes)?;
-        self.num_io.entomb(bytes)?;
-        unsafe_serde::entomb_vec_usize_usize_T(&self.A, bytes)?;
-        unsafe_serde::entomb_vec_usize_usize_T(&self.B, bytes)?;
-        unsafe_serde::entomb_vec_usize_usize_T(&self.C, bytes)?;
-        Ok(())
-      }
-  
-      unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
-        let temp = bytes; bytes = self.num_cons.exhume(temp)?;
-        let temp = bytes; bytes = self.num_vars.exhume(temp)?;
-        let temp = bytes; bytes = self.num_io.exhume(temp)?;
-        let temp = bytes; bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.A, temp)?;
-        let temp = bytes; bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.B, temp)?;
-        let temp = bytes; bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.C, temp)?;
-        Some(bytes)
-      }
-  
-      fn extent(&self) -> usize {
-        let mut size = 0;
-        size += self.num_cons.extent();
-        size += self.num_vars.extent();
-        size += self.num_io.extent();
-        size += unsafe_serde::extent_vec_usize_usize_T(&self.A);
-        size += unsafe_serde::extent_vec_usize_usize_T(&self.B);
-        size += unsafe_serde::extent_vec_usize_usize_T(&self.C);
-        size
-      }
-    }
-  };
+impl<G: Group> Abomonation for R1CSShape<G> {
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.num_cons.entomb(bytes)?;
+    self.num_vars.entomb(bytes)?;
+    self.num_io.entomb(bytes)?;
+    unsafe_serde::entomb_vec_usize_usize_T(&self.A, bytes)?;
+    unsafe_serde::entomb_vec_usize_usize_T(&self.B, bytes)?;
+    unsafe_serde::entomb_vec_usize_usize_T(&self.C, bytes)?;
+    Ok(())
+  }
+
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.num_cons.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.num_vars.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.num_io.exhume(temp)?;
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.A, temp)?;
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.B, temp)?;
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_vec_usize_usize_T(&mut self.C, temp)?;
+    Some(bytes)
+  }
+
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.num_cons.extent();
+    size += self.num_vars.extent();
+    size += self.num_io.extent();
+    size += unsafe_serde::extent_vec_usize_usize_T(&self.A);
+    size += unsafe_serde::extent_vec_usize_usize_T(&self.B);
+    size += unsafe_serde::extent_vec_usize_usize_T(&self.C);
+    size
+  }
 }
-
-r1cs_shape_abomonation!(Ep);
-r1cs_shape_abomonation!(Eq);
-
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

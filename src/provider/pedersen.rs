@@ -4,17 +4,16 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
-  }, unsafe_serde,
+  },
+  unsafe_serde,
 };
+use abomonation::Abomonation;
 use core::{
   fmt::Debug,
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use ff::Field;
-use pasta_curves::{Ep, Eq};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -25,36 +24,55 @@ pub struct CommitmentKey<G: Group> {
   _p: PhantomData<G>,
 }
 
-macro_rules! commitment_key_abomonation {
-  ($type:ty) => {
-    impl Abomonation for CommitmentKey<$type> {
-      unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
-        unsafe_serde::entomb_vec_T(&self.ck, bytes)?;
-        Ok(())
-      }
-  
-      unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { 
-        let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.ck, temp)?;
-        Some(bytes) 
-      }
-  
-      fn extent(&self) -> usize { 
-        let mut size = 0;
-        size += unsafe_serde::extent_vec_T(&self.ck);
-        size
-      }
-    }
-  };
-}
+impl<G: Group> Abomonation for CommitmentKey<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    unsafe_serde::entomb_vec_T(&self.ck, bytes)?;
+    Ok(())
+  }
 
-commitment_key_abomonation!(Ep);
-commitment_key_abomonation!(Eq);
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_vec_T(&mut self.ck, temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += unsafe_serde::extent_vec_T(&self.ck);
+    size
+  }
+}
 
 /// A type that holds a commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<G: Group> {
   pub(crate) comm: G,
+}
+
+impl<G: Group> Abomonation for Commitment<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    unsafe_serde::entomb_T(&self.comm, bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_T(&mut self.comm, temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += unsafe_serde::extent_T(&self.comm);
+    size
+  }
 }
 
 /// A type that holds a compressed commitment

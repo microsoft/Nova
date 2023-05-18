@@ -13,8 +13,9 @@ use crate::{
     commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait, Group,
     TranscriptEngineTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey,
+  Commitment, CommitmentKey, unsafe_serde,
 };
+use abomonation::Abomonation;
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -37,6 +38,48 @@ pub struct SparsePolynomial<G: Group> {
   col_audit_ts: Vec<G::Scalar>,
 }
 
+impl<G: Group> Abomonation for SparsePolynomial<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.ell.entomb(bytes)?;
+    unsafe_serde::entomb_vec_T(&self.row, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.col, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.val, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.row_read_ts, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.row_audit_ts, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.col_read_ts, bytes)?;
+    unsafe_serde::entomb_vec_T(&self.col_audit_ts, bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes; bytes = self.ell.exhume(temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.row, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.col, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.val, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.row_read_ts, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.row_audit_ts, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.col_read_ts, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.col_audit_ts, temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.ell.extent();
+    size += unsafe_serde::extent_vec_T(&self.row);
+    size += unsafe_serde::extent_vec_T(&self.col);
+    size += unsafe_serde::extent_vec_T(&self.val);
+    size += unsafe_serde::extent_vec_T(&self.row_read_ts);
+    size += unsafe_serde::extent_vec_T(&self.row_audit_ts);
+    size += unsafe_serde::extent_vec_T(&self.col_read_ts);
+    size += unsafe_serde::extent_vec_T(&self.col_audit_ts);
+    size
+  }
+}
+
 /// A type that holds a commitment to a sparse polynomial
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -54,6 +97,51 @@ pub struct SparsePolynomialCommitment<G: Group> {
   comm_row_audit_ts: Commitment<G>,
   comm_col_read_ts: Commitment<G>,
   comm_col_audit_ts: Commitment<G>,
+}
+
+impl<G: Group> Abomonation for SparsePolynomialCommitment<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.ell.entomb(bytes)?;
+    self.size.entomb(bytes)?;
+    self.comm_row.entomb(bytes)?;
+    self.comm_col.entomb(bytes)?;
+    self.comm_val.entomb(bytes)?;
+    self.comm_row_read_ts.entomb(bytes)?;
+    self.comm_row_audit_ts.entomb(bytes)?;
+    self.comm_col_read_ts.entomb(bytes)?;
+    self.comm_col_audit_ts.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes; bytes = self.ell.exhume(temp)?;
+    let temp = bytes; bytes = self.size.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_row.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_col.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_val.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_row_read_ts.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_row_audit_ts.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_col_read_ts.exhume(temp)?;
+    let temp = bytes; bytes = self.comm_col_audit_ts.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.ell.extent();
+    size += self.size.extent();
+    size += self.comm_row.extent();
+    size += self.comm_col.extent();
+    size += self.comm_val.extent();
+    size += self.comm_row_read_ts.extent();
+    size += self.comm_row_audit_ts.extent();
+    size += self.comm_col_read_ts.extent();
+    size += self.comm_col_audit_ts.extent();
+    size
+  }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for SparsePolynomialCommitment<G> {

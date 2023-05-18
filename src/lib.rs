@@ -31,21 +31,21 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use abomonation::Abomonation;
-use abomonation::abomonated::Abomonated;
 use ::bellperson::{Circuit, ConstraintSystem};
+use abomonation::abomonated::Abomonated;
+use abomonation::Abomonation;
+use abomonation_derive::Abomonation;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
-use pasta_curves::{pallas, vesta};
-use provider::poseidon::PoseidonRO;
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
+use pasta_curves::{pallas, vesta};
+use provider::poseidon::PoseidonRO;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
-use abomonation_derive::Abomonation;
 use traits::{
   circuit::StepCircuit,
   commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -79,10 +79,12 @@ where
   _p_c2: PhantomData<C2>,
 }
 
-impl<C1, C2> Abomonation for PublicParams<pallas::Point, vesta::Point, C1, C2>
+impl<G1, G2, C1, C2> Abomonation for PublicParams<G1, G2, C1, C2>
 where
-  C1: StepCircuit<<pallas::Point as Group>::Scalar>,
-  C2: StepCircuit<<vesta::Point as Group>::Scalar>,
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   #[inline]
   unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
@@ -98,41 +100,53 @@ where
     self.r1cs_shape_secondary.entomb(bytes)?;
     self.augmented_circuit_params_primary.entomb(bytes)?;
     self.augmented_circuit_params_secondary.entomb(bytes)?;
-    Ok(()) 
+    Ok(())
   }
 
   #[inline]
-  unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { 
-    let temp = bytes; bytes = self.F_arity_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.F_arity_secondary.exhume(temp)?;
-    let temp = bytes; bytes = self.ro_consts_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.ro_consts_circuit_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.ck_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.r1cs_shape_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.ro_consts_secondary.exhume(temp)?;
-    let temp = bytes; bytes = self.ro_consts_circuit_secondary.exhume(temp)?;
-    let temp = bytes; bytes = self.ck_secondary.exhume(temp)?;
-    let temp = bytes; bytes = self.r1cs_shape_secondary.exhume(temp)?;
-    let temp = bytes; bytes = self.augmented_circuit_params_primary.exhume(temp)?;
-    let temp = bytes; bytes = self.augmented_circuit_params_secondary.exhume(temp)?;
-    Some(bytes) 
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.F_arity_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.F_arity_secondary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ro_consts_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ro_consts_circuit_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ck_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.r1cs_shape_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ro_consts_secondary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ro_consts_circuit_secondary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ck_secondary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.r1cs_shape_secondary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.augmented_circuit_params_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.augmented_circuit_params_secondary.exhume(temp)?;
+    Some(bytes)
   }
 
   #[inline]
   fn extent(&self) -> usize {
     let mut size = 0;
-    // size += self.F_arity_primary.extent();
-    // size += self.F_arity_secondary.extent();
-    // size += self.ro_consts_primary.extent();
+    size += self.F_arity_primary.extent();
+    size += self.F_arity_secondary.extent();
+    size += self.ro_consts_primary.extent();
     size += self.ro_consts_circuit_primary.extent();
-    // size += self.ck_primary.extent();
-    // size += self.r1cs_shape_primary.extent();
-    // size += self.ro_consts_secondary.extent();
-    // size += self.ro_consts_circuit_secondary.extent();
-    // size += self.ck_secondary.extent();
-    // size += self.r1cs_shape_secondary.extent();
-    // size += self.augmented_circuit_params_primary.extent();
-    // size += self.augmented_circuit_params_secondary.extent();
+    size += self.ck_primary.extent();
+    size += self.r1cs_shape_primary.extent();
+    size += self.ro_consts_secondary.extent();
+    size += self.ro_consts_circuit_secondary.extent();
+    size += self.ck_secondary.extent();
+    size += self.r1cs_shape_secondary.extent();
+    size += self.augmented_circuit_params_primary.extent();
+    size += self.augmented_circuit_params_secondary.extent();
     size
   }
 }
@@ -579,8 +593,39 @@ where
   _p_c2: PhantomData<C2>,
 }
 
+impl<G1, G2, C1, C2, S1, S2> Abomonation for ProverKey<G1, G2, C1, C2, S1, S2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
+{
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.pk_primary.entomb(bytes)?;
+    self.pk_secondary.entomb(bytes)?;
+    Ok(())
+  }
+
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.pk_primary.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.pk_secondary.exhume(temp)?;
+    Some(bytes)
+  }
+
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.pk_primary.extent();
+    size += self.pk_secondary.extent();
+    size
+  }
+}
+
 /// A type that holds the verifier key for `CompressedSNARK`
-#[derive(Clone, Serialize, Deserialize, Abomonation)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<G1, G2, C1, C2, S1, S2>
 where
@@ -601,6 +646,53 @@ where
   vk_secondary: S2::VerifierKey,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+}
+
+impl<G1, G2, C1, C2, S1, S2> Abomonation for VerifierKey<G1, G2, C1, C2, S1, S2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+  S1: RelaxedR1CSSNARKTrait<G1>,
+  S2: RelaxedR1CSSNARKTrait<G2>,
+{
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.F_arity_primary.entomb(bytes)?;
+    self.F_arity_secondary.entomb(bytes)?;
+    self.ro_consts_primary.entomb(bytes)?;
+    self.ro_consts_secondary.entomb(bytes)?;
+    unsafe_serde::entomb_T(&self.r1cs_shape_primary_digest, bytes)?;
+    unsafe_serde::entomb_T(&self.r1cs_shape_secondary_digest, bytes)?;
+    self.vk_primary.entomb(bytes)?;
+    self.vk_secondary.entomb(bytes)?;
+    Ok(())
+  }
+
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes; bytes = self.F_arity_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.F_arity_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_secondary.exhume(temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_T(&mut self.r1cs_shape_primary_digest, temp)?;
+    let temp = bytes; bytes = unsafe_serde::exhume_T(&mut self.r1cs_shape_secondary_digest, temp)?;
+    let temp = bytes; bytes = self.vk_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.vk_secondary.exhume(temp)?;
+    Some(bytes)
+  }
+
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.F_arity_primary.extent();
+    size += self.F_arity_secondary.extent();
+    size += self.ro_consts_primary.extent();
+    size += self.ro_consts_secondary.extent();
+    size += unsafe_serde::extent_T(&self.r1cs_shape_primary_digest);
+    size += unsafe_serde::extent_T(&self.r1cs_shape_secondary_digest);
+    size += self.vk_primary.extent();
+    size += self.vk_secondary.extent();
+    size
+  }
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`

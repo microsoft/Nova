@@ -8,9 +8,12 @@ use crate::{
   CommitmentKey,
 };
 use core::marker::PhantomData;
+use abomonation::Abomonation;
+use abomonation_derive::Abomonation;
 use serde::{Deserialize, Serialize};
 
 /// A trivial implementation of `ComputationCommitmentEngineTrait`
+#[derive(Clone, Debug)]
 pub struct TrivialCompComputationEngine<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   _p: PhantomData<G>,
   _p2: PhantomData<EE>,
@@ -23,6 +26,14 @@ pub struct TrivialCommitment<G: Group> {
   S: R1CSShape<G>,
 }
 
+impl<G: Group> Abomonation for TrivialCommitment<G> {
+    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+
+    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+
+    fn extent(&self) -> usize { 0 }
+}
+
 /// Provides an implementation of a trivial decommitment
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -30,11 +41,27 @@ pub struct TrivialDecommitment<G: Group> {
   _p: PhantomData<G>,
 }
 
+impl<G: Group> Abomonation for TrivialDecommitment<G> {
+    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+
+    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+
+    fn extent(&self) -> usize { 0 }
+}
+
 /// Provides an implementation of a trivial evaluation argument
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct TrivialEvaluationArgument<G: Group> {
   _p: PhantomData<G>,
+}
+
+impl<G: Group> Abomonation for TrivialEvaluationArgument<G> {
+    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+
+    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+
+    fn extent(&self) -> usize { 0 }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for TrivialCommitment<G> {
@@ -112,6 +139,36 @@ pub struct SparkDecommitment<G: Group> {
   C: SparsePolynomial<G>,
 }
 
+impl<G: Group> Abomonation for SparkDecommitment<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.A.entomb(bytes)?;
+    self.B.entomb(bytes)?;
+    self.C.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.A.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.B.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.C.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.A.extent();
+    size += self.B.extent();
+    size += self.C.extent();
+    size
+  }
+}
+
 impl<G: Group> SparkDecommitment<G> {
   fn new(S: &R1CSShape<G>) -> Self {
     let ell = (S.num_cons.log_2(), S.num_vars.log_2() + 1);
@@ -142,6 +199,36 @@ pub struct SparkCommitment<G: Group> {
   comm_A: SparsePolynomialCommitment<G>,
   comm_B: SparsePolynomialCommitment<G>,
   comm_C: SparsePolynomialCommitment<G>,
+}
+
+impl<G: Group> Abomonation for SparkCommitment<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.comm_A.entomb(bytes)?;
+    self.comm_B.entomb(bytes)?;
+    self.comm_C.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.comm_A.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.comm_B.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.comm_C.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.comm_A.extent();
+    size += self.comm_B.extent();
+    size += self.comm_C.extent();
+    size
+  }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for SparkCommitment<G> {

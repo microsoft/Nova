@@ -14,6 +14,8 @@ use crate::{
   },
   CommitmentKey,
 };
+use abomonation::Abomonation;
+use abomonation_derive::Abomonation;
 use ff::Field;
 use itertools::concat;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};
@@ -24,7 +26,7 @@ use sumcheck::SumcheckProof;
 /// A trait that defines the behavior of a computation commitment engine
 pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
   /// A type that holds opening hint
-  type Decommitment: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type Decommitment: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + Abomonation;
 
   /// A type that holds a commitment
   type Commitment: Clone
@@ -32,7 +34,8 @@ pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = 
     + Sync
     + TranscriptReprTrait<G>
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + Abomonation;
 
   /// A type that holds an evaluation argument
   type EvaluationArgument: Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -65,7 +68,7 @@ pub trait CompCommitmentEngineTrait<G: Group, EE: EvaluationEngineTrait<G, CE = 
 }
 
 /// A type that represents the prover's key
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct ProverKey<
   G: Group,
@@ -78,8 +81,47 @@ pub struct ProverKey<
   comm: CC::Commitment,
 }
 
+impl<G, EE, CC> Abomonation for ProverKey<G, EE, CC>
+where
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  CC: CompCommitmentEngineTrait<G, EE>,
+{
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.pk_ee.entomb(bytes)?;
+    self.S.entomb(bytes)?;
+    self.decomm.entomb(bytes)?;
+    self.comm.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.pk_ee.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.S.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.decomm.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.comm.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.pk_ee.extent();
+    size += self.S.extent();
+    size += self.decomm.extent();
+    size += self.comm.extent();
+    size
+  }
+}
+
 /// A type that represents the verifier's key
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<
   G: Group,
@@ -92,10 +134,49 @@ pub struct VerifierKey<
   comm: CC::Commitment,
 }
 
+impl<G, EE, CC> Abomonation for VerifierKey<G, EE, CC>
+where
+  G: Group,
+  EE: EvaluationEngineTrait<G, CE = G::CE>,
+  CC: CompCommitmentEngineTrait<G, EE>,
+{
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.num_cons.entomb(bytes)?;
+    self.num_vars.entomb(bytes)?;
+    self.vk_ee.entomb(bytes)?;
+    self.comm.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.num_cons.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.num_vars.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.vk_ee.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.comm.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.num_cons.extent();
+    size += self.num_vars.extent();
+    size += self.vk_ee.extent();
+    size += self.comm.extent();
+    size
+  }
+}
+
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RelaxedR1CSSNARK<
   G: Group,

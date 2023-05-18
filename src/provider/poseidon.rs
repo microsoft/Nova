@@ -1,5 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use crate::{traits::{ROCircuitTrait, ROConstantsTrait, ROTrait}, unsafe_serde};
+use crate::{
+  traits::{ROCircuitTrait, ROConstantsTrait, ROTrait},
+  unsafe_serde,
+};
 use abomonation::Abomonation;
 use abomonation_derive::Abomonation;
 use bellperson::{
@@ -36,8 +39,9 @@ impl<Scalar: PrimeField> Abomonation for PoseidonConstantsCircuit<Scalar> {
   }
 
   #[inline]
-  unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
-    let temp = bytes; bytes = self.0.exhume(temp)?;
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.0.exhume(temp)?;
     Some(bytes)
   }
 
@@ -90,11 +94,15 @@ where
   }
 
   #[inline]
-  unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
-    let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.state, temp)?;
-    let temp = bytes; bytes = self.constants.exhume(temp)?;
-    let temp = bytes; bytes = self.num_absorbs.exhume(temp)?;
-    let temp = bytes; bytes = self.squeezed.exhume(temp)?;
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = unsafe_serde::exhume_vec_T(&mut self.state, temp)?;
+    let temp = bytes;
+    bytes = self.constants.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.num_absorbs.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.squeezed.exhume(temp)?;
     Some(bytes)
   }
 

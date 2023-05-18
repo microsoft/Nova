@@ -11,6 +11,8 @@ use crate::{
   },
   Commitment, CommitmentKey, CompressedCommitment, CE,
 };
+use abomonation::Abomonation;
+use abomonation_derive::Abomonation;
 use core::iter;
 use ff::Field;
 use rayon::prelude::*;
@@ -24,12 +26,60 @@ pub struct ProverKey<G: Group> {
   ck_s: CommitmentKey<G>,
 }
 
+impl<G: Group> Abomonation for ProverKey<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.ck_s.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.ck_s.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.ck_s.extent();
+    size
+  }
+}
+
 /// Provides an implementation of the verifier key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<G: Group> {
   ck_v: CommitmentKey<G>,
   ck_s: CommitmentKey<G>,
+}
+
+impl<G: Group> Abomonation for VerifierKey<G> {
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.ck_v.entomb(bytes)?;
+    self.ck_s.entomb(bytes)?;
+    Ok(())
+  }
+
+  #[inline]
+  unsafe fn exhume<'a, 'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes;
+    bytes = self.ck_v.exhume(temp)?;
+    let temp = bytes;
+    bytes = self.ck_s.exhume(temp)?;
+    Some(bytes)
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.ck_v.extent();
+    size += self.ck_s.extent();
+    size
+  }
 }
 
 /// Provides an implementation of a polynomial evaluation argument
