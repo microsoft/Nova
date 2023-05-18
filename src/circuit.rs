@@ -21,6 +21,7 @@ use crate::{
   },
   Commitment,
 };
+use abomonation_derive::Abomonation;
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},
@@ -32,7 +33,7 @@ use bellperson::{
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Abomonation)]
 pub struct NovaAugmentedCircuitParams {
   limb_width: usize,
   n_limbs: usize,

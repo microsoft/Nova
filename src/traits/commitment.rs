@@ -81,7 +81,7 @@ pub trait CommitmentEngineTrait<G: Group>:
   Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// Holds the type of the commitment key
-  type CommitmentKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type CommitmentKey: Clone + PartialEq + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<G>;

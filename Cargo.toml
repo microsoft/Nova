@@ -21,7 +21,7 @@ rand_chacha = "0.3"
 itertools = "0.9.0"
 subtle = "2.4"
 pasta_curves = { version = "0.5.2", features = ["repr-c", "serde"], package = "fil_pasta_curves" }
-neptune = { version = "8.1.0", default-features = false }
+neptune = { path = "../neptune", default-features = false }
 generic-array = "0.14.4"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"
@@ -32,6 +32,8 @@ flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
 thiserror = "1.0" 
+abomonation = "0.7.3"
+abomonation_derive = "0.5.0"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.0", package = "lurk-pasta-msm" }

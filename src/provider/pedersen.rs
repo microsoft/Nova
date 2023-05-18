@@ -4,14 +4,17 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
-  },
+  }, unsafe_serde,
 };
 use core::{
   fmt::Debug,
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
+use abomonation::Abomonation;
+use abomonation_derive::Abomonation;
 use ff::Field;
+use pasta_curves::{Ep, Eq};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +24,31 @@ pub struct CommitmentKey<G: Group> {
   ck: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
 }
+
+macro_rules! commitment_key_abomonation {
+  ($type:ty) => {
+    impl Abomonation for CommitmentKey<$type> {
+      unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+        unsafe_serde::entomb_vec_T(&self.ck, bytes)?;
+        Ok(())
+      }
+  
+      unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { 
+        let temp = bytes; bytes = unsafe_serde::exhume_vec_T(&mut self.ck, temp)?;
+        Some(bytes) 
+      }
+  
+      fn extent(&self) -> usize { 
+        let mut size = 0;
+        size += unsafe_serde::extent_vec_T(&self.ck);
+        size
+      }
+    }
+  };
+}
+
+commitment_key_abomonation!(Ep);
+commitment_key_abomonation!(Eq);
 
 /// A type that holds a commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

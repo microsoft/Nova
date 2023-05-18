@@ -1,7 +1,7 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![deny(
-  warnings,
-  unused,
+  // warnings,
+  // unused,
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
@@ -9,7 +9,7 @@
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 
 // private modules
 mod bellperson;
@@ -17,6 +17,7 @@ mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
+mod unsafe_serde;
 
 // public modules
 pub mod errors;
@@ -30,9 +31,13 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
+use abomonation::Abomonation;
+use abomonation::abomonated::Abomonated;
 use ::bellperson::{Circuit, ConstraintSystem};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
+use pasta_curves::{pallas, vesta};
+use provider::poseidon::PoseidonRO;
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
@@ -40,6 +45,7 @@ use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
+use abomonation_derive::Abomonation;
 use traits::{
   circuit::StepCircuit,
   commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -48,7 +54,7 @@ use traits::{
 };
 
 /// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<G1, G2, C1, C2>
 where
@@ -71,6 +77,64 @@ where
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+}
+
+impl<C1, C2> Abomonation for PublicParams<pallas::Point, vesta::Point, C1, C2>
+where
+  C1: StepCircuit<<pallas::Point as Group>::Scalar>,
+  C2: StepCircuit<<vesta::Point as Group>::Scalar>,
+{
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.F_arity_primary.entomb(bytes)?;
+    self.F_arity_secondary.entomb(bytes)?;
+    self.ro_consts_primary.entomb(bytes)?;
+    self.ro_consts_circuit_primary.entomb(bytes)?;
+    self.ck_primary.entomb(bytes)?;
+    self.r1cs_shape_primary.entomb(bytes)?;
+    self.ro_consts_secondary.entomb(bytes)?;
+    self.ro_consts_circuit_secondary.entomb(bytes)?;
+    self.ck_secondary.entomb(bytes)?;
+    self.r1cs_shape_secondary.entomb(bytes)?;
+    self.augmented_circuit_params_primary.entomb(bytes)?;
+    self.augmented_circuit_params_secondary.entomb(bytes)?;
+    Ok(()) 
+  }
+
+  #[inline]
+  unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { 
+    let temp = bytes; bytes = self.F_arity_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.F_arity_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_circuit_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.ck_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.r1cs_shape_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.ro_consts_circuit_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.ck_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.r1cs_shape_secondary.exhume(temp)?;
+    let temp = bytes; bytes = self.augmented_circuit_params_primary.exhume(temp)?;
+    let temp = bytes; bytes = self.augmented_circuit_params_secondary.exhume(temp)?;
+    Some(bytes) 
+  }
+
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    // size += self.F_arity_primary.extent();
+    // size += self.F_arity_secondary.extent();
+    // size += self.ro_consts_primary.extent();
+    size += self.ro_consts_circuit_primary.extent();
+    // size += self.ck_primary.extent();
+    // size += self.r1cs_shape_primary.extent();
+    // size += self.ro_consts_secondary.extent();
+    // size += self.ro_consts_circuit_secondary.extent();
+    // size += self.ck_secondary.extent();
+    // size += self.r1cs_shape_secondary.extent();
+    // size += self.augmented_circuit_params_primary.extent();
+    // size += self.augmented_circuit_params_secondary.extent();
+    size
+  }
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
@@ -410,7 +474,7 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(
+      let mut hasher = <<G2 as Group>::RO as ROTrait<G2::Base, G2::Scalar>>::new(
         pp.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
       );
@@ -424,7 +488,7 @@ where
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(
+      let mut hasher2 = <<G1 as Group>::RO as ROTrait<G1::Base, G1::Scalar>>::new(
         pp.ro_consts_primary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
       );
@@ -516,7 +580,7 @@ where
 }
 
 /// A type that holds the verifier key for `CompressedSNARK`
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Abomonation)]
 #[serde(bound = "")]
 pub struct VerifierKey<G1, G2, C1, C2, S1, S2>
 where
@@ -705,7 +769,7 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(
+      let mut hasher = <<G2 as Group>::RO as ROTrait<G2::Base, G2::Scalar>>::new(
         vk.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
       );
@@ -719,7 +783,7 @@ where
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
 
-      let mut hasher2 = <G1 as Group>::RO::new(
+      let mut hasher2 = <<G1 as Group>::RO as ROTrait<G1::Base, G1::Scalar>>::new(
         vk.ro_consts_primary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_secondary,
       );

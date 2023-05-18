@@ -2,6 +2,7 @@
 use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
+use abomonation_derive::Abomonation;
 
 /// A helper trait for a step of the incremental computation (i.e., circuit for F)
 pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
@@ -24,7 +25,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
 }
 
 /// A trivial step circuit that simply returns the input
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, PartialEq, Debug, Default, Abomonation)]
 pub struct TrivialTestCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
