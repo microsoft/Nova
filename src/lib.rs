@@ -175,8 +175,6 @@ where
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
-  l_w_primary: R1CSWitness<G1>,
-  l_u_primary: R1CSInstance<G1>,
   r_W_secondary: RelaxedR1CSWitness<G2>,
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
@@ -285,8 +283,6 @@ where
         Ok(Self {
           r_W_primary,
           r_U_primary,
-          l_w_primary,
-          l_u_primary,
           r_W_secondary,
           r_U_secondary,
           l_w_secondary,
@@ -353,7 +349,7 @@ where
           z0_secondary,
           Some(r_snark.zi_secondary.clone()),
           Some(r_snark.r_U_primary.clone()),
-          Some(l_u_primary.clone()),
+          Some(l_u_primary),
           Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
         );
 
@@ -376,8 +372,6 @@ where
         Ok(Self {
           r_W_primary,
           r_U_primary,
-          l_w_primary,
-          l_u_primary,
           r_W_secondary,
           r_U_secondary,
           l_w_secondary,
@@ -411,8 +405,7 @@ where
     }
 
     // check if the (relaxed) R1CS instances have two public outputs
-    if self.l_u_primary.X.len() != 2
-      || self.l_u_secondary.X.len() != 2
+    if self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
       || self.r_U_secondary.X.len() != 2
     {
@@ -455,28 +448,17 @@ where
       )
     };
 
-    if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
+    if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
     }
 
     // check the satisfiability of the provided instances
-    let ((res_r_primary, res_l_primary), (res_r_secondary, res_l_secondary)) = rayon::join(
+    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
-        rayon::join(
-          || {
-            pp.r1cs_shape_primary.is_sat_relaxed(
-              &pp.ck_primary,
-              &self.r_U_primary,
-              &self.r_W_primary,
-            )
-          },
-          || {
-            pp.r1cs_shape_primary
-              .is_sat(&pp.ck_primary, &self.l_u_primary, &self.l_w_primary)
-          },
-        )
+        pp.r1cs_shape_primary
+          .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
       },
       || {
         rayon::join(
@@ -500,7 +482,6 @@ where
 
     // check the returned res objects
     res_r_primary?;
-    res_l_primary?;
     res_r_secondary?;
     res_l_secondary?;
 
@@ -562,9 +543,7 @@ where
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
   r_U_primary: RelaxedR1CSInstance<G1>,
-  l_u_primary: R1CSInstance<G1>,
-  nifs_primary: NIFS<G1>,
-  f_W_snark_primary: S1,
+  r_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<G2>,
   l_u_secondary: R1CSInstance<G2>,
@@ -628,41 +607,30 @@ where
     pk: &ProverKey<G1, G2, C1, C2, S1, S2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
-    let (res_primary, res_secondary) = rayon::join(
-      // fold the primary circuit's instance
-      || {
-        NIFS::prove(
-          &pp.ck_primary,
-          &pp.ro_consts_primary,
-          &pp.digest,
-          &pp.r1cs_shape_primary,
-          &recursive_snark.r_U_primary,
-          &recursive_snark.r_W_primary,
-          &recursive_snark.l_u_primary,
-          &recursive_snark.l_w_primary,
-        )
-      },
-      || {
-        // fold the secondary circuit's instance
-        NIFS::prove(
-          &pp.ck_secondary,
-          &pp.ro_consts_secondary,
-          &scalar_as_base::<G1>(pp.digest),
-          &pp.r1cs_shape_secondary,
-          &recursive_snark.r_U_secondary,
-          &recursive_snark.r_W_secondary,
-          &recursive_snark.l_u_secondary,
-          &recursive_snark.l_w_secondary,
-        )
-      },
+    // fold the secondary circuit's instance
+    let res_secondary = NIFS::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<G1>(pp.digest),
+      &pp.r1cs_shape_secondary,
+      &recursive_snark.r_U_secondary,
+      &recursive_snark.r_W_secondary,
+      &recursive_snark.l_u_secondary,
+      &recursive_snark.l_w_secondary,
     );
 
-    let (nifs_primary, (f_U_primary, f_W_primary)) = res_primary?;
     let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
 
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
-    let (f_W_snark_primary, f_W_snark_secondary) = rayon::join(
-      || S1::prove(&pp.ck_primary, &pk.pk_primary, &f_U_primary, &f_W_primary),
+    let (r_W_snark_primary, f_W_snark_secondary) = rayon::join(
+      || {
+        S1::prove(
+          &pp.ck_primary,
+          &pk.pk_primary,
+          &recursive_snark.r_U_primary,
+          &recursive_snark.r_W_primary,
+        )
+      },
       || {
         S2::prove(
           &pp.ck_secondary,
@@ -675,9 +643,7 @@ where
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
-      l_u_primary: recursive_snark.l_u_primary.clone(),
-      nifs_primary,
-      f_W_snark_primary: f_W_snark_primary?,
+      r_W_snark_primary: r_W_snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
@@ -706,8 +672,7 @@ where
     }
 
     // check if the (relaxed) R1CS instances have two public outputs
-    if self.l_u_primary.X.len() != 2
-      || self.l_u_secondary.X.len() != 2
+    if self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
       || self.r_U_secondary.X.len() != 2
     {
@@ -750,19 +715,13 @@ where
       )
     };
 
-    if hash_primary != scalar_as_base::<G1>(self.l_u_primary.X[1])
+    if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
     }
 
     // fold the running instance and last instance to get a folded instance
-    let f_U_primary = self.nifs_primary.verify(
-      &vk.ro_consts_primary,
-      &vk.digest,
-      &self.r_U_primary,
-      &self.l_u_primary,
-    )?;
     let f_U_secondary = self.nifs_secondary.verify(
       &vk.ro_consts_secondary,
       &scalar_as_base::<G1>(vk.digest),
@@ -772,7 +731,11 @@ where
 
     // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
-      || self.f_W_snark_primary.verify(&vk.vk_primary, &f_U_primary),
+      || {
+        self
+          .r_W_snark_primary
+          .verify(&vk.vk_primary, &self.r_U_primary)
+      },
       || {
         self
           .f_W_snark_secondary
