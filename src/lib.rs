@@ -1,7 +1,7 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![deny(
-  // warnings,
-  // unused,
+  warnings,
+  unused,
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
@@ -9,7 +9,7 @@
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
-// #![forbid(unsafe_code)]
+// #![forbid(unsafe_code)] // oops...
 
 // private modules
 mod bellperson;
@@ -32,9 +32,7 @@ use crate::bellperson::{
   solver::SatisfyingAssignment,
 };
 use ::bellperson::{Circuit, ConstraintSystem};
-use abomonation::abomonated::Abomonated;
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -42,8 +40,6 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use pasta_curves::{pallas, vesta};
-use provider::poseidon::PoseidonRO;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{

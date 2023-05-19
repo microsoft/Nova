@@ -4,7 +4,6 @@ use crate::{
   unsafe_serde,
 };
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use bellperson::{
   gadgets::{
     boolean::{AllocatedBit, Boolean},

@@ -13,12 +13,10 @@ use crate::{
   unsafe_serde, Commitment, CommitmentKey, CE,
 };
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
-use pasta_curves::{Ep, Eq};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};

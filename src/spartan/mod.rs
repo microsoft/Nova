@@ -15,7 +15,6 @@ use crate::{
   CommitmentKey,
 };
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use ff::Field;
 use itertools::concat;
 use polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial};

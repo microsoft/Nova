@@ -12,7 +12,6 @@ use crate::{
   Commitment, CommitmentKey, CompressedCommitment, CE,
 };
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use core::iter;
 use ff::Field;
 use rayon::prelude::*;

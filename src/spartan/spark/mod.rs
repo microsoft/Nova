@@ -9,7 +9,6 @@ use crate::{
 };
 use core::marker::PhantomData;
 use abomonation::Abomonation;
-use abomonation_derive::Abomonation;
 use serde::{Deserialize, Serialize};
 
 /// A trivial implementation of `ComputationCommitmentEngineTrait`
@@ -27,11 +26,24 @@ pub struct TrivialCommitment<G: Group> {
 }
 
 impl<G: Group> Abomonation for TrivialCommitment<G> {
-    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, bytes: &mut W) -> std::io::Result<()> {
+    self.S.entomb(bytes)?;
+    Ok(())
+  }
 
-    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+  #[inline]
+  unsafe fn exhume<'a,'b>(&'a mut self, mut bytes: &'b mut [u8]) -> Option<&'b mut [u8]> {
+    let temp = bytes; bytes = self.S.exhume(temp)?;
+    Some(bytes)
+  }
 
-    fn extent(&self) -> usize { 0 }
+  #[inline]
+  fn extent(&self) -> usize {
+    let mut size = 0;
+    size += self.S.extent();
+    size
+    }
 }
 
 /// Provides an implementation of a trivial decommitment
@@ -42,11 +54,14 @@ pub struct TrivialDecommitment<G: Group> {
 }
 
 impl<G: Group> Abomonation for TrivialDecommitment<G> {
-    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
 
-    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+  #[inline]
+  unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
 
-    fn extent(&self) -> usize { 0 }
+  #[inline]
+  fn extent(&self) -> usize { 0 }
 }
 
 /// Provides an implementation of a trivial evaluation argument
@@ -57,11 +72,14 @@ pub struct TrivialEvaluationArgument<G: Group> {
 }
 
 impl<G: Group> Abomonation for TrivialEvaluationArgument<G> {
-    unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
+  #[inline]
+  unsafe fn entomb<W: std::io::Write>(&self, _write: &mut W) -> std::io::Result<()> { Ok(()) }
 
-    unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
+  #[inline]
+  unsafe fn exhume<'a,'b>(&'a mut self, bytes: &'b mut [u8]) -> Option<&'b mut [u8]> { Some(bytes) }
 
-    fn extent(&self) -> usize { 0 }
+  #[inline]
+  fn extent(&self) -> usize { 0 }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for TrivialCommitment<G> {
