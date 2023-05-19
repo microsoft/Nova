@@ -11,9 +11,6 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-# TODO: replace with the next version of bellperson
-# See : https://github.com/filecoin-project/bellperson/pull/314
-bellperson = { git="https://github.com/filecoin-project/bellperson", rev="8c5d202e", default-features = false }
 bellpepper-core = { version="0.2.0", default-features = false }
 bellpepper = { version="0.2.0", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
