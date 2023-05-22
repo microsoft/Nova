@@ -162,8 +162,11 @@ mod tests {
     Ok(())
   }
 
-  #[test]
-  fn test_tiny_r1cs_bellperson() {
+  fn test_tiny_r1cs_bellperson_with<S, G>()
+  where
+    S: PrimeField,
+    G: Group<Scalar = S>,
+  {
     use crate::bellperson::{
       r1cs::{NovaShape, NovaWitness},
       shape_cs::ShapeCS,
@@ -206,8 +209,13 @@ mod tests {
     );
   }
 
+  #[test]
+  fn test_tiny_r1cs_bellperson() {
+    test_tiny_r1cs_bellperson_with::<S, G>();
+  }
+
   #[allow(clippy::too_many_arguments)]
-  fn execute_sequence(
+  fn execute_sequence<S, G>(
     ck: &CommitmentKey<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
     pp_digest: &<G as Group>::Scalar,
@@ -216,7 +224,10 @@ mod tests {
     W1: &R1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-  ) {
+  ) where
+    S: PrimeField,
+    G: Group<Scalar = S>,
+  {
     // produce a default running instance
     let mut r_W = RelaxedR1CSWitness::default(shape);
     let mut r_U = RelaxedR1CSInstance::default(ck, shape);
