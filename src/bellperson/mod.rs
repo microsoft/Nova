@@ -8,10 +8,13 @@ pub mod solver;
 
 #[cfg(test)]
 mod tests {
-  use crate::bellperson::{
-    r1cs::{NovaShape, NovaWitness},
-    shape_cs::ShapeCS,
-    solver::SatisfyingAssignment,
+  use crate::{
+    bellperson::{
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+    },
+    traits::Group,
   };
   use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::PrimeField;
@@ -39,10 +42,12 @@ mod tests {
     Ok(())
   }
 
-  #[test]
-  fn test_alloc_bit() {
-    type G = pasta_curves::pallas::Point;
-
+  fn test_alloc_bit_with<B, S, G>()
+  where
+    B: PrimeField,
+    S: PrimeField,
+    G: Group<Base = B, Scalar = S>,
+  {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
     let _ = synthesize_alloc_bit(&mut cs);
@@ -55,5 +60,11 @@ mod tests {
 
     // Make sure that this is satisfiable
     assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
+  }
+
+  #[test]
+  fn test_alloc_bit() {
+    type G = pasta_curves::pallas::Point;
+    test_alloc_bit_with::<_, _, G>();
   }
 }
