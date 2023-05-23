@@ -162,10 +162,9 @@ mod tests {
     Ok(())
   }
 
-  fn test_tiny_r1cs_bellperson_with<S, G>()
+  fn test_tiny_r1cs_bellperson_with<G>()
   where
-    S: PrimeField,
-    G: Group<Scalar = S>,
+    G: Group,
   {
     use crate::bellperson::{
       r1cs::{NovaShape, NovaWitness},
@@ -182,7 +181,7 @@ mod tests {
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(5)));
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(5)));
     let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the first instance is satisfiable
@@ -190,7 +189,7 @@ mod tests {
 
     // Now get the instance and assignment for second instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(S::from(135)));
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(135)));
     let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
@@ -211,11 +210,11 @@ mod tests {
 
   #[test]
   fn test_tiny_r1cs_bellperson() {
-    test_tiny_r1cs_bellperson_with::<S, G>();
+    test_tiny_r1cs_bellperson_with::<G>();
   }
 
   #[allow(clippy::too_many_arguments)]
-  fn execute_sequence<S, G>(
+  fn execute_sequence<G>(
     ck: &CommitmentKey<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
     pp_digest: &<G as Group>::Scalar,
@@ -225,8 +224,7 @@ mod tests {
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
   ) where
-    S: PrimeField,
-    G: Group<Scalar = S>,
+    G: Group,
   {
     // produce a default running instance
     let mut r_W = RelaxedR1CSWitness::default(shape);

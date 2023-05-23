@@ -370,9 +370,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 
 #[cfg(test)]
 mod tests {
-  use ff::PrimeField;
-  use pasta_curves::pallas;
-
   use super::*;
   use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
   type PastaG1 = pasta_curves::pallas::Point;
@@ -387,7 +384,7 @@ mod tests {
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-  fn test_recursive_circuit_with<B, S, G1, G2>(
+  fn test_recursive_circuit_with<G1, G2>(
     primary_params: NovaAugmentedCircuitParams,
     secondary_params: NovaAugmentedCircuitParams,
     ro_consts1: ROConstantsCircuit<G2>,
@@ -395,10 +392,8 @@ mod tests {
     num_constraints_primary: usize,
     num_constraints_secondary: usize,
   ) where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
@@ -482,7 +477,7 @@ mod tests {
     let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
-    test_recursive_circuit_with::<pallas::Base, pallas::Scalar, PastaG1, PastaG2>(
+    test_recursive_circuit_with::<PastaG1, PastaG2>(
       params1, params2, ro_consts1, ro_consts2, 9815, 10347,
     );
   }

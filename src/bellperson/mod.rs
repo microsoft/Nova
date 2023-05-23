@@ -42,11 +42,9 @@ mod tests {
     Ok(())
   }
 
-  fn test_alloc_bit_with<B, S, G>()
+  fn test_alloc_bit_with<G>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G: Group<Base = B, Scalar = S>,
+    G: Group,
   {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
@@ -65,6 +63,6 @@ mod tests {
   #[test]
   fn test_alloc_bit() {
     type G = pasta_curves::pallas::Point;
-    test_alloc_bit_with::<_, _, G>();
+    test_alloc_bit_with::<G>();
   }
 }

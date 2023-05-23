@@ -851,12 +851,10 @@ mod tests {
     }
   }
 
-  fn test_ivc_trivial_with<B, S, G1, G2>()
+  fn test_ivc_trivial_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
     let test_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
@@ -897,15 +895,13 @@ mod tests {
   fn test_ivc_trivial() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    test_ivc_trivial_with::<_, _, G1, G2>();
+    test_ivc_trivial_with::<G1, G2>();
   }
 
-  fn test_ivc_nontrivial_with<B, S, G1, G2>()
+  fn test_ivc_nontrivial_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     let circuit_primary = TrivialTestCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -984,15 +980,13 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nontrivial_with::<_, _, G1, G2>();
+    test_ivc_nontrivial_with::<G1, G2>();
   }
 
-  fn test_ivc_nontrivial_with_compression_with<B, S, G1, G2>()
+  fn test_ivc_nontrivial_with_compression_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
     <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
       CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
@@ -1081,15 +1075,13 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nontrivial_with_compression_with::<_, _, G1, G2>();
+    test_ivc_nontrivial_with_compression_with::<G1, G2>();
   }
 
-  fn test_ivc_nontrivial_with_spark_compression_with<B, S, G1, G2>()
+  fn test_ivc_nontrivial_with_spark_compression_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
     <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
       CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
@@ -1181,15 +1173,13 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nontrivial_with_spark_compression_with::<_, _, G1, G2>();
+    test_ivc_nontrivial_with_spark_compression_with::<G1, G2>();
   }
 
-  fn test_ivc_nondet_with_compression_with<B, S, G1, G2>()
+  fn test_ivc_nondet_with_compression_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
     <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
       CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
@@ -1345,15 +1335,13 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nondet_with_compression_with::<_, _, G1, G2>();
+    test_ivc_nondet_with_compression_with::<G1, G2>();
   }
 
-  fn test_ivc_base_with<B, S, G1, G2>()
+  fn test_ivc_base_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // produce public parameters
     let pp = PublicParams::<
@@ -1397,6 +1385,6 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_base_with::<_, _, G1, G2>();
+    test_ivc_base_with::<G1, G2>();
   }
 }
