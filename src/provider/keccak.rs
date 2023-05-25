@@ -101,10 +101,7 @@ mod tests {
   use ff::PrimeField;
   use sha3::{Digest, Keccak256};
 
-  type G = pasta_curves::pallas::Point;
-
-  #[test]
-  fn test_keccak_transcript() {
+  fn test_keccak_transcript_with<G: Group>() {
     let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(b"test");
 
     // two scalars
@@ -134,6 +131,12 @@ mod tests {
       hex::encode(c2.to_repr().as_ref()),
       "65f7908d53abcd18f3b1d767456ef9009b91c7566a635e9ca7be26e21d4d7a10"
     );
+  }
+
+  #[test]
+  fn test_keccak_transcript() {
+    type G = pasta_curves::pallas::Point;
+    test_keccak_transcript_with::<G>()
   }
 
   #[test]
