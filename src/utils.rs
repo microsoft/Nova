@@ -1,8 +1,30 @@
 //! Basic utils
-use crate::{
-    errors::NovaError
-};
+use crate::errors::NovaError;
 use ff::PrimeField;
+
+#[allow(dead_code)]
+pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
+  if a.len() != b.len() {
+    return Err(NovaError::InvalidIndex);
+  }
+
+  let mut res = Vec::with_capacity(a.len());
+  for i in 0..a.len() {
+    res.push(a[i] + b[i]);
+  }
+
+  Ok(res)
+}
+
+#[allow(dead_code)]
+pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: &F) -> Result<Vec<F>, NovaError> {
+  let mut res = Vec::with_capacity(a.len());
+  for i in 0..a.len() {
+    res.push(a[i] * e);
+  }
+
+  Ok(res)
+}
 
 #[allow(dead_code)]
 pub fn matrix_vector_product<F: PrimeField>(
@@ -24,6 +46,31 @@ pub fn matrix_vector_product<F: PrimeField>(
       sum += matrix[i][j] * vector[j];
     }
     res.push(sum);
+  }
+
+  Ok(res)
+}
+
+// Matrix vector product where matrix is sparse
+// First element is row index, second column, third value stored
+#[allow(dead_code)]
+pub fn matrix_vector_product_sparse<F: PrimeField>(
+  matrix: &Vec<(usize, usize, F)>,
+  vector: &Vec<F>,
+) -> Result<Vec<F>, NovaError> {
+  if matrix.len() == 0 {
+    return Err(NovaError::InvalidIndex);
+  }
+
+  // Find the maximum row index in the matrix
+  let max_row = matrix.iter().map(|r| r.0).max().unwrap() + 1;
+  if max_row > vector.len() {
+    return Err(NovaError::InvalidIndex);
+  }
+
+  let mut res = vec![F::ZERO; max_row];
+  for &(row, col, value) in matrix {
+    res[row] += value * vector[col];
   }
 
   Ok(res)
@@ -53,29 +100,66 @@ pub fn to_F_matrix<F: PrimeField>(m: Vec<Vec<u64>>) -> Vec<Vec<F>> {
   m.iter().map(|x| to_F_vec(x.clone())).collect()
 }
 
+#[allow(dead_code)]
+pub fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(usize, usize, F)> {
+  m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use pasta_curves::Fq;
+  use super::*;
+  use pasta_curves::Fq;
 
-    #[test]
-    fn test_matrix_vector_product() {
+  #[test]
+  fn test_vector_add() {
+    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
+    let b = to_F_vec::<Fq>(vec![4, 5, 6]);
+    let res = vector_add(&a, &b).unwrap();
+    assert_eq!(res, to_F_vec::<Fq>(vec![5, 7, 9]));
+  }
 
-      let matrix = vec![vec![1, 2, 3], vec![4, 5, 6]];
-      let vector = vec![1, 2, 3];
-      let A = to_F_matrix::<Fq>(matrix);
-      let z = to_F_vec::<Fq>(vector);
-      let res = matrix_vector_product(&A, &z).unwrap();
+  #[test]
+  fn test_vector_elem_product() {
+    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
+    let e = Fq::from(2);
+    let res = vector_elem_product(&a, &e).unwrap();
+    assert_eq!(res, to_F_vec::<Fq>(vec![2, 4, 6]));
+  }
 
-      assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+  #[test]
+  fn test_matrix_vector_product() {
+    let matrix = vec![vec![1, 2, 3], vec![4, 5, 6]];
+    let vector = vec![1, 2, 3];
+    let A = to_F_matrix::<Fq>(matrix);
+    let z = to_F_vec::<Fq>(vector);
+    let res = matrix_vector_product(&A, &z).unwrap();
+
+    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }
 
   #[test]
   fn test_hadamard_product() {
-      let a = to_F_vec::<Fq>(vec![1, 2, 3]);
-      let b = to_F_vec::<Fq>(vec![4, 5, 6]);
-      let res = hadamard_product(&a, &b).unwrap();
-      assert_eq!(res, to_F_vec::<Fq>(vec![4, 10, 18]));
+    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
+    let b = to_F_vec::<Fq>(vec![4, 5, 6]);
+    let res = hadamard_product(&a, &b).unwrap();
+    assert_eq!(res, to_F_vec::<Fq>(vec![4, 10, 18]));
   }
 
+  #[test]
+  fn test_matrix_vector_product_sparse() {
+    let matrix = vec![
+      (0, 0, 1),
+      (0, 1, 2),
+      (0, 2, 3),
+      (1, 0, 4),
+      (1, 1, 5),
+      (1, 2, 6),
+    ];
+    let vector = vec![1, 2, 3];
+    let A = to_F_matrix_sparse::<Fq>(matrix);
+    let z = to_F_vec::<Fq>(vector);
+    let res = matrix_vector_product_sparse(&A, &z).unwrap();
+
+    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+  }
 }
