@@ -372,8 +372,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 mod tests {
   use super::*;
   use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
-  type G1 = pasta_curves::pallas::Point;
-  type G2 = pasta_curves::vesta::Point;
+  type PastaG1 = pasta_curves::pallas::Point;
+  type PastaG2 = pasta_curves::vesta::Point;
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
@@ -383,18 +383,22 @@ mod tests {
     traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
   };
 
-  #[test]
-  fn test_recursive_circuit() {
-    // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
-
+  // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
+  fn test_recursive_circuit_with<G1, G2>(
+    primary_params: NovaAugmentedCircuitParams,
+    secondary_params: NovaAugmentedCircuitParams,
+    ro_consts1: ROConstantsCircuit<G2>,
+    ro_consts2: ROConstantsCircuit<G1>,
+    num_constraints_primary: usize,
+    num_constraints_secondary: usize,
+  ) where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+  {
     // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        params1.clone(),
+        primary_params.clone(),
         None,
         TrivialTestCircuit::default(),
         ro_consts1.clone(),
@@ -402,12 +406,12 @@ mod tests {
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape();
-    assert_eq!(cs.num_constraints(), 9815);
+    assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
     let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        params2.clone(),
+        secondary_params.clone(),
         None,
         TrivialTestCircuit::default(),
         ro_consts2.clone(),
@@ -415,7 +419,7 @@ mod tests {
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape();
-    assert_eq!(cs.num_constraints(), 10347);
+    assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::ZERO;
@@ -431,7 +435,7 @@ mod tests {
     );
     let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        params1,
+        primary_params,
         Some(inputs1),
         TrivialTestCircuit::default(),
         ro_consts1,
@@ -453,16 +457,28 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        params2,
+        secondary_params,
         Some(inputs2),
         TrivialTestCircuit::default(),
         ro_consts2,
       );
-    let _ = circuit.synthesize(&mut cs2);
+    let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
     assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
+  }
+
+  #[test]
+  fn test_recursive_circuit() {
+    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
+
+    test_recursive_circuit_with::<PastaG1, PastaG2>(
+      params1, params2, ro_consts1, ro_consts2, 9815, 10347,
+    );
   }
 }

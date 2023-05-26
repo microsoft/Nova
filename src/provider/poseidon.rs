@@ -201,27 +201,31 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  type S = pasta_curves::pallas::Scalar;
-  type B = pasta_curves::vesta::Scalar;
-  type G = pasta_curves::pallas::Point;
   use crate::{
     bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num,
+    gadgets::utils::le_bits_to_num, traits::Group,
   };
   use ff::Field;
   use rand::rngs::OsRng;
 
-  #[test]
-  fn test_poseidon_ro() {
+  fn test_poseidon_ro_with<G: Group>()
+  where
+    // we can print the field elements we get from G's Base & Scalar fields,
+    // and compare their byte representations
+    <<G as Group>::Base as PrimeField>::Repr: std::fmt::Debug,
+    <<G as Group>::Scalar as PrimeField>::Repr: std::fmt::Debug,
+    <<G as Group>::Base as PrimeField>::Repr: PartialEq<<<G as Group>::Scalar as PrimeField>::Repr>,
+  {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = PoseidonConstantsCircuit::new();
+    let constants = PoseidonConstantsCircuit::<G::Scalar>::new();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<S> = PoseidonROCircuit::new(constants, num_absorbs);
+    let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
+      PoseidonROCircuit::new(constants, num_absorbs);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..num_absorbs {
-      let num = S::random(&mut csprng);
+      let num = G::Scalar::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
         AllocatedNum::alloc(cs.namespace(|| format!("data {i}")), || Ok(num)).unwrap();
@@ -234,5 +238,12 @@ mod tests {
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
     let num2 = le_bits_to_num(&mut cs, num2_bits).unwrap();
     assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
+  }
+
+  #[test]
+  fn test_poseidon_ro() {
+    type G = pasta_curves::pallas::Point;
+
+    test_poseidon_ro_with::<G>()
   }
 }

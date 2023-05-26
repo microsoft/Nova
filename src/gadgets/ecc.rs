@@ -975,16 +975,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_ops() {
-    test_ecc_circuit_ops_with::<pallas::Base, pallas::Scalar, pallas::Point, vesta::Point>();
-    test_ecc_circuit_ops_with::<vesta::Base, vesta::Scalar, vesta::Point, pallas::Point>();
+    test_ecc_circuit_ops_with::<pallas::Point, vesta::Point>();
+    test_ecc_circuit_ops_with::<vesta::Point, pallas::Point>();
   }
 
-  fn test_ecc_circuit_ops_with<B, S, G1, G2>()
+  fn test_ecc_circuit_ops_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -1027,16 +1025,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_add_equal() {
-    test_ecc_circuit_add_equal_with::<pallas::Base, pallas::Scalar, pallas::Point, vesta::Point>();
-    test_ecc_circuit_add_equal_with::<vesta::Base, vesta::Scalar, vesta::Point, pallas::Point>();
+    test_ecc_circuit_add_equal_with::<pallas::Point, vesta::Point>();
+    test_ecc_circuit_add_equal_with::<vesta::Point, pallas::Point>();
   }
 
-  fn test_ecc_circuit_add_equal_with<B, S, G1, G2>()
+  fn test_ecc_circuit_add_equal_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -1083,17 +1079,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_add_negation() {
-    test_ecc_circuit_add_negation_with::<pallas::Base, pallas::Scalar, pallas::Point, vesta::Point>(
-    );
-    test_ecc_circuit_add_negation_with::<vesta::Base, vesta::Scalar, vesta::Point, pallas::Point>();
+    test_ecc_circuit_add_negation_with::<pallas::Point, vesta::Point>();
+    test_ecc_circuit_add_negation_with::<vesta::Point, pallas::Point>();
   }
 
-  fn test_ecc_circuit_add_negation_with<B, S, G1, G2>()
+  fn test_ecc_circuit_add_negation_with<G1, G2>()
   where
-    B: PrimeField,
-    S: PrimeField,
-    G1: Group<Base = B, Scalar = S>,
-    G2: Group<Base = S, Scalar = B>,
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: ShapeCS<G2> = ShapeCS::new();
