@@ -54,7 +54,6 @@ pub struct CCSShape<G: Group> {
   pub(crate) d: usize,
   pub(crate) S: Vec<Vec<usize>>,
   pub(crate) c: Vec<usize>,
-  digest: G::Scalar, // digest of the rest of CCSShape
 }
 
 /// A type that holds a witness for a given CCS instance
@@ -137,8 +136,6 @@ impl<G: Group> CCSShape<G> {
       return Err(NovaError::OddInputLength);
     }
 
-    let digest = Self::compute_digest(num_cons, num_vars, num_io, M);
-
     let shape = CCSShape {
       num_cons,
       num_vars,
@@ -149,7 +146,6 @@ impl<G: Group> CCSShape<G> {
       d: D,
       S: vec![S1.to_vec(), S2.to_vec()],
       c: vec![C0 as usize, C1 as usize],
-      digest,
     };
 
     Ok(shape)
@@ -363,61 +359,6 @@ impl<G: Group> CCSShape<G> {
   //   Ok((T, comm_T))
   // }
 
-  /// returns the digest of R1CSShape
-  pub fn get_digest(&self) -> G::Scalar {
-    self.digest
-  }
-
-  fn compute_digest(
-    num_cons: usize,
-    num_vars: usize,
-    num_io: usize,
-    M: &[Vec<(usize, usize, G::Scalar)>],
-  ) -> G::Scalar {
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-    struct CCSShapeWithoutDigest<G: Group> {
-      num_cons: usize,
-      num_vars: usize,
-      num_io: usize,
-      M: Vec<Vec<(usize, usize, G::Scalar)>>,
-    }
-
-    let shape = CCSShapeWithoutDigest::<G> {
-      num_cons,
-      num_vars,
-      num_io,
-      M: M.to_vec(),
-    };
-
-    // obtain a vector of bytes representing the CCS shape
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &shape).unwrap();
-    let shape_bytes = encoder.finish().unwrap();
-
-    // convert shape_bytes into a short digest
-    let mut hasher = Sha3_256::new();
-    hasher.input(&shape_bytes);
-    let digest = hasher.result();
-
-    // truncate the digest to 250 bits
-    let bv = (0..NUM_HASH_BITS).map(|i| {
-      let (byte_pos, bit_pos) = (i / 8, i % 8);
-      let bit = (digest[byte_pos] >> bit_pos) & 1;
-      bit == 1
-    });
-
-    // turn the bit vector into a scalar
-    let mut res = G::Scalar::ZERO;
-    let mut coeff = G::Scalar::ONE;
-    for bit in bv {
-      if bit {
-        res += coeff;
-      }
-      coeff += coeff;
-    }
-    res
-  }
-
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&self) -> Self {
@@ -432,8 +373,6 @@ impl<G: Group> CCSShape<G> {
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.num_vars == m {
-      let digest = Self::compute_digest(m, self.num_vars, self.num_io, &self.M);
-
       // NOTE: We assume the following constants for R1CS-to-CCS
       const T: usize = 3;
       const Q: usize = 2;
@@ -453,7 +392,6 @@ impl<G: Group> CCSShape<G> {
         d: D,
         S: vec![S[0].to_vec(), S2.to_vec()],
         c: vec![C0 as usize, C1 as usize],
-        digest,
       };
     }
 
@@ -479,8 +417,6 @@ impl<G: Group> CCSShape<G> {
     // Apply pad for each matrix in M
     let M_padded = self.M.iter().map(|m| apply_pad(m)).collect::<Vec<_>>();
 
-    let digest = Self::compute_digest(num_cons_padded, num_vars_padded, self.num_io, &M_padded);
-
     // NOTE: We assume the following constants for R1CS-to-CCS
     const T: usize = 3;
     const Q: usize = 2;
@@ -500,7 +436,6 @@ impl<G: Group> CCSShape<G> {
       d: D,
       S: vec![S[0].to_vec(), S2.to_vec()],
       c: vec![C0 as usize, C1 as usize],
-      digest,
     }
   }
 }
