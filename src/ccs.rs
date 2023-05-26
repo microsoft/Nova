@@ -9,6 +9,7 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
+  r1cs::R1CSShape,
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
   },
@@ -40,9 +41,12 @@ pub struct CCS<G: Group> {
   _p: PhantomData<G>,
 }
 
+// TODO Pull out matrix type?
+
 // A type that holds the shape of a CCS instance
 // Unlike R1CS we have a list of matrices M instead of only A, B, C
 // We also have t, q, d constants and c (vector), S (set)
+// TODO Add m, n, or infer from M?
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CCSShape<G: Group> {
   pub(crate) num_cons: usize,
@@ -86,17 +90,12 @@ impl<G: Group> CCSShape<G> {
     num_vars: usize,
     num_io: usize,
     M: &[Vec<(usize, usize, G::Scalar)>],
+    t: usize,
+    q: usize,
+    d: usize,
+    S: Vec<Vec<usize>>,
+    c: Vec<usize>,
   ) -> Result<CCSShape<G>, NovaError> {
-    // NOTE: We assume the following constants for R1CS-to-CCS
-    // TODO: Add as parameters to new once all hardcoding is removed
-    const T: usize = 3;
-    const Q: usize = 2;
-    const D: usize = 2;
-    const S1: [usize; 2] = [0, 1];
-    const S2: [usize; 1] = [2];
-    const C0: i32 = 1;
-    const C1: i32 = -1;
-
     let is_valid = |num_cons: usize,
                     num_vars: usize,
                     num_io: usize,
@@ -141,11 +140,13 @@ impl<G: Group> CCSShape<G> {
       num_vars,
       num_io,
       M: M.to_vec(),
-      t: T,
-      q: Q,
-      d: D,
-      S: vec![S1.to_vec(), S2.to_vec()],
-      c: vec![C0 as usize, C1 as usize],
+      t,
+      q,
+      d,
+      S,
+      c,
+      //     S: vec![S1.to_vec(), S2.to_vec()],
+      //     c: vec![C0 as usize, C1 as usize],
     };
 
     Ok(shape)
@@ -309,6 +310,29 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
+  pub fn from_r1cs(r1cs: R1CSShape<G>) -> Self {
+    // These contants are used for R1CS-to-CCS, see the paper for more details
+    const T: usize = 3;
+    const Q: usize = 2;
+    const D: usize = 2;
+    const S1: [usize; 2] = [0, 1];
+    const S2: [usize; 1] = [2];
+    const C0: i32 = 1;
+    const C1: i32 = -1;
+
+    Self {
+      num_cons: r1cs.num_cons,
+      num_vars: r1cs.num_vars,
+      num_io: r1cs.num_io,
+      M: vec![r1cs.A, r1cs.B, r1cs.C],
+      t: T,
+      q: Q,
+      d: D,
+      S: vec![S1.to_vec(), S2.to_vec()],
+      c: vec![C0 as usize, C1 as usize],
+    }
+  }
+
   /// A method to compute a commitment to the cross-term `T` given a
   /// Relaxed R1CS instance-witness pair and an R1CS instance-witness pair
   // pub fn commit_T(
@@ -373,25 +397,16 @@ impl<G: Group> CCSShape<G> {
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.num_vars == m {
-      // NOTE: We assume the following constants for R1CS-to-CCS
-      const T: usize = 3;
-      const Q: usize = 2;
-      const D: usize = 2;
-      const S: [[usize; 2]; 1] = [[0, 1]];
-      const S2: [usize; 1] = [2];
-      const C0: i32 = 1;
-      const C1: i32 = -1;
-
       return CCSShape {
         num_cons: m,
         num_vars: m,
         num_io: self.num_io,
         M: self.M.clone(),
-        t: T,
-        q: Q,
-        d: D,
-        S: vec![S[0].to_vec(), S2.to_vec()],
-        c: vec![C0 as usize, C1 as usize],
+        t: self.t,
+        q: self.q,
+        d: self.d,
+        S: self.S.clone(),
+        c: self.c.clone(),
       };
     }
 
@@ -417,25 +432,17 @@ impl<G: Group> CCSShape<G> {
     // Apply pad for each matrix in M
     let M_padded = self.M.iter().map(|m| apply_pad(m)).collect::<Vec<_>>();
 
-    // NOTE: We assume the following constants for R1CS-to-CCS
-    const T: usize = 3;
-    const Q: usize = 2;
-    const D: usize = 2;
-    const S: [[usize; 2]; 1] = [[0, 1]];
-    const S2: [usize; 1] = [2];
-    const C0: i32 = 1;
-    const C1: i32 = -1;
-
+    // XXX: Check if CCS padding is correct here
     CCSShape {
       num_cons: num_cons_padded,
       num_vars: num_vars_padded,
       num_io: self.num_io,
       M: M_padded,
-      t: T,
-      q: Q,
-      d: D,
-      S: vec![S[0].to_vec(), S2.to_vec()],
-      c: vec![C0 as usize, C1 as usize],
+      t: self.t,
+      q: self.q,
+      d: self.d,
+      S: self.S.clone(),
+      c: self.c.clone(),
     }
   }
 }
