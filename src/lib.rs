@@ -13,11 +13,13 @@
 
 // private modules
 mod bellperson;
+mod ccs;
 mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
 mod utils;
+
 // public modules
 pub mod errors;
 pub mod gadgets;
