@@ -13,7 +13,7 @@ cargo test --release
 
 To run example:
 ```text
-cargo run --example minroot
+cargo run --release --example minroot
 ```
 
 ## References
