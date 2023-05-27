@@ -4,6 +4,19 @@ use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::spartan::math::Math;
+
+/// The multilinear extension polynomial, denoted as $\tilde{eq}$, is defined as follows:
+///
+/// $$
+/// \tilde{eq}(x, e) = \prod_{i=0}^m(e_i * x_i + (1 - e_i) * (1 - x_i))
+/// $$
+///
+/// This polynomial evaluates to 1 only when each component $x_i$ is equal to its corresponding component $e_i$.
+/// Otherwise, it evaluates to 0.
+/// 
+/// The vector r contains all the values of e_i, where e_i represents the individual bits of a binary representation of e.
+/// For example, let's consider e = 6, which in binary is 0b110. In this case, the vector r would be [1, 1, 0].
 pub(crate) struct EqPolynomial<Scalar: PrimeField> {
   r: Vec<Scalar>,
 }
@@ -22,6 +35,8 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
       .fold(Scalar::ONE, |acc, item| acc * item)
   }
 
+  /// Evaluates the polynomial at all the `2^|r|` points, ranging from 0 to `2^|r| - 1`.
+  /// TODO: document this function
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
     let mut evals: Vec<Scalar> = vec![Scalar::ZERO; (2_usize).pow(ell as u32)];
@@ -46,6 +61,22 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   }
 }
 
+/// A multilinear extension of a polynomial $Z(\cdot)$, donate it as $\tilde{Z}(x_1, ..., x_m)$
+/// where the degree of each variable is at most one.
+/// 
+/// This is the dense representation of a multilinear poynomial.
+/// Let it be $\mathbb{G}(\cdot): \mathbb{F}^m \rightarrow \mathbb{F}$, it can be represented uniquely by the list of 
+/// evaluations of $\mathbb{G}(\cdot)$ over the Boolean hypercube $\{0, 1\}^m$.
+/// 
+/// For example, a 3 variables multilinear polynomial can be represented by evaluation
+/// at points $[0, 2^3-1]$.
+/// 
+/// The implementation follows 
+/// $$
+/// \tilde{Z}(x_1, ..., x_m) = \sum_{e\in {0,1}^m}Z(e)\cdot \prod_{i=0}^m(x_i\cdot e_i)\cdot (1-e_i)
+/// $$
+/// 
+/// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultilinearPolynomial<Scalar: PrimeField> {
   num_vars: usize, // the number of variables in the multilinear polynomial
@@ -69,6 +100,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
+  /// TODO: document and test this function
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 
@@ -118,6 +150,12 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
   }
 }
 
+/// Sparse multilinear polynomial, which means the $Z(\cdot)$ is zero at most points.
+/// So we do not have to store every evaluations of $Z(\cdot)$, only store the non-zero points.
+/// 
+/// For example, the evaluations are [0, 0, 0, 1, 0, 1, 0, 2].
+/// The sparse polynomial only store the non-zero values, [(3, 1), (5, 1), (7, 2)].
+/// In the tuple, the first is index, the second is value.
 pub(crate) struct SparsePolynomial<Scalar: PrimeField> {
   num_vars: usize,
   Z: Vec<(usize, Scalar)>,
@@ -128,6 +166,8 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
     SparsePolynomial { num_vars, Z }
   }
 
+  /// Computes the $\tilde{eq}$ extension polynomial.
+  /// return 1 when a == r, otherwise return 0.
   fn compute_chi(a: &[bool], r: &[Scalar]) -> Scalar {
     assert_eq!(a.len(), r.len());
     let mut chi_i = Scalar::ONE;
@@ -145,19 +185,83 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.num_vars, r.len());
 
-    let get_bits = |num: usize, num_bits: usize| -> Vec<bool> {
-      (0..num_bits)
-        .into_par_iter()
-        .map(|shift_amount| ((num & (1 << (num_bits - shift_amount - 1))) > 0))
-        .collect::<Vec<bool>>()
-    };
-
     (0..self.Z.len())
       .into_par_iter()
       .map(|i| {
-        let bits = get_bits(self.Z[i].0, r.len());
+        let bits = (self.Z[i].0).get_bits(r.len());
         SparsePolynomial::compute_chi(&bits, r) * self.Z[i].1
       })
       .reduce(|| Scalar::ZERO, |x, y| x + y)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[derive(PrimeField)]
+  #[PrimeFieldModulus = "52435875175126190479447740508185965837690552500527637822603658699938581184513"]
+  #[PrimeFieldGenerator = "7"]
+  #[PrimeFieldReprEndianness = "little"]
+  struct Fp([u64; 4]);
+
+  #[test]
+  fn test_eq_polynomial() {
+    let ZERO = Fp::from(0);
+    let ONE = Fp::from(1);
+
+    let eq_poly = EqPolynomial::<Fp>::new(vec![ONE, ZERO, ONE]);
+    let y = eq_poly.evaluate(vec![ONE, ONE, ONE].as_slice());
+    assert_eq!(y, ZERO);
+
+    let y = eq_poly.evaluate(vec![ONE, ZERO, ONE].as_slice());
+    assert_eq!(y, ONE);
+
+    let eval_list = eq_poly.evals();
+    for i in 0..(2_usize).pow(3) {
+      if i == 5 {
+        assert_eq!(eval_list[i], ONE);
+      } else {
+        assert_eq!(eval_list[i], ZERO);
+      }
+    }
+  }
+
+  #[test]
+  fn test_multilinear_polynomial() {
+    // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
+
+    let ZERO = Fp::from(0);
+    let ONE = Fp::from(1);
+    let TWO = Fp::from(2);
+
+    let Z = vec![ZERO, ZERO, ZERO, ONE, ZERO, ONE, ZERO, TWO];
+    let m_poly = MultilinearPolynomial::<Fp>::new(Z.clone());
+    assert_eq!(m_poly.get_num_vars(), 3);
+
+    let x = vec![ONE, ONE, ONE];
+    assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
+
+    let y = MultilinearPolynomial::<Fp>::evaluate_with(Z.as_slice(), x.as_slice());
+    assert_eq!(y, TWO);
+  }
+
+  #[test]
+  fn test_sparse_polynomial() {
+    // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
+
+    let ZERO = Fp::from(0);
+    let ONE = Fp::from(1);
+    let TWO = Fp::from(2);
+    let Z = vec![(3, ONE), (5, ONE), (7, TWO)];
+    let m_poly = SparsePolynomial::<Fp>::new(3, Z);
+    
+    let x = vec![ONE, ONE, ONE];
+    assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
+
+    let x = vec![ONE, ZERO, ONE];
+    assert_eq!(m_poly.evaluate(x.as_slice()), ONE);
   }
 }
