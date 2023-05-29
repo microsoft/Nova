@@ -1328,7 +1328,7 @@ mod tests {
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(circuit_primary, circuit_secondary.clone());
 
     let num_steps = 3;
 

@@ -230,7 +230,7 @@ fn main() {
       let start = Instant::now();
       let res = recursive_snark.prove_step(
         &pp,
-        &circuit_primary,
+        circuit_primary,
         &circuit_secondary,
         z0_primary.clone(),
         z0_secondary.clone(),
