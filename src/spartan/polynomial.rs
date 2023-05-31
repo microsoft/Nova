@@ -36,7 +36,6 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   }
 
   /// Evaluates the polynomial at all the `2^|r|` points, ranging from 0 to `2^|r| - 1`.
-  /// TODO: document this function
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
     let mut evals: Vec<Scalar> = vec![Scalar::ZERO; (2_usize).pow(ell as u32)];
@@ -100,7 +99,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
-  /// TODO: document and test this function
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 
@@ -198,31 +196,23 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[derive(PrimeField)]
-  #[PrimeFieldModulus = "52435875175126190479447740508185965837690552500527637822603658699938581184513"]
-  #[PrimeFieldGenerator = "7"]
-  #[PrimeFieldReprEndianness = "little"]
-  struct Fp([u64; 4]);
+  use pasta_curves::Fp;
 
   #[test]
   fn test_eq_polynomial() {
-    let ZERO = Fp::from(0);
-    let ONE = Fp::from(1);
+    let eq_poly = EqPolynomial::<Fp>::new(vec![Fp::one(), Fp::zero(), Fp::one()]);
+    let y = eq_poly.evaluate(vec![Fp::one(), Fp::one(), Fp::one()].as_slice());
+    assert_eq!(y, Fp::zero());
 
-    let eq_poly = EqPolynomial::<Fp>::new(vec![ONE, ZERO, ONE]);
-    let y = eq_poly.evaluate(vec![ONE, ONE, ONE].as_slice());
-    assert_eq!(y, ZERO);
-
-    let y = eq_poly.evaluate(vec![ONE, ZERO, ONE].as_slice());
-    assert_eq!(y, ONE);
+    let y = eq_poly.evaluate(vec![Fp::one(), Fp::zero(), Fp::one()].as_slice());
+    assert_eq!(y, Fp::one());
 
     let eval_list = eq_poly.evals();
     for i in 0..(2_usize).pow(3) {
       if i == 5 {
-        assert_eq!(eval_list[i], ONE);
+        assert_eq!(eval_list[i], Fp::one());
       } else {
-        assert_eq!(eval_list[i], ZERO);
+        assert_eq!(eval_list[i], Fp::zero());
       }
     }
   }
@@ -232,15 +222,13 @@ mod tests {
     // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
     // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
 
-    let ZERO = Fp::from(0);
-    let ONE = Fp::from(1);
     let TWO = Fp::from(2);
 
-    let Z = vec![ZERO, ZERO, ZERO, ONE, ZERO, ONE, ZERO, TWO];
+    let Z = vec![Fp::zero(), Fp::zero(), Fp::zero(), Fp::one(), Fp::zero(), Fp::one(), Fp::zero(), TWO];
     let m_poly = MultilinearPolynomial::<Fp>::new(Z.clone());
     assert_eq!(m_poly.get_num_vars(), 3);
 
-    let x = vec![ONE, ONE, ONE];
+    let x = vec![Fp::one(), Fp::one(), Fp::one()];
     assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
 
     let y = MultilinearPolynomial::<Fp>::evaluate_with(Z.as_slice(), x.as_slice());
@@ -252,16 +240,14 @@ mod tests {
     // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
     // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
 
-    let ZERO = Fp::from(0);
-    let ONE = Fp::from(1);
     let TWO = Fp::from(2);
-    let Z = vec![(3, ONE), (5, ONE), (7, TWO)];
+    let Z = vec![(3, Fp::one()), (5, Fp::one()), (7, TWO)];
     let m_poly = SparsePolynomial::<Fp>::new(3, Z);
-    
-    let x = vec![ONE, ONE, ONE];
+
+    let x = vec![Fp::one(), Fp::one(), Fp::one()];
     assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
 
-    let x = vec![ONE, ZERO, ONE];
-    assert_eq!(m_poly.evaluate(x.as_slice()), ONE);
+    let x = vec![Fp::one(), Fp::zero(), Fp::one()];
+    assert_eq!(m_poly.evaluate(x.as_slice()), Fp::one());
   }
 }
