@@ -946,8 +946,10 @@ mod tests {
 
   #[test]
   fn test_ivc_trivial() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
     test_ivc_trivial_with::<G1, G2>();
   }
 
@@ -1026,8 +1028,10 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
 
     test_ivc_nontrivial_with::<G1, G2>();
   }
@@ -1120,8 +1124,10 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
 
     test_ivc_nontrivial_with_compression_with::<G1, G2>();
   }
@@ -1217,8 +1223,10 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
 
     test_ivc_nontrivial_with_spark_compression_with::<G1, G2>();
   }
@@ -1373,8 +1381,10 @@ mod tests {
 
   #[test]
   fn test_ivc_nondet_with_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
 
     test_ivc_nondet_with_compression_with::<G1, G2>();
   }
@@ -1439,8 +1449,10 @@ mod tests {
 
   #[test]
   fn test_ivc_base() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    //type G1 = pasta_curves::pallas::Point;
+    //type G2 = pasta_curves::vesta::Point;
+    type G1 = halo2curves::bn256::Point;
+    type G2 = halo2curves::grumpkin::Point;
 
     test_ivc_base_with::<G1, G2>();
   }

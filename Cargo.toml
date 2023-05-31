@@ -32,6 +32,7 @@ flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
 thiserror = "1.0" 
+halo2curves = { git = "https://github.com/leonardoalt/halo2curves", branch = "nova", features = [ "derive_serde" ] }
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }

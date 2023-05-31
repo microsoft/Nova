@@ -372,8 +372,10 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 mod tests {
   use super::*;
   use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
-  type PastaG1 = pasta_curves::pallas::Point;
-  type PastaG2 = pasta_curves::vesta::Point;
+  //type PastaG1 = pasta_curves::pallas::Point;
+  //type PastaG2 = pasta_curves::vesta::Point;
+  type PastaG1 = halo2curves::bn256::Point;
+  type PastaG2 = halo2curves::grumpkin::Point;
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{

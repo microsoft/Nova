@@ -4,6 +4,7 @@
 //! `RO` traits with Poseidon
 //! `EvaluationEngine` with an IPA-based polynomial evaluation argument
 
+pub mod bn254_grumpkin;
 pub mod ipa_pc;
 pub mod keccak;
 pub mod pasta;
