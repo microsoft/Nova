@@ -220,7 +220,7 @@ fn main() {
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::<G1, G2, C1, C2>::new(
       &pp,
-      &circuit_primary,
+      &minroot_circuits[0],
       &circuit_secondary,
       z0_primary.clone(),
       z0_secondary.clone(),
