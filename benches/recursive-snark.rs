@@ -38,60 +38,59 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(10);
 
+    let c_primary = NonTrivialTestCircuit::new(num_cons);
+    let c_secondary = TrivialTestCircuit::default();
+
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
-      NonTrivialTestCircuit::new(num_cons),
-      TrivialTestCircuit::default(),
-    );
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
 
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing
     // the first step is cheaper than other steps owing to the presence of
     // a lot of zeros in the satisfying assignment
     let num_warmup_steps = 10;
-    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
+    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::new(
+      &pp,
+      &c_primary,
+      &c_secondary,
+      vec![<G1 as Group>::Scalar::from(2u64)],
+      vec![<G2 as Group>::Scalar::from(2u64)],
+    );
 
     for i in 0..num_warmup_steps {
-      let res = RecursiveSNARK::prove_step(
+      let res = recursive_snark.prove_step(
         &pp,
-        recursive_snark,
-        NonTrivialTestCircuit::new(num_cons),
-        TrivialTestCircuit::default(),
+        &c_primary,
+        &c_secondary,
         vec![<G1 as Group>::Scalar::from(2u64)],
         vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
-      let recursive_snark_unwrapped = res.unwrap();
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark_unwrapped.verify(
+      let res = recursive_snark.verify(
         &pp,
         i + 1,
         vec![<G1 as Group>::Scalar::from(2u64)],
         vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
-
-      // set the running variable for the next iteration
-      recursive_snark = Some(recursive_snark_unwrapped);
     }
 
     group.bench_function("Prove", |b| {
       b.iter(|| {
         // produce a recursive SNARK for a step of the recursion
-        assert!(RecursiveSNARK::prove_step(
-          black_box(&pp),
-          black_box(recursive_snark.clone()),
-          black_box(NonTrivialTestCircuit::new(num_cons)),
-          black_box(TrivialTestCircuit::default()),
-          black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
-          black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
-        )
-        .is_ok());
+        assert!(recursive_snark
+          .prove_step(
+            black_box(&pp),
+            black_box(&c_primary),
+            black_box(&c_secondary),
+            black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
+            black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
+          )
+          .is_ok());
       })
     });
-
-    let recursive_snark = recursive_snark.unwrap();
 
     // Benchmark the verification time
     group.bench_function("Verify", |b| {

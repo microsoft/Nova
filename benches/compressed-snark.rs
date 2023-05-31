@@ -43,46 +43,46 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(num_samples);
 
+    let c_primary = NonTrivialTestCircuit::new(num_cons);
+    let c_secondary = TrivialTestCircuit::default();
+
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
-      NonTrivialTestCircuit::new(num_cons),
-      TrivialTestCircuit::default(),
-    );
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
 
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
     // produce a recursive SNARK
     let num_steps = 3;
-    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
+    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::new(
+      &pp,
+      &c_primary,
+      &c_secondary,
+      vec![<G1 as Group>::Scalar::from(2u64)],
+      vec![<G2 as Group>::Scalar::from(2u64)],
+    );
 
     for i in 0..num_steps {
-      let res = RecursiveSNARK::prove_step(
+      let res = recursive_snark.prove_step(
         &pp,
-        recursive_snark,
-        NonTrivialTestCircuit::new(num_cons),
-        TrivialTestCircuit::default(),
+        &c_primary,
+        &c_secondary,
         vec![<G1 as Group>::Scalar::from(2u64)],
         vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
-      let recursive_snark_unwrapped = res.unwrap();
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark_unwrapped.verify(
+      let res = recursive_snark.verify(
         &pp,
         i + 1,
         vec![<G1 as Group>::Scalar::from(2u64)],
         vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
-
-      // set the running variable for the next iteration
-      recursive_snark = Some(recursive_snark_unwrapped);
     }
 
     // Bench time to produce a compressed SNARK
-    let recursive_snark = recursive_snark.unwrap();
     group.bench_function("Prove", |b| {
       b.iter(|| {
         assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
