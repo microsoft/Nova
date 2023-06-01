@@ -400,8 +400,8 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
-    z0_primary: Vec<G1::Scalar>,
-    z0_secondary: Vec<G2::Scalar>,
+    z0_primary: &[G1::Scalar],
+    z0_secondary: &[G2::Scalar],
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
@@ -429,7 +429,7 @@ where
       );
       hasher.absorb(pp.digest);
       hasher.absorb(G1::Scalar::from(num_steps as u64));
-      for e in &z0_primary {
+      for e in z0_primary {
         hasher.absorb(*e);
       }
       for e in &self.zi_primary {
@@ -443,7 +443,7 @@ where
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.digest));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
-      for e in &z0_secondary {
+      for e in z0_secondary {
         hasher2.absorb(*e);
       }
       for e in &self.zi_secondary {
@@ -938,8 +938,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ZERO],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &vec![<G1 as Group>::Scalar::ZERO][..],
+      &vec![<G2 as Group>::Scalar::ZERO][..],
     );
     assert!(res.is_ok());
   }
@@ -997,8 +997,8 @@ mod tests {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
+        &vec![<G1 as Group>::Scalar::ONE][..],
+        &vec![<G2 as Group>::Scalar::ZERO][..],
       );
       assert!(res.is_ok());
     }
@@ -1007,8 +1007,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &vec![<G1 as Group>::Scalar::ONE][..],
+      &vec![<G2 as Group>::Scalar::ZERO][..],
     );
     assert!(res.is_ok());
 
@@ -1084,8 +1084,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &vec![<G1 as Group>::Scalar::ONE][..],
+      &vec![<G2 as Group>::Scalar::ZERO][..],
     );
     assert!(res.is_ok());
 
@@ -1178,8 +1178,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &vec![<G1 as Group>::Scalar::ONE][..],
+      &vec![<G2 as Group>::Scalar::ZERO][..],
     );
     assert!(res.is_ok());
 
@@ -1355,7 +1355,7 @@ mod tests {
     }
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
+    let res = recursive_snark.verify(&pp, num_steps, &z0_primary, &z0_secondary);
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
@@ -1426,8 +1426,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &vec![<G1 as Group>::Scalar::ONE][..],
+      &vec![<G2 as Group>::Scalar::ZERO][..],
     );
     assert!(res.is_ok());
 

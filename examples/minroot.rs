@@ -247,7 +247,7 @@ fn main() {
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
     let start = Instant::now();
-    let res = recursive_snark.verify(&pp, num_steps, z0_primary.clone(), z0_secondary.clone());
+    let res = recursive_snark.verify(&pp, num_steps, &z0_primary, &z0_secondary);
     println!(
       "RecursiveSNARK::verify: {:?}, took {:?}",
       res.is_ok(),

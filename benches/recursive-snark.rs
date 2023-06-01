@@ -71,8 +71,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        vec![<G1 as Group>::Scalar::from(2u64)],
-        vec![<G2 as Group>::Scalar::from(2u64)],
+        &vec![<G1 as Group>::Scalar::from(2u64)],
+        &vec![<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -99,8 +99,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
           .verify(
             black_box(&pp),
             black_box(num_warmup_steps),
-            black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&vec![<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       });
