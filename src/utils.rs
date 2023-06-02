@@ -2,7 +2,6 @@
 use crate::errors::NovaError;
 use ff::PrimeField;
 
-#[allow(dead_code)]
 pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
   if a.len() != b.len() {
     return Err(NovaError::InvalidIndex);
@@ -16,7 +15,6 @@ pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaE
   Ok(res)
 }
 
-#[allow(dead_code)]
 pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: &F) -> Result<Vec<F>, NovaError> {
   let mut res = Vec::with_capacity(a.len());
   for i in 0..a.len() {
@@ -53,7 +51,6 @@ pub fn matrix_vector_product<F: PrimeField>(
 
 // Matrix vector product where matrix is sparse
 // First element is row index, second column, third value stored
-#[allow(dead_code)]
 pub fn matrix_vector_product_sparse<F: PrimeField>(
   matrix: &Vec<(usize, usize, F)>,
   vector: &Vec<F>,
@@ -76,7 +73,6 @@ pub fn matrix_vector_product_sparse<F: PrimeField>(
   Ok(res)
 }
 
-#[allow(dead_code)]
 pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
   if a.len() != b.len() {
     return Err(NovaError::InvalidIndex);
