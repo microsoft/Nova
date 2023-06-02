@@ -13,19 +13,22 @@
 
 // private modules
 mod bellperson;
-mod ccs;
 mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
-mod utils;
-
 // public modules
 pub mod errors;
 pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+
+// experimental modules
+#[cfg(feature = "hypernova")]
+mod ccs;
+#[cfg(feature = "hypernova")]
+mod utils;
 
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
