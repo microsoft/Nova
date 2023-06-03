@@ -37,7 +37,7 @@ thiserror = "1.0"
 pasta-msm = { version = "0.1.4" }
 
 [dev-dependencies]
-criterion = "0.3.1"
+criterion = { version = "0.5.1", features = ["html_reports"] }
 rand = "0.8.4"
 hex = "0.4.3"
 
