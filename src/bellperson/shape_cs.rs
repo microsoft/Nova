@@ -1,92 +1,24 @@
 //! Support for generating R1CS shape using bellperson.
 
-use std::{
-  cmp::Ordering,
-  collections::{BTreeMap, HashMap},
-};
-
 use crate::traits::Group;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
-use core::fmt::Write;
-use ff::{Field, PrimeField};
-
-#[derive(Clone, Copy)]
-struct OrderedVariable(Variable);
-
-#[derive(Debug)]
-enum NamedObject {
-  Constraint(usize),
-  Var(Variable),
-  Namespace,
-}
-
-impl Eq for OrderedVariable {}
-impl PartialEq for OrderedVariable {
-  fn eq(&self, other: &OrderedVariable) -> bool {
-    match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a == b,
-      (Index::Aux(ref a), Index::Aux(ref b)) => a == b,
-      _ => false,
-    }
-  }
-}
-impl PartialOrd for OrderedVariable {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-impl Ord for OrderedVariable {
-  fn cmp(&self, other: &Self) -> Ordering {
-    match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a.cmp(b),
-      (Index::Aux(ref a), Index::Aux(ref b)) => a.cmp(b),
-      (Index::Input(_), Index::Aux(_)) => Ordering::Less,
-      (Index::Aux(_), Index::Input(_)) => Ordering::Greater,
-    }
-  }
-}
+use ff::PrimeField;
 
 #[allow(clippy::upper_case_acronyms)]
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct ShapeCS<G: Group> {
-  named_objects: HashMap<String, NamedObject>,
-  current_namespace: Vec<String>,
+pub struct ShapeCS<G: Group>
+where
+  G::Scalar: PrimeField,
+{
   #[allow(clippy::type_complexity)]
   /// All constraints added to the `ShapeCS`.
   pub constraints: Vec<(
     LinearCombination<G::Scalar>,
     LinearCombination<G::Scalar>,
     LinearCombination<G::Scalar>,
-    String,
   )>,
-  inputs: Vec<String>,
-  aux: Vec<String>,
-}
-
-fn proc_lc<Scalar: PrimeField>(
-  terms: &LinearCombination<Scalar>,
-) -> BTreeMap<OrderedVariable, Scalar> {
-  let mut map = BTreeMap::new();
-  for (var, &coeff) in terms.iter() {
-    map
-      .entry(OrderedVariable(var))
-      .or_insert_with(|| Scalar::ZERO)
-      .add_assign(&coeff);
-  }
-
-  // Remove terms that have a zero coefficient to normalize
-  let mut to_remove = vec![];
-  for (var, coeff) in map.iter() {
-    if coeff.is_zero().into() {
-      to_remove.push(*var)
-    }
-  }
-
-  for var in to_remove {
-    map.remove(&var);
-  }
-
-  map
+  inputs: usize,
+  aux: usize,
 }
 
 impl<G: Group> ShapeCS<G> {
@@ -102,124 +34,21 @@ impl<G: Group> ShapeCS<G> {
 
   /// Returns the number of inputs defined for this `ShapeCS`.
   pub fn num_inputs(&self) -> usize {
-    self.inputs.len()
+    self.inputs
   }
 
   /// Returns the number of aux inputs defined for this `ShapeCS`.
   pub fn num_aux(&self) -> usize {
-    self.aux.len()
-  }
-
-  /// Print all public inputs, aux inputs, and constraint names.
-  #[allow(dead_code)]
-  pub fn pretty_print_list(&self) -> Vec<String> {
-    let mut result = Vec::new();
-
-    for input in &self.inputs {
-      result.push(format!("INPUT {input}"));
-    }
-    for aux in &self.aux {
-      result.push(format!("AUX {aux}"));
-    }
-
-    for (_a, _b, _c, name) in &self.constraints {
-      result.push(name.to_string());
-    }
-
-    result
-  }
-
-  /// Print all iputs and a detailed representation of each constraint.
-  #[allow(dead_code)]
-  pub fn pretty_print(&self) -> String {
-    let mut s = String::new();
-
-    for input in &self.inputs {
-      writeln!(s, "INPUT {}", &input).unwrap()
-    }
-
-    let negone = -<G::Scalar>::ONE;
-
-    let powers_of_two = (0..G::Scalar::NUM_BITS)
-      .map(|i| G::Scalar::from(2u64).pow_vartime([u64::from(i)]))
-      .collect::<Vec<_>>();
-
-    let pp = |s: &mut String, lc: &LinearCombination<G::Scalar>| {
-      s.push('(');
-      let mut is_first = true;
-      for (var, coeff) in proc_lc::<G::Scalar>(lc) {
-        if coeff == negone {
-          s.push_str(" - ")
-        } else if !is_first {
-          s.push_str(" + ")
-        }
-        is_first = false;
-
-        if coeff != <G::Scalar>::ONE && coeff != negone {
-          for (i, x) in powers_of_two.iter().enumerate() {
-            if x == &coeff {
-              write!(s, "2^{i} . ").unwrap();
-              break;
-            }
-          }
-
-          write!(s, "{coeff:?} . ").unwrap()
-        }
-
-        match var.0.get_unchecked() {
-          Index::Input(i) => {
-            write!(s, "`I{}`", &self.inputs[i]).unwrap();
-          }
-          Index::Aux(i) => {
-            write!(s, "`A{}`", &self.aux[i]).unwrap();
-          }
-        }
-      }
-      if is_first {
-        // Nothing was visited, print 0.
-        s.push('0');
-      }
-      s.push(')');
-    };
-
-    for (a, b, c, name) in &self.constraints {
-      s.push('\n');
-
-      write!(s, "{name}: ").unwrap();
-      pp(&mut s, a);
-      write!(s, " * ").unwrap();
-      pp(&mut s, b);
-      s.push_str(" = ");
-      pp(&mut s, c);
-    }
-
-    s.push('\n');
-
-    s
-  }
-
-  /// Associate `NamedObject` with `path`.
-  /// `path` must not already have an associated object.
-  fn set_named_obj(&mut self, path: String, to: NamedObject) {
-    assert!(
-      !self.named_objects.contains_key(&path),
-      "tried to create object at existing path: {path}"
-    );
-
-    self.named_objects.insert(path, to);
+    self.aux
   }
 }
 
 impl<G: Group> Default for ShapeCS<G> {
   fn default() -> Self {
-    let mut map = HashMap::new();
-    map.insert("ONE".into(), NamedObject::Var(ShapeCS::<G>::one()));
     ShapeCS {
-      named_objects: map,
-      current_namespace: vec![],
       constraints: vec![],
-      inputs: vec![String::from("ONE")],
-      aux: vec![],
+      inputs: 1,
+      aux: 0,
     }
   }
 }
@@ -227,31 +56,29 @@ impl<G: Group> Default for ShapeCS<G> {
 impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   type Root = Self;
 
-  fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
+  fn alloc<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<G::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
-    let path = compute_path(&self.current_namespace, &annotation().into());
-    self.aux.push(path);
+    self.aux += 1;
 
-    Ok(Variable::new_unchecked(Index::Aux(self.aux.len() - 1)))
+    Ok(Variable::new_unchecked(Index::Aux(self.aux - 1)))
   }
 
-  fn alloc_input<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
+  fn alloc_input<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<G::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
-    let path = compute_path(&self.current_namespace, &annotation().into());
-    self.inputs.push(path);
+    self.inputs += 1;
 
-    Ok(Variable::new_unchecked(Index::Input(self.inputs.len() - 1)))
+    Ok(Variable::new_unchecked(Index::Input(self.inputs - 1)))
   }
 
-  fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
+  fn enforce<A, AR, LA, LB, LC>(&mut self, _annotation: A, a: LA, b: LB, c: LC)
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
@@ -259,73 +86,24 @@ impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
     LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
     LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
   {
-    let path = compute_path(&self.current_namespace, &annotation().into());
-    let index = self.constraints.len();
-    self.set_named_obj(path.clone(), NamedObject::Constraint(index));
-
     let a = a(LinearCombination::zero());
     let b = b(LinearCombination::zero());
     let c = c(LinearCombination::zero());
 
-    self.constraints.push((a, b, c, path));
+    self.constraints.push((a, b, c));
   }
 
-  fn push_namespace<NR, N>(&mut self, name_fn: N)
+  fn push_namespace<NR, N>(&mut self, _name_fn: N)
   where
     NR: Into<String>,
     N: FnOnce() -> NR,
   {
-    let name = name_fn().into();
-    let path = compute_path(&self.current_namespace, &name);
-    self.set_named_obj(path, NamedObject::Namespace);
-    self.current_namespace.push(name);
+    ()
   }
 
-  fn pop_namespace(&mut self) {
-    assert!(self.current_namespace.pop().is_some());
-  }
+  fn pop_namespace(&mut self) {}
 
   fn get_root(&mut self) -> &mut Self::Root {
     self
-  }
-}
-
-fn compute_path(ns: &[String], this: &str) -> String {
-  assert!(
-    !this.chars().any(|a| a == '/'),
-    "'/' is not allowed in names"
-  );
-
-  let mut name = ns.join("/");
-  if !name.is_empty() {
-    name.push('/');
-  }
-
-  name.push_str(this);
-
-  name
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_compute_path() {
-    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
-    let this = "file";
-    assert_eq!(compute_path(&ns, this), "path/to/dir/file");
-
-    let ns = vec!["".to_string(), "".to_string(), "".to_string()];
-    let this = "file";
-    assert_eq!(compute_path(&ns, this), "///file");
-  }
-
-  #[test]
-  #[should_panic(expected = "'/' is not allowed in names")]
-  fn test_compute_path_invalid() {
-    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
-    let this = "fi/le";
-    compute_path(&ns, this);
   }
 }
