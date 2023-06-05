@@ -368,7 +368,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
+  use crate::bellperson::{solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
   type PastaG1 = pasta_curves::pallas::Point;
   type PastaG2 = pasta_curves::vesta::Point;
 
@@ -396,8 +396,13 @@ mod tests {
     let ttc1 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaAugmentedCircuit::new(&primary_params, None, &ttc1, ro_consts1.clone());
-    let mut cs: ShapeCS<G1> = ShapeCS::new();
+      NovaAugmentedCircuit::new(
+        &primary_params,
+        None,
+        &ttc1,
+        ro_consts1.clone(),
+      );
+    let mut cs: TestShapeCS<G1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
@@ -405,8 +410,13 @@ mod tests {
     let ttc2 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the secondary
     let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaAugmentedCircuit::new(&secondary_params, None, &ttc2, ro_consts2.clone());
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+      NovaAugmentedCircuit::new(
+        &secondary_params,
+        None,
+        &ttc2,
+        ro_consts2.clone(),
+      );
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
