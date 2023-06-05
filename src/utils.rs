@@ -133,7 +133,7 @@ pub fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(us
 #[cfg(test)]
 mod tests {
   use super::*;
-  use pasta_curves::Fq;
+  use pasta_curves::{Ep, Fq};
 
   #[test]
   fn test_vector_add() {
@@ -183,7 +183,7 @@ mod tests {
     let vector = vec![1, 2, 3];
     let A = to_F_matrix_sparse::<Fq>(matrix);
     let z = to_F_vec::<Fq>(vector);
-    let res = matrix_vector_product_sparse(&A, &z).unwrap();
+    let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z).unwrap();
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }

@@ -26,7 +26,6 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 
-// TODO: Create a SparseMatrix type? Vec<(usize, usize, G::Scalar)>
 // TODO: Committed CCS using MLE (see src/spartan/pp.rs)
 // TODO: Linearized CCS struct and methods, separate struct similar to RelaxedR1CS
 
