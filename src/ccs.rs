@@ -42,11 +42,12 @@ pub struct CCS<G: Group> {
 /// Unlike R1CS we have a list of matrices M instead of only A, B, C
 /// We also have t, q, d constants and c (vector), S (set)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct CCSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
-  pub(crate) M: Vec<Vec<(usize, usize, G::Scalar)>>,
+  pub(crate) M: Vec<SparseMatrix<G>>,
   pub(crate) t: usize,
   pub(crate) q: usize,
   pub(crate) d: usize,
@@ -75,7 +76,7 @@ impl<G: Group> CCS<G> {
   pub fn commitment_key(S: &CCSShape<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
-    let total_nz = S.M.iter().fold(0, |acc, m| acc + m.len());
+    let total_nz = S.M.iter().fold(0, |acc, m| acc + m.0.len());
 
     G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz))
   }
@@ -133,11 +134,14 @@ impl<G: Group> CCSShape<G> {
       return Err(NovaError::OddInputLength);
     }
 
+    // We collect the matrixes.
+    let M: Vec<SparseMatrix<G>> = M.iter().map(|m| SparseMatrix::from(m)).collect();
+
     let shape = CCSShape {
       num_cons,
       num_vars,
       num_io,
-      M: M.to_vec(),
+      M,
       t,
       q,
       d,
@@ -163,7 +167,7 @@ impl<G: Group> CCSShape<G> {
     assert_eq!(W.W.len(), self.num_vars);
     assert_eq!(U.X.len(), self.num_io);
 
-    let m = self.M[0].len();
+    let m = self.M[0].0.len();
 
     // Sage code to check CCS relation:
     //
@@ -222,7 +226,7 @@ impl<G: Group> CCSShape<G> {
       num_cons: r1cs.num_cons,
       num_vars: r1cs.num_vars,
       num_io: r1cs.num_io,
-      M: vec![r1cs.A, r1cs.B, r1cs.C],
+      M: vec![r1cs.A.into(), r1cs.B.into(), r1cs.C.into()],
       t: T,
       q: Q,
       d: D,
@@ -233,19 +237,19 @@ impl<G: Group> CCSShape<G> {
 
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
-  pub fn pad(&self) -> Self {
+  pub fn pad(&mut self) {
     // equalize the number of variables and constraints
     let m = max(self.num_vars, self.num_cons).next_power_of_two();
 
     // check if the provided R1CSShape is already as required
     if self.num_vars == m && self.num_cons == m {
-      return self.clone();
+      return;
     }
 
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.num_vars == m {
-      return CCSShape {
+      *self = CCSShape {
         num_cons: m,
         num_vars: m,
         num_io: self.num_io,
@@ -260,38 +264,21 @@ impl<G: Group> CCSShape<G> {
 
     // otherwise, we need to pad the number of variables and renumber variable accesses
     let num_vars_padded = m;
-    let num_cons_padded = m;
-    let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
-      M.par_iter()
-        .map(|(r, c, v)| {
-          (
-            *r,
-            if c >= &self.num_vars {
-              c + num_vars_padded - self.num_vars
-            } else {
-              *c
-            },
-            *v,
-          )
-        })
-        .collect::<Vec<_>>()
+    let apply_pad = |M: &mut SparseMatrix<G>| {
+      M.0.par_iter_mut().for_each(|(_, c, _)| {
+        *c = if *c >= self.num_vars {
+          *c + num_vars_padded - self.num_vars
+        } else {
+          *c
+        };
+      });
     };
 
     // Apply pad for each matrix in M
-    let M_padded = self.M.iter().map(|m| apply_pad(m)).collect::<Vec<_>>();
+    let mut M_padded = self.M.clone();
+    M_padded.iter_mut().for_each(|m| apply_pad(m));
 
     // TODO: Sanity check if CCS padding is correct here
-    CCSShape {
-      num_cons: num_cons_padded,
-      num_vars: num_vars_padded,
-      num_io: self.num_io,
-      M: M_padded,
-      t: self.t,
-      q: self.q,
-      d: self.d,
-      S: self.S.clone(),
-      c: self.c.clone(),
-    }
   }
 }
 

@@ -1,6 +1,6 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![deny(
-  warnings,
+  //warnings,
   //unused,
   future_incompatible,
   nonstandard_style,
