@@ -14,7 +14,7 @@ use crate::spartan::math::Math;
 ///
 /// This polynomial evaluates to 1 only when each component $x_i$ is equal to its corresponding component $e_i$.
 /// Otherwise, it evaluates to 0.
-/// 
+///
 /// The vector r contains all the values of e_i, where e_i represents the individual bits of a binary representation of e.
 /// For example, let's consider e = 6, which in binary is 0b110. In this case, the vector r would be [1, 1, 0].
 pub(crate) struct EqPolynomial<Scalar: PrimeField> {
@@ -62,19 +62,19 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, donate it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
-/// 
+///
 /// This is the dense representation of a multilinear poynomial.
-/// Let it be $\mathbb{G}(\cdot): \mathbb{F}^m \rightarrow \mathbb{F}$, it can be represented uniquely by the list of 
+/// Let it be $\mathbb{G}(\cdot): \mathbb{F}^m \rightarrow \mathbb{F}$, it can be represented uniquely by the list of
 /// evaluations of $\mathbb{G}(\cdot)$ over the Boolean hypercube $\{0, 1\}^m$.
-/// 
+///
 /// For example, a 3 variables multilinear polynomial can be represented by evaluation
 /// at points $[0, 2^3-1]$.
-/// 
-/// The implementation follows 
+///
+/// The implementation follows
 /// $$
 /// \tilde{Z}(x_1, ..., x_m) = \sum_{e\in {0,1}^m}Z(e)\cdot \prod_{i=0}^m(x_i\cdot e_i)\cdot (1-e_i)
 /// $$
-/// 
+///
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultilinearPolynomial<Scalar: PrimeField> {
@@ -150,7 +150,7 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
 
 /// Sparse multilinear polynomial, which means the $Z(\cdot)$ is zero at most points.
 /// So we do not have to store every evaluations of $Z(\cdot)$, only store the non-zero points.
-/// 
+///
 /// For example, the evaluations are [0, 0, 0, 1, 0, 1, 0, 2].
 /// The sparse polynomial only store the non-zero values, [(3, 1), (5, 1), (7, 2)].
 /// In the tuple, the first is index, the second is value.
@@ -224,7 +224,16 @@ mod tests {
 
     let TWO = Fp::from(2);
 
-    let Z = vec![Fp::zero(), Fp::zero(), Fp::zero(), Fp::one(), Fp::zero(), Fp::one(), Fp::zero(), TWO];
+    let Z = vec![
+      Fp::zero(),
+      Fp::zero(),
+      Fp::zero(),
+      Fp::one(),
+      Fp::zero(),
+      Fp::one(),
+      Fp::zero(),
+      TWO,
+    ];
     let m_poly = MultilinearPolynomial::<Fp>::new(Z.clone());
     assert_eq!(m_poly.get_num_vars(), 3);
 
