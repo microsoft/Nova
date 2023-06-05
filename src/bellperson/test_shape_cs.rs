@@ -1,4 +1,5 @@
-//! Support for generating R1CS shape using bellperson.
+//! Support for generating R1CS shape with using bellperson.
+//! `TestShapeCS` implements a superset of `ShapeCS`, adding non-trivial namespace support for use in testing.
 
 use std::{
   cmp::Ordering,
