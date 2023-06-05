@@ -98,7 +98,6 @@ impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
     NR: Into<String>,
     N: FnOnce() -> NR,
   {
-    ()
   }
 
   fn pop_namespace(&mut self) {}
