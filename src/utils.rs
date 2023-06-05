@@ -1,6 +1,35 @@
 //! Basic utils
 use crate::errors::NovaError;
-use ff::PrimeField;
+use crate::traits::Group;
+use ff::{Field, PrimeField};
+use serde::{Deserialize, Serialize};
+
+/// A matrix structure represented on a sparse form.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct SparseMatrix<G: Group>(pub(crate) Vec<(usize, usize, G::Scalar)>);
+
+impl<G: Group> SparseMatrix<G> {
+  pub fn new() -> Self {
+    Self(vec![])
+  }
+
+  pub fn with_capacity(n: usize) -> Self {
+    Self(Vec::with_capacity(n))
+  }
+}
+
+impl<G: Group> From<Vec<(usize, usize, G::Scalar)>> for SparseMatrix<G> {
+  fn from(matrix: Vec<(usize, usize, G::Scalar)>) -> SparseMatrix<G> {
+    SparseMatrix(matrix)
+  }
+}
+
+impl<G: Group> From<&Vec<(usize, usize, G::Scalar)>> for SparseMatrix<G> {
+  fn from(matrix: &Vec<(usize, usize, G::Scalar)>) -> SparseMatrix<G> {
+    SparseMatrix(matrix.clone())
+  }
+}
 
 pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
   if a.len() != b.len() {
@@ -51,22 +80,22 @@ pub fn matrix_vector_product<F: PrimeField>(
 
 // Matrix vector product where matrix is sparse
 // First element is row index, second column, third value stored
-pub fn matrix_vector_product_sparse<F: PrimeField>(
-  matrix: &Vec<(usize, usize, F)>,
-  vector: &Vec<F>,
-) -> Result<Vec<F>, NovaError> {
-  if matrix.len() == 0 {
+pub fn matrix_vector_product_sparse<G: Group>(
+  matrix: &SparseMatrix<G>,
+  vector: &Vec<G::Scalar>,
+) -> Result<Vec<G::Scalar>, NovaError> {
+  if matrix.0.len() == 0 {
     return Err(NovaError::InvalidIndex);
   }
 
   // Find the maximum row index in the matrix
-  let max_row = matrix.iter().map(|r| r.0).max().unwrap() + 1;
+  let max_row = matrix.0.iter().map(|r| r.0).max().unwrap() + 1;
   if max_row > vector.len() {
     return Err(NovaError::InvalidIndex);
   }
 
-  let mut res = vec![F::ZERO; max_row];
-  for &(row, col, value) in matrix {
+  let mut res = vec![G::Scalar::ZERO; max_row];
+  for &(row, col, value) in matrix.0.iter() {
     res[row] += value * vector[col];
   }
 
