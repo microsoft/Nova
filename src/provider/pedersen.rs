@@ -15,9 +15,16 @@ use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "uncompressed_serde")]
+use crate::traits::uncompressed::SerializeUncompressed;
+
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitmentKey<G: Group> {
+  #[cfg_attr(
+    feature = "uncompressed_serde",
+    serde(with = "serde_with::As::<Vec<SerializeUncompressed>>")
+  )]
   ck: Vec<G::PreprocessedGroupElement>,
   _p: PhantomData<G>,
 }

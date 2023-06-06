@@ -13,6 +13,7 @@ keywords = ["zkSNARKs", "cryptography", "proofs"]
 [dependencies]
 bellperson = { version = "0.25", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
+group = { version = "0.13.0", optional = true }
 digest = "0.8.1"
 sha3 = "0.8.2"
 rayon = "1.3.0"
@@ -31,7 +32,9 @@ bincode = "1.2.1"
 flate2 = "1.0"
 bitvec = "1.0"
 byteorder = "1.4.3"
-thiserror = "1.0" 
+thiserror = "1.0"
+serde_with = { version = "3.0.0", optional = true }
+cfg-if = "1.0.0"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }
@@ -55,3 +58,7 @@ default = []
 portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
 opencl = ["neptune/opencl", "neptune/pasta", "neptune/arity24"]
+uncompressed_serde = ["group", "serde_with"]
+
+[patch.crates-io]
+pasta_curves = { git = "https://github.com/lurk-lab/pasta_curves", branch = "uncompressed" }

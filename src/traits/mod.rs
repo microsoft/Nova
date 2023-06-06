@@ -16,6 +16,9 @@ pub mod commitment;
 
 use commitment::CommitmentEngineTrait;
 
+#[cfg(feature = "uncompressed_serde")]
+use crate::traits::uncompressed::SerializableUncompressed;
+
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
 pub trait Group:
@@ -55,8 +58,26 @@ pub trait Group:
     + Serialize
     + for<'de> Deserialize<'de>;
 
-  /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  cfg_if::cfg_if! {
+    if #[cfg(feature = "uncompressed_serde")] {
+      /// A type representing preprocessed group elements
+      type PreprocessedGroupElement: Clone
+        + Debug
+        + Send
+        + Sync
+        + Serialize
+        + for<'de> Deserialize<'de>
+        + SerializableUncompressed;
+    } else {
+      /// A type representing preprocessed group elements
+      type PreprocessedGroupElement: Clone
+        + Debug
+        + Send
+        + Sync
+        + Serialize
+        + for<'de> Deserialize<'de>;
+    }
+  }
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -248,3 +269,73 @@ impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
 pub mod circuit;
 pub mod evaluation;
 pub mod snark;
+
+/// Serializers for PreprocessedGroupElement elements that are convertible to
+/// an uncompressed representation through [group::UncompressedEncoding]
+///
+/// Use `serde(with = "serde_with::As::<MyType>)` at the point where the `MyType` is
+/// used inside a struct or enum definition. Make sure to also enable the feature
+/// `uncompressed_serde`. For example:
+///
+/// ```
+/// pub struct CommitmentKey<G: Group> {
+///  #[cfg_attr(
+///    feature = "uncompressed_serde",
+///    serde(with = "serde_with::As::<Vec<SerializeUncompressed>>")
+///  )]
+///    ck: Vec<G::PreprocessedGroupElement>,
+///    _p: PhantomData<G>,
+///  }
+/// ```
+#[cfg(feature = "uncompressed_serde")]
+pub(crate) mod uncompressed {
+  use super::*;
+  use group::UncompressedEncoding;
+  use serde::{
+    de::{Deserializer, Error as DeError},
+    ser::Serializer,
+  };
+  use serde_with::{DeserializeAs, SerializeAs};
+
+  /// Convenience trait for those instances of UncompressedEncoding which Uncompressed representation type are also serializable
+  pub trait SerializableUncompressed: UncompressedEncoding<Uncompressed = Self::Target> {
+    /// This is intended to be the Uncompressed representation type of the base trait
+    /// to which we are adding serialization bounds
+    type Target: Serialize + for<'de> Deserialize<'de>;
+  }
+
+  /// A blanket implementation that conveys our intended meaning: this works iff the Uncompressed representation type is
+  /// serializable
+  impl<T> SerializableUncompressed for T
+  where
+    T: UncompressedEncoding,
+    <T as UncompressedEncoding>::Uncompressed: Serialize + for<'de> Deserialize<'de>,
+  {
+    type Target = <T as UncompressedEncoding>::Uncompressed;
+  }
+
+  pub struct SerializeUncompressed {}
+
+  impl<T: SerializableUncompressed> SerializeAs<T> for SerializeUncompressed {
+    fn serialize_as<S>(source: &T, serializer: S) -> Result<S::Ok, S::Error>
+    where
+      S: Serializer,
+    {
+      Serialize::serialize(&source.to_uncompressed(), serializer)
+    }
+  }
+
+  impl<'de, T: SerializableUncompressed> DeserializeAs<'de, T> for SerializeUncompressed {
+    fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
+    where
+      D: Deserializer<'de>,
+    {
+      let uncompressed = <T::Target>::deserialize(deserializer)?;
+      Option::from(T::from_uncompressed(&uncompressed)).ok_or_else(|| {
+        DeError::custom(format!(
+          "failed to deserialize group element from uncompressed bytes"
+        ))
+      })
+    }
+  }
+}
