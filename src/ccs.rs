@@ -207,8 +207,12 @@ impl<G: Group> CCSShape<G> {
     assert_eq!(W.W.len(), self.num_vars);
     assert_eq!(U.X.len(), self.num_io);
 
-    // FIXME: Think this is wrong? With a SparseMatrix representation of M we need to do something different here
-    let m = self.M[0].0.len();
+    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
+    // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
+    let m = self
+      .M
+      .iter()
+      .fold(0, |acc, matrix| max(acc, matrix.n_rows()));
 
     // Sage code to check CCS relation:
     //
