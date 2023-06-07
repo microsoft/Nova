@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 #![allow(clippy::type_complexity)]
 
+use crate::spartan::math::Math;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -36,22 +37,32 @@ pub struct CCS<G: Group> {
   _p: PhantomData<G>,
 }
 
-// NOTE: Currently m, n are implicit, could possibly infer from M
 /// A type that holds the shape of a CCS instance
 /// Unlike R1CS we have a list of matrices M instead of only A, B, C
 /// We also have t, q, d constants and c (vector), S (set)
+/// As well as m, n, s, s_prime
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CCSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
+
   pub(crate) M: Vec<SparseMatrix<G>>,
   pub(crate) t: usize,
   pub(crate) q: usize,
   pub(crate) d: usize,
   pub(crate) S: Vec<Vec<usize>>,
   pub(crate) c: Vec<usize>,
+
+  // m is the number of columns in M_i
+  pub(crate) m: usize,
+  // n is the number of rows in M_i
+  pub(crate) n: usize,
+  // s = log m
+  pub(crate) s: usize,
+  // s_prime = log n
+  pub(crate) s_prime: usize,
 }
 
 /// A type that holds a witness for a given CCS instance
@@ -177,6 +188,14 @@ impl<G: Group> CCSShape<G> {
     // We collect the matrixes.
     let M: Vec<SparseMatrix<G>> = M.iter().map(|m| SparseMatrix::from(m)).collect();
 
+    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
+    // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
+    let m = M.iter().fold(0, |acc, matrix| max(acc, matrix.n_rows()));
+    let n = M.iter().fold(0, |acc, matrix| max(acc, matrix.n_cols()));
+
+    let s = m.log_2() as usize;
+    let s_prime = n.log_2() as usize;
+
     let shape = CCSShape {
       num_cons,
       num_vars,
@@ -187,6 +206,10 @@ impl<G: Group> CCSShape<G> {
       d,
       S,
       c,
+      m,
+      n,
+      s,
+      s_prime,
     };
 
     Ok(shape)
@@ -267,6 +290,19 @@ impl<G: Group> CCSShape<G> {
     const C0: i32 = 1;
     const C1: i32 = -1;
 
+    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
+    // TODO: Consider using SparseMatrix type in R1CSShape too
+    // XXX: This can probably be made a lot better
+    let A: SparseMatrix<G> = r1cs.A.clone().into();
+    let B: SparseMatrix<G> = r1cs.B.clone().into();
+    let C: SparseMatrix<G> = r1cs.C.clone().into();
+
+    let m = max(A.n_rows(), max(B.n_rows(), C.n_rows()));
+    let n = max(A.n_cols(), max(B.n_cols(), C.n_cols()));
+
+    let s = m.log_2() as usize;
+    let s_prime = n.log_2() as usize;
+
     Self {
       num_cons: r1cs.num_cons,
       num_vars: r1cs.num_vars,
@@ -277,12 +313,17 @@ impl<G: Group> CCSShape<G> {
       d: D,
       S: vec![S1.to_vec(), S2.to_vec()],
       c: vec![C0 as usize, C1 as usize],
+      m: m,
+      n: n,
+      s: s,
+      s_prime: s_prime,
     }
   }
 
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {
+    // XXX: Is this definitely always the same as m number of rows?
     // equalize the number of variables and constraints
     let m = max(self.num_vars, self.num_cons).next_power_of_two();
 
@@ -304,6 +345,10 @@ impl<G: Group> CCSShape<G> {
         d: self.d,
         S: self.S.clone(),
         c: self.c.clone(),
+        m: self.m,
+        n: self.n,
+        s: self.s,
+        s_prime: self.s_prime,
       };
     }
 
