@@ -5,6 +5,7 @@ use ff::{Field, PrimeField};
 use serde::{Deserialize, Serialize};
 
 /// A matrix structure represented on a sparse form.
+/// First element is row index, second column, third value stored
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct SparseMatrix<G: Group>(pub(crate) Vec<(usize, usize, G::Scalar)>);
@@ -16,6 +17,16 @@ impl<G: Group> SparseMatrix<G> {
 
   pub fn with_capacity(n: usize) -> Self {
     Self(Vec::with_capacity(n))
+  }
+
+  // Find the maximum row index in the matrix
+  pub fn n_rows(&self) -> usize {
+    self.0.iter().map(|r| r.0).max().unwrap() + 1
+  }
+
+  // Find the maximum column index in the matrix
+  pub fn n_cols(&self) -> usize {
+    self.0.iter().map(|r| r.1).max().unwrap() + 1
   }
 }
 
@@ -186,5 +197,33 @@ mod tests {
     let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z).unwrap();
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+  }
+
+  #[test]
+  fn test_sparse_matrix_n_rows() {
+    let matrix = vec![
+      (0, 0, 1),
+      (0, 1, 2),
+      (0, 2, 3),
+      (1, 0, 4),
+      (1, 1, 5),
+      (1, 2, 6),
+    ];
+    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
+    assert_eq!(A.n_rows(), 2);
+  }
+
+  #[test]
+  fn test_sparse_matrix_n_cols() {
+    let matrix = vec![
+      (0, 0, 1),
+      (0, 1, 2),
+      (0, 2, 3),
+      (1, 0, 4),
+      (1, 1, 5),
+      (1, 2, 6),
+    ];
+    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
+    assert_eq!(A.n_cols(), 3);
   }
 }

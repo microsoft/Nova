@@ -207,6 +207,7 @@ impl<G: Group> CCSShape<G> {
     assert_eq!(W.W.len(), self.num_vars);
     assert_eq!(U.X.len(), self.num_io);
 
+    // FIXME: Think this is wrong? With a SparseMatrix representation of M we need to do something different here
     let m = self.M[0].0.len();
 
     // Sage code to check CCS relation:
