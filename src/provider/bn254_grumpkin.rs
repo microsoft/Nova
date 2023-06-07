@@ -21,11 +21,25 @@ use sha3::Shake256;
 use std::io::Read;
 
 use halo2curves::bn256::{
-  self, Affine as Bn256Affine, Compressed as Bn256Compressed, Point as Bn256,
+  G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G1 as Bn256Point,
 };
 use halo2curves::grumpkin::{
-  self, Affine as GrumpkinAffine, Compressed as GrumpkinCompressed, Point as GrumpkinPoint,
+  G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint,
 };
+
+/// Re-exports that give access to the standard aliases used in the code base, for bn256
+pub mod bn256 {
+  pub use halo2curves::bn256::{
+    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
+  };
+}
+
+/// Re-exports that give access to the standard aliases used in the code base, for grumpkin
+pub mod grumpkin {
+  pub use halo2curves::grumpkin::{
+    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
+  };
+}
 
 macro_rules! impl_traits {
   (
@@ -197,19 +211,19 @@ impl<G: Group> TranscriptReprTrait<G> for grumpkin::Scalar {
 }
 
 impl_traits!(
+  bn256,
+  Bn256Compressed,
+  Bn256Point,
+  Bn256Affine,
+  "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
+);
+
+impl_traits!(
   grumpkin,
   GrumpkinCompressed,
   GrumpkinPoint,
   GrumpkinAffine,
   "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
-);
-
-impl_traits!(
-  bn256,
-  Bn256Compressed,
-  Bn256,
-  Bn256Affine,
-  "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
 );
 
 /// Native implementation of fast multiexp for platforms that do not support pasta_msm/semolina
