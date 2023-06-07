@@ -126,7 +126,6 @@ mod tests {
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 
-  type S = pasta_curves::pallas::Scalar;
   type G = pasta_curves::pallas::Point;
 
   fn synthesize_tiny_r1cs_bellperson<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
@@ -266,9 +265,8 @@ mod tests {
     assert!(shape.is_sat_relaxed(ck, &r_U, &r_W).is_ok());
   }
 
-  #[test]
-  fn test_tiny_r1cs() {
-    let one = S::one();
+  fn test_tiny_r1cs_with<G: Group>() {
+    let one = <G::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
       let num_vars = 4;
@@ -285,9 +283,9 @@ mod tests {
       // constraint and a column for every entry in z = (vars, u, inputs)
       // An R1CS instance is satisfiable iff:
       // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
-      let mut A: Vec<(usize, usize, S)> = Vec::new();
-      let mut B: Vec<(usize, usize, S)> = Vec::new();
-      let mut C: Vec<(usize, usize, S)> = Vec::new();
+      let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
@@ -331,7 +329,7 @@ mod tests {
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     let rand_inst_witness_generator =
-      |ck: &CommitmentKey<G>, I: &S| -> (S, R1CSInstance<G>, R1CSWitness<G>) {
+      |ck: &CommitmentKey<G>, I: &G::Scalar| -> (G::Scalar, R1CSInstance<G>, R1CSWitness<G>) {
         let i0 = *I;
 
         // compute a satisfying (vars, X) tuple
@@ -342,7 +340,7 @@ mod tests {
           let i1 = z2 + one + one + one + one + one; // constraint 3
 
           // store the witness and IO for the instance
-          let W = vec![z0, z1, z2, S::zero()];
+          let W = vec![z0, z1, z2, <G::Scalar as Field>::ZERO];
           let X = vec![i0, i1];
           (i1, W, X)
         };
@@ -366,7 +364,7 @@ mod tests {
       };
 
     let mut csprng: OsRng = OsRng;
-    let I = S::random(&mut csprng); // the first input is picked randomly for the first instance
+    let I = G::Scalar::random(&mut csprng); // the first input is picked randomly for the first instance
     let (O, U1, W1) = rand_inst_witness_generator(&ck, &I);
     let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
 
@@ -381,5 +379,10 @@ mod tests {
       &U2,
       &W2,
     );
+  }
+
+  #[test]
+  fn test_tiny_r1cs() {
+    test_tiny_r1cs_with::<pasta_curves::pallas::Point>();
   }
 }
