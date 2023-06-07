@@ -57,6 +57,7 @@ pub struct CCSShape<G: Group> {
 /// A type that holds a witness for a given CCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CCSWitness<G: Group> {
+  // Vector W in F^{n - l - 1}
   W: Vec<G::Scalar>,
 }
 
@@ -65,8 +66,48 @@ pub struct CCSWitness<G: Group> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CCSInstance<G: Group> {
+  // XXX: Move commitment out of CCSInstance for more clean conceptual separation?
+  // (Pedersen) Commitment to a witness
   pub(crate) comm_W: Commitment<G>,
+
+  // Public input x in F^l
   pub(crate) X: Vec<G::Scalar>,
+}
+
+// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
+/// A type that holds a CCCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct CCCSInstance<G: Group> {
+  // Commitment to a multilinear polynomial in s' - 1 variables
+  pub(crate) C: Commitment<G>,
+
+  // $x in F^l$
+  pub(crate) X: Vec<G::Scalar>,
+}
+
+/// A type that holds a witness for a given CCCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CCCSWitness<G: Group> {
+  // Multilinear polynomial w_mle in s' - 1 variables
+  pub(crate) w_mle: Vec<G::Scalar>,
+}
+
+// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
+/// A type that holds a LCCCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct LCCCSInstance<G: Group> {
+  pub(crate) C: Commitment<G>,
+  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) u: G::Scalar,
+  pub(crate) v: Vec<G::Scalar>,
+}
+
+/// A type that holds a witness for a given LCCCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LCCCSWitness<G: Group> {
+  pub(crate) w_mle: Vec<G::Scalar>,
 }
 
 impl<G: Group> CCS<G> {
