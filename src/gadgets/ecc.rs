@@ -439,8 +439,8 @@ where
 
     // we assume the first bit to be 1, so we must initialize acc to self and double it
     // we remove this assumption below
-    let mut acc = p.clone();
-    p = p.double_incomplete(cs.namespace(|| "double"))?;
+    let mut acc = p;
+    p = acc.double_incomplete(cs.namespace(|| "double"))?;
 
     // perform the double-and-add loop to compute the scalar mul using incomplete addition law
     for (i, bit) in incomplete_bits.iter().enumerate().skip(1) {
