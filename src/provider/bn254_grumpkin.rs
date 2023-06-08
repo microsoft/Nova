@@ -59,15 +59,6 @@ macro_rules! impl_traits {
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
-      #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::PreprocessedGroupElement],
-      ) -> Self {
-        cpu_best_multiexp(scalars, bases)
-      }
-
-      #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
@@ -168,12 +159,6 @@ macro_rules! impl_traits {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
         $name::Scalar::from_uniform_bytes(&bytes_arr)
       }
-
-      /*
-      fn to_bytes(&self) -> Vec<u8> {
-        self.to_repr().as_ref().to_vec()
-      }
-      */
     }
 
     impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
@@ -188,12 +173,6 @@ macro_rules! impl_traits {
       fn decompress(&self) -> Option<$name::Point> {
         Some($name_curve::from_bytes(&self).unwrap())
       }
-
-      /*
-      fn as_bytes(&self) -> &[u8] {
-        &self.0
-      }
-      */
     }
   };
 }
