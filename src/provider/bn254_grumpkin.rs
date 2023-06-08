@@ -215,7 +215,7 @@ impl_traits!(
   Bn256Compressed,
   Bn256Point,
   Bn256Affine,
-  "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
+  "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
 );
 
 impl_traits!(
@@ -223,7 +223,7 @@ impl_traits!(
   GrumpkinCompressed,
   GrumpkinPoint,
   GrumpkinAffine,
-  "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
+  "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
 );
 
 /// Native implementation of fast multiexp for platforms that do not support pasta_msm/semolina
