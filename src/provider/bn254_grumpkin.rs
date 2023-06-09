@@ -41,6 +41,9 @@ pub mod grumpkin {
   };
 }
 
+// This implementation behaves in ways specific to the bn256/grumpkin curves in:
+// - to_coordinates,
+// - vartime_multiscalar_mul, where it does not call into accelerated implementations.
 macro_rules! impl_traits {
   (
     $name:ident,
@@ -128,8 +131,8 @@ macro_rules! impl_traits {
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
         let coordinates = self.to_affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1
-          && (coordinates.unwrap().x() != &Self::Base::zero()
-            || coordinates.unwrap().y() != &Self::Base::zero())
+          // The bn256/grumpkin convention is to define and return the identity point's affine encoding (not None)
+          && (Self::PreprocessedGroupElement::identity() != self.to_affine())
         {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
