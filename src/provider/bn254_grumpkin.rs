@@ -329,3 +329,36 @@ fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
     acc
   }
 }
+#[cfg(test)]
+mod tests {
+  use super::*;
+  type G = bn256::Point;
+
+  fn from_label_serial(label: &'static [u8], n: usize) -> Vec<Bn256Affine> {
+    let mut shake = Shake256::default();
+    shake.input(label);
+    let mut reader = shake.xof_result();
+    let mut ck = Vec::new();
+    for _ in 0..n {
+      let mut uniform_bytes = [0u8; 32];
+      reader.read_exact(&mut uniform_bytes).unwrap();
+      let hash = bn256::Point::hash_to_curve("from_uniform_bytes");
+      ck.push(hash(&uniform_bytes).to_affine());
+    }
+    ck
+  }
+
+  #[test]
+  fn test_from_label() {
+    let label = b"test_from_label";
+    for n in [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
+    ] {
+      let ck_par = <G as Group>::from_label(label, n);
+      let ck_ser = from_label_serial(label, n);
+      assert_eq!(ck_par.len(), n);
+      assert_eq!(ck_ser.len(), n);
+      assert_eq!(ck_par, ck_ser);
+    }
+  }
+}
