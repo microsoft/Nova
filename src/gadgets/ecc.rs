@@ -754,7 +754,7 @@ mod tests {
     r1cs::{NovaShape, NovaWitness},
     {shape_cs::ShapeCS, solver::SatisfyingAssignment},
   };
-  use crate::provider::bn254_grumpkin::{bn256, grumpkin};
+  use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use ff::{Field, PrimeFieldBits};
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
   use rand::rngs::OsRng;

@@ -63,6 +63,6 @@ mod tests {
   #[test]
   fn test_alloc_bit() {
     test_alloc_bit_with::<pasta_curves::pallas::Point>();
-    test_alloc_bit_with::<crate::provider::bn254_grumpkin::bn256::Point>();
+    test_alloc_bit_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 }

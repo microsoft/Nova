@@ -2185,7 +2185,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, C: StepCircuit<G::Scala
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::bn254_grumpkin::bn256;
+  use crate::provider::bn256_grumpkin::bn256;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;

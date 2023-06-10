@@ -487,14 +487,14 @@ mod tests {
   fn test_recursive_circuit_grumpkin() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<provider::bn254_grumpkin::grumpkin::Point> =
+    let ro_consts1: ROConstantsCircuit<provider::bn256_grumpkin::grumpkin::Point> =
       PoseidonConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<provider::bn254_grumpkin::bn256::Point> =
+    let ro_consts2: ROConstantsCircuit<provider::bn256_grumpkin::bn256::Point> =
       PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<
-      provider::bn254_grumpkin::bn256::Point,
-      provider::bn254_grumpkin::grumpkin::Point,
+      provider::bn256_grumpkin::bn256::Point,
+      provider::bn256_grumpkin::grumpkin::Point,
     >(params1, params2, ro_consts1, ro_consts2, 9983, 10536);
   }
 }

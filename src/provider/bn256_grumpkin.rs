@@ -306,6 +306,8 @@ fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &
 ///
 /// This will use multithreading if beneficial.
 /// Adapted from zcash/halo2
+// TODO: update once https://github.com/privacy-scaling-explorations/halo2curves/pull/29
+// (or a successor thereof) is merged
 fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   assert_eq!(coeffs.len(), bases.len());
 

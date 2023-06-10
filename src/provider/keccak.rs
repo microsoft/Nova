@@ -95,7 +95,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
 #[cfg(test)]
 mod tests {
   use crate::{
-    provider::bn254_grumpkin::bn256,
+    provider::bn256_grumpkin::bn256,
     provider::keccak::Keccak256Transcript,
     traits::{Group, TranscriptEngineTrait},
   };

@@ -793,7 +793,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::bn254_grumpkin::{bn256, grumpkin};
+  use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use crate::provider::pedersen::CommitmentKeyExtTrait;
 
   use super::*;

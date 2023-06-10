@@ -211,7 +211,7 @@ mod tests {
   fn test_tiny_r1cs_bellperson() {
     test_tiny_r1cs_bellperson_with::<G>();
 
-    test_tiny_r1cs_bellperson_with::<crate::provider::bn254_grumpkin::bn256::Point>();
+    test_tiny_r1cs_bellperson_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -386,6 +386,6 @@ mod tests {
   #[test]
   fn test_tiny_r1cs() {
     test_tiny_r1cs_with::<pasta_curves::pallas::Point>();
-    test_tiny_r1cs_with::<crate::provider::bn254_grumpkin::bn256::Point>();
+    test_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 }
