@@ -36,7 +36,6 @@ use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
@@ -757,13 +756,10 @@ type CE<G> = <G as Group>::CE;
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
-  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-  bincode::serialize_into(&mut encoder, o).unwrap();
-  let pp_bytes = encoder.finish().unwrap();
-
+  let bytes = bincode::serialize(o).unwrap();
   // convert pp_bytes into a short digest
   let mut hasher = Sha3_256::new();
-  hasher.input(&pp_bytes);
+  hasher.input(&bytes);
   let digest = hasher.result();
 
   // truncate the digest to NUM_HASH_BITS bits
@@ -881,13 +877,13 @@ mod tests {
     test_pp_digest_with::<G1, G2, _, _>(
       trivial_circuit1,
       trivial_circuit2.clone(),
-      "497c94323154901bc87e38f7bc978a76c346d74327b2ca371b2ede191491e901",
+      "39a4ea9dd384346fdeb6b5857c7be56fa035153b616d55311f3191dfbceea603",
     );
 
     test_pp_digest_with::<G1, G2, _, _>(
       cubic_circuit1,
       trivial_circuit2,
-      "2837eae6fc977d0f1a8896f16aa73969fab9da06361969a8a4feacf23416a603",
+      "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
     );
   }
 
