@@ -49,6 +49,10 @@ harness = false
 name = "compressed-snark"
 harness = false
 
+[[bench]]
+name = "compute-digest"
+harness = false
+
 [features]
 default = []
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
