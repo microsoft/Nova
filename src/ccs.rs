@@ -72,7 +72,7 @@ pub struct CCSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
 
-// TODO: Make sure this is in the right form for committed CCS using MLE, possibly a separate type?
+// TODO: Make sure this is in the right form for committed CCS using MLE, possibly a separate type
 /// A type that holds an CCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -84,6 +84,29 @@ pub struct CCSInstance<G: Group> {
   // Public input x in F^l
   pub(crate) X: Vec<G::Scalar>,
 }
+
+
+/// A type that holds the shape of a Committed CCS (CCCS) instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct CCCSShape<G: Group> {  
+  // Sequence of sparse MLE polynomials in s+s' variables M_MLE1, ..., M_MLEt
+  // TODO This should be MLE
+  // XXX Here atm - look at other example see how it is
+  pub(crate) M_MLE: Vec<SparseMatrix<G>>,
+
+
+  // XXX Embed CCS directly here or do a flat structure?
+  // pub(crate) ccs: CCS,
+
+  // q multisets S (same as CCS)
+  // q constants c (same as CCS)
+
+}
+
+/// CCCS Instance is (C, x)
+/// CCCS Witness is w _mle
+
 
 // NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a CCCS instance
