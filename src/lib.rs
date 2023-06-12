@@ -36,7 +36,6 @@ use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
@@ -757,13 +756,10 @@ type CE<G> = <G as Group>::CE;
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
-  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-  bincode::serialize_into(&mut encoder, o).unwrap();
-  let pp_bytes = encoder.finish().unwrap();
-
+  let bytes = bincode::serialize(o).unwrap();
   // convert pp_bytes into a short digest
   let mut hasher = Sha3_256::new();
-  hasher.input(&pp_bytes);
+  hasher.input(&bytes);
   let digest = hasher.result();
 
   // truncate the digest to NUM_HASH_BITS bits
@@ -849,6 +845,46 @@ mod tests {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
+  }
+
+  fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: T1, circuit2: T2, expected: &str)
+  where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    T1: StepCircuit<G1::Scalar>,
+    T2: StepCircuit<G2::Scalar>,
+  {
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
+
+    let digest_str = pp
+      .digest
+      .to_repr()
+      .as_ref()
+      .iter()
+      .map(|b| format!("{:02x}", b))
+      .collect::<String>();
+    assert_eq!(digest_str, expected);
+  }
+
+  #[test]
+  fn test_pp_digest() {
+    type G1 = pasta_curves::pallas::Point;
+    type G2 = pasta_curves::vesta::Point;
+    let trivial_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+    let trivial_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
+    let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
+
+    test_pp_digest_with::<G1, G2, _, _>(
+      trivial_circuit1,
+      trivial_circuit2.clone(),
+      "39a4ea9dd384346fdeb6b5857c7be56fa035153b616d55311f3191dfbceea603",
+    );
+
+    test_pp_digest_with::<G1, G2, _, _>(
+      cubic_circuit1,
+      trivial_circuit2,
+      "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
+    );
   }
 
   fn test_ivc_trivial_with<G1, G2>()
