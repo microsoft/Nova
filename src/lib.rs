@@ -851,6 +851,46 @@ mod tests {
     }
   }
 
+  fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: T1, circuit2: T2, expected: &str)
+  where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    T1: StepCircuit<G1::Scalar>,
+    T2: StepCircuit<G2::Scalar>,
+  {
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
+
+    let digest_str = pp
+      .digest
+      .to_repr()
+      .as_ref()
+      .iter()
+      .map(|b| format!("{:02x}", b))
+      .collect::<String>();
+    assert_eq!(digest_str, expected);
+  }
+
+  #[test]
+  fn test_pp_digest() {
+    type G1 = pasta_curves::pallas::Point;
+    type G2 = pasta_curves::vesta::Point;
+    let trivial_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+    let trivial_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
+    let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
+
+    test_pp_digest_with::<G1, G2, _, _>(
+      trivial_circuit1,
+      trivial_circuit2.clone(),
+      "497c94323154901bc87e38f7bc978a76c346d74327b2ca371b2ede191491e901",
+    );
+
+    test_pp_digest_with::<G1, G2, _, _>(
+      cubic_circuit1,
+      trivial_circuit2,
+      "2837eae6fc977d0f1a8896f16aa73969fab9da06361969a8a4feacf23416a603",
+    );
+  }
+
   fn test_ivc_trivial_with<G1, G2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
