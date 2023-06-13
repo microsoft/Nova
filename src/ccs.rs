@@ -4,6 +4,7 @@
 #![allow(clippy::type_complexity)]
 
 use crate::spartan::math::Math;
+use crate::spartan::polynomial::MultilinearPolynomial;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -85,28 +86,23 @@ pub struct CCSInstance<G: Group> {
   pub(crate) X: Vec<G::Scalar>,
 }
 
-
 /// A type that holds the shape of a Committed CCS (CCCS) instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct CCCSShape<G: Group> {  
+pub struct CCCSShape<G: Group> {
   // Sequence of sparse MLE polynomials in s+s' variables M_MLE1, ..., M_MLEt
-  // TODO This should be MLE
-  // XXX Here atm - look at other example see how it is
+  // TODO This should be MLE, but possible we don't have to keep in struct?
+  // Exists in paper but not multifolding-poc
   pub(crate) M_MLE: Vec<SparseMatrix<G>>,
 
-
   // XXX Embed CCS directly here or do a flat structure?
-  // pub(crate) ccs: CCS,
-
+  pub(crate) ccs: CCSShape<G>,
   // q multisets S (same as CCS)
   // q constants c (same as CCS)
-
 }
 
 /// CCCS Instance is (C, x)
 /// CCCS Witness is w _mle
-
 
 // NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a CCCS instance
@@ -426,6 +422,41 @@ impl<G: Group> CCSInstance<G> {
         X: X.to_owned(),
       })
     }
+  }
+}
+
+use std::fmt::Debug;
+
+impl<G: Group> CCSShape<G> {
+  pub fn multiply_matrices(&self, z: &Vec<G::Scalar>) -> Result<Vec<Vec<G::Scalar>>, NovaError> {
+    let mut Mz: Vec<Vec<G::Scalar>> = Vec::new();
+    for matrix in &self.M {
+      let product = matrix_vector_product_sparse(matrix, z)?;
+      Mz.push(product);
+    }
+    Ok(Mz)
+  }
+}
+
+impl<G: Group> CCCSShape<G> {
+  // TODO: compute_g but based on MLE in `pp.rs`
+  // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
+  // polynomial over x
+  //pub fn compute_q(&self, z: &Vec<C::ScalarField>) -> VirtualPolynomial<C::ScalarField> {}
+
+  pub fn compute_q(&self, z: &Vec<G::Scalar>) -> MultilinearPolynomial<G::Scalar> {
+    // XXX: Do we need to instrument this to use s_prime as n_vars somehow?
+    let z_mle = MultilinearPolynomial::new(z.clone());
+    assert_eq!(z_mle.get_num_vars(), self.ccs.s_prime);
+
+    // Use matrix_vector_product_sparse to multiple M_i with z
+    // util Use sparse_matrix_to_mlp;
+
+    // Similar logic in Spartan
+    //     let (mut Az, mut Bz, mut Cz) = pk.S.multiply_vec(&z)?;
+    //poly_Az: MultilinearPolynomial::new(Az.clone()),
+
+    return MultilinearPolynomial::new(vec![]);
   }
 }
 

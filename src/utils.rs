@@ -1,5 +1,6 @@
 //! Basic utils
 use crate::errors::NovaError;
+use crate::spartan::polynomial::MultilinearPolynomial;
 use crate::traits::Group;
 use ff::{Field, PrimeField};
 use serde::{Deserialize, Serialize};
@@ -141,6 +142,25 @@ pub fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(us
   m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
 }
 
+fn sparse_matrix_to_mlp<G: Group>(matrix: &SparseMatrix<G>) -> MultilinearPolynomial<G::Scalar> {
+  let n_rows = matrix.n_rows();
+  let n_cols = matrix.n_cols();
+
+  let n_vars: usize = (n_rows + n_cols).next_power_of_two().trailing_zeros() as usize;
+
+  // Create a vector of zeros with size 2^n_vars
+  let mut vec: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2_usize.pow(n_vars as u32)];
+
+  // Assign non-zero entries from the sparse matrix to the vector
+  for &(i, j, val) in matrix.0.iter() {
+    let index = i * n_cols + j; // Convert (i, j) into an index for a flat vector
+    vec[index] = val;
+  }
+
+  // Convert this vector into a MultilinearPolynomial
+  MultilinearPolynomial::new(vec)
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -225,5 +245,34 @@ mod tests {
     ];
     let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
     assert_eq!(A.n_cols(), 3);
+  }
+
+  // FIXME: Currently fails with thread 'utils::tests::test_sparse_matrix_to_mlp' panicked at 'index out of bounds: the len is 8 but the index is 8', src/utils.rs:157:5
+  #[test]
+  fn test_sparse_matrix_to_mlp() {
+    let matrix = vec![
+      (0, 0, 2),
+      (0, 1, 3),
+      (0, 2, 4),
+      (0, 3, 4),
+      (1, 0, 4),
+      (1, 1, 11),
+      (1, 2, 14),
+      (1, 3, 14),
+      (2, 0, 2),
+      (2, 1, 8),
+      (2, 2, 17),
+      (2, 3, 17),
+      (3, 0, 420),
+      (3, 1, 4),
+      (3, 2, 2),
+    ];
+    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
+
+    // Convert the sparse matrix to a multilinear polynomial
+    let mlp = sparse_matrix_to_mlp(&A);
+
+    // A 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
+    assert_eq!(mlp.len(), 16);
   }
 }
