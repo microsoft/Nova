@@ -137,6 +137,47 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .map(|(a, b)| a * b)
       .reduce(|| Scalar::ZERO, |x, y| x + y)
   }
+
+  // Adds another multilinear polynomial to `self`.
+  // Assumes the two polynomials have the same number of variables.
+  pub fn add(&self, other: &Self) -> Result<Self, &'static str> {
+    if self.get_num_vars() != other.get_num_vars() {
+      return Err("The two polynomials must have the same number of variables");
+    }
+
+    let sum = self
+      .Z
+      .par_iter()
+      .zip(&other.Z)
+      .map(|(a, b)| *a + b)
+      .collect();
+
+    Ok(MultilinearPolynomial::new(sum))
+  }
+
+  // Multiplies `self` by a scalar.
+  pub fn scalar_mul(&self, scalar: &Scalar) -> Self {
+    let mut new_poly = self.clone();
+    for z in &mut new_poly.Z {
+      *z *= scalar;
+    }
+    new_poly
+  }
+
+  // Multiplies `self` by another multilinear polynomial.
+  // Assumes the two polynomials have the same number of variables.
+  pub fn mul(&self, other: &Self) -> Result<Self, &'static str> {
+    if self.num_vars != other.num_vars {
+      return Err("The two polynomials must have the same number of variables");
+    }
+    let product = self
+      .Z
+      .par_iter()
+      .zip(&other.Z)
+      .map(|(a, b)| *a * *b)
+      .collect();
+    Ok(Self::new(product))
+  }
 }
 
 impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
@@ -198,6 +239,13 @@ mod tests {
   use super::*;
   use pasta_curves::Fp;
 
+  fn make_mlp(len: usize, value: Fp) -> MultilinearPolynomial<Fp> {
+    MultilinearPolynomial {
+        num_vars: len.count_ones() as usize,
+        Z: vec![value; len],
+    }
+}
+
   #[test]
   fn test_eq_polynomial() {
     let eq_poly = EqPolynomial::<Fp>::new(vec![Fp::one(), Fp::zero(), Fp::one()]);
@@ -258,5 +306,34 @@ mod tests {
 
     let x = vec![Fp::one(), Fp::zero(), Fp::one()];
     assert_eq!(m_poly.evaluate(x.as_slice()), Fp::one());
+  }
+
+  #[test]
+  fn test_mlp_add() {
+      let mlp1 = make_mlp(4, Fp::from(3));
+      let mlp2 = make_mlp(4, Fp::from(7));
+
+      let mlp3 = mlp1.add(&mlp2).unwrap();
+
+      assert_eq!(mlp3.Z, vec![Fp::from(10); 4]);
+  }
+
+  #[test]
+  fn test_mlp_scalar_mul() {
+      let mlp = make_mlp(4, Fp::from(3));
+
+      let mlp2 = mlp.scalar_mul(&Fp::from(2));
+
+      assert_eq!(mlp2.Z, vec![Fp::from(6); 4]);
+  }
+
+  #[test]
+  fn test_mlp_mul() {
+      let mlp1 = make_mlp(4, Fp::from(3));
+      let mlp2 = make_mlp(4, Fp::from(7));
+
+      let mlp3 = mlp1.mul(&mlp2).unwrap();
+
+      assert_eq!(mlp3.Z, vec![Fp::from(21); 4]);
   }
 }
