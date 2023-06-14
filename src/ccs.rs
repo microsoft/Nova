@@ -54,7 +54,9 @@ pub struct CCSShape<G: Group> {
   pub(crate) q: usize,
   pub(crate) d: usize,
   pub(crate) S: Vec<Vec<usize>>,
-  pub(crate) c: Vec<usize>,
+
+  // Was: usize
+  pub(crate) c: Vec<G::Scalar>,
 
   // m is the number of columns in M_i
   pub(crate) m: usize,
@@ -163,7 +165,7 @@ impl<G: Group> CCSShape<G> {
     q: usize,
     d: usize,
     S: Vec<Vec<usize>>,
-    c: Vec<usize>,
+    c: Vec<G::Scalar>,
   ) -> Result<CCSShape<G>, NovaError> {
     let is_valid = |num_cons: usize,
                     num_vars: usize,
@@ -280,9 +282,7 @@ impl<G: Group> CCSShape<G> {
           hadamard_output = hadamard_product(&hadamard_output, &mvp)?;
         }
 
-        // XXX: Problem if c[i] is F?
-        let civ = G::Scalar::from(self.c[i] as u64);
-        let vep = vector_elem_product(&hadamard_output, &civ)?;
+        let vep = vector_elem_product(&hadamard_output, &self.c[i])?;
 
         r = vector_add(&r, &vep)?;
       }
@@ -306,8 +306,9 @@ impl<G: Group> CCSShape<G> {
     const D: usize = 2;
     const S1: [usize; 2] = [0, 1];
     const S2: [usize; 1] = [2];
-    const C0: i32 = 1;
-    const C1: i32 = -1;
+
+    let C0 = G::Scalar::ONE;
+    let C1 = -G::Scalar::ONE;
 
     // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
     // TODO: Consider using SparseMatrix type in R1CSShape too
@@ -331,7 +332,7 @@ impl<G: Group> CCSShape<G> {
       q: Q,
       d: D,
       S: vec![S1.to_vec(), S2.to_vec()],
-      c: vec![C0 as usize, C1 as usize],
+      c: vec![C0, C1],
       m: m,
       n: n,
       s: s,
