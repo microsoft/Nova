@@ -896,6 +896,23 @@ mod tests {
       trivial_circuit2,
       "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
     );
+
+    let trivial_circuit1_grumpkin =
+      TrivialTestCircuit::<<bn256::Point as Group>::Scalar>::default();
+    let trivial_circuit2_grumpkin =
+      TrivialTestCircuit::<<grumpkin::Point as Group>::Scalar>::default();
+    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
+
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      trivial_circuit1_grumpkin,
+      trivial_circuit2_grumpkin.clone(),
+      "967acca1d6b4731cd65d4072c12bbaca9648f24d7bcc2877aee720e4265d4302",
+    );
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      cubic_circuit1_grumpkin,
+      trivial_circuit2_grumpkin,
+      "44629f26a78bf6c4e3077f940232050d1793d304fdba5e221d0cf66f76a37903",
+    );
   }
 
   fn test_ivc_trivial_with<G1, G2>()
