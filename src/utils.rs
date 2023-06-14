@@ -142,11 +142,16 @@ pub fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(us
   m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
 }
 
-fn sparse_matrix_to_mlp<G: Group>(matrix: &SparseMatrix<G>) -> MultilinearPolynomial<G::Scalar> {
+pub fn sparse_matrix_to_mlp<G: Group>(
+  matrix: &SparseMatrix<G>,
+) -> MultilinearPolynomial<G::Scalar> {
   let n_rows = matrix.n_rows();
   let n_cols = matrix.n_cols();
 
-  let n_vars: usize = (n_rows + n_cols).next_power_of_two().trailing_zeros() as usize;
+  // Since n_rows and n_cols already account for 0 indexing,
+  // The total number of elements would be n_rows * n_cols
+  let total_elements: usize = n_rows * n_cols;
+  let n_vars: usize = total_elements.next_power_of_two().trailing_zeros() as usize;
 
   // Create a vector of zeros with size 2^n_vars
   let mut vec: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2_usize.pow(n_vars as u32)];
@@ -157,8 +162,17 @@ fn sparse_matrix_to_mlp<G: Group>(matrix: &SparseMatrix<G>) -> MultilinearPolyno
     vec[index] = val;
   }
 
+  // Pad to 2^n_vars
+  let vec_padded: Vec<G::Scalar> = [
+    vec.clone(),
+    std::iter::repeat(G::Scalar::ZERO)
+      .take((1 << n_vars) - vec.len())
+      .collect(),
+  ]
+  .concat();
+
   // Convert this vector into a MultilinearPolynomial
-  MultilinearPolynomial::new(vec)
+  MultilinearPolynomial::new(vec_padded)
 }
 
 #[cfg(test)]
@@ -247,7 +261,6 @@ mod tests {
     assert_eq!(A.n_cols(), 3);
   }
 
-  // FIXME: Currently fails with thread 'utils::tests::test_sparse_matrix_to_mlp' panicked at 'index out of bounds: the len is 8 but the index is 8', src/utils.rs:157:5
   #[test]
   fn test_sparse_matrix_to_mlp() {
     let matrix = vec![
