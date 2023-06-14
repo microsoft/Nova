@@ -440,24 +440,46 @@ impl<G: Group> CCSShape<G> {
 }
 
 impl<G: Group> CCCSShape<G> {
-  // TODO: compute_g but based on MLE in `pp.rs`
+  // XXX: Take below and util functions with a grain of salt, need to sanity check
+
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   // polynomial over x
-  //pub fn compute_q(&self, z: &Vec<C::ScalarField>) -> VirtualPolynomial<C::ScalarField> {}
-
-  pub fn compute_q(&self, z: &Vec<G::Scalar>) -> MultilinearPolynomial<G::Scalar> {
+  pub fn compute_q(
+    &self,
+    z: &Vec<G::Scalar>,
+  ) -> Result<MultilinearPolynomial<G::Scalar>, &'static str> {
     // XXX: Do we need to instrument this to use s_prime as n_vars somehow?
     let z_mle = MultilinearPolynomial::new(z.clone());
-    assert_eq!(z_mle.get_num_vars(), self.ccs.s_prime);
+    if z_mle.get_num_vars() != self.ccs.s_prime {
+      return Err("z_mle number of variables does not match ccs.s_prime");
+    }
+    let mut q = MultilinearPolynomial::new(vec![G::Scalar::ZERO; self.ccs.s]);
 
-    // Use matrix_vector_product_sparse to multiple M_i with z
-    // util Use sparse_matrix_to_mlp;
+    for i in 0..self.ccs.q {
+      let mut prod = MultilinearPolynomial::new(vec![G::Scalar::ONE; self.ccs.s]);
+
+      for j in &self.ccs.S[i] {
+        let M_j = sparse_matrix_to_mlp(&self.ccs.M[*j]);
+
+        // TODO: We need to implement this function
+        let sum_Mz = compute_sum_Mz::<G, _>(M_j, &z_mle)?;
+
+        // Fold this sum into the running product
+        prod = prod.mul(&sum_Mz)?;
+      }
+
+      // Multiply the product by the coefficient c_i
+      prod = prod.scalar_mul(&self.ccs.c[i]);
+
+      // Add it to the running sum
+      q = q.add(&prod)?;
+    }
+
+    Ok(q)
 
     // Similar logic in Spartan
     //     let (mut Az, mut Bz, mut Cz) = pk.S.multiply_vec(&z)?;
     //poly_Az: MultilinearPolynomial::new(Az.clone()),
-
-    return MultilinearPolynomial::new(vec![]);
   }
 }
 

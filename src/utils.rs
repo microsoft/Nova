@@ -175,6 +175,14 @@ pub fn sparse_matrix_to_mlp<G: Group>(
   MultilinearPolynomial::new(vec_padded)
 }
 
+// FIXME: Dummy function
+pub fn compute_sum_Mz<G: Group, Z>(
+  _M_j: MultilinearPolynomial<G::Scalar>,
+  _z_mle: &Z,
+) -> Result<MultilinearPolynomial<<G as Group>::Scalar>, &'static str> {
+  Ok(MultilinearPolynomial::new(vec![]))
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
