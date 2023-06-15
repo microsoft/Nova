@@ -175,12 +175,25 @@ pub fn sparse_matrix_to_mlp<G: Group>(
   MultilinearPolynomial::new(vec_padded)
 }
 
-// FIXME: Dummy function
-pub fn compute_sum_Mz<G: Group, Z>(
-  _M_j: MultilinearPolynomial<G::Scalar>,
-  _z_mle: &Z,
-) -> Result<MultilinearPolynomial<<G as Group>::Scalar>, &'static str> {
-  Ok(MultilinearPolynomial::new(vec![]))
+pub fn bit_to_index(bits: &[bool]) -> usize {
+  let mut index = 0;
+  for (i, &bit) in bits.iter().enumerate() {
+    if bit {
+      index += 1 << i;
+    }
+  }
+  index
+}
+
+/// Decompose an integer into a binary vector in little endian.
+pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
+  let mut res = Vec::with_capacity(num_var);
+  let mut i = input;
+  for _ in 0..num_var {
+    res.push(i & 1 == 1);
+    i >>= 1;
+  }
+  res
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 //! This module defines basic types related to Boolean hypercubes.
+use crate::utils::*;
 /// There's some overlap with polynomial.rs.
 use ff::PrimeField;
 
@@ -53,15 +54,19 @@ impl<Scalar: PrimeField> BooleanHypercube<Scalar> {
   }
 }
 
-/// Decompose an integer into a binary vector in little endian.
-pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
-  let mut res = Vec::with_capacity(num_var);
-  let mut i = input;
-  for _ in 0..num_var {
-    res.push(i & 1 == 1);
-    i >>= 1;
+impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
+  type Item = Vec<Scalar>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.current > self.max {
+      None
+    } else {
+      let bits = bit_decompose(self.current, self.dimensions);
+      let point: Vec<Scalar> = bits.iter().map(|&bit| Scalar::from(bit as u64)).collect();
+      self.current += 1;
+      Some(point)
+    }
   }
-  res
 }
 
 mod tests {

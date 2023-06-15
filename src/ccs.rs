@@ -3,8 +3,10 @@
 #![allow(dead_code)]
 #![allow(clippy::type_complexity)]
 
+use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
 use crate::spartan::polynomial::MultilinearPolynomial;
+use crate::utils::bit_decompose;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -441,6 +443,33 @@ impl<G: Group> CCSShape<G> {
 }
 
 impl<G: Group> CCCSShape<G> {
+  // TODO: Sanity check this
+  pub fn compute_sum_Mz(
+    &self,
+    M_j: &MultilinearPolynomial<G::Scalar>,
+    z: &MultilinearPolynomial<G::Scalar>,
+    s_prime: usize,
+  ) -> MultilinearPolynomial<G::Scalar> {
+    assert_eq!(M_j.get_num_vars(), s_prime);
+    assert_eq!(z.get_num_vars(), s_prime);
+
+    let num_vars = M_j.get_num_vars();
+    let two_to_num_vars = (2_usize).pow(num_vars as u32);
+    let mut result_coefficients = Vec::with_capacity(two_to_num_vars);
+
+    for i in 0..two_to_num_vars {
+      let r = bit_decompose(i as u64, num_vars)
+        .into_iter()
+        .map(|bit| G::Scalar::from(if bit { 1 } else { 0 }))
+        .collect::<Vec<_>>();
+
+      let value = M_j.evaluate(&r) * z.evaluate(&r);
+      result_coefficients.push(value);
+    }
+
+    MultilinearPolynomial::new(result_coefficients)
+  }
+
   // XXX: Take below and util functions with a grain of salt, need to sanity check
 
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
@@ -462,8 +491,7 @@ impl<G: Group> CCCSShape<G> {
       for j in &self.ccs.S[i] {
         let M_j = sparse_matrix_to_mlp(&self.ccs.M[*j]);
 
-        // TODO: We need to implement this function
-        let sum_Mz = compute_sum_Mz::<G, _>(M_j, &z_mle)?;
+        let sum_Mz = self.compute_sum_Mz(&M_j, &z_mle, self.ccs.s_prime);
 
         // Fold this sum into the running product
         prod = prod.mul(sum_Mz)?;
