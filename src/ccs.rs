@@ -27,6 +27,7 @@ use itertools::concat;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
+use std::ops::{Add, Mul};
 
 // TODO: Committed CCS using MLE (see src/spartan/pp.rs)
 // TODO: Linearized CCS struct and methods, separate struct similar to RelaxedR1CS
@@ -465,14 +466,14 @@ impl<G: Group> CCCSShape<G> {
         let sum_Mz = compute_sum_Mz::<G, _>(M_j, &z_mle)?;
 
         // Fold this sum into the running product
-        prod = prod.mul(&sum_Mz)?;
+        prod = prod.mul(sum_Mz)?;
       }
 
       // Multiply the product by the coefficient c_i
       prod = prod.scalar_mul(&self.ccs.c[i]);
 
       // Add it to the running sum
-      q = q.add(&prod)?;
+      q = q.add(prod)?;
     }
 
     Ok(q)
