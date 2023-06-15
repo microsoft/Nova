@@ -28,6 +28,8 @@ pub mod traits;
 #[cfg(feature = "hypernova")]
 mod ccs;
 #[cfg(feature = "hypernova")]
+mod hypercube;
+#[cfg(feature = "hypernova")]
 mod utils;
 
 use crate::bellperson::{
