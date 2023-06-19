@@ -158,8 +158,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
     // Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate U"),
-      self.inputs.get().map_or(None, |inputs| {
-        inputs.U.get().map_or(None, |U| Some(U.clone()))
+      self.inputs.get().as_ref().map_or(None, |inputs| {
+        inputs.U.get().as_ref().map_or(None, |U| Some(U))
       }),
       self.params.limb_width,
       self.params.n_limbs,
@@ -168,8 +168,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
     // Allocate the instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
-      self.inputs.get().map_or(None, |inputs| {
-        inputs.u.get().map_or(None, |u| Some(u.clone()))
+      self.inputs.get().as_ref().map_or(None, |inputs| {
+        inputs.u.get().as_ref().map_or(None, |u| Some(u))
       }),
     )?;
 
@@ -219,9 +219,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
     i: AllocatedNum<G::Base>,
     z_0: Vec<AllocatedNum<G::Base>>,
     z_i: Vec<AllocatedNum<G::Base>>,
-    U: AllocatedRelaxedR1CSInstance<G>,
-    u: AllocatedR1CSInstance<G>,
-    T: AllocatedPoint<G>,
+    U: &AllocatedRelaxedR1CSInstance<G>,
+    u: &AllocatedR1CSInstance<G>,
+    T: &AllocatedPoint<G>,
     arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
@@ -240,7 +240,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       &u.X0,
@@ -290,9 +290,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       i.clone(),
       z_0.clone(),
       z_i.clone(),
-      U,
-      u.clone(),
-      T,
+      &U,
+      &u,
+      &T,
       arity,
     )?;
 
@@ -312,7 +312,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     // Compute the U_new
     let Unew = Unew_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
-      Unew_non_base,
+      &Unew_non_base,
       &Boolean::from(is_base_case.clone()),
     )?;
 
@@ -357,7 +357,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
+    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     u.X1

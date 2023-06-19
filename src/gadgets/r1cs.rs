@@ -33,7 +33,7 @@ impl<G: Group> AllocatedR1CSInstance<G> {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
-    u: Option<R1CSInstance<G>>,
+    u: Option<&R1CSInstance<G>>,
   ) -> Result<Self, SynthesisError> {
     // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
@@ -76,7 +76,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   /// Allocates the given RelaxedR1CSInstance as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
-    inst: Option<RelaxedR1CSInstance<G>>,
+    inst: Option<&RelaxedR1CSInstance<G>>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
@@ -104,22 +104,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[0]"),
-      || {
-        Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[0]),
-        ))
-      },
+      || Ok(f_to_nat(&inst.map_or(G::Scalar::ZERO, |inst| inst.X[0]))),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[1]"),
-      || {
-        Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[1]),
-        ))
-      },
+      || Ok(f_to_nat(&inst.map_or(G::Scalar::ZERO, |inst| inst.X[1]))),
       limb_width,
       n_limbs,
     )?;
@@ -170,14 +162,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     let X0 = BigNat::from_num(
       cs.namespace(|| "allocate X0 from relaxed r1cs"),
-      Num::from(inst.X0.clone()),
+      &Num::from(inst.X0),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::from_num(
       cs.namespace(|| "allocate X1 from relaxed r1cs"),
-      Num::from(inst.X1.clone()),
+      &Num::from(inst.X1),
       limb_width,
       n_limbs,
     )?;
@@ -246,8 +238,8 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     &self,
     mut cs: CS,
     params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
-    u: AllocatedR1CSInstance<G>,
-    T: AllocatedPoint<G>,
+    u: &AllocatedR1CSInstance<G>,
+    T: &AllocatedPoint<G>,
     ro_consts: ROConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
@@ -261,14 +253,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     ro.absorb(T.y.clone());
     ro.absorb(T.is_infinity.clone());
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
-    let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
+    let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), r_bits.clone())?;
+    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T
-    let rT = T.scalar_mul(cs.namespace(|| "r * T"), r_bits)?;
+    let rT = T.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
     let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rT)?;
 
     // u_fold = u_r + r
@@ -286,7 +278,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Analyze r into limbs
     let r_bn = BigNat::from_num(
       cs.namespace(|| "allocate r_bn"),
-      Num::from(r.clone()),
+      &Num::from(r),
       limb_width,
       n_limbs,
     )?;
@@ -302,7 +294,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(
       cs.namespace(|| "allocate X0_bn"),
-      Num::from(u.X0.clone()),
+      &Num::from(u.X0.clone()),
       limb_width,
       n_limbs,
     )?;
@@ -317,7 +309,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Analyze X1 to bignat
     let X1_bn = BigNat::from_num(
       cs.namespace(|| "allocate X1_bn"),
-      Num::from(u.X1.clone()),
+      &Num::from(u.X1.clone()),
       limb_width,
       n_limbs,
     )?;
@@ -342,7 +334,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    other: AllocatedRelaxedR1CSInstance<G>,
+    other: &AllocatedRelaxedR1CSInstance<G>,
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     let W = AllocatedPoint::conditionally_select(

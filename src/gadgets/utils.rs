@@ -15,7 +15,7 @@ use num_bigint::BigInt;
 /// Gets as input the little indian representation of a number and spits out the number
 pub fn le_bits_to_num<Scalar, CS>(
   mut cs: CS,
-  bits: Vec<AllocatedBit>,
+  bits: &[AllocatedBit],
 ) -> Result<AllocatedNum<Scalar>, SynthesisError>
 where
   Scalar: PrimeField + PrimeFieldBits,
