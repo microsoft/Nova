@@ -40,6 +40,8 @@ pasta-msm = { version = "0.1.4" }
 criterion = { version = "0.4", features = ["html_reports"] }
 rand = "0.8.4"
 hex = "0.4.3"
+pprof = { version = "0.11" }
+cfg-if = "1.0.0"
 
 [[bench]]
 name = "recursive-snark"
@@ -59,3 +61,4 @@ default = []
 portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
 opencl = ["neptune/opencl", "neptune/pasta", "neptune/arity24"]
+flamegraph = ["pprof/flamegraph", "pprof/criterion"]

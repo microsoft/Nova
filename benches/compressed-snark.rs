@@ -22,10 +22,24 @@ type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
 type C1 = NonTrivialTestCircuit<<G1 as Group>::Scalar>;
 type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
 
-criterion_group! {
-name = compressed_snark;
-config = Criterion::default().warm_up_time(Duration::from_millis(3000));
-targets = bench_compressed_snark
+// To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
+// Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
+// For flamegraphs, run `cargo criterion --bench compressed-snark --features flamegraph -- --profile-time <secs>`.
+// The results are located in `target/criterion/profile/<name-of-benchmark>`.
+cfg_if::cfg_if! {
+  if #[cfg(feature = "flamegraph")] {
+    criterion_group! {
+      name = compressed_snark;
+      config = Criterion::default().warm_up_time(Duration::from_millis(3000)).with_profiler(pprof::criterion::PProfProfiler::new(100, pprof::criterion::Output::Flamegraph(None)));
+      targets = bench_compressed_snark
+    }
+  } else {
+    criterion_group! {
+      name = compressed_snark;
+      config = Criterion::default().warm_up_time(Duration::from_millis(3000));
+      targets = bench_compressed_snark
+    }
+  }
 }
 
 criterion_main!(compressed_snark);

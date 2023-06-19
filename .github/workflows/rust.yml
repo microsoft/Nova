@@ -25,6 +25,8 @@ jobs:
       run: cargo build --target wasm32-unknown-unknown
     - name: Build examples
       run: cargo build --examples --verbose
+    - name: Build benches
+      run: cargo build --benches --verbose
     - name: Run tests
       run: cargo +stable test --release --verbose
     - name: Check Rustfmt Code Style
