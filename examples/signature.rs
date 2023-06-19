@@ -233,8 +233,8 @@ pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
     |lc| lc + (G::Base::from_str_vartime("2").unwrap(), CS::one()),
   );
 
-  let sg = g.scalar_mul(cs.namespace(|| "[s]G"), s_bits)?;
-  let cpk = pk.scalar_mul(&mut cs.namespace(|| "[c]PK"), c_bits)?;
+  let sg = g.scalar_mul(cs.namespace(|| "[s]G"), &s_bits)?;
+  let cpk = pk.scalar_mul(&mut cs.namespace(|| "[c]PK"), &c_bits)?;
   let rcpk = cpk.add(&mut cs.namespace(|| "R + [c]PK"), &r)?;
 
   let (rcpk_x, rcpk_y, _) = rcpk.get_coordinates();

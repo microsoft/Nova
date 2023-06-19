@@ -938,8 +938,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &vec![<G1 as Group>::Scalar::ZERO][..],
-      &vec![<G2 as Group>::Scalar::ZERO][..],
+      &[<G1 as Group>::Scalar::ZERO],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -997,8 +997,8 @@ mod tests {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &vec![<G1 as Group>::Scalar::ONE][..],
-        &vec![<G2 as Group>::Scalar::ZERO][..],
+        &[<G1 as Group>::Scalar::ONE],
+        &[<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
     }
@@ -1007,8 +1007,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &vec![<G1 as Group>::Scalar::ONE][..],
-      &vec![<G2 as Group>::Scalar::ZERO][..],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
@@ -1084,8 +1084,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &vec![<G1 as Group>::Scalar::ONE][..],
-      &vec![<G2 as Group>::Scalar::ZERO][..],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
@@ -1178,8 +1178,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &vec![<G1 as Group>::Scalar::ONE][..],
-      &vec![<G2 as Group>::Scalar::ZERO][..],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
@@ -1426,8 +1426,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &vec![<G1 as Group>::Scalar::ONE][..],
-      &vec![<G2 as Group>::Scalar::ZERO][..],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 

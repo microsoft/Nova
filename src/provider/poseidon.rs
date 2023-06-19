@@ -65,7 +65,7 @@ where
       constants,
       num_absorbs,
       squeezed: false,
-      _p: PhantomData::default(),
+      _p: PhantomData,
     }
   }
 
@@ -236,7 +236,7 @@ mod tests {
     }
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
-    let num2 = le_bits_to_num(&mut cs, num2_bits).unwrap();
+    let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
     assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
   }
 

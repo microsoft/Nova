@@ -163,12 +163,8 @@ impl<G: Group> SumcheckProof<G> {
         evals.push((eval_point_0, eval_point_2));
       }
 
-      let evals_combined_0 = (0..evals.len())
-        .map(|i| evals[i].0 * coeffs[i])
-        .fold(G::Scalar::ZERO, |acc, item| acc + item);
-      let evals_combined_2 = (0..evals.len())
-        .map(|i| evals[i].1 * coeffs[i])
-        .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
+      let evals_combined_2 = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
 
       let evals = vec![evals_combined_0, e - evals_combined_0, evals_combined_2];
       let poly = UniPoly::from_evals(&evals);
@@ -387,9 +383,9 @@ impl<G: Group> CompressedUniPoly<G> {
     }
 
     let mut coeffs: Vec<G::Scalar> = Vec::new();
-    coeffs.extend(vec![&self.coeffs_except_linear_term[0]]);
-    coeffs.extend(vec![&linear_term]);
-    coeffs.extend(self.coeffs_except_linear_term[1..].to_vec());
+    coeffs.push(self.coeffs_except_linear_term[0]);
+    coeffs.push(linear_term);
+    coeffs.extend(&self.coeffs_except_linear_term[1..]);
     assert_eq!(self.coeffs_except_linear_term.len() + 1, coeffs.len());
     UniPoly { coeffs }
   }

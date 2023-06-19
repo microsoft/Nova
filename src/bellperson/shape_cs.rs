@@ -308,17 +308,36 @@ fn compute_path(ns: &[String], this: &str) -> String {
     "'/' is not allowed in names"
   );
 
-  let mut name = String::new();
-
-  let mut needs_separation = false;
-  for ns in ns.iter().chain(Some(this.to_string()).iter()) {
-    if needs_separation {
-      name += "/";
-    }
-
-    name += ns;
-    needs_separation = true;
+  let mut name = ns.join("/");
+  if !name.is_empty() {
+    name.push('/');
   }
 
+  name.push_str(this);
+
   name
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_compute_path() {
+    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
+    let this = "file";
+    assert_eq!(compute_path(&ns, this), "path/to/dir/file");
+
+    let ns = vec!["".to_string(), "".to_string(), "".to_string()];
+    let this = "file";
+    assert_eq!(compute_path(&ns, this), "///file");
+  }
+
+  #[test]
+  #[should_panic(expected = "'/' is not allowed in names")]
+  fn test_compute_path_invalid() {
+    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
+    let this = "fi/le";
+    compute_path(&ns, this);
+  }
 }

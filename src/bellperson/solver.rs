@@ -8,6 +8,7 @@ use bellperson::{
 };
 
 /// A `ConstraintSystem` which calculates witness values for a concrete instance of an R1CS circuit.
+#[derive(PartialEq)]
 pub struct SatisfyingAssignment<G: Group>
 where
   G::Scalar: PrimeField,
@@ -65,22 +66,6 @@ where
       .field("input_assignment", &self.input_assignment)
       .field("aux_assignment", &self.aux_assignment)
       .finish()
-  }
-}
-
-impl<G: Group> PartialEq for SatisfyingAssignment<G>
-where
-  G::Scalar: PrimeField,
-{
-  fn eq(&self, other: &SatisfyingAssignment<G>) -> bool {
-    self.a_aux_density == other.a_aux_density
-      && self.b_input_density == other.b_input_density
-      && self.b_aux_density == other.b_aux_density
-      && self.a == other.a
-      && self.b == other.b
-      && self.c == other.c
-      && self.input_assignment == other.input_assignment
-      && self.aux_assignment == other.aux_assignment
   }
 }
 

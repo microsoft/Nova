@@ -429,7 +429,7 @@ where
   pub fn scalar_mul<CS: ConstraintSystem<G::Base>>(
     &self,
     mut cs: CS,
-    scalar_bits: Vec<AllocatedBit>,
+    scalar_bits: &[AllocatedBit],
   ) -> Result<Self, SynthesisError> {
     let split_len = core::cmp::min(scalar_bits.len(), (G::Base::NUM_BITS - 2) as usize);
     let (incomplete_bits, complete_bits) = scalar_bits.split_at(split_len);
@@ -968,7 +968,7 @@ mod tests {
       .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), Some(bit)))
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
-    let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), bits).unwrap();
+    let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &bits).unwrap();
     inputize_allocted_point(&e, cs.namespace(|| "inputize e")).unwrap();
     (a, e, s)
   }

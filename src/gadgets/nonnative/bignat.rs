@@ -222,7 +222,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   /// The value is provided by an allocated number
   pub fn from_num<CS: ConstraintSystem<Scalar>>(
     mut cs: CS,
-    n: Num<Scalar>,
+    n: &Num<Scalar>,
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
