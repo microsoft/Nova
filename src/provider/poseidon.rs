@@ -65,7 +65,7 @@ where
       constants,
       num_absorbs,
       squeezed: false,
-      _p: PhantomData::default(),
+      _p: PhantomData,
     }
   }
 
