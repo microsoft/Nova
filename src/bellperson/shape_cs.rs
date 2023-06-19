@@ -308,17 +308,12 @@ fn compute_path(ns: &[String], this: &str) -> String {
     "'/' is not allowed in names"
   );
 
-  let mut name = String::new();
-
-  let mut needs_separation = false;
-  for ns in ns.iter().chain(Some(this.to_string()).iter()) {
-    if needs_separation {
-      name += "/";
-    }
-
-    name += ns;
-    needs_separation = true;
+  let mut name = ns.join("/");
+  if !name.is_empty() {
+    name.push('/');
   }
+
+  name.push_str(this);
 
   name
 }
