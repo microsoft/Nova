@@ -109,7 +109,7 @@ impl<G: Group> PolyEvalInstance<G> {
       .iter()
       .zip(powers_of_s.iter())
       .map(|(e, p)| *e * p)
-      .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      .sum();
     let c = c_vec
       .iter()
       .zip(powers_of_s.iter())
@@ -378,7 +378,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      .sum();
 
     let mut polys_left: Vec<MultilinearPolynomial<G::Scalar>> = w_vec_padded
       .iter()
@@ -420,7 +420,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      .sum();
 
     let eval_arg = EE::prove(
       ck,
@@ -573,7 +573,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_rho.iter())
       .map(|(u, p)| u.e * p)
-      .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      .sum();
 
     let num_rounds_z = u_vec_padded[0].x.len();
     let (claim_batch_final, r_z) =
@@ -593,7 +593,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
         .zip(self.evals_batch.iter())
         .zip(powers_of_rho.iter())
         .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
-        .fold(G::Scalar::ZERO, |acc, item| acc + item)
+        .sum()
     };
 
     if claim_batch_final != claim_batch_final_expected {
@@ -615,7 +615,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       .iter()
       .zip(powers_of_gamma.iter())
       .map(|(e, g_i)| *e * *g_i)
-      .fold(G::Scalar::ZERO, |acc, item| acc + item);
+      .sum();
 
     // verify
     EE::verify(
