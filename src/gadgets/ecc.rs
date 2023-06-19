@@ -1067,13 +1067,13 @@ mod tests {
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
     inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
-    let mut b = a.clone();
+    let mut b = &mut a.clone();
     b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
       Ok(G::Base::ZERO)
     })
     .unwrap();
-    inputize_allocted_point(&b, cs.namespace(|| "inputize b")).unwrap();
-    let e = a.add(cs.namespace(|| "add a to b"), &b).unwrap();
+    inputize_allocted_point(b, cs.namespace(|| "inputize b")).unwrap();
+    let e = a.add(cs.namespace(|| "add a to b"), b).unwrap();
     e
   }
 

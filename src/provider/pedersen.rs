@@ -69,7 +69,7 @@ impl<G: Group> Default for Commitment<G> {
 impl<G: Group> TranscriptReprTrait<G> for Commitment<G> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    let is_infinity_byte = if is_infinity { 0u8 } else { 1u8 };
+    let is_infinity_byte = (!is_infinity).into();
     [
       x.to_transcript_bytes(),
       y.to_transcript_bytes(),
