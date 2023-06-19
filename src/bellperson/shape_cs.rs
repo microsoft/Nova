@@ -322,3 +322,27 @@ fn compute_path(ns: &[String], this: &str) -> String {
 
   name
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_compute_path() {
+    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
+    let this = "file";
+    assert_eq!(compute_path(&ns, this), "path/to/dir/file");
+
+    let ns = vec!["".to_string(), "".to_string(), "".to_string()];
+    let this = "file";
+    assert_eq!(compute_path(&ns, this), "///file");
+  }
+
+  #[test]
+  #[should_panic(expected = "'/' is not allowed in names")]
+  fn test_compute_path_invalid() {
+    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
+    let this = "fi/le";
+    compute_path(&ns, this);
+  }
+}
