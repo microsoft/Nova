@@ -81,41 +81,35 @@ impl<G: Group> From<&Vec<(usize, usize, G::Scalar)>> for SparseMatrix<G> {
   }
 }
 
-pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
-  if a.len() != b.len() {
-    return Err(NovaError::InvalidIndex);
-  }
-
+pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
+  assert_eq!(a.len(), b.len(), "Vector addition with different lengths");
   let mut res = Vec::with_capacity(a.len());
   for i in 0..a.len() {
     res.push(a[i] + b[i]);
   }
 
-  Ok(res)
+  res
 }
 
-pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: &F) -> Result<Vec<F>, NovaError> {
+pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: &F) -> Vec<F> {
   let mut res = Vec::with_capacity(a.len());
   for i in 0..a.len() {
     res.push(a[i] * e);
   }
 
-  Ok(res)
+  res
 }
 
+// XXX: This could be implemented via Mul trait in the lib. We should consider as it will reduce imports.
 #[allow(dead_code)]
-pub fn matrix_vector_product<F: PrimeField>(
-  matrix: &Vec<Vec<F>>,
-  vector: &Vec<F>,
-) -> Result<Vec<F>, NovaError> {
-  if matrix.len() == 0 || matrix[0].len() == 0 {
-    return Err(NovaError::InvalidIndex);
-  }
-
-  if matrix[0].len() != vector.len() {
-    return Err(NovaError::InvalidIndex);
-  }
-
+pub fn matrix_vector_product<F: PrimeField>(matrix: &Vec<Vec<F>>, vector: &Vec<F>) -> Vec<F> {
+  assert_ne!(matrix.len(), 0, "empty-row matrix");
+  assert_ne!(matrix[0].len(), 0, "empty-col  matrix");
+  assert_eq!(
+    matrix[0].len(),
+    vector.len(),
+    "matrix rows != vector length"
+  );
   let mut res = Vec::with_capacity(matrix.len());
   for i in 0..matrix.len() {
     let mut sum = F::ZERO;
@@ -125,43 +119,36 @@ pub fn matrix_vector_product<F: PrimeField>(
     res.push(sum);
   }
 
-  Ok(res)
+  res
 }
 
 // Matrix vector product where matrix is sparse
 // First element is row index, second column, third value stored
+// XXX: This could be implemented via Mul trait in the lib. We should consider as it will reduce imports.
 pub fn matrix_vector_product_sparse<G: Group>(
   matrix: &SparseMatrix<G>,
   vector: &Vec<G::Scalar>,
-) -> Result<Vec<G::Scalar>, NovaError> {
-  if matrix.0.len() == 0 {
-    return Err(NovaError::InvalidIndex);
-  }
-
-  // Ensure we can perform the Matrix x Vec multiplication.
-  if matrix.n_rows() != vector.len() {
-    return Err(NovaError::InvalidIndex);
-  }
-
+) -> Vec<G::Scalar> {
+  assert_eq!(
+    matrix.n_rows(),
+    vector.len(),
+    "matrix rows != vector length"
+  );
   let mut res = vec![G::Scalar::ZERO; vector.len()];
   for &(row, col, value) in matrix.0.iter() {
     res[row] += value * vector[col];
   }
-
-  Ok(res)
+  res
 }
 
-pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Result<Vec<F>, NovaError> {
-  if a.len() != b.len() {
-    return Err(NovaError::InvalidIndex);
-  }
-
+pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
+  assert_eq!(a.len(), b.len(), "Haddamard needs same len vectors");
   let mut res = Vec::with_capacity(a.len());
   for i in 0..a.len() {
     res.push(a[i] * b[i]);
   }
 
-  Ok(res)
+  res
 }
 
 #[allow(dead_code)]
@@ -242,7 +229,7 @@ mod tests {
   fn test_vector_add() {
     let a = to_F_vec::<Fq>(vec![1, 2, 3]);
     let b = to_F_vec::<Fq>(vec![4, 5, 6]);
-    let res = vector_add(&a, &b).unwrap();
+    let res = vector_add(&a, &b);
     assert_eq!(res, to_F_vec::<Fq>(vec![5, 7, 9]));
   }
 
@@ -250,7 +237,7 @@ mod tests {
   fn test_vector_elem_product() {
     let a = to_F_vec::<Fq>(vec![1, 2, 3]);
     let e = Fq::from(2);
-    let res = vector_elem_product(&a, &e).unwrap();
+    let res = vector_elem_product(&a, &e);
     assert_eq!(res, to_F_vec::<Fq>(vec![2, 4, 6]));
   }
 
@@ -260,7 +247,7 @@ mod tests {
     let vector = vec![1, 2, 3];
     let A = to_F_matrix::<Fq>(matrix);
     let z = to_F_vec::<Fq>(vector);
-    let res = matrix_vector_product(&A, &z).unwrap();
+    let res = matrix_vector_product(&A, &z);
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }
@@ -269,7 +256,7 @@ mod tests {
   fn test_hadamard_product() {
     let a = to_F_vec::<Fq>(vec![1, 2, 3]);
     let b = to_F_vec::<Fq>(vec![4, 5, 6]);
-    let res = hadamard_product(&a, &b).unwrap();
+    let res = hadamard_product(&a, &b);
     assert_eq!(res, to_F_vec::<Fq>(vec![4, 10, 18]));
   }
 
@@ -286,7 +273,7 @@ mod tests {
     let vector = vec![1, 2, 3];
     let A = to_F_matrix_sparse::<Fq>(matrix);
     let z = to_F_vec::<Fq>(vector);
-    let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z).unwrap();
+    let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z);
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }
