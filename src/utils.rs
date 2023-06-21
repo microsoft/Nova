@@ -22,12 +22,50 @@ impl<G: Group> SparseMatrix<G> {
 
   // Find the maximum row index in the matrix
   pub fn n_rows(&self) -> usize {
-    self.0.iter().map(|r| r.0).max().unwrap() + 1
+    let max_row_idx = self
+      .0
+      .iter()
+      .copied()
+      .map(|r| r.0)
+      .fold(std::usize::MIN, |a, b| a.max(b));
+    max_row_idx + 1
   }
 
   // Find the maximum column index in the matrix
   pub fn n_cols(&self) -> usize {
-    self.0.iter().map(|r| r.1).max().unwrap() + 1
+    let max_col_idx = self
+      .0
+      .iter()
+      .copied()
+      .map(|r| r.1)
+      .fold(std::usize::MIN, |a, b| a.max(b));
+    max_col_idx + 1
+  }
+
+  pub(crate) fn is_valid(
+    &self,
+    num_cons: usize,
+    num_vars: usize,
+    num_io: usize,
+  ) -> Result<(), NovaError> {
+    let res = self
+      .0
+      .iter()
+      .copied()
+      .map(|(row, col, _val)| {
+        if row >= num_cons || col > num_io + num_vars {
+          Err(NovaError::InvalidIndex)
+        } else {
+          Ok(())
+        }
+      })
+      .collect::<Result<Vec<()>, NovaError>>();
+
+    if res.is_err() {
+      Err(NovaError::InvalidIndex)
+    } else {
+      Ok(())
+    }
   }
 }
 
@@ -100,13 +138,12 @@ pub fn matrix_vector_product_sparse<G: Group>(
     return Err(NovaError::InvalidIndex);
   }
 
-  // Find the maximum row index in the matrix
-  let max_row = matrix.0.iter().map(|r| r.0).max().unwrap() + 1;
-  if max_row > vector.len() {
+  // Ensure we can perform the Matrix x Vec multiplication.
+  if matrix.n_rows() != vector.len() {
     return Err(NovaError::InvalidIndex);
   }
 
-  let mut res = vec![G::Scalar::ZERO; max_row];
+  let mut res = vec![G::Scalar::ZERO; vector.len()];
   for &(row, col, value) in matrix.0.iter() {
     res[row] += value * vector[col];
   }
