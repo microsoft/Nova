@@ -69,6 +69,7 @@ impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
   }
 }
 
+#[cfg(test)]
 mod tests {
   use super::*;
   use pasta_curves::Fp;
