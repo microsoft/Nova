@@ -3,6 +3,7 @@ use crate::errors::NovaError;
 use crate::spartan::polynomial::MultilinearPolynomial;
 use crate::traits::Group;
 use ff::{Field, PrimeField};
+use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// A matrix structure represented on a sparse form.
@@ -66,6 +67,13 @@ impl<G: Group> SparseMatrix<G> {
     } else {
       Ok(())
     }
+  }
+
+  pub(crate) fn pad(&mut self, n: usize) {
+    let prev_n = self.n_cols();
+    self.0.par_iter_mut().for_each(|(_, c, _)| {
+      *c = if *c >= prev_n { *c + n - prev_n } else { *c };
+    });
   }
 }
 
