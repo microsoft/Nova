@@ -48,8 +48,6 @@ pub struct CCS<G: Group> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CCSShape<G: Group> {
-  pub(crate) num_cons: usize,
-
   pub(crate) M: Vec<SparseMatrix<G>>,
   // Num vars
   pub(crate) t: usize,
@@ -79,12 +77,10 @@ pub struct CCSWitness<G: Group> {
   w: Vec<G::Scalar>,
 }
 
-// XXX: Not sure this type is needed if we do have CCCSInstance and LCCCSInstance.
 /// A type that holds an CCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CCSInstance<G: Group> {
-  // XXX: Move commitment out of CCSInstance for more clean conceptual separation?
   // (Pedersen) Commitment to a witness
   pub(crate) comm_w: Commitment<G>,
 
@@ -141,19 +137,16 @@ pub struct LCCCSWitness<G: Group> {
 impl<G: Group> CCS<G> {
   // TODO: Update commitment_key variables here? This is currently based on R1CS with M length
   /// Samples public parameters for the specified number of constraints and variables in an CCS
-  pub fn commitment_key(S: &CCSShape<G>) -> CommitmentKey<G> {
-    let num_cons = S.num_cons;
-    let num_vars = S.t;
-    let total_nz = S.M.iter().fold(0, |acc, m| acc + m.0.len());
+  pub fn commitment_key(shape: &CCSShape<G>) -> CommitmentKey<G> {
+    let total_nz = shape.M.iter().fold(0, |acc, m| acc + m.0.len());
 
-    G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz))
+    G::CE::setup(b"ck", max(max(shape.m, shape.t), total_nz))
   }
 }
 
 impl<G: Group> CCSShape<G> {
   /// Create an object of type `CCSShape` from the explicitly specified CCS matrices
   pub fn new(
-    num_cons: usize,
     M: &[SparseMatrix<G>],
     t: usize,
     l: usize,
@@ -161,19 +154,7 @@ impl<G: Group> CCSShape<G> {
     d: usize,
     S: Vec<Vec<usize>>,
     c: Vec<G::Scalar>,
-  ) -> Result<CCSShape<G>, NovaError> {
-    // Check matrix validity
-
-    // Check that the row and column indexes are within the range of the number of constraints and variables
-    M.iter()
-      .map(|m| m.is_valid(num_cons, t, l))
-      .collect::<Result<Vec<()>, NovaError>>()?;
-
-    // We require the number of public inputs/outputs to be even
-    if l % 2 != 0 {
-      return Err(NovaError::OddInputLength);
-    }
-
+  ) -> CCSShape<G> {
     // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
     let m = M
       .iter()
@@ -182,11 +163,20 @@ impl<G: Group> CCSShape<G> {
       .iter()
       .fold(usize::MIN, |acc, matrix| max(acc, matrix.n_cols()));
 
+    // Check that the row and column indexes are within the range of the number of constraints and variables
+    assert!(M
+      .iter()
+      .map(|matrix| matrix.is_valid(m, t, l))
+      .collect::<Result<Vec<()>, NovaError>>()
+      .is_ok());
+
+    // We require the number of public inputs/outputs to be even
+    assert_ne!(l % 2, 0, " number of public i/o has to be even");
+
     let s = m.log_2() as usize;
     let s_prime = n.log_2() as usize;
 
-    Ok(CCSShape {
-      num_cons,
+    CCSShape {
       M: M.to_vec(),
       t,
       l,
@@ -198,7 +188,7 @@ impl<G: Group> CCSShape<G> {
       n,
       s,
       s_prime,
-    })
+    }
   }
 
   // NOTE: Not using previous used multiply_vec (r1cs.rs), see utils.rs
@@ -282,7 +272,6 @@ impl<G: Group> CCSShape<G> {
     let s_prime = n.log_2() as usize;
 
     Self {
-      num_cons: r1cs.num_cons,
       M: vec![r1cs.A.into(), r1cs.B.into(), r1cs.C.into()],
       t: T,
       l,
@@ -515,22 +504,19 @@ pub mod test {
           (i1, W, X)
         };
 
-        let W = {
-          let res = CCSWitness::new(&S, &vars);
-          assert!(res.is_ok());
-          res.unwrap()
-        };
+        let ccs_w = CCSWitness::new(&S, vars);
+
         let U = {
-          let comm_W = W.commit(ck);
-          let res = CCSInstance::new(&S, &comm_W, &X);
+          let comm_W = ccs_w.commit(ck);
+          let res = CCSInstance::new(&S, &comm_W, X);
           assert!(res.is_ok());
           res.unwrap()
         };
 
         // check that generated instance is satisfiable
-        assert!(S.is_sat(ck, &U, &W).is_ok());
+        assert!(S.is_sat(ck, &U, &ccs_w).is_ok());
 
-        (O, U, W)
+        (O, U, ccs_w)
       };
   }
 }
