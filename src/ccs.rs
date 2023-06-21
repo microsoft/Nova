@@ -267,9 +267,7 @@ impl<G: Group> CCSShape<G> {
     const S1: [usize; 2] = [0, 1];
     const S2: [usize; 1] = [2];
 
-    let C0 = G::Scalar::ONE;
-    let C1 = -G::Scalar::ONE;
-
+    let l = r1cs.num_io;
     // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
     // TODO: Consider using SparseMatrix type in R1CSShape too
     // XXX: This can probably be made a lot better
@@ -285,70 +283,35 @@ impl<G: Group> CCSShape<G> {
 
     Self {
       num_cons: r1cs.num_cons,
-      num_vars: r1cs.num_vars,
-      num_io: r1cs.num_io,
       M: vec![r1cs.A.into(), r1cs.B.into(), r1cs.C.into()],
       t: T,
+      l,
       q: Q,
       d: D,
       S: vec![S1.to_vec(), S2.to_vec()],
-      c: vec![C0, C1],
-      m: m,
-      n: n,
-      s: s,
-      s_prime: s_prime,
+      c: vec![G::Scalar::ONE, -G::Scalar::ONE],
+      m,
+      n,
+      s,
+      s_prime,
     }
   }
 
   /// Pads the R1CSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {
-    // XXX: Is this definitely always the same as m number of rows?
-    // equalize the number of variables and constraints
-    let m = max(self.num_vars, self.num_cons).next_power_of_two();
-
-    // check if the provided R1CSShape is already as required
-    if self.num_vars == m && self.num_cons == m {
-      return;
-    }
+    let (padded_m, padded_n) = (self.m.next_power_of_two(), self.n.next_power_of_two());
 
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
-    if self.num_vars == m {
-      *self = CCSShape {
-        num_cons: m,
-        num_vars: m,
-        num_io: self.num_io,
-        M: self.M.clone(),
-        t: self.t,
-        q: self.q,
-        d: self.d,
-        S: self.S.clone(),
-        c: self.c.clone(),
-        m: self.m,
-        n: self.n,
-        s: self.s,
-        s_prime: self.s_prime,
-      };
+    if self.n != padded_n {
+      // Apply pad for each matrix in M
+      self.M.iter_mut().for_each(|m| m.pad(padded_n));
+      self.n = padded_n;
     }
 
-    // otherwise, we need to pad the number of variables and renumber variable accesses
-    let num_vars_padded = m;
-    let apply_pad = |M: &mut SparseMatrix<G>| {
-      M.0.par_iter_mut().for_each(|(_, c, _)| {
-        *c = if *c >= self.num_vars {
-          *c + num_vars_padded - self.num_vars
-        } else {
-          *c
-        };
-      });
-    };
-
-    // Apply pad for each matrix in M
-    let mut M_padded = self.M.clone();
-    M_padded.iter_mut().for_each(|m| apply_pad(m));
-
-    // TODO: Sanity check if CCS padding is correct here
+    // We always update `m` even if it is the same (no need for `if`s).
+    self.m = padded_m;
   }
 }
 
