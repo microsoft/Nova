@@ -342,17 +342,6 @@ impl<G: Group> CCSInstance<G> {
   }
 }
 
-impl<G: Group> CCSShape<G> {
-  pub fn multiply_matrices(&self, z: &Vec<G::Scalar>) -> Result<Vec<Vec<G::Scalar>>, NovaError> {
-    let mut Mz: Vec<Vec<G::Scalar>> = Vec::new();
-    for matrix in &self.M {
-      let product = matrix_vector_product_sparse(matrix, z)?;
-      Mz.push(product);
-    }
-    Ok(Mz)
-  }
-}
-
 impl<G: Group> CCCSShape<G> {
   // TODO: Sanity check this
   pub fn compute_sum_Mz(
