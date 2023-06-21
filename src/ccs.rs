@@ -76,7 +76,7 @@ pub struct CCSShape<G: Group> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CCSWitness<G: Group> {
   // Vector W in F^{n - l - 1}
-  W: Vec<G::Scalar>,
+  w: Vec<G::Scalar>,
 }
 
 // XXX: Not sure this type is needed if we do have CCCSInstance and LCCCSInstance.
@@ -89,7 +89,7 @@ pub struct CCSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
 
   // Public input x in F^l
-  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) x: Vec<G::Scalar>,
 }
 
 /// A type that holds the shape of a Committed CCS (CCCS) instance
@@ -110,7 +110,7 @@ pub struct CCCSInstance<G: Group> {
   pub(crate) C: Commitment<G>,
 
   // $x in F^l$
-  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) x: Vec<G::Scalar>,
 }
 
 // NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
@@ -126,7 +126,7 @@ pub struct CCCSWitness<G: Group> {
 #[serde(bound = "")]
 pub struct LCCCSInstance<G: Group> {
   pub(crate) C: Commitment<G>,
-  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) x: Vec<G::Scalar>,
   pub(crate) u: G::Scalar,
   pub(crate) v: Vec<G::Scalar>,
 }
@@ -213,15 +213,8 @@ impl<G: Group> CCSShape<G> {
     U: &CCSInstance<G>,
     W: &CCSWitness<G>,
   ) -> Result<(), NovaError> {
-    assert_eq!(W.W.len(), self.num_vars);
-    assert_eq!(U.X.len(), self.num_io);
-
-    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
-    // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
-    let m = self
-      .M
-      .iter()
-      .fold(0, |acc, matrix| max(acc, matrix.n_rows()));
+    assert_eq!(W.w.len(), self.t);
+    assert_eq!(U.x.len(), self.l);
 
     // Sage code to check CCS relation:
     //
@@ -236,28 +229,30 @@ impl<G: Group> CCSShape<G> {
     // print("\nCCS relation check (∑ cᵢ ⋅ ◯ Mⱼ z == 0):", r == [0]*m)
     //
     // verify if ∑ cᵢ ⋅ ◯ Mⱼ z == 0
-    let res_eq: bool = {
-      let mut r = vec![G::Scalar::ZERO; m];
-      let z = concat(vec![W.W.clone(), vec![G::Scalar::ONE], U.X.clone()]);
 
-      for i in 0..self.q {
-        let mut hadamard_output = vec![G::Scalar::ONE; m];
-        for j in &self.S[i] {
-          let mvp = matrix_vector_product_sparse(&self.M[*j], &z)?;
-          hadamard_output = hadamard_product(&hadamard_output, &mvp)?;
-        }
+    let z = concat(vec![vec![G::Scalar::ONE], U.x.clone(), W.w.clone()]);
 
-        let vep = vector_elem_product(&hadamard_output, &self.c[i])?;
+    let r = (0..self.q)
+      .into_iter()
+      .fold(vec![G::Scalar::ZERO; self.m], |r, idx| {
+        let hadamard_output = self.S[idx]
+          .iter()
+          .fold(vec![G::Scalar::ZERO; self.m], |acc, j| {
+            let mvp = matrix_vector_product_sparse(&self.M[*j], &z);
+            hadamard_product(&acc, &mvp)
+          });
 
-        r = vector_add(&r, &vep)?;
-      }
-      r == vec![G::Scalar::ZERO; m]
-    };
+        // Multiply by the coefficient of this step
+        let c_M_j_z: Vec<<G as Group>::Scalar> =
+          vector_elem_product(&hadamard_output, &self.c[idx]);
+
+        vector_add(&r, &c_M_j_z)
+      });
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == CE::<G>::commit(ck, &W.W);
+    let res_comm: bool = U.comm_W == CE::<G>::commit(ck, &W.w);
 
-    if res_eq && res_comm {
+    if r == vec![G::Scalar::ZERO; self.m] && res_comm {
       Ok(())
     } else {
       Err(NovaError::UnSat)
