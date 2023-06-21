@@ -49,11 +49,12 @@ pub struct CCS<G: Group> {
 #[serde(bound = "")]
 pub struct CCSShape<G: Group> {
   pub(crate) num_cons: usize,
-  pub(crate) num_vars: usize,
-  pub(crate) num_io: usize,
 
   pub(crate) M: Vec<SparseMatrix<G>>,
+  // Num vars
   pub(crate) t: usize,
+  // Number of public witness
+  pub(crate) l: usize,
   pub(crate) q: usize,
   pub(crate) d: usize,
   pub(crate) S: Vec<Vec<usize>>,
@@ -61,10 +62,10 @@ pub struct CCSShape<G: Group> {
   // Was: usize
   pub(crate) c: Vec<G::Scalar>,
 
-  // m is the number of columns in M_i
-  pub(crate) m: usize,
-  // n is the number of rows in M_i
+  // n is the number of columns in M_i
   pub(crate) n: usize,
+  // m is the number of rows in M_i
+  pub(crate) m: usize,
   // s = log m
   pub(crate) s: usize,
   // s_prime = log n
@@ -78,7 +79,7 @@ pub struct CCSWitness<G: Group> {
   W: Vec<G::Scalar>,
 }
 
-// TODO: Make sure this is in the right form for committed CCS using MLE, possibly a separate type
+// XXX: Not sure this type is needed if we do have CCCSInstance and LCCCSInstance.
 /// A type that holds an CCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -96,20 +97,11 @@ pub struct CCSInstance<G: Group> {
 #[serde(bound = "")]
 pub struct CCCSShape<G: Group> {
   // Sequence of sparse MLE polynomials in s+s' variables M_MLE1, ..., M_MLEt
-  // TODO This should be MLE, but possible we don't have to keep in struct?
-  // Exists in paper but not multifolding-poc
-  pub(crate) M_MLE: Vec<SparseMatrix<G>>,
+  pub(crate) M_MLE: Vec<MultilinearPolynomial<G::Scalar>>,
 
-  // XXX Embed CCS directly here or do a flat structure?
   pub(crate) ccs: CCSShape<G>,
-  // q multisets S (same as CCS)
-  // q constants c (same as CCS)
 }
 
-/// CCCS Instance is (C, x)
-/// CCCS Witness is w _mle
-
-// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a CCCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -121,6 +113,7 @@ pub struct CCCSInstance<G: Group> {
   pub(crate) X: Vec<G::Scalar>,
 }
 
+// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a witness for a given CCCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CCCSWitness<G: Group> {
@@ -128,7 +121,6 @@ pub struct CCCSWitness<G: Group> {
   pub(crate) w_mle: Vec<G::Scalar>,
 }
 
-// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a LCCCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -139,6 +131,7 @@ pub struct LCCCSInstance<G: Group> {
   pub(crate) v: Vec<G::Scalar>,
 }
 
+// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
 /// A type that holds a witness for a given LCCCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LCCCSWitness<G: Group> {
@@ -150,7 +143,7 @@ impl<G: Group> CCS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an CCS
   pub fn commitment_key(S: &CCSShape<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
-    let num_vars = S.num_vars;
+    let num_vars = S.t;
     let total_nz = S.M.iter().fold(0, |acc, m| acc + m.0.len());
 
     G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz))
@@ -158,74 +151,45 @@ impl<G: Group> CCS<G> {
 }
 
 impl<G: Group> CCSShape<G> {
-  /// Create an object of type `CCSSShape` from the explicitly specified CCS matrices
+  /// Create an object of type `CCSShape` from the explicitly specified CCS matrices
   pub fn new(
     num_cons: usize,
-    num_vars: usize,
-    num_io: usize,
-    M: &[Vec<(usize, usize, G::Scalar)>],
+    M: &[SparseMatrix<G>],
     t: usize,
+    l: usize,
     q: usize,
     d: usize,
     S: Vec<Vec<usize>>,
     c: Vec<G::Scalar>,
   ) -> Result<CCSShape<G>, NovaError> {
-    let is_valid = |num_cons: usize,
-                    num_vars: usize,
-                    num_io: usize,
-                    matrix: &[(usize, usize, G::Scalar)]|
-     -> Result<(), NovaError> {
-      let res = (0..matrix.len())
-        .map(|i| {
-          let (row, col, _val) = matrix[i];
-          if row >= num_cons || col > num_io + num_vars {
-            Err(NovaError::InvalidIndex)
-          } else {
-            Ok(())
-          }
-        })
-        .collect::<Result<Vec<()>, NovaError>>();
-
-      if res.is_err() {
-        Err(NovaError::InvalidIndex)
-      } else {
-        Ok(())
-      }
-    };
+    // Check matrix validity
 
     // Check that the row and column indexes are within the range of the number of constraints and variables
-    let res_M = M
-      .iter()
-      .map(|m| is_valid(num_cons, num_vars, num_io, m))
-      .collect::<Result<Vec<()>, NovaError>>();
-
-    // If any of the matricies are invalid, return an error
-    if res_M.is_err() {
-      return Err(NovaError::InvalidIndex);
-    }
+    M.iter()
+      .map(|m| m.is_valid(num_cons, t, l))
+      .collect::<Result<Vec<()>, NovaError>>()?;
 
     // We require the number of public inputs/outputs to be even
-    if num_io % 2 != 0 {
+    if l % 2 != 0 {
       return Err(NovaError::OddInputLength);
     }
 
-    // We collect the matrixes.
-    let M: Vec<SparseMatrix<G>> = M.iter().map(|m| SparseMatrix::from(m)).collect();
-
-    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
     // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
-    let m = M.iter().fold(0, |acc, matrix| max(acc, matrix.n_rows()));
-    let n = M.iter().fold(0, |acc, matrix| max(acc, matrix.n_cols()));
+    let m = M
+      .iter()
+      .fold(usize::MIN, |acc, matrix| max(acc, matrix.n_rows()));
+    let n = M
+      .iter()
+      .fold(usize::MIN, |acc, matrix| max(acc, matrix.n_cols()));
 
     let s = m.log_2() as usize;
     let s_prime = n.log_2() as usize;
 
-    let shape = CCSShape {
+    Ok(CCSShape {
       num_cons,
-      num_vars,
-      num_io,
-      M,
+      M: M.to_vec(),
       t,
+      l,
       q,
       d,
       S,
@@ -234,9 +198,7 @@ impl<G: Group> CCSShape<G> {
       n,
       s,
       s_prime,
-    };
-
-    Ok(shape)
+    })
   }
 
   // NOTE: Not using previous used multiply_vec (r1cs.rs), see utils.rs
