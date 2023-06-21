@@ -86,7 +86,7 @@ pub struct CCSWitness<G: Group> {
 pub struct CCSInstance<G: Group> {
   // XXX: Move commitment out of CCSInstance for more clean conceptual separation?
   // (Pedersen) Commitment to a witness
-  pub(crate) comm_W: Commitment<G>,
+  pub(crate) comm_w: Commitment<G>,
 
   // Public input x in F^l
   pub(crate) x: Vec<G::Scalar>,
@@ -250,7 +250,7 @@ impl<G: Group> CCSShape<G> {
       });
 
     // verify if comm_W is a commitment to W
-    let res_comm: bool = U.comm_W == CE::<G>::commit(ck, &W.w);
+    let res_comm: bool = U.comm_w == CE::<G>::commit(ck, &W.w);
 
     if r == vec![G::Scalar::ZERO; self.m] && res_comm {
       Ok(())
@@ -317,39 +317,30 @@ impl<G: Group> CCSShape<G> {
 
 impl<G: Group> CCSWitness<G> {
   /// A method to create a witness object using a vector of scalars
-  pub fn new(S: &CCSShape<G>, W: &[G::Scalar]) -> Result<CCSWitness<G>, NovaError> {
-    if S.num_vars != W.len() {
-      Err(NovaError::InvalidWitnessLength)
-    } else {
-      Ok(CCSWitness { W: W.to_owned() })
-    }
+  pub fn new(S: &CCSShape<G>, witness: Vec<G::Scalar>) -> CCSWitness<G> {
+    assert_eq!(S.t, witness.len());
+
+    Self { w: witness }
   }
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<G>) -> Commitment<G> {
-    CE::<G>::commit(ck, &self.W)
+    CE::<G>::commit(ck, &self.w)
   }
 }
 
 impl<G: Group> CCSInstance<G> {
   /// A method to create an instance object using consitituent elements
   pub fn new(
-    S: &CCSShape<G>,
-    comm_W: &Commitment<G>,
-    X: &[G::Scalar],
+    s: &CCSShape<G>,
+    w_comm: &Commitment<G>,
+    x: Vec<G::Scalar>,
   ) -> Result<CCSInstance<G>, NovaError> {
-    if S.num_io != X.len() {
-      Err(NovaError::InvalidInputLength)
-    } else {
-      Ok(CCSInstance {
-        comm_W: *comm_W,
-        X: X.to_owned(),
-      })
-    }
+    assert_eq!(s.l, x.len());
+
+    Ok(CCSInstance { comm_w: *w_comm, x })
   }
 }
-
-use std::fmt::Debug;
 
 impl<G: Group> CCSShape<G> {
   pub fn multiply_matrices(&self, z: &Vec<G::Scalar>) -> Result<Vec<Vec<G::Scalar>>, NovaError> {
