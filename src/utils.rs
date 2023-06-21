@@ -28,7 +28,7 @@ impl<G: Group> SparseMatrix<G> {
       .iter()
       .copied()
       .map(|r| r.0)
-      .fold(std::usize::MIN, |a, b| a.max(b));
+      .fold(usize::MIN, |a, b| a.max(b));
     max_row_idx + 1
   }
 
@@ -138,9 +138,9 @@ pub fn matrix_vector_product_sparse<G: Group>(
   vector: &Vec<G::Scalar>,
 ) -> Vec<G::Scalar> {
   assert_eq!(
-    matrix.n_rows(),
+    matrix.n_cols(),
     vector.len(),
-    "matrix rows != vector length"
+    "matrix cols != vector length"
   );
   let mut res = vec![G::Scalar::ZERO; vector.len()];
   for &(row, col, value) in matrix.0.iter() {
@@ -157,21 +157,6 @@ pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
   }
 
   res
-}
-
-#[allow(dead_code)]
-pub fn to_F_vec<F: PrimeField>(v: Vec<u64>) -> Vec<F> {
-  v.iter().map(|x| F::from(*x)).collect()
-}
-
-#[allow(dead_code)]
-pub fn to_F_matrix<F: PrimeField>(m: Vec<Vec<u64>>) -> Vec<Vec<F>> {
-  m.iter().map(|x| to_F_vec(x.clone())).collect()
-}
-
-#[allow(dead_code)]
-pub fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(usize, usize, F)> {
-  m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
 }
 
 pub fn sparse_matrix_to_mlp<G: Group>(
@@ -207,16 +192,6 @@ pub fn sparse_matrix_to_mlp<G: Group>(
   MultilinearPolynomial::new(vec_padded)
 }
 
-pub fn bit_to_index(bits: &[bool]) -> usize {
-  let mut index = 0;
-  for (i, &bit) in bits.iter().enumerate() {
-    if bit {
-      index += 1 << i;
-    }
-  }
-  index
-}
-
 /// Decompose an integer into a binary vector in little endian.
 pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
   let mut res = Vec::with_capacity(num_var);
@@ -232,6 +207,18 @@ pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
 mod tests {
   use super::*;
   use pasta_curves::{Ep, Fq};
+
+  fn to_F_vec<F: PrimeField>(v: Vec<u64>) -> Vec<F> {
+    v.iter().map(|x| F::from(*x)).collect()
+  }
+
+  fn to_F_matrix<F: PrimeField>(m: Vec<Vec<u64>>) -> Vec<Vec<F>> {
+    m.iter().map(|x| to_F_vec(x.clone())).collect()
+  }
+
+  fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(usize, usize, F)> {
+    m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
+  }
 
   #[test]
   fn test_vector_add() {
@@ -283,7 +270,7 @@ mod tests {
     let z = to_F_vec::<Fq>(vector);
     let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z);
 
-    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32, 0]));
   }
 
   #[test]
