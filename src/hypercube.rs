@@ -4,18 +4,18 @@ use crate::utils::*;
 use ff::PrimeField;
 
 #[derive(Debug)]
-pub struct BooleanHypercube<Scalar: PrimeField> {
+pub struct BooleanHypercube<F: PrimeField> {
   dimensions: usize,
   current: u64,
   max: u64,
-  coefficients: Vec<Scalar>,
+  coefficients: Vec<F>,
 }
 
-impl<Scalar: PrimeField> BooleanHypercube<Scalar> {
-  pub fn new(dimensions: usize, coefficients: Vec<Scalar>) -> Self {
+impl<F: PrimeField> BooleanHypercube<F> {
+  pub fn new(dimensions: usize, coefficients: Vec<F>) -> Self {
     assert!(coefficients.len() == 2_usize.pow(dimensions as u32));
 
-    BooleanHypercube {
+    Self {
       dimensions,
       current: 0,
       max: 2_u32.pow(dimensions as u32) as u64,
@@ -24,10 +24,10 @@ impl<Scalar: PrimeField> BooleanHypercube<Scalar> {
   }
 
   // Evaluate the multilinear polynomial at the given point
-  pub fn evaluate(&self, point: &[Scalar]) -> Scalar {
+  pub fn evaluate_at(&self, point: &[F]) -> F {
     assert!(point.len() == self.dimensions);
 
-    let mut result = Scalar::ZERO;
+    let mut result = F::ZERO;
 
     for i in 0..self.max as usize {
       let monomial = self.monomial(i, point);
@@ -38,9 +38,9 @@ impl<Scalar: PrimeField> BooleanHypercube<Scalar> {
   }
 
   // This calculates a single monomial of the multilinear polynomial
-  fn monomial(&self, i: usize, point: &[Scalar]) -> Scalar {
+  fn monomial(&self, i: usize, point: &[F]) -> F {
     assert!(i < self.max as usize);
-    let mut result = Scalar::ONE;
+    let mut result = F::ONE;
 
     let bits = bit_decompose(i as u64, self.dimensions);
 
@@ -95,6 +95,6 @@ mod tests {
 
     // The polynomial would be f(x, y, z) = 4x + 2y + z.
     // So, f(1, 1, 1) = 4*1 + 2*1 + 1 = 7.
-    assert_eq!(poly.evaluate(&point), Fp::from(7u64));
+    assert_eq!(poly.evaluate_at(&point), Fp::from(7u64));
   }
 }
