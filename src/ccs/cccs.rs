@@ -89,43 +89,43 @@ impl<G: Group> CCCSShape<G> {
 
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   // polynomial over x
-  pub fn compute_q(
-    &self,
-    z: &Vec<G::Scalar>,
-  ) -> Result<MultilinearPolynomial<G::Scalar>, &'static str> {
-    // XXX: Do we need to instrument this to use s_prime as n_vars somehow?
+  pub fn compute_q(&self, z: &Vec<G::Scalar>) -> Result<VirtualPolynomial<G::Scalar>, NovaError> {
     let z_mle = MultilinearPolynomial::new(z.clone());
     if z_mle.get_num_vars() != self.ccs.s_prime {
-      return Err("z_mle number of variables does not match ccs.s_prime");
-    }
-    let mut q = MultilinearPolynomial::new(vec![G::Scalar::ZERO; self.ccs.s]);
-
-    for i in 0..self.ccs.q {
-      let mut prod = MultilinearPolynomial::new(vec![G::Scalar::ONE; self.ccs.s]);
-
-      for j in &self.ccs.S[i] {
-        let M_j = sparse_matrix_to_mlp(&self.ccs.M[*j]);
-
-        let sum_Mz = self.compute_sum_Mz(&M_j, &z_mle, self.ccs.s_prime);
-
-        // Fold this sum into the running product
-        prod = prod.mul(sum_Mz)?;
-      }
-
-      // Multiply the product by the coefficient c_i
-      prod = prod.scalar_mul(&self.ccs.c[i]);
-
-      // Add it to the running sum
-      q = q.add(prod)?;
+      return Err(NovaError::VpArith);
     }
 
-    Ok(q)
+    // Using `fold` requires to not have results inside. So we unwrap for now but
+    // a better approach is needed (we ca just keep the for loop otherwise.)
+    Ok((0..self.ccs.q).into_iter().fold(
+      VirtualPolynomial::<G::Scalar>::new(self.ccs.s),
+      |q, idx| {
+        let mut prod = VirtualPolynomial::<G::Scalar>::new(self.ccs.s);
 
-    // Similar logic in Spartan
-    //     let (mut Az, mut Bz, mut Cz) = pk.S.multiply_vec(&z)?;
-    //poly_Az: MultilinearPolynomial::new(Az.clone()),
+        for j in &self.ccs.S[idx] {
+          let M_j = sparse_matrix_to_mlp(&self.ccs.M[*j]);
+
+          let sum_Mz = self.compute_sum_Mz(&M_j, &z_mle, self.ccs.s_prime);
+
+          // Fold this sum into the running product
+          if prod.products.is_empty() {
+            // If this is the first time we are adding something to this virtual polynomial, we need to
+            // explicitly add the products using add_mle_list()
+            // XXX is this true? improve API
+            prod
+              .add_mle_list([Arc::new(sum_Mz)], G::Scalar::ONE)
+              .unwrap();
+          } else {
+            prod.mul_by_mle(Arc::new(sum_Mz), G::Scalar::ONE).unwrap();
+          }
+        }
+        // Multiply by the product by the coefficient c_i
+        prod.scalar_mul(&self.ccs.c[idx]);
+        // Add it to the running sum
+        q.add(&prod)
+      },
+    ))
   }
-}
 
   /// Computes Q(x) = eq(beta, x) * q(x)
   ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
