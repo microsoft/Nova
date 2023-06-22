@@ -269,7 +269,7 @@ mod tests {
     let one = <G::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
-      let num_vars = 4;
+      let num_vars = 3;
       let num_io = 2;
 
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
@@ -340,7 +340,7 @@ mod tests {
           let i1 = z2 + one + one + one + one + one; // constraint 3
 
           // store the witness and IO for the instance
-          let W = vec![z0, z1, z2, <G::Scalar as Field>::ZERO];
+          let W = vec![z0, z1, z2];
           let X = vec![i0, i1];
           (i1, W, X)
         };
