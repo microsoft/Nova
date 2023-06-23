@@ -83,6 +83,17 @@ pub struct CCSWitness<G: Group> {
   w: Vec<G::Scalar>,
 }
 
+impl<G: Group> CCSWitness<G> {
+  /// Create a CCSWitness instance from the witness vector.
+  pub fn new(witness: Vec<G::Scalar>) -> Self {
+    Self { w: witness }
+  }
+
+  /// Commits to the witness using the supplied generators
+  pub fn commit(&self, ck: &CommitmentKey<G>) -> Commitment<G> {
+    CE::<G>::commit(ck, &self.w)
+  }
+}
 /// A type that holds an CCS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -146,10 +157,10 @@ impl<G: Group> CCSShape<G> {
       self.to_cccs_shape(),
     )
   }
-  // TODO: Update commitment_key variables here? This is currently based on R1CS with M length
+  // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
   /// Samples public parameters for the specified number of constraints and variables in an CCS
   pub fn commitment_key(&self) -> CommitmentKey<G> {
-    let total_nz = self.M.iter().fold(0, |acc, m| acc + m.0.len());
+    let total_nz = self.M.iter().fold(0, |acc, m| acc + m.coeffs().len());
 
     G::CE::setup(b"ck", max(max(self.m, self.t), total_nz))
   }
@@ -214,7 +225,7 @@ impl<G: Group> CCSShape<G> {
     U: &CCSInstance<G>,
     W: &CCSWitness<G>,
   ) -> Result<(), NovaError> {
-    assert_eq!(W.w.len(), self.t);
+    assert_eq!(W.w.len(), self.n - self.l - 1);
     assert_eq!(U.x.len(), self.l);
 
     // Sage code to check CCS relation:
@@ -268,64 +279,47 @@ impl<G: Group> CCSShape<G> {
     const S1: [usize; 2] = [0, 1];
     const S2: [usize; 1] = [2];
 
-    let l = r1cs.num_io;
-    // NOTE: All matricies have the same number of rows, but in a SparseMatrix we need to check all of them
-    // TODO: Consider using SparseMatrix type in R1CSShape too
-    // XXX: This can probably be made a lot better
-    let A: SparseMatrix<G> = r1cs.A.clone().into();
-    let B: SparseMatrix<G> = r1cs.B.clone().into();
-    let C: SparseMatrix<G> = r1cs.C.clone().into();
+    // Generate the SparseMatrix vec
+    let A = SparseMatrix::with_coeffs(r1cs.num_cons, r1cs.num_vars, r1cs.A);
+    let B = SparseMatrix::with_coeffs(r1cs.num_cons, r1cs.num_vars, r1cs.B);
+    let C = SparseMatrix::with_coeffs(r1cs.num_cons, r1cs.num_vars, r1cs.C);
 
-    let m = max(A.n_rows(), max(B.n_rows(), C.n_rows()));
-    let n = max(A.n_cols(), max(B.n_cols(), C.n_cols()));
-
-    let s = m.log_2() as usize;
-    let s_prime = n.log_2() as usize;
+    // Assert all matrixes have the same row/column length.
+    assert_eq!(A.n_cols(), B.n_cols());
+    assert_eq!(B.n_cols(), C.n_cols());
+    assert_eq!(A.n_rows(), B.n_rows());
+    assert_eq!(B.n_rows(), C.n_rows());
 
     Self {
-      M: vec![r1cs.A.into(), r1cs.B.into(), r1cs.C.into()],
+      M: vec![A, B, C],
       t: T,
-      l,
+      l: r1cs.num_io,
       q: Q,
       d: D,
       S: vec![S1.to_vec(), S2.to_vec()],
       c: vec![G::Scalar::ONE, -G::Scalar::ONE],
-      m,
-      n,
-      s,
-      s_prime,
+      m: r1cs.num_cons,
+      n: r1cs.num_vars,
+      s: r1cs.num_cons.log_2() as usize,
+      s_prime: r1cs.num_vars.log_2() as usize,
     }
   }
 
-  /// Pads the R1CSShape so that the number of variables is a power of two
+  /// Pads the CCSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {
-    let (padded_m, padded_n) = (self.m.next_power_of_two(), self.n.next_power_of_two());
+    let padded_n = self.n.next_power_of_two();
 
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.n != padded_n {
       // Apply pad for each matrix in M
-      self.M.iter_mut().for_each(|m| m.pad(padded_n));
+      self.M.iter_mut().for_each(|m| {
+        m.pad(padded_n);
+        *m.n_rows_mut() = padded_n
+      });
       self.n = padded_n;
     }
-
-    // We always update `m` even if it is the same (no need for `if`s).
-    self.m = padded_m;
-  }
-}
-
-impl<G: Group> CCSWitness<G> {
-  /// A method to create a witness object using a vector of scalars
-  pub fn new(S: &CCSShape<G>, witness: Vec<G::Scalar>) -> CCSWitness<G> {
-    assert_eq!(S.t, witness.len());
-
-    Self { w: witness }
-  }
-
-  /// Commits to the witness using the supplied generators
-  pub fn commit(&self, ck: &CommitmentKey<G>) -> Commitment<G> {
-    CE::<G>::commit(ck, &self.w)
   }
 }
 
@@ -445,7 +439,7 @@ pub mod test {
           (i1, W, X)
         };
 
-        let ccs_w = CCSWitness::new(&S, vars);
+        let ccs_w = CCSWitness::new(vars);
 
         let U = {
           let comm_W = ccs_w.commit(ck);
