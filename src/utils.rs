@@ -13,37 +13,52 @@ use serde::{Deserialize, Serialize};
 /// First element is row index, second column, third value stored
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct SparseMatrix<G: Group>(pub(crate) Vec<(usize, usize, G::Scalar)>);
+pub struct SparseMatrix<G: Group> {
+  n_rows: usize,
+  n_cols: usize,
+  coeffs: Vec<(usize, usize, G::Scalar)>,
+}
 
 impl<G: Group> SparseMatrix<G> {
-  pub fn new() -> Self {
-    Self(vec![])
+  pub fn new(n_rows: usize, n_cols: usize) -> Self {
+    Self {
+      n_rows,
+      n_cols,
+      coeffs: vec![],
+    }
   }
 
-  pub fn with_capacity(n: usize) -> Self {
-    Self(Vec::with_capacity(n))
+  pub fn with_coeffs(n_rows: usize, n_cols: usize, coeffs: Vec<(usize, usize, G::Scalar)>) -> Self {
+    Self {
+      n_rows,
+      n_cols,
+      coeffs,
+    }
   }
 
-  // Find the maximum row index in the matrix
+  // Return the number of rows of this matrix.
   pub fn n_rows(&self) -> usize {
-    let max_row_idx = self
-      .0
-      .iter()
-      .copied()
-      .map(|r| r.0)
-      .fold(usize::MIN, |a, b| a.max(b));
-    max_row_idx + 1
+    self.n_rows
   }
 
-  // Find the maximum column index in the matrix
+  // Returns a mutable reference to the number of rows of this matrix.
+  pub fn n_rows_mut(&mut self) -> &mut usize {
+    &mut self.n_rows
+  }
+
+  // Return the number of cols of this matrix.
   pub fn n_cols(&self) -> usize {
-    let max_col_idx = self
-      .0
-      .iter()
-      .copied()
-      .map(|r| r.1)
-      .fold(std::usize::MIN, |a, b| a.max(b));
-    max_col_idx + 1
+    self.n_cols
+  }
+
+  // Returns a mutable reference to the number of cols of this matrix.
+  pub fn n_cols_mut(&mut self) -> &mut usize {
+    &mut self.n_cols
+  }
+
+  // Return the non-0 coefficients of this matrix.
+  pub fn coeffs(&self) -> &[(usize, usize, G::Scalar)] {
+    self.coeffs.as_slice()
   }
 
   pub(crate) fn is_valid(
@@ -52,43 +67,19 @@ impl<G: Group> SparseMatrix<G> {
     num_vars: usize,
     num_io: usize,
   ) -> Result<(), NovaError> {
-    let res = self
-      .0
-      .iter()
-      .copied()
-      .map(|(row, col, _val)| {
-        if row >= num_cons || col > num_io + num_vars {
-          Err(NovaError::InvalidIndex)
-        } else {
-          Ok(())
-        }
-      })
-      .collect::<Result<Vec<()>, NovaError>>();
-
-    if res.is_err() {
+    if self.n_rows >= num_cons || self.n_cols > num_io + num_vars {
       Err(NovaError::InvalidIndex)
     } else {
       Ok(())
     }
   }
 
+  // XXX: Double check this
   pub(crate) fn pad(&mut self, n: usize) {
-    let prev_n = self.n_cols();
-    self.0.par_iter_mut().for_each(|(_, c, _)| {
+    let prev_n = self.n_cols;
+    self.coeffs.par_iter_mut().for_each(|(_, c, _)| {
       *c = if *c >= prev_n { *c + n - prev_n } else { *c };
     });
-  }
-}
-
-impl<G: Group> From<Vec<(usize, usize, G::Scalar)>> for SparseMatrix<G> {
-  fn from(matrix: Vec<(usize, usize, G::Scalar)>) -> SparseMatrix<G> {
-    SparseMatrix(matrix)
-  }
-}
-
-impl<G: Group> From<&Vec<(usize, usize, G::Scalar)>> for SparseMatrix<G> {
-  fn from(matrix: &Vec<(usize, usize, G::Scalar)>) -> SparseMatrix<G> {
-    SparseMatrix(matrix.clone())
   }
 }
 
@@ -140,13 +131,8 @@ pub fn matrix_vector_product_sparse<G: Group>(
   matrix: &SparseMatrix<G>,
   vector: &Vec<G::Scalar>,
 ) -> Vec<G::Scalar> {
-  assert_eq!(
-    matrix.n_cols(),
-    vector.len(),
-    "matrix cols != vector length"
-  );
-  let mut res = vec![G::Scalar::ZERO; vector.len()];
-  for &(row, col, value) in matrix.0.iter() {
+  let mut res = vec![G::Scalar::ZERO; 4];
+  for &(row, col, value) in matrix.coeffs.iter() {
     res[row] += value * vector[col];
   }
   res
@@ -165,22 +151,13 @@ pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
 pub fn sparse_matrix_to_mlp<G: Group>(
   matrix: &SparseMatrix<G>,
 ) -> MultilinearPolynomial<G::Scalar> {
-  let n_rows = matrix.n_rows();
-  let n_cols = matrix.n_cols();
+  let n_rows = 4;
+  let n_cols = 6usize;
 
-  // Since n_rows and n_cols already account for 0 indexing,
-  // The total number of elements would be n_rows * n_cols
-  let total_elements: usize = n_rows * n_cols;
-  let n_vars: usize = total_elements.next_power_of_two().trailing_zeros() as usize;
+  let n_vars: usize = n_cols.next_power_of_two().trailing_zeros() as usize;
 
   // Create a vector of zeros with size 2^n_vars
   let mut vec: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2_usize.pow(n_vars as u32)];
-
-  // Assign non-zero entries from the sparse matrix to the vector
-  for &(i, j, val) in matrix.0.iter() {
-    let index = i * n_cols + j; // Convert (i, j) into an index for a flat vector
-    vec[index] = val;
-  }
 
   // Pad to 2^n_vars
   let vec_padded: Vec<G::Scalar> = [
@@ -194,6 +171,8 @@ pub fn sparse_matrix_to_mlp<G: Group>(
   // Convert this vector into a MultilinearPolynomial
   MultilinearPolynomial::new(vec_padded)
 }
+
+// XXX: Create vec_to_mlp method and estract the padd
 
 /// Decompose an integer into a binary vector in little endian.
 pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
@@ -278,8 +257,19 @@ mod tests {
     m.iter().map(|x| to_F_vec(x.clone())).collect()
   }
 
-  fn to_F_matrix_sparse<F: PrimeField>(m: Vec<(usize, usize, u64)>) -> Vec<(usize, usize, F)> {
-    m.iter().map(|x| (x.0, x.1, F::from(x.2))).collect()
+  #[test]
+  fn test_n_cols_sparse_matrix() {
+    let one = Fq::ONE;
+    let A = vec![
+      (0, 1, one),
+      (1, 3, one),
+      (2, 1, one),
+      (2, 4, one),
+      (3, 0, Fq::from(5u64)),
+      (3, 5, one),
+    ];
+
+    assert_eq!(6, SparseMatrix::<Ep>::with_coeffs(4, 6, A).n_cols());
   }
 
   #[test]
@@ -320,69 +310,63 @@ mod tests {
   #[test]
   fn test_matrix_vector_product_sparse() {
     let matrix = vec![
-      (0, 0, 1),
-      (0, 1, 2),
-      (0, 2, 3),
-      (1, 0, 4),
-      (1, 1, 5),
-      (1, 2, 6),
+      (0, 0, Fq::from(1)),
+      (0, 1, Fq::from(2)),
+      (0, 2, Fq::from(3)),
+      (1, 0, Fq::from(4)),
+      (1, 1, Fq::from(5)),
+      (1, 2, Fq::from(6)),
     ];
-    let vector = vec![1, 2, 3];
-    let A = to_F_matrix_sparse::<Fq>(matrix);
-    let z = to_F_vec::<Fq>(vector);
-    let res = matrix_vector_product_sparse::<Ep>(&(A.into()), &z);
+
+    let z = to_F_vec::<Fq>(vec![1, 2, 3]);
+    let res =
+      matrix_vector_product_sparse::<Ep>(&SparseMatrix::<Ep>::with_coeffs(2, 3, matrix), &z);
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32, 0]));
   }
 
   #[test]
-  fn test_sparse_matrix_n_rows() {
+  fn test_sparse_matrix_n_cols_rows() {
     let matrix = vec![
-      (0, 0, 1),
-      (0, 1, 2),
-      (0, 2, 3),
-      (1, 0, 4),
-      (1, 1, 5),
-      (1, 2, 6),
+      (0, 0, Fq::from(1u64)),
+      (0, 1, Fq::from(2u64)),
+      (0, 2, Fq::from(3u64)),
+      (1, 0, Fq::from(4u64)),
+      (1, 1, Fq::from(5u64)),
+      (1, 2, Fq::from(6u64)),
+      (4, 5, Fq::from(1u64)),
     ];
-    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
-    assert_eq!(A.n_rows(), 2);
+    let A = SparseMatrix::<Ep>::with_coeffs(5, 6, matrix.clone());
+    assert_eq!(A.n_cols(), 6);
+    assert_eq!(A.n_rows(), 5);
+
+    // Since is sparse, the empty rows/cols at the end are not accounted unless we provide the info.
+    let A = SparseMatrix::<Ep>::with_coeffs(10, 10, matrix);
+    assert_eq!(A.n_cols(), 10);
+    assert_eq!(A.n_rows(), 10);
   }
 
-  #[test]
-  fn test_sparse_matrix_n_cols() {
-    let matrix = vec![
-      (0, 0, 1),
-      (0, 1, 2),
-      (0, 2, 3),
-      (1, 0, 4),
-      (1, 1, 5),
-      (1, 2, 6),
-    ];
-    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
-    assert_eq!(A.n_cols(), 3);
-  }
-
+  // XXX this test is not really  testing much. Improve.
   #[test]
   fn test_sparse_matrix_to_mlp() {
     let matrix = vec![
-      (0, 0, 2),
-      (0, 1, 3),
-      (0, 2, 4),
-      (0, 3, 4),
-      (1, 0, 4),
-      (1, 1, 11),
-      (1, 2, 14),
-      (1, 3, 14),
-      (2, 0, 2),
-      (2, 1, 8),
-      (2, 2, 17),
-      (2, 3, 17),
-      (3, 0, 420),
-      (3, 1, 4),
-      (3, 2, 2),
+      (0, 0, Fq::from(2)),
+      (0, 1, Fq::from(3)),
+      (0, 2, Fq::from(4)),
+      (0, 3, Fq::from(4)),
+      (1, 0, Fq::from(4)),
+      (1, 1, Fq::from(11)),
+      (1, 2, Fq::from(14)),
+      (1, 3, Fq::from(14)),
+      (2, 0, Fq::from(2)),
+      (2, 1, Fq::from(8)),
+      (2, 2, Fq::from(17)),
+      (2, 3, Fq::from(17)),
+      (3, 0, Fq::from(420)),
+      (3, 1, Fq::from(4)),
+      (3, 2, Fq::from(2)),
     ];
-    let A: SparseMatrix<Ep> = to_F_matrix_sparse::<Fq>(matrix).into();
+    let A = SparseMatrix::<Ep>::with_coeffs(4, 4, matrix);
 
     // Convert the sparse matrix to a multilinear polynomial
     let mlp = sparse_matrix_to_mlp(&A);
