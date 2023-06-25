@@ -1,56 +1,33 @@
 //! This module defines basic types related to Boolean hypercubes.
+use std::marker::PhantomData;
+
 use crate::utils::*;
 /// There's some overlap with polynomial.rs.
 use ff::PrimeField;
 
 #[derive(Debug)]
-pub struct BooleanHypercube<F: PrimeField> {
-  dimensions: usize,
+pub(crate) struct BooleanHypercube<F: PrimeField> {
+  n_vars: usize,
   current: u64,
   max: u64,
-  coefficients: Vec<F>,
+  _f: PhantomData<F>,
 }
 
 impl<F: PrimeField> BooleanHypercube<F> {
-  pub fn new(dimensions: usize, coefficients: Vec<F>) -> Self {
-    assert!(coefficients.len() == 2_usize.pow(dimensions as u32));
-
+  pub(crate) fn new(n_vars: usize) -> Self {
     Self {
-      dimensions,
+      _f: PhantomData::<F>,
+      n_vars,
       current: 0,
-      max: 2_u32.pow(dimensions as u32) as u64,
-      coefficients,
+      max: 2_u32.pow(n_vars as u32) as u64,
     }
   }
 
-  // Evaluate the multilinear polynomial at the given point
-  pub fn evaluate_at(&self, point: &[F]) -> F {
-    assert!(point.len() == self.dimensions);
-
-    let mut result = F::ZERO;
-
-    for i in 0..self.max as usize {
-      let monomial = self.monomial(i, point);
-      result = result + self.coefficients[i] * monomial;
-    }
-
-    result
-  }
-
-  // This calculates a single monomial of the multilinear polynomial
-  fn monomial(&self, i: usize, point: &[F]) -> F {
+  /// returns the entry at given i (which is the little-endian bit representation of i)
+  pub(crate) fn evaluate_at(&self, i: usize) -> Vec<F> {
     assert!(i < self.max as usize);
-    let mut result = F::ONE;
-
-    let bits = bit_decompose(i as u64, self.dimensions);
-
-    for j in 0..self.dimensions {
-      if bits[j] {
-        result = result * point[j];
-      }
-    }
-
-    result
+    let bits = bit_decompose((i) as u64, self.n_vars);
+    bits.iter().map(|&x| F::from(x as u64)).collect()
   }
 }
 
@@ -61,7 +38,7 @@ impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
     if self.current > self.max {
       None
     } else {
-      let bits = bit_decompose(self.current, self.dimensions);
+      let bits = bit_decompose(self.current, self.n_vars);
       let point: Vec<Scalar> = bits.iter().map(|&bit| Scalar::from(bit as u64)).collect();
       self.current += 1;
       Some(point)
@@ -72,29 +49,16 @@ impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use pasta_curves::Fp;
+  use ff::Field;
+  use pasta_curves::Fq;
 
   #[test]
   fn test_evaluate() {
     // Declare the coefficients in the order 1, x, y, xy, z, xz, yz, xyz.
-    let poly = BooleanHypercube::<Fp>::new(
-      3,
-      vec![
-        Fp::from(0u64),
-        Fp::from(4u64),
-        Fp::from(2u64),
-        Fp::from(0u64),
-        Fp::from(1u64),
-        Fp::from(0u64),
-        Fp::from(0u64),
-        Fp::from(0u64),
-      ],
-    );
+    let poly = BooleanHypercube::<Fq>::new(3);
 
-    let point = vec![Fp::from(1u64), Fp::from(1u64), Fp::from(1u64)];
-
-    // The polynomial would be f(x, y, z) = 4x + 2y + z.
-    // So, f(1, 1, 1) = 4*1 + 2*1 + 1 = 7.
-    assert_eq!(poly.evaluate_at(&point), Fp::from(7u64));
+    let point = 7usize;
+    // So, f(1, 1, 1) = 5.
+    assert_eq!(poly.evaluate_at(point), vec![Fq::ONE, Fq::ONE, Fq::ONE]);
   }
 }
