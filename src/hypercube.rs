@@ -23,11 +23,12 @@ impl<F: PrimeField> BooleanHypercube<F> {
     }
   }
 
-  /// returns the entry at given i (which is the little-endian bit representation of i)
+  /// returns the entry at given i (which is the big-endian bit representation of i)
   pub(crate) fn evaluate_at(&self, i: usize) -> Vec<F> {
     assert!(i < self.max as usize);
     let bits = bit_decompose((i) as u64, self.n_vars);
-    bits.iter().map(|&x| F::from(x as u64)).collect()
+    dbg!(bits.clone());
+    bits.iter().map(|&x| F::from(x as u64)).rev().collect()
   }
 }
 
