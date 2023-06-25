@@ -92,22 +92,38 @@ impl<G: Group> SparseMatrix<G> {
     let mut padded_matrix = self.clone();
     padded_matrix.pad();
 
-    sparse_vec_to_mle::<G::Scalar>(self.n_rows(), self.n_cols(), padded_matrix.coeffs())
+    sparse_vec_to_mle::<G>(
+      self.n_rows(),
+      self.n_cols(),
+      padded_matrix.coeffs().to_vec(),
+    )
   }
 }
 
-pub fn sparse_vec_to_mle<F: PrimeField>(
+pub fn sparse_vec_to_mle<G: Group>(
   n_rows: usize,
   n_cols: usize,
-  v: &[(usize, usize, F)],
-) -> MultilinearPolynomial<F> {
+  v: Vec<(usize, usize, G::Scalar)>,
+) -> MultilinearPolynomial<G::Scalar> {
   let n_vars: usize = (log2(n_rows) + log2(n_cols)) as usize; // n_vars = s + s'
-  let mut padded_vec = vec![F::ZERO; 1 << n_vars];
+  let mut padded_vec = vec![G::Scalar::ZERO; 1 << n_vars];
   v.iter().copied().for_each(|(row, col, coeff)| {
     padded_vec[(n_cols * row) + col] = coeff;
   });
 
-  MultilinearPolynomial::new(padded_vec)
+  dense_vec_to_mle(n_vars, &padded_vec)
+}
+
+pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &Vec<F>) -> MultilinearPolynomial<F> {
+  // Pad to 2^n_vars
+  let v_padded: Vec<F> = [
+    v.clone(),
+    std::iter::repeat(F::ZERO)
+      .take((1 << n_vars) - v.len())
+      .collect(),
+  ]
+  .concat();
+  MultilinearPolynomial::new(v_padded)
 }
 
 pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
@@ -320,7 +336,7 @@ mod tests {
     let res =
       matrix_vector_product_sparse::<Ep>(&SparseMatrix::<Ep>::with_coeffs(2, 3, matrix), &z);
 
-    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32, 0]));
+    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }
 
   #[test]
