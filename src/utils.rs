@@ -74,13 +74,40 @@ impl<G: Group> SparseMatrix<G> {
     }
   }
 
-  // XXX: Double check this
-  pub(crate) fn pad(&mut self, n: usize) {
-    let prev_n = self.n_cols;
-    self.coeffs.par_iter_mut().for_each(|(_, c, _)| {
-      *c = if *c >= prev_n { *c + n - prev_n } else { *c };
-    });
+  /// Pad matrix so that its columns and rows are powers of two
+  pub(crate) fn pad(&mut self) {
+    // Find the desired dimensions after padding
+    let rows = self.n_rows();
+    let cols = self.n_cols();
+
+    // Since we padd with 0's and our matrix repr is sparse, we just need
+    // to update the rows and cols attrs of the matrix.
+    *self.n_rows_mut() = rows.next_power_of_two();
+    *self.n_cols_mut() = cols.next_power_of_two();
   }
+
+  // Gives the MLE of the given matrix.
+  pub fn to_mle(&self) -> MultilinearPolynomial<G::Scalar> {
+    // Matrices might need to get padded before turned into an MLE
+    let mut padded_matrix = self.clone();
+    padded_matrix.pad();
+
+    sparse_vec_to_mle::<G::Scalar>(self.n_rows(), self.n_cols(), padded_matrix.coeffs())
+  }
+}
+
+pub fn sparse_vec_to_mle<F: PrimeField>(
+  n_rows: usize,
+  n_cols: usize,
+  v: &[(usize, usize, F)],
+) -> MultilinearPolynomial<F> {
+  let n_vars: usize = (log2(n_rows) + log2(n_cols)) as usize; // n_vars = s + s'
+  let mut padded_vec = vec![F::ZERO; 1 << n_vars];
+  v.iter().copied().for_each(|(row, col, coeff)| {
+    padded_vec[(n_cols * row) + col] = coeff;
+  });
+
+  MultilinearPolynomial::new(padded_vec)
 }
 
 pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
@@ -131,7 +158,7 @@ pub fn matrix_vector_product_sparse<G: Group>(
   matrix: &SparseMatrix<G>,
   vector: &Vec<G::Scalar>,
 ) -> Vec<G::Scalar> {
-  let mut res = vec![G::Scalar::ZERO; 4];
+  let mut res = vec![G::Scalar::ZERO; matrix.n_cols()];
   for &(row, col, value) in matrix.coeffs.iter() {
     res[row] += value * vector[col];
   }
@@ -147,32 +174,6 @@ pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
 
   res
 }
-
-pub fn sparse_matrix_to_mlp<G: Group>(
-  matrix: &SparseMatrix<G>,
-) -> MultilinearPolynomial<G::Scalar> {
-  let n_rows = 4;
-  let n_cols = 6usize;
-
-  let n_vars: usize = n_cols.next_power_of_two().trailing_zeros() as usize;
-
-  // Create a vector of zeros with size 2^n_vars
-  let mut vec: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2_usize.pow(n_vars as u32)];
-
-  // Pad to 2^n_vars
-  let vec_padded: Vec<G::Scalar> = [
-    vec.clone(),
-    std::iter::repeat(G::Scalar::ZERO)
-      .take((1 << n_vars) - vec.len())
-      .collect(),
-  ]
-  .concat();
-
-  // Convert this vector into a MultilinearPolynomial
-  MultilinearPolynomial::new(vec_padded)
-}
-
-// XXX: Create vec_to_mlp method and estract the padd
 
 /// Decompose an integer into a binary vector in little endian.
 pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
@@ -244,8 +245,20 @@ pub fn random_zero_mle_list<F: PrimeField, R: RngCore>(
   list
 }
 
+pub(crate) fn log2(x: usize) -> u32 {
+  if x == 0 {
+    0
+  } else if x.is_power_of_two() {
+    1usize.leading_zeros() - x.leading_zeros()
+  } else {
+    0usize.leading_zeros() - x.leading_zeros()
+  }
+}
+
 #[cfg(test)]
 mod tests {
+  use crate::hypercube::BooleanHypercube;
+
   use super::*;
   use pasta_curves::{Ep, Fq};
 
@@ -255,21 +268,6 @@ mod tests {
 
   fn to_F_matrix<F: PrimeField>(m: Vec<Vec<u64>>) -> Vec<Vec<F>> {
     m.iter().map(|x| to_F_vec(x.clone())).collect()
-  }
-
-  #[test]
-  fn test_n_cols_sparse_matrix() {
-    let one = Fq::ONE;
-    let A = vec![
-      (0, 1, one),
-      (1, 3, one),
-      (2, 1, one),
-      (2, 4, one),
-      (3, 0, Fq::from(5u64)),
-      (3, 5, one),
-    ];
-
-    assert_eq!(6, SparseMatrix::<Ep>::with_coeffs(4, 6, A).n_cols());
   }
 
   #[test]
@@ -346,32 +344,37 @@ mod tests {
     assert_eq!(A.n_rows(), 10);
   }
 
-  // XXX this test is not really  testing much. Improve.
   #[test]
-  fn test_sparse_matrix_to_mlp() {
-    let matrix = vec![
-      (0, 0, Fq::from(2)),
-      (0, 1, Fq::from(3)),
-      (0, 2, Fq::from(4)),
-      (0, 3, Fq::from(4)),
-      (1, 0, Fq::from(4)),
-      (1, 1, Fq::from(11)),
-      (1, 2, Fq::from(14)),
-      (1, 3, Fq::from(14)),
-      (2, 0, Fq::from(2)),
-      (2, 1, Fq::from(8)),
-      (2, 2, Fq::from(17)),
-      (2, 3, Fq::from(17)),
-      (3, 0, Fq::from(420)),
-      (3, 1, Fq::from(4)),
-      (3, 2, Fq::from(2)),
-    ];
-    let A = SparseMatrix::<Ep>::with_coeffs(4, 4, matrix);
+  fn test_matrix_to_mle() {
+    let matrix = SparseMatrix::<Ep>::with_coeffs(
+      5,
+      5,
+      vec![
+        (0usize, 0usize, Fq::from(1u64)),
+        (0, 1, Fq::from(2u64)),
+        (0, 2, Fq::from(3u64)),
+        (1, 0, Fq::from(4u64)),
+        (1, 1, Fq::from(5u64)),
+        (1, 2, Fq::from(6u64)),
+        (3, 4, Fq::from(1u64)),
+      ],
+    );
 
-    // Convert the sparse matrix to a multilinear polynomial
-    let mlp = sparse_matrix_to_mlp(&A);
+    let A_mle = matrix.to_mle();
+    assert_eq!(A_mle.len(), 64); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
 
-    // A 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
-    assert_eq!(mlp.len(), 16);
+    // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
+    let bhc = BooleanHypercube::<Fq>::new(A_mle.get_num_vars());
+
+    let mut padded_matrix = matrix.clone();
+    padded_matrix.pad();
+    padded_matrix
+      .coeffs()
+      .iter()
+      .copied()
+      .for_each(|(i, j, coeff)| {
+        let s_i_j = bhc.evaluate_at(i * matrix.n_cols() + j);
+        assert_eq!(A_mle.evaluate(&s_i_j), coeff);
+      })
   }
 }

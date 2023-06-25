@@ -124,11 +124,7 @@ pub struct LCCCSWitness<G: Group> {
 
 impl<G: Group> CCSShape<G> {
   pub(crate) fn to_cccs_shape(&self) -> CCCSShape<G> {
-    let M_mle = self
-      .M
-      .iter()
-      .map(|matrix| sparse_matrix_to_mlp(matrix))
-      .collect();
+    let M_mle = self.M.iter().map(|matrix| matrix.to_mle()).collect();
     CCCSShape {
       M_MLE: M_mle,
       ccs: self.clone(),
@@ -305,6 +301,7 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
+  // XXX: Review thiss
   /// Pads the CCSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {
@@ -315,7 +312,7 @@ impl<G: Group> CCSShape<G> {
     if self.n != padded_n {
       // Apply pad for each matrix in M
       self.M.iter_mut().for_each(|m| {
-        m.pad(padded_n);
+        m.pad();
         *m.n_rows_mut() = padded_n
       });
       self.n = padded_n;

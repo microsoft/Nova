@@ -27,7 +27,6 @@ impl<F: PrimeField> BooleanHypercube<F> {
   pub(crate) fn evaluate_at(&self, i: usize) -> Vec<F> {
     assert!(i < self.max as usize);
     let bits = bit_decompose((i) as u64, self.n_vars);
-    dbg!(bits.clone());
     bits.iter().map(|&x| F::from(x as u64)).rev().collect()
   }
 }
