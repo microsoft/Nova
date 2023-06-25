@@ -158,7 +158,7 @@ pub fn matrix_vector_product_sparse<G: Group>(
   matrix: &SparseMatrix<G>,
   vector: &Vec<G::Scalar>,
 ) -> Vec<G::Scalar> {
-  let mut res = vec![G::Scalar::ZERO; matrix.n_cols()];
+  let mut res = vec![G::Scalar::ZERO; matrix.n_rows()];
   for &(row, col, value) in matrix.coeffs.iter() {
     res[row] += value * vector[col];
   }
@@ -166,7 +166,7 @@ pub fn matrix_vector_product_sparse<G: Group>(
 }
 
 pub fn hadamard_product<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
-  assert_eq!(a.len(), b.len(), "Haddamard needs same len vectors");
+  assert_eq!(a.len(), b.len(), "Hadamard needs same len vectors");
   let mut res = Vec::with_capacity(a.len());
   for i in 0..a.len() {
     res.push(a[i] * b[i]);
