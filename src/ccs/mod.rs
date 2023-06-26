@@ -153,6 +153,7 @@ impl<G: Group> CCSShape<G> {
       self.to_cccs_shape(),
     )
   }
+
   // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
   /// Samples public parameters for the specified number of constraints and variables in an CCS
   pub fn commitment_key(&self) -> CommitmentKey<G> {

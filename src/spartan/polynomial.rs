@@ -79,8 +79,8 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MultilinearPolynomial<Scalar: PrimeField> {
-  num_vars: usize, // the number of variables in the multilinear polynomial
-  Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  num_vars: usize,           // the number of variables in the multilinear polynomial
+  pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
@@ -104,6 +104,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let n = self.len() / 2;
 
     let (left, right) = self.Z.split_at_mut(n);
+    // XXX: This literally does nothing at all.. What is this?
     let (right, _) = right.split_at(n);
 
     left
