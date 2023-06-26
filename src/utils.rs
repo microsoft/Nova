@@ -100,6 +100,11 @@ impl<G: Group> SparseMatrix<G> {
   }
 }
 
+// NOTE: the method is called "sparse_vec_to_mle", but inputs are n_rows & n_cols, and a normal
+// vector does not have rows&cols. This is because in this case the vec comes from matrix
+// coefficients, maybe the method should be renamed, because is not to convert 'any' vector but a
+// vector of matrix coefficients. A better option probably is to replace the two inputs n_rows &
+// n_cols by directly the n_vars.
 pub fn sparse_vec_to_mle<G: Group>(
   n_rows: usize,
   n_cols: usize,

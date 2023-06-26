@@ -100,6 +100,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
+  // NOTE: this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 

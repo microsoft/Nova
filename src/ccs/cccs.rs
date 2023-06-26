@@ -18,7 +18,7 @@ use crate::{
 };
 use bitvec::vec;
 use core::{cmp::max, marker::PhantomData};
-use ff::Field;
+use ff::{Field, PrimeField};
 use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use rayon::prelude::*;
@@ -147,6 +147,35 @@ impl<G: Group> CCCSShape<G> {
     let q = self.compute_q(z)?;
     q.build_f_hat(beta)
   }
+}
+
+pub fn fix_variables<F: PrimeField>(
+  poly: &MultilinearPolynomial<F>,
+  partial_point: &[F],
+) -> MultilinearPolynomial<F> {
+  assert!(
+    partial_point.len() <= poly.get_num_vars(),
+    "invalid size of partial point"
+  );
+  let nv = poly.get_num_vars();
+  let mut poly = poly.Z.to_vec();
+  let dim = partial_point.len();
+  // evaluate single variable of partial point from left to right
+  for (i, point) in partial_point.iter().enumerate() {
+    poly = fix_one_variable_helper(&poly, nv - i, point);
+  }
+
+  MultilinearPolynomial::<F>::new(poly[..(1 << (nv - dim))].to_vec())
+}
+
+fn fix_one_variable_helper<F: PrimeField>(data: &[F], nv: usize, point: &F) -> Vec<F> {
+  let mut res = vec![F::ZERO; 1 << (nv - 1)];
+
+  for i in 0..(1 << (nv - 1)) {
+    res[i] = data[i << 1] + (data[(i << 1) + 1] - data[i << 1]) * point;
+  }
+
+  res
 }
 
 #[cfg(test)]
@@ -379,41 +408,6 @@ mod tests {
 
   #[test]
   fn test_fix_variables() {
-    //
-    //
-    //
-    pub fn fix_variables<F: PrimeField>(
-      poly: &MultilinearPolynomial<F>,
-      partial_point: &[F],
-    ) -> MultilinearPolynomial<F> {
-      assert!(
-        partial_point.len() <= poly.get_num_vars(),
-        "invalid size of partial point"
-      );
-      let nv = poly.get_num_vars();
-      let mut poly = poly.Z.to_vec();
-      let dim = partial_point.len();
-      // evaluate single variable of partial point from left to right
-      for (i, point) in partial_point.iter().enumerate().take(dim) {
-        poly = fix_one_variable_helper(&poly, nv - i, point);
-      }
-
-      MultilinearPolynomial::<F>::new(poly[..(1 << (nv - dim))].to_vec())
-    }
-
-    fn fix_one_variable_helper<F: PrimeField>(data: &[F], nv: usize, point: &F) -> Vec<F> {
-      let mut res = vec![F::ZERO; 1 << (nv - 1)];
-
-      for i in 0..(1 << (nv - 1)) {
-        res[i] = data[i] + (data[(i << 1) + 1] - data[i << 1]) * point;
-      }
-
-      res
-    }
-    //
-    //
-    //
-
     let A = SparseMatrix::<Ep>::with_coeffs(
       4,
       4,
@@ -438,18 +432,10 @@ mod tests {
     );
 
     let A_mle = A.to_mle();
-    dbg!(&A_mle);
     let bhc = BooleanHypercube::<Fq>::new(2);
     for (i, y) in bhc.enumerate() {
-      let mut A_mle_op = A_mle.clone();
-      
-      // for bit in y.clone() {
-      //   A_mle_op.bound_poly_var_top(&bit)
-      // }
-      
-      A_mle_op = fix_variables(&A_mle, &y);
-      dbg!(A_mle_op.clone());
-      println!("{:?}", y.clone());
+      let A_mle_op = fix_variables(&A_mle, &y);
+
       // Check that fixing first variables pins down a column
       // i.e. fixing x to 0 will return the first column
       //      fixing x to 1 will return the second column etc.
@@ -466,9 +452,21 @@ mod tests {
       // // Now check that fixing last variables pins down a row
       // // i.e. fixing y to 0 will return the first row
       // //      fixing y to 1 will return the second row etc.
-      // let row_i: Vec<Fq> = A[i].clone();
-      // let fix_right = fix_last_variables(&A_mle, &y);
-      // assert_eq!(fix_right.evaluations, row_i);
+      let row_i: Vec<Fq> = A
+        .clone()
+        .coeffs()
+        .iter()
+        .copied()
+        .filter_map(|(row, _, coeff)| if row == i { Some(coeff) } else { None })
+        .collect();
+
+      let mut last_vars_fixed = A_mle.clone();
+      // this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
+      for bit in y.clone().iter().rev() {
+        last_vars_fixed.bound_poly_var_top(&bit)
+      }
+
+      assert_eq!(last_vars_fixed.Z, row_i);
     }
   }
 }

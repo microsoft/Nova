@@ -40,11 +40,7 @@ impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
       None
     } else {
       let bits = bit_decompose(self.current, self.n_vars);
-      let point: Vec<Scalar> = bits
-        .iter()
-        .map(|&bit| Scalar::from(bit as u64))
-        .rev()
-        .collect();
+      let point: Vec<Scalar> = bits.iter().map(|&bit| Scalar::from(bit as u64)).collect();
       self.current += 1;
       Some(point)
     }
