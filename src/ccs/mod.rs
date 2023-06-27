@@ -67,93 +67,6 @@ pub struct CCSShape<G: Group> {
   pub(crate) s_prime: usize,
 }
 
-/// A type that holds a witness for a given CCS instance
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CCSWitness<G: Group> {
-  // Vector W in F^{n - l - 1}
-  w: Vec<G::Scalar>,
-}
-
-impl<G: Group> CCSWitness<G> {
-  /// Create a CCSWitness instance from the witness vector.
-  pub fn new(witness: Vec<G::Scalar>) -> Self {
-    Self { w: witness }
-  }
-
-  /// Commits to the witness using the supplied generators
-  pub fn commit(&self, ck: &CommitmentKey<G>) -> Commitment<G> {
-    CE::<G>::commit(ck, &self.w)
-  }
-}
-/// A type that holds an CCS instance
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct CCSInstance<G: Group> {
-  // (Pedersen) Commitment to a witness
-  pub(crate) comm_w: Commitment<G>,
-
-  // Public input x in F^l
-  pub(crate) x: Vec<G::Scalar>,
-}
-
-/// A type that holds a LCCCS instance
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct LCCCSInstance<G: Group> {
-  pub(crate) C: Commitment<G>,
-  pub(crate) x: Vec<G::Scalar>,
-  pub(crate) u: G::Scalar,
-  pub(crate) v: Vec<G::Scalar>,
-}
-
-// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
-/// A type that holds a witness for a given LCCCS instance
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LCCCSWitness<G: Group> {
-  pub(crate) w_mle: Vec<G::Scalar>,
-}
-
-impl<G: Group> CCSShape<G> {
-  pub(crate) fn to_cccs_shape(&self) -> CCCSShape<G> {
-    let M_mle = self.M.iter().map(|matrix| matrix.to_mle()).collect();
-    CCCSShape {
-      M_MLE: M_mle,
-      ccs: self.clone(),
-    }
-  }
-
-  // Transform the CCS instance into a CCCS instance by providing the required Commitment key.
-  pub fn to_cccs_artifacts<R: RngCore>(
-    &self,
-    rng: &mut R,
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
-    z: &[G::Scalar],
-  ) -> (CCCSInstance<G>, CCCSWitness<G>, CCCSShape<G>) {
-    let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
-    // XXX: API doesn't offer a way to handle this apparently?
-    // Need to investigate
-    let _r_w = G::Scalar::random(rng);
-    let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
-
-    (
-      CCCSInstance {
-        C,
-        x: z[1..(1 + self.l)].to_vec(),
-      },
-      CCCSWitness { w_mle: w },
-      self.to_cccs_shape(),
-    )
-  }
-
-  // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
-  /// Samples public parameters for the specified number of constraints and variables in an CCS
-  pub fn commitment_key(&self) -> CommitmentKey<G> {
-    let total_nz = self.M.iter().fold(0, |acc, m| acc + m.coeffs().len());
-
-    G::CE::setup(b"ck", max(max(self.m, self.t), total_nz))
-  }
-}
-
 impl<G: Group> CCSShape<G> {
   /// Create an object of type `CCSShape` from the explicitly specified CCS matrices
   pub fn new(
@@ -199,6 +112,45 @@ impl<G: Group> CCSShape<G> {
       s,
       s_prime,
     }
+  }
+
+  pub(crate) fn to_cccs_shape(&self) -> CCCSShape<G> {
+    let M_mle = self.M.iter().map(|matrix| matrix.to_mle()).collect();
+    CCCSShape {
+      M_MLE: M_mle,
+      ccs: self.clone(),
+    }
+  }
+
+  // Transform the CCS instance into a CCCS instance by providing the required Commitment key.
+  pub fn to_cccs_artifacts<R: RngCore>(
+    &self,
+    rng: &mut R,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    z: &[G::Scalar],
+  ) -> (CCCSInstance<G>, CCCSWitness<G>, CCCSShape<G>) {
+    let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+    // XXX: API doesn't offer a way to handle this apparently?
+    // Need to investigate
+    let _r_w = G::Scalar::random(rng);
+    let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
+
+    (
+      CCCSInstance {
+        C,
+        x: z[1..(1 + self.l)].to_vec(),
+      },
+      CCCSWitness { w_mle: w },
+      self.to_cccs_shape(),
+    )
+  }
+
+  // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
+  /// Samples public parameters for the specified number of constraints and variables in an CCS
+  pub fn commitment_key(&self) -> CommitmentKey<G> {
+    let total_nz = self.M.iter().fold(0, |acc, m| acc + m.coeffs().len());
+
+    G::CE::setup(b"ck", max(max(self.m, self.t), total_nz))
   }
 
   // NOTE: Not using previous used multiply_vec (r1cs.rs), see utils.rs
@@ -309,6 +261,35 @@ impl<G: Group> CCSShape<G> {
       self.n = padded_n;
     }
   }
+}
+
+/// A type that holds a witness for a given CCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CCSWitness<G: Group> {
+  // Vector W in F^{n - l - 1}
+  w: Vec<G::Scalar>,
+}
+
+impl<G: Group> CCSWitness<G> {
+  /// Create a CCSWitness instance from the witness vector.
+  pub fn new(witness: Vec<G::Scalar>) -> Self {
+    Self { w: witness }
+  }
+
+  /// Commits to the witness using the supplied generators
+  pub fn commit(&self, ck: &CommitmentKey<G>) -> Commitment<G> {
+    CE::<G>::commit(ck, &self.w)
+  }
+}
+/// A type that holds an CCS instance
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct CCSInstance<G: Group> {
+  // (Pedersen) Commitment to a witness
+  pub(crate) comm_w: Commitment<G>,
+
+  // Public input x in F^l
+  pub(crate) x: Vec<G::Scalar>,
 }
 
 impl<G: Group> CCSInstance<G> {
