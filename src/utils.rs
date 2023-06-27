@@ -93,8 +93,8 @@ impl<G: Group> SparseMatrix<G> {
     padded_matrix.pad();
 
     sparse_vec_to_mle::<G>(
-      self.n_rows(),
-      self.n_cols(),
+      padded_matrix.n_rows(),
+      padded_matrix.n_cols(),
       padded_matrix.coeffs().to_vec(),
     )
   }
@@ -367,7 +367,7 @@ mod tests {
 
   #[test]
   fn test_matrix_to_mle() {
-    let matrix = SparseMatrix::<Ep>::with_coeffs(
+    let A = SparseMatrix::<Ep>::with_coeffs(
       5,
       5,
       vec![
@@ -381,21 +381,53 @@ mod tests {
       ],
     );
 
-    let A_mle = matrix.to_mle();
+    let A_mle = A.to_mle();
     assert_eq!(A_mle.len(), 64); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
+
+    // hardcoded testvector to ensure that in the future the SparseMatrix.to_mle method holds
+    let expected = vec![
+      Fq::from(1u64),
+      Fq::from(2u64),
+      Fq::from(3u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(4u64),
+      Fq::from(5u64),
+      Fq::from(6u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(0u64),
+      Fq::from(1u64),
+      // the rest are zeroes
+    ];
+    assert_eq!(A_mle.Z[..29], expected);
+    assert_eq!(A_mle.Z[29..], vec![Fq::ZERO; 64 - 29]);
 
     // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
     let bhc = BooleanHypercube::<Fq>::new(A_mle.get_num_vars());
-
-    let mut padded_matrix = matrix.clone();
-    padded_matrix.pad();
-    padded_matrix
-      .coeffs()
-      .iter()
-      .copied()
-      .for_each(|(i, j, coeff)| {
-        let s_i_j = bhc.evaluate_at(i * matrix.n_cols() + j);
-        assert_eq!(A_mle.evaluate(&s_i_j), coeff);
-      })
+    let mut A_padded = A.clone();
+    A_padded.pad();
+    for term in A_padded.coeffs.iter() {
+      let (i, j, coeff) = term;
+      let s_i_j = bhc.evaluate_at(i * A_padded.n_cols + j);
+      assert_eq!(&A_mle.evaluate(&s_i_j), coeff)
+    }
   }
 }
