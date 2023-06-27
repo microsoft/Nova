@@ -69,31 +69,23 @@ impl<G: Group> CCCSShape<G> {
     let s_prime = self.ccs.s_prime;
     let M_j_mle = self.ccs.M[m_idx].to_mle();
     assert_eq!(z.get_num_vars(), s_prime);
-    //dbg!(M_j_mle.clone());
+
     let mut sum_Mz = MultilinearPolynomial::new(vec![
       G::Scalar::ZERO;
       1 << (M_j_mle.get_num_vars() - s_prime)
     ]);
 
     let bhc = BooleanHypercube::<G::Scalar>::new(s_prime);
-    bhc.into_iter().for_each(|bit_vec| {
-      // Perform the reduction
-      dbg!(bit_vec.clone());
-      let mut M_j_y: MultilinearPolynomial<<G as Group>::Scalar> = M_j_mle.clone();
+    for y in bhc.into_iter() {
+      let M_j_y = fix_variables(&M_j_mle, &y);
 
-      for bit in bit_vec.iter() {
-        M_j_y.bound_poly_var_top(bit);
-        dbg!(M_j_y.clone());
-      }
-
-      let z_y = z.evaluate(&bit_vec);
-      // dbg!(z_y.clone());
+      // reverse y to match spartan/polynomial evaluate
+      let y_rev: Vec<G::Scalar> = y.into_iter().rev().collect();
+      let z_y = z.evaluate(&y_rev);
       let M_j_z = M_j_y.scalar_mul(&z_y);
-      // dbg!(M_j_z.clone());
       // XXX: It's crazy to have results in the ops impls. Remove them!
       sum_Mz = sum_Mz.clone().add(M_j_z).expect("This should not fail");
-      // dbg!(sum_Mz.clone());
-    });
+    }
 
     sum_Mz
   }
@@ -101,8 +93,9 @@ impl<G: Group> CCCSShape<G> {
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   // polynomial over x
   pub fn compute_q(&self, z: &Vec<G::Scalar>) -> Result<VirtualPolynomial<G::Scalar>, NovaError> {
-    let z_mle = dense_vec_to_mle::<G::Scalar>(6, z);
+    let z_mle = dense_vec_to_mle::<G::Scalar>(self.ccs.s_prime, z);
     if z_mle.get_num_vars() != self.ccs.s_prime {
+      // this check if redundant if dense_vec_to_mle is correct
       return Err(NovaError::VpArith);
     }
 
@@ -261,29 +254,23 @@ mod tests {
     let (_, _, cccs) = ccs.to_cccs_artifacts(&mut OsRng, &ck, &z);
 
     let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
-    // dbg!(z_mle.clone());
 
     // check that evaluating over all the values x over the boolean hypercube, the result of
     // the next for loop is equal to 0
     let mut r = Fq::zero();
     let bch = BooleanHypercube::new(ccs.s);
-    bch.into_iter().for_each(|x| {
-      // dbg!(x.clone());
+    for x in bch.into_iter() {
       for i in 0..ccs.q {
         let mut Sj_prod = Fq::one();
         for j in ccs.S[i].clone() {
           let sum_Mz = cccs.compute_sum_Mz(j, &z_mle);
-          dbg!(sum_Mz.clone());
           let sum_Mz_x = sum_Mz.evaluate(&x);
-          dbg!(sum_Mz_x.clone());
           Sj_prod *= sum_Mz_x;
-          dbg!(Sj_prod.clone());
         }
-        r += (Sj_prod * ccs.c[i]);
+        r += Sj_prod * ccs.c[i];
       }
-      // dbg!(r.clone());
       assert_eq!(r, Fq::ZERO);
-    });
+    }
   }
 
   /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
