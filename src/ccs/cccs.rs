@@ -176,7 +176,6 @@ mod tests {
 
   use crate::ccs::CCSInstance;
   use crate::ccs::CCSWitness;
-  use crate::ccs::CCS;
 
   use super::*;
   use ff::PrimeField;

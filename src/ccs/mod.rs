@@ -35,17 +35,8 @@ use std::ops::{Add, Mul};
 use self::cccs::{CCCSInstance, CCCSShape, CCCSWitness};
 
 mod cccs;
+mod lcccs;
 pub(crate) mod virtual_poly;
-
-// TODO: Committed CCS using MLE (see src/spartan/pp.rs)
-// TODO: Linearized CCS struct and methods, separate struct similar to RelaxedR1CS
-
-/// Public parameters for a given CCS
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct CCS<G: Group> {
-  _p: PhantomData<G>,
-}
 
 /// A type that holds the shape of a CCS instance
 /// Unlike R1CS we have a list of matrices M instead of only A, B, C
