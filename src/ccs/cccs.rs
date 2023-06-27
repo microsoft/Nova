@@ -27,7 +27,7 @@ use sha3::{Digest, Sha3_256};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
 
-use super::virtual_poly::VirtualPolynomial;
+use super::util::virtual_poly::VirtualPolynomial;
 use super::CCSShape;
 
 /// A type that holds the shape of a Committed CCS (CCCS) instance

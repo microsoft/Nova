@@ -36,7 +36,7 @@ use self::cccs::{CCCSInstance, CCCSShape, CCCSWitness};
 
 mod cccs;
 mod lcccs;
-pub(crate) mod virtual_poly;
+mod util;
 
 /// A type that holds the shape of a CCS instance
 /// Unlike R1CS we have a list of matrices M instead of only A, B, C
@@ -152,11 +152,6 @@ impl<G: Group> CCSShape<G> {
 
     G::CE::setup(b"ck", max(max(self.m, self.t), total_nz))
   }
-
-  // NOTE: Not using previous used multiply_vec (r1cs.rs), see utils.rs
-
-  // NOTE: Equivalent to is_sat_relaxed (r1cs.rs) but for CCCSS/LCCCS?
-  // Either here or as a separate method on LCCCS struct
 
   /// Checks if the CCS instance is satisfiable given a witness and its shape
   pub fn is_sat(
