@@ -302,7 +302,6 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
-  // XXX: Review thiss
   /// Pads the CCSShape so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {

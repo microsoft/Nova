@@ -67,7 +67,7 @@ impl<G: Group> CCCSShape<G> {
     z: &MultilinearPolynomial<G::Scalar>,
   ) -> MultilinearPolynomial<G::Scalar> {
     let s_prime = self.ccs.s_prime;
-    let M_j_mle = self.ccs.M[m_idx].to_mle();
+    let M_j_mle = &self.M_MLE[m_idx];
     assert_eq!(z.get_num_vars(), s_prime);
 
     let mut sum_Mz = MultilinearPolynomial::new(vec![
