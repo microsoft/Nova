@@ -113,35 +113,6 @@ impl<G: Group> CCCSShape<G> {
   }
 }
 
-pub fn fix_variables<F: PrimeField>(
-  poly: &MultilinearPolynomial<F>,
-  partial_point: &[F],
-) -> MultilinearPolynomial<F> {
-  assert!(
-    partial_point.len() <= poly.get_num_vars(),
-    "invalid size of partial point"
-  );
-  let nv = poly.get_num_vars();
-  let mut poly = poly.Z.to_vec();
-  let dim = partial_point.len();
-  // evaluate single variable of partial point from left to right
-  for (i, point) in partial_point.iter().enumerate() {
-    poly = fix_one_variable_helper(&poly, nv - i, point);
-  }
-
-  MultilinearPolynomial::<F>::new(poly[..(1 << (nv - dim))].to_vec())
-}
-
-fn fix_one_variable_helper<F: PrimeField>(data: &[F], nv: usize, point: &F) -> Vec<F> {
-  let mut res = vec![F::ZERO; 1 << (nv - 1)];
-
-  for i in 0..(1 << (nv - 1)) {
-    res[i] = data[i << 1] + (data[(i << 1) + 1] - data[i << 1]) * point;
-  }
-
-  res
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -171,86 +142,14 @@ mod tests {
     vecs.iter().map(Vec::as_slice).collect()
   }
 
-  fn gen_test_ccs<G: Group, R: RngCore>(
-    z: &Vec<G::Scalar>,
-    rng: &mut R,
-  ) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
-    let one = G::Scalar::ONE;
-    let A = vec![
-      (0, 1, one),
-      (1, 3, one),
-      (2, 1, one),
-      (2, 4, one),
-      (3, 0, G::Scalar::from(5u64)),
-      (3, 5, one),
-    ];
-
-    let B = vec![(0, 1, one), (1, 1, one), (2, 0, one), (3, 0, one)];
-    let C = vec![(0, 3, one), (1, 4, one), (2, 5, one), (3, 2, one)];
-
-    // 2. Take R1CS and convert to CCS
-    let ccs = CCSShape::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
-    // Generate other artifacts
-    let ck = CCSShape::<G>::commitment_key(&ccs);
-    let ccs_w = CCSWitness::new(z[2..].to_vec());
-    let ccs_instance = CCSInstance::new(&ccs, &ccs_w.commit(&ck), vec![z[1]]).unwrap();
-
-    ccs
-      .is_sat(&ck, &ccs_instance, &ccs_w)
-      .expect("This does not fail");
-    (ccs, ccs_w, ccs_instance)
-  }
-
-  /// Computes the z vector for the given input for Vitalik's equation.
-  pub fn get_test_z<G: Group>(input: u64) -> Vec<G::Scalar> {
-    // z = (1, io, w)
-    to_F_vec(vec![
-      1,
-      input,
-      input * input * input + input + 5, // x^3 + x + 5
-      input * input,                     // x^2
-      input * input * input,             // x^2 * x
-      input * input * input + input,     // x^3 + x
-    ])
-  }
-
-  #[test]
-  fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
-    let z = get_test_z::<Ep>(3);
-    let (ccs, _, _) = gen_test_ccs::<Ep, _>(&z, &mut OsRng);
-
-    // Generate other artifacts
-    let ck = CCSShape::<Ep>::commitment_key(&ccs);
-    let (_, _, cccs) = ccs.to_cccs_artifacts(&mut OsRng, &ck, &z);
-
-    let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
-
-    // check that evaluating over all the values x over the boolean hypercube, the result of
-    // the next for loop is equal to 0
-    let mut r = Fq::zero();
-    let bch = BooleanHypercube::new(ccs.s);
-    for x in bch.into_iter() {
-      for i in 0..ccs.q {
-        let mut Sj_prod = Fq::one();
-        for j in ccs.S[i].clone() {
-          let sum_Mz: MultilinearPolynomial<Fq> = compute_sum_Mz::<Ep>(&cccs.M_MLE[j], &z_mle);
-          let sum_Mz_x = sum_Mz.evaluate(&x);
-          Sj_prod *= sum_Mz_x;
-        }
-        r += Sj_prod * ccs.c[i];
-      }
-      assert_eq!(r, Fq::ZERO);
-    }
-  }
-
   /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
   /// hypercube, but to not-zero outside the hypercube.
   #[test]
   fn test_compute_q() {
     let mut rng = OsRng;
 
-    let z = get_test_z::<Ep>(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = gen_test_ccs(&z, &mut rng);
+    let z = CCSShape::<Ep>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
@@ -276,8 +175,8 @@ mod tests {
   fn test_compute_Q() {
     let mut rng = OsRng;
 
-    let z = get_test_z::<Ep>(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = gen_test_ccs(&z, &mut rng);
+    let z = CCSShape::<Ep>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
@@ -320,8 +219,8 @@ mod tests {
   fn test_Q_against_q() -> () {
     let mut rng = OsRng;
 
-    let z = get_test_z::<Ep>(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = gen_test_ccs(&z, &mut rng);
+    let z = CCSShape::<Ep>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
@@ -361,69 +260,5 @@ mod tests {
       .map(|x| Q_at_r.evaluate(&x).unwrap())
       .fold(Fq::zero(), |acc, result| acc + result);
     assert_ne!(G_at_r, q.evaluate(&r).unwrap());
-  }
-
-  #[test]
-  fn test_fix_variables() {
-    let A = SparseMatrix::<Ep>::with_coeffs(
-      4,
-      4,
-      vec![
-        (0, 0, Fq::from(2u64)),
-        (0, 1, Fq::from(3u64)),
-        (0, 2, Fq::from(4u64)),
-        (0, 3, Fq::from(4u64)),
-        (1, 0, Fq::from(4u64)),
-        (1, 1, Fq::from(11u64)),
-        (1, 2, Fq::from(14u64)),
-        (1, 3, Fq::from(14u64)),
-        (2, 0, Fq::from(2u64)),
-        (2, 1, Fq::from(8u64)),
-        (2, 2, Fq::from(17u64)),
-        (2, 3, Fq::from(17u64)),
-        (3, 0, Fq::from(420u64)),
-        (3, 1, Fq::from(4u64)),
-        (3, 2, Fq::from(2u64)),
-        (3, 3, Fq::ZERO),
-      ],
-    );
-
-    let A_mle = A.to_mle();
-    let bhc = BooleanHypercube::<Fq>::new(2);
-    for (i, y) in bhc.enumerate() {
-      let A_mle_op = fix_variables(&A_mle, &y);
-
-      // Check that fixing first variables pins down a column
-      // i.e. fixing x to 0 will return the first column
-      //      fixing x to 1 will return the second column etc.
-      let column_i: Vec<Fq> = A
-        .clone()
-        .coeffs()
-        .iter()
-        .copied()
-        .filter_map(|(_, col, coeff)| if col == i { Some(coeff) } else { None })
-        .collect();
-
-      assert_eq!(A_mle_op.Z, column_i);
-
-      // // Now check that fixing last variables pins down a row
-      // // i.e. fixing y to 0 will return the first row
-      // //      fixing y to 1 will return the second row etc.
-      let row_i: Vec<Fq> = A
-        .clone()
-        .coeffs()
-        .iter()
-        .copied()
-        .filter_map(|(row, _, coeff)| if row == i { Some(coeff) } else { None })
-        .collect();
-
-      let mut last_vars_fixed = A_mle.clone();
-      // this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
-      for bit in y.clone().iter().rev() {
-        last_vars_fixed.bound_poly_var_top(&bit)
-      }
-
-      assert_eq!(last_vars_fixed.Z, row_i);
-    }
   }
 }

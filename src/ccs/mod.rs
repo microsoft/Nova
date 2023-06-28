@@ -256,6 +256,52 @@ impl<G: Group> CCSShape<G> {
       self.n = padded_n;
     }
   }
+
+  #[cfg(test)]
+  fn gen_test_ccs<R: RngCore>(
+    z: &Vec<G::Scalar>,
+    rng: &mut R,
+  ) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
+    let one = G::Scalar::ONE;
+    let A = vec![
+      (0, 1, one),
+      (1, 3, one),
+      (2, 1, one),
+      (2, 4, one),
+      (3, 0, G::Scalar::from(5u64)),
+      (3, 5, one),
+    ];
+
+    let B = vec![(0, 1, one), (1, 1, one), (2, 0, one), (3, 0, one)];
+    let C = vec![(0, 3, one), (1, 4, one), (2, 5, one), (3, 2, one)];
+
+    // 2. Take R1CS and convert to CCS
+    let ccs = CCSShape::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
+    // Generate other artifacts
+    let ck = CCSShape::<G>::commitment_key(&ccs);
+    let ccs_w = CCSWitness::new(z[2..].to_vec());
+    let ccs_instance = CCSInstance::new(&ccs, &ccs_w.commit(&ck), vec![z[1]]).unwrap();
+
+    ccs
+      .is_sat(&ck, &ccs_instance, &ccs_w)
+      .expect("This does not fail");
+    (ccs, ccs_w, ccs_instance)
+  }
+
+  #[cfg(test)]
+  /// Computes the z vector for the given input for Vitalik's equation.
+  pub fn get_test_z(input: u64) -> Vec<G::Scalar> {
+    // z = (1, io, w)
+    let input = G::Scalar::from(input);
+    vec![
+      G::Scalar::ONE,
+      input,
+      input * input * input + input + G::Scalar::from(5u64), // x^3 + x + 5
+      input * input,                                         // x^2
+      input * input * input,                                 // x^2 * x
+      input * input * input + input,                         // x^3 + x
+    ]
+  }
 }
 
 /// A type that holds a witness for a given CCS instance
