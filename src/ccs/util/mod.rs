@@ -180,7 +180,7 @@ mod tests {
   #[test]
   fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
     let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let (ccs, witness, _) = CCSShape::<Ep>::gen_test_ccs(&z);
 
     // Generate other artifacts
     let ck = CCSShape::<Ep>::commitment_key(&ccs);
