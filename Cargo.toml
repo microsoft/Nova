@@ -42,6 +42,7 @@ rand = "0.8.4"
 hex = "0.4.3"
 pprof = { version = "0.11" }
 cfg-if = "1.0.0"
+sha2 = "0.10.7"
 
 [[bench]]
 name = "recursive-snark"
@@ -53,6 +54,10 @@ harness = false
 
 [[bench]]
 name = "compute-digest"
+harness = false
+
+[[bench]]
+name = "sha256"
 harness = false
 
 [features]
