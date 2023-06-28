@@ -85,6 +85,28 @@ fn fix_one_variable_helper<F: PrimeField>(data: &[F], nv: usize, point: &F) -> V
   res
 }
 
+/// Return a vector of evaluations p_j(r) = \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
+/// for all j values in 0..self.t
+// XXX: This fn needs tests!!
+pub fn compute_all_sum_Mz_evals<G: Group>(
+  M_x_y_mle: &[MultilinearPolynomial<G::Scalar>],
+  // XXX: Can we just get the MLE?
+  z: &Vec<G::Scalar>,
+  r: &[G::Scalar],
+  s_prime: usize,
+) -> Vec<G::Scalar> {
+  // Convert z to MLE
+  let z_y_mle = dense_vec_to_mle(s_prime, z);
+
+  let mut v = Vec::with_capacity(M_x_y_mle.len());
+  for M_i in M_x_y_mle {
+    let sum_Mz = compute_sum_Mz::<G>(M_i, &z_y_mle);
+    let v_i = sum_Mz.evaluate(r);
+    v.push(v_i);
+  }
+  v
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
