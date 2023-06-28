@@ -149,7 +149,7 @@ mod tests {
     let mut rng = OsRng;
 
     let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
@@ -176,7 +176,7 @@ mod tests {
     let mut rng = OsRng;
 
     let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
@@ -220,7 +220,7 @@ mod tests {
     let mut rng = OsRng;
 
     let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z, &mut rng);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
 
     // generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);

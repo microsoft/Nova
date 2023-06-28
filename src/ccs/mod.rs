@@ -258,10 +258,7 @@ impl<G: Group> CCSShape<G> {
   }
 
   #[cfg(test)]
-  fn gen_test_ccs<R: RngCore>(
-    z: &Vec<G::Scalar>,
-    rng: &mut R,
-  ) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
+  fn gen_test_ccs(z: &Vec<G::Scalar>) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
     let one = G::Scalar::ONE;
     let A = vec![
       (0, 1, one),
