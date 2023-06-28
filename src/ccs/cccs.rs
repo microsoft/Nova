@@ -27,6 +27,7 @@ use sha3::{Digest, Sha3_256};
 use std::ops::{Add, Mul};
 use std::sync::Arc;
 
+use super::util::compute_sum_Mz;
 use super::util::virtual_poly::VirtualPolynomial;
 use super::CCSShape;
 
@@ -60,36 +61,6 @@ pub struct CCCSWitness<G: Group> {
 }
 
 impl<G: Group> CCCSShape<G> {
-  /// Computes the MLE of the CCS's Matrix at index `j` and executes the reduction of it summing over the given z.
-  pub fn compute_sum_Mz(
-    &self,
-    m_idx: usize,
-    z: &MultilinearPolynomial<G::Scalar>,
-  ) -> MultilinearPolynomial<G::Scalar> {
-    let s_prime = self.ccs.s_prime;
-    let M_j_mle = &self.M_MLE[m_idx];
-    assert_eq!(z.get_num_vars(), s_prime);
-
-    let mut sum_Mz = MultilinearPolynomial::new(vec![
-      G::Scalar::ZERO;
-      1 << (M_j_mle.get_num_vars() - s_prime)
-    ]);
-
-    let bhc = BooleanHypercube::<G::Scalar>::new(s_prime);
-    for y in bhc.into_iter() {
-      let M_j_y = fix_variables(&M_j_mle, &y);
-
-      // reverse y to match spartan/polynomial evaluate
-      let y_rev: Vec<G::Scalar> = y.into_iter().rev().collect();
-      let z_y = z.evaluate(&y_rev);
-      let M_j_z = M_j_y.scalar_mul(&z_y);
-      // XXX: It's crazy to have results in the ops impls. Remove them!
-      sum_Mz = sum_Mz.clone().add(M_j_z).expect("This should not fail");
-    }
-
-    sum_Mz
-  }
-
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   // polynomial over x
   pub fn compute_q(&self, z: &Vec<G::Scalar>) -> Result<VirtualPolynomial<G::Scalar>, NovaError> {
@@ -107,7 +78,7 @@ impl<G: Group> CCCSShape<G> {
         let mut prod = VirtualPolynomial::<G::Scalar>::new(self.ccs.s);
 
         for &j in &self.ccs.S[idx] {
-          let sum_Mz = self.compute_sum_Mz(j, &z_mle);
+          let sum_Mz = compute_sum_Mz::<G>(&self.M_MLE[j], &z_mle);
 
           // Fold this sum into the running product
           if prod.products.is_empty() {
@@ -262,7 +233,7 @@ mod tests {
       for i in 0..ccs.q {
         let mut Sj_prod = Fq::one();
         for j in ccs.S[i].clone() {
-          let sum_Mz = cccs.compute_sum_Mz(j, &z_mle);
+          let sum_Mz: MultilinearPolynomial<Fq> = compute_sum_Mz::<Ep>(&cccs.M_MLE[j], &z_mle);
           let sum_Mz_x = sum_Mz.evaluate(&x);
           Sj_prod *= sum_Mz_x;
         }
