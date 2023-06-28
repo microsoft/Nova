@@ -14,6 +14,8 @@ use ::bellperson::{
   },
   ConstraintSystem, SynthesisError,
 };
+use core::time::Duration;
+use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
   traits::{
@@ -23,8 +25,6 @@ use nova_snark::{
   PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
-use criterion::*;
-use core::time::Duration;
 
 #[derive(Clone, Debug)]
 struct Sha256Circuit<Scalar: PrimeField> {
@@ -128,7 +128,6 @@ targets = bench_recursive_snark
 criterion_main!(recursive_snark);
 
 fn bench_recursive_snark(c: &mut Criterion) {
-
   let bytes_to_scalar = |bytes: [u8; 32]| -> <G1 as Group>::Scalar {
     let mut bytes_le = bytes;
     bytes_le.reverse();
@@ -137,9 +136,10 @@ fn bench_recursive_snark(c: &mut Criterion) {
 
   let decode_hex = |s: &str| -> <G1 as Group>::Scalar {
     let bytes = (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect::<Result<Vec<u8>, _>>().unwrap();
+      .step_by(2)
+      .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+      .collect::<Result<Vec<u8>, _>>()
+      .unwrap();
     let bytes_arr: [u8; 32] = bytes.try_into().unwrap();
     bytes_to_scalar(bytes_arr)
   };
@@ -148,82 +148,60 @@ fn bench_recursive_snark(c: &mut Criterion) {
   let circuits = vec![
     Sha256Circuit {
       preimage: vec![0u8; 64],
-      digest: decode_hex(
-        "12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-      ),
+      digest: decode_hex("12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 128],
-      digest: decode_hex(
-        "13abfac9782cb9c13c4508bde596f1914fe2f744f6a661c0c9a16659745c4e1b"
-      ),
+      digest: decode_hex("13abfac9782cb9c13c4508bde596f1914fe2f744f6a661c0c9a16659745c4e1b"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 256],
-      digest: decode_hex(
-        "0f5a007b5aef126a58f9bbd937842967c44253e7f97d98b5cd10bfe44d6782c8"
-      ),
+      digest: decode_hex("0f5a007b5aef126a58f9bbd937842967c44253e7f97d98b5cd10bfe44d6782c8"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 512],
-      digest: decode_hex(
-        "06a6cfaad91d49366f18443cd4e11576ff27c174bb9fe2bc54735a79e3e456e0"
-      ),
+      digest: decode_hex("06a6cfaad91d49366f18443cd4e11576ff27c174bb9fe2bc54735a79e3e456e0"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 1024],
-      digest: decode_hex(
-        "3763c73508f5fbb36daae8257d6c5c07db08ec5df0549ccf692b9fa218fd0ef7"
-      ),
+      digest: decode_hex("3763c73508f5fbb36daae8257d6c5c07db08ec5df0549ccf692b9fa218fd0ef7"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 2048],
-      digest: decode_hex(
-        "35c18d6c3cf49e42b3ffcb54ea04bdc16617efba0e673abc8c858257955005a5"
-      ),
+      digest: decode_hex("35c18d6c3cf49e42b3ffcb54ea04bdc16617efba0e673abc8c858257955005a5"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 4096],
-      digest: decode_hex(
-        "25349112d1bd5ba15e3e2d3effa01af1da02c097ce6208cdf28f34b74d35feb2"
-      ),
+      digest: decode_hex("25349112d1bd5ba15e3e2d3effa01af1da02c097ce6208cdf28f34b74d35feb2"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 8192],
-      digest: decode_hex(
-        "22bc891155c7d423039a2206ed4a5342755948baeb13a54b61dbead7c3d3b8f6"
-      ),
+      digest: decode_hex("22bc891155c7d423039a2206ed4a5342755948baeb13a54b61dbead7c3d3b8f6"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 16384],
-      digest: decode_hex(
-        "3fda713dc72ddcd42ce625c75f7e41d526d30647278a3dfcda95904e59ade7f1"
-      ),
+      digest: decode_hex("3fda713dc72ddcd42ce625c75f7e41d526d30647278a3dfcda95904e59ade7f1"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 32768],
-      digest: decode_hex(
-        "1e2091bd3e3cedffebb7316b52414fff82511cbd232561874a4ae11ae2040ac1"
-      ),
+      digest: decode_hex("1e2091bd3e3cedffebb7316b52414fff82511cbd232561874a4ae11ae2040ac1"),
     },
     Sha256Circuit {
       preimage: vec![0u8; 65536],
-      digest: decode_hex(
-        "0c33953975c438ce357912f27b0fbcf98bae6eb68a1a913386672ee406a4f479"
-      ),
+      digest: decode_hex("0c33953975c438ce357912f27b0fbcf98bae6eb68a1a913386672ee406a4f479"),
     },
   ];
 
-
   for circuit_primary in circuits {
-    let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
+    let mut group = c.benchmark_group(format!(
+      "NovaProve-Sha256-message-len-{}",
+      circuit_primary.preimage.len()
+    ));
     group.sample_size(10);
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
-      circuit_primary.clone(),
-      TrivialTestCircuit::default(),
-    );
+    let pp =
+      PublicParams::<G1, G2, C1, C2>::setup(circuit_primary.clone(), TrivialTestCircuit::default());
 
     let circuit_secondary = TrivialTestCircuit::default();
     let z0_primary = vec![<G1 as Group>::Scalar::from(2u64)];
@@ -231,16 +209,23 @@ fn bench_recursive_snark(c: &mut Criterion) {
 
     group.bench_function("Prove", |b| {
       b.iter(|| {
-        let mut recursive_snark = RecursiveSNARK::new(black_box(&pp), black_box(&circuit_primary), black_box(&circuit_secondary), black_box(z0_primary.clone()), black_box(z0_secondary.clone()));
-        // produce a recursive SNARK for a step of the recursion
-        assert!(recursive_snark.prove_step(
+        let mut recursive_snark = RecursiveSNARK::new(
           black_box(&pp),
           black_box(&circuit_primary),
           black_box(&circuit_secondary),
           black_box(z0_primary.clone()),
           black_box(z0_secondary.clone()),
-        )
-        .is_ok());
+        );
+        // produce a recursive SNARK for a step of the recursion
+        assert!(recursive_snark
+          .prove_step(
+            black_box(&pp),
+            black_box(&circuit_primary),
+            black_box(&circuit_secondary),
+            black_box(z0_primary.clone()),
+            black_box(z0_secondary.clone()),
+          )
+          .is_ok());
       })
     });
     group.finish();
