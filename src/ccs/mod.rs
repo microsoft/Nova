@@ -33,6 +33,8 @@ use sha3::{Digest, Sha3_256};
 use std::ops::{Add, Mul};
 
 use self::cccs::{CCCSInstance, CCCSShape, CCCSWitness};
+use self::lcccs::LCCCS;
+use self::util::compute_all_sum_Mz_evals;
 
 mod cccs;
 mod lcccs;
@@ -122,7 +124,7 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
-  // Transform the CCS instance into a CCCS instance by providing the required Commitment key.
+  // Transform the CCS instance into a CCCS instance by providing a commitment key.
   pub fn to_cccs_artifacts<R: RngCore>(
     &self,
     rng: &mut R,
@@ -143,6 +145,47 @@ impl<G: Group> CCSShape<G> {
       CCCSWitness { w_mle: w },
       self.to_cccs_shape(),
     )
+  }
+
+  /// Transform the CCS instance into an LCCCS instance by providing a commitment key.
+  pub fn to_lcccs<R: RngCore>(
+    &self,
+    mut rng: &mut R,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    z: &[G::Scalar],
+  ) -> (LCCCS<G>, CCSWitness<G>) {
+    let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+    let r_w = G::Scalar::random(&mut rng);
+    let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
+
+    // XXX: API doesn't offer a way to handle this??
+    let _r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(&mut rng)).collect();
+
+    let v = self.compute_v_j(z, &_r_x);
+    // XXX: Is absurd to compute these again here. We should take care of this.
+    let matrix_mles: Vec<MultilinearPolynomial<G::Scalar>> =
+      self.M.iter().map(|matrix| matrix.to_mle()).collect();
+
+    (
+      LCCCS::<G> {
+        ccs: self.clone(),
+        C,
+        u: G::Scalar::ONE,
+        x: z[1..(1 + self.l)].to_vec(),
+        r_x: _r_x,
+        v,
+        matrix_mles,
+      },
+      CCSWitness::<G> { w },
+    )
+  }
+
+  /// Compute v_j values of the linearized committed CCS form
+  /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
+  fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
+    let M_mle: Vec<MultilinearPolynomial<G::Scalar>> =
+      self.M.iter().map(|matrix| matrix.to_mle()).collect();
+    compute_all_sum_Mz_evals::<G>(&M_mle, &z.to_vec(), r, self.s_prime)
   }
 
   // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
