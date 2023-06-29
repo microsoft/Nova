@@ -87,7 +87,6 @@ fn fix_one_variable_helper<F: PrimeField>(data: &[F], nv: usize, point: &F) -> V
 
 /// Return a vector of evaluations p_j(r) = \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
 /// for all j values in 0..self.t
-// XXX: This fn needs tests!!
 pub fn compute_all_sum_Mz_evals<G: Group>(
   M_x_y_mle: &[MultilinearPolynomial<G::Scalar>],
   // XXX: Can we just get the MLE?
@@ -101,7 +100,13 @@ pub fn compute_all_sum_Mz_evals<G: Group>(
   let mut v = Vec::with_capacity(M_x_y_mle.len());
   for M_i in M_x_y_mle {
     let sum_Mz = compute_sum_Mz::<G>(M_i, &z_y_mle);
-    let v_i = sum_Mz.evaluate(r);
+
+    // XXX: We need a better way to do this. Sum_Mz has also the same issue.
+    // reverse the `r` given to evaluate to match Spartan/Nova endianness.
+    let mut r = r.to_vec();
+    r.reverse();
+
+    let v_i = sum_Mz.evaluate(&r);
     v.push(v_i);
   }
   v
@@ -180,7 +185,7 @@ mod tests {
   #[test]
   fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
     let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, witness, _) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
 
     // Generate other artifacts
     let ck = CCSShape::<Ep>::commitment_key(&ccs);
@@ -204,5 +209,23 @@ mod tests {
       }
       assert_eq!(r, Fq::ZERO);
     }
+  }
+
+  #[test]
+  fn test_compute_all_sum_Mz_evals() {
+    let z = CCSShape::<Ep>::get_test_z(3);
+    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
+
+    // Generate other artifacts
+    let ck = CCSShape::<Ep>::commitment_key(&ccs);
+    let (_, _, cccs) = ccs.to_cccs_artifacts(&mut OsRng, &ck, &z);
+
+    let mut r = vec![Fq::ONE, Fq::ZERO];
+    let res = compute_all_sum_Mz_evals::<Ep>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
+    assert_eq!(res, vec![Fq::from(9u64), Fq::from(3u64), Fq::from(27u64)]);
+
+    r.reverse();
+    let res = compute_all_sum_Mz_evals::<Ep>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
+    assert_eq!(res, vec![Fq::from(30u64), Fq::from(1u64), Fq::from(30u64)])
   }
 }
