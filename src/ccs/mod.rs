@@ -183,6 +183,7 @@ impl<G: Group> CCSShape<G> {
   /// Compute v_j values of the linearized committed CCS form
   /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
   fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
+    // XXX: Should these be MLE already?
     let M_mle: Vec<MultilinearPolynomial<G::Scalar>> =
       self.M.iter().map(|matrix| matrix.to_mle()).collect();
     compute_all_sum_Mz_evals::<G>(&M_mle, &z.to_vec(), r, self.s_prime)

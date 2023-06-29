@@ -84,8 +84,7 @@ impl<G: Group> LCCCS<G> {
       assert_eq!(z_mle.get_num_vars(), self.ccs.s_prime);
 
       let sum_Mz = compute_sum_Mz::<G>(&M_j, &z_mle);
-      let sum_Mz_virtual =
-        VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz.clone()), G::Scalar::ONE);
+      let sum_Mz_virtual = VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz), G::Scalar::ONE);
       let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
       vec_L_j_x.push(L_j_x);
     }
