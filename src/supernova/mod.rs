@@ -10,9 +10,9 @@ use crate::ccs;
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::R1CS,
   scalar_as_base,
-  traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
+  traits::{Group, ROConstantsTrait, circuit::TrivialTestCircuit, circuit::StepCircuit},
   Commitment, CommitmentKey, CompressedCommitment,
   RecursiveSNARK, PublicParams
 };
@@ -65,15 +65,16 @@ use crate::nifs::NIFS;
 
 */
 
-pub struct NIVC<C> {
+pub struct RunningClaims<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
   w: String,
   z: String, // (witness vector, x, u)
   program_counter: i32,
   claim_u: String,
-  RC: Vec<C>
+  RC: Vec<Ca>,
+  _phantom: PhantomData<G>, 
 }
 
-impl<C> NIVC <C> {
+impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca> {
   pub fn new() -> Self {
       Self {
           w: String::new(),
@@ -81,20 +82,20 @@ impl<C> NIVC <C> {
           program_counter: 0,
           claim_u: String::new(),
           RC: Vec::new(),
+          _phantom: PhantomData, 
       }
   }
 
-  //implement here..
+  pub fn push_circuit(&mut self, circuit: Ca) {
+    self.RC.push(circuit);
+  }
 }
+
 
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  use crate::{
-    r1cs::R1CS,
-    traits::{Group, ROConstantsTrait, circuit::TrivialTestCircuit, circuit::StepCircuit},
-  };
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 
   #[derive(Clone, Debug, Default)]
@@ -150,23 +151,23 @@ mod tests {
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
 
-  fn test_trivial_nivc_with<G1, G2>(pci: i32)
+  fn test_trivial_nivc_with<G1, G2, T: StepCircuit<<G1 as Group>::Scalar>>(pci: i32, t1: &T, t2: &T)
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
+    T: StepCircuit<<G1 as Group>::Scalar> + std::fmt::Debug,
   {
-    let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
     let test_circuit2 = CubicCircuit::<<G2 as Group>::Scalar>::default();
 
-    println!("here: {:?}", test_circuit2);
+    println!("here: {:?}", t2);
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      T,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(test_circuit1.clone(), test_circuit2.clone());
+    >::setup(t1.clone(), test_circuit2.clone());
 
     let num_steps = 1;
 
@@ -175,7 +176,7 @@ mod tests {
     RecursiveSNARK<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      T,
       CubicCircuit<<G2 as Group>::Scalar>,
     >,
   > = None;
@@ -184,7 +185,7 @@ mod tests {
     let res = RecursiveSNARK::prove_step(
       &pp,
       recursive_snark,
-      test_circuit1,
+      t1.clone(),
       test_circuit2,
       vec![<G1 as Group>::Scalar::ZERO],
       vec![<G2 as Group>::Scalar::ZERO],
@@ -204,17 +205,29 @@ mod tests {
 
   #[test]
   fn test_trivial_nivc() {
-      // Create a new instance of NIVC
-      let mut nivc = NIVC::new();
+      // Structuring running claims
+      let mut running_claim1 = RunningClaims::<G1, TrivialTestCircuit<<G1 as Group>::Scalar>>::new();
+      let mut running_claim2 = RunningClaims::<G1, CubicCircuit<<G1 as Group>::Scalar>>::new();
 
-      //TODO: build list of circuits here to be added RC vector.
-      //let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
-      //let test_circuit2 = CubicCircuit::<<G2 as Group>::Scalar>::default();
-      //nivc.RC.push(test_circuit1);
-      //nivc.RC.push(test_circuit2);
+      let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+      let test_circuit2 = CubicCircuit::<<G1 as Group>::Scalar>::default();
+      running_claim1.push_circuit(test_circuit1);
+      running_claim2.push_circuit(test_circuit2);
+
+      let claims_tuple = (running_claim1, running_claim2);
     
-      //Starting with the ivc test and transforming it into an nivc test.
-      test_trivial_nivc_with::<G1, G2>(nivc.program_counter);
+      //Expirementing with selecting the running claims for nifs
+      test_trivial_nivc_with::<G1, G2, TrivialTestCircuit<<G1 as Group>::Scalar>>(
+        claims_tuple.0.program_counter,
+        &claims_tuple.0.RC[0],
+        &claims_tuple.0.RC[0]
+      );
+
+     /* test_trivial_nivc_with::<G1, G2, CubicCircuit<<G1 as Group>::Scalar>>(
+        claims_tuple.1.program_counter,
+        &claims_tuple.1.RC[0],
+        &claims_tuple.1.RC[0]
+      );*/
 
   }
 }
