@@ -17,7 +17,6 @@ use crate::{
     circuit::TrivialTestCircuit, circuit::StepCircuit,
     commitment::{CommitmentEngineTrait, CommitmentTrait}},
   Commitment, CommitmentKey, CompressedCommitment,
-  PublicParams,
   circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams},
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS}
 };
@@ -33,6 +32,8 @@ use crate::bellperson::{
   solver::SatisfyingAssignment,
 };
 use ::bellperson::{Circuit, ConstraintSystem};
+use flate2::{write::ZlibEncoder, Compression};
+use sha3::{Digest, Sha3_256};
 
 
 /*
@@ -79,9 +80,7 @@ use crate::nifs::NIFS;
 
 */
 
-
 pub struct RunningClaims<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
-  program_counter: i32,
   RC: Vec<Ca>,
   _phantom: PhantomData<G>, 
 }
@@ -89,7 +88,6 @@ pub struct RunningClaims<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
 impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca> {
   pub fn new() -> Self {
       Self {
-          program_counter: 0,
           RC: Vec::new(),
           _phantom: PhantomData, 
       }
@@ -100,7 +98,151 @@ impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca> {
   }
 }
 
-/// A SNARK that proves the correct execution of an incremental computation
+fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
+  // obtain a vector of bytes representing public parameters
+  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+  bincode::serialize_into(&mut encoder, o).unwrap();
+  let pp_bytes = encoder.finish().unwrap();
+
+  // convert pp_bytes into a short digest
+  let mut hasher = Sha3_256::new();
+  hasher.input(&pp_bytes);
+  let digest = hasher.result();
+
+  // truncate the digest to NUM_HASH_BITS bits
+  let bv = (0..NUM_HASH_BITS).map(|i| {
+    let (byte_pos, bit_pos) = (i / 8, i % 8);
+    let bit = (digest[byte_pos] >> bit_pos) & 1;
+    bit == 1
+  });
+
+  // turn the bit vector into a scalar
+  let mut digest = G::Scalar::ZERO;
+  let mut coeff = G::Scalar::ONE;
+  for bit in bv {
+    if bit {
+      digest += coeff;
+    }
+    coeff += coeff;
+  }
+  digest
+}
+
+/// A type that holds public parameters of Nova
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct PublicParams<G1, G2, C1, C2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
+  F_arity_primary: usize,
+  F_arity_secondary: usize,
+  ro_consts_primary: ROConstants<G1>,
+  ro_consts_circuit_primary: ROConstantsCircuit<G2>,
+  ck_primary: CommitmentKey<G1>,
+  r1cs_shape_primary: R1CSShape<G1>,
+  ro_consts_secondary: ROConstants<G2>,
+  ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
+  ck_secondary: CommitmentKey<G2>,
+  r1cs_shape_secondary: R1CSShape<G2>,
+  augmented_circuit_params_primary: NovaAugmentedCircuitParams,
+  augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
+  digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
+  _p_c1: PhantomData<C1>,
+  _p_c2: PhantomData<C2>,
+}
+
+impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
+  /// Create a new `PublicParams`
+  pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
+    let augmented_circuit_params_primary =
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let augmented_circuit_params_secondary =
+      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+
+    let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
+    let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
+
+    let F_arity_primary = c_primary.arity();
+    let F_arity_secondary = c_secondary.arity();
+
+    // ro_consts_circuit_primary are parameterized by G2 because the type alias uses G2::Base = G1::Scalar
+    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = ROConstantsCircuit::<G2>::new();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
+
+    // Initialize ck for the primary
+    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+      augmented_circuit_params_primary.clone(),
+      None,
+      c_primary,
+      ro_consts_circuit_primary.clone(),
+    );
+    let mut cs: ShapeCS<G1> = ShapeCS::new();
+    let _ = circuit_primary.synthesize(&mut cs);
+    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
+
+    // Initialize ck for the secondary
+    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+      augmented_circuit_params_secondary.clone(),
+      None,
+      c_secondary,
+      ro_consts_circuit_secondary.clone(),
+    );
+    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let _ = circuit_secondary.synthesize(&mut cs);
+    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
+
+    let mut pp = Self {
+      F_arity_primary,
+      F_arity_secondary,
+      ro_consts_primary,
+      ro_consts_circuit_primary,
+      ck_primary,
+      r1cs_shape_primary,
+      ro_consts_secondary,
+      ro_consts_circuit_secondary,
+      ck_secondary,
+      r1cs_shape_secondary,
+      augmented_circuit_params_primary,
+      augmented_circuit_params_secondary,
+      digest: G1::Scalar::ZERO,
+      _p_c1: Default::default(),
+      _p_c2: Default::default(),
+    };
+
+    // set the digest in pp
+    pp.digest = compute_digest::<G1, PublicParams<G1, G2, C1, C2>>(&pp);
+
+    pp
+  }
+
+  /// Returns the number of constraints in the primary and secondary circuits
+  pub fn num_constraints(&self) -> (usize, usize) {
+    (
+      self.r1cs_shape_primary.num_cons,
+      self.r1cs_shape_secondary.num_cons,
+    )
+  }
+
+  /// Returns the number of variables in the primary and secondary circuits
+  pub fn num_variables(&self) -> (usize, usize) {
+    (
+      self.r1cs_shape_primary.num_vars,
+      self.r1cs_shape_secondary.num_vars,
+    )
+  }
+}
+
+/// A SNARK that proves the correct execution of an non-uniform incremental computation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NivcSNARK<G1, G2, C1, C2>
@@ -121,6 +263,7 @@ where
   zi_secondary: Vec<G2::Scalar>,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+  program_counter: i32,
 }
 
 impl<G1, G2, C1, C2> NivcSNARK<G1, G2, C1, C2>
@@ -229,6 +372,7 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
+          program_counter: 0
         })
       }
       Some(r_snark) => {
@@ -318,12 +462,12 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
+          program_counter: 0
         })
       }
     }
   }
 
-  /// Verify the correctness of the `NivcSNARK`
   pub fn verify(
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
@@ -482,85 +626,97 @@ mod tests {
   }
 
 
-  type G1 = pasta_curves::pallas::Point;
-  type G2 = pasta_curves::vesta::Point;
-
-  fn test_trivial_nivc_with<G1, G2, T: StepCircuit<<G1 as Group>::Scalar>>(pci: i32, t1: &T)
+  fn test_trivial_nivc_with<G1, G2>(num_steps: usize)
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    T: StepCircuit<<G1 as Group>::Scalar> + std::fmt::Debug,
   {
-    let default_circuit = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
 
-    println!("here: {:?}", t1);
+    // Structuring running claims      
+    let mut running_claim1 = RunningClaims::<G2, CubicCircuit<<G2 as Group>::Scalar>>::new();
+    let test_circuit1 = CubicCircuit::default();
+    running_claim1.push_circuit(test_circuit1);
+
+    let mut running_claim2 = RunningClaims::<G2, CubicCircuit<<G2 as Group>::Scalar>>::new();
+    let test_circuit2 = CubicCircuit::default();
+    running_claim2.push_circuit(test_circuit2);
+
+    let claims_tuple = (running_claim1, running_claim2);
+    
+    let circuit_primary = TrivialTestCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      T,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(t1.clone(), default_circuit.clone());
+      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
+    >::setup(circuit_primary.clone(), claims_tuple.0.RC[0].clone());
 
-    let num_steps = 1;
+    let num_steps = 3;
 
     // produce a recursive SNARK
     let mut recursive_snark: Option<
-    NivcSNARK<
-      G1,
-      G2,
-      T,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >,
-  > = None;
+      NivcSNARK<
+        G1,
+        G2,
+        TrivialTestCircuit<<G1 as Group>::Scalar>,
+        CubicCircuit<<G2 as Group>::Scalar>,
+      >,
+    > = None;
 
-    // produce a recursive SNARK
-    let res = NivcSNARK::prove_step(
-      &pp,
-      recursive_snark,
-      t1.clone(),
-      default_circuit,
-      vec![<G1 as Group>::Scalar::ZERO],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-    let recursive_snark_unwrapped = res.unwrap();
+    for i in 0..num_steps {
+      let res = NivcSNARK::prove_step(
+        &pp,
+        recursive_snark,
+        circuit_primary.clone(),
+        claims_tuple.0.RC[0].clone(),
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
+      );
+      assert!(res.is_ok());
+      let recursive_snark_unwrapped = res.unwrap();
+
+      // verify the recursive snark at each step of recursion
+      let res = recursive_snark_unwrapped.verify(
+        &pp,
+        i + 1,
+        vec![<G1 as Group>::Scalar::ONE],
+        vec![<G2 as Group>::Scalar::ZERO],
+      );
+      assert!(res.is_ok());
+
+      // set the running variable for the next iteration
+      recursive_snark = Some(recursive_snark_unwrapped);
+    }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
 
     // verify the recursive SNARK
-    let res = recursive_snark_unwrapped.verify(
+    let res = recursive_snark.verify(
       &pp,
       num_steps,
-      vec![<G1 as Group>::Scalar::ZERO],
+      vec![<G1 as Group>::Scalar::ONE],
       vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
+    match res {
+      Ok(val) => println!("Got an Ok result: {:?}", val),
+      Err(err) => println!("Got an error: {:?}", err),
+    }
+    //assert!(res.is_ok());
+    
   }
 
   #[test]
   fn test_trivial_nivc() {
-      // Structuring running claims      
-      let mut running_claim1 = RunningClaims::<G1, CubicCircuit<<G1 as Group>::Scalar>>::new();
-      let test_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
-      running_claim1.push_circuit(test_circuit1);
 
-      let mut running_claim2 = RunningClaims::<G1, CubicCircuit<<G1 as Group>::Scalar>>::new();
-      let test_circuit2 = CubicCircuit::<<G1 as Group>::Scalar>::default();
-      running_claim2.push_circuit(test_circuit2);
-
-      let claims_tuple = (running_claim1, running_claim2);
+      type G1 = pasta_curves::pallas::Point;
+      type G2 = pasta_curves::vesta::Point;
     
       //Expirementing with selecting the running claims for nifs
-      test_trivial_nivc_with::<G1, G2, CubicCircuit<<G1 as Group>::Scalar>>(
-        claims_tuple.0.program_counter,
-        &claims_tuple.0.RC[0],
-      );
-
-      /*test_trivial_nivc_with::<G1, G2, CubicCircuit<<G1 as Group>::Scalar>>(
-        claims_tuple.1.program_counter,
-        &claims_tuple.1.RC[0],
-        &claims_tuple.1.RC[0]
-      );*/
+      test_trivial_nivc_with::<G1, G2>(3);
 
   }
 }
