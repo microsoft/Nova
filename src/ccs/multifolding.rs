@@ -42,6 +42,14 @@ pub struct Multifolding<G: Group> {
 }
 
 impl<G: Group> Multifolding<G> {
+  /// Generates a new Multifolding instance based on the given CCS.
+  pub fn new(ccs: CCSShape<G>) -> Self {
+    let ccs_mle = ccs.M.iter().map(|matrix| matrix.to_mle()).collect();
+    Self { ccs, ccs_mle }
+  }
+}
+
+impl<G: Group> Multifolding<G> {
   /// Compute sigma_i and theta_i from step 4
   pub fn compute_sigmas_and_thetas(
     &self,
@@ -193,5 +201,48 @@ mod tests {
     // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
     // sum of gamma^j * v_j over j \in [t]
     assert_eq!(g_on_bhc, sum_v_j_gamma);
+  }
+
+  #[test]
+  fn test_compute_sigmas_and_thetas() -> () {
+    let z1 = CCSShape::<Ep>::get_test_z(3);
+    let z2 = CCSShape::<Ep>::get_test_z(4);
+
+    let (_, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z2);
+    let (ccs, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z1);
+    let ck = ccs.commitment_key();
+
+    assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
+    assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
+
+    let mut rng = OsRng;
+    let gamma: Fq = Fq::random(&mut rng);
+    let beta: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+    let r_x_prime: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+
+    // Initialize a multifolding object
+    let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &ck, &z1);
+    let (cccs_instance) = ccs.to_cccs_shape();
+
+    // Generate a new multifolding instance
+    let mf = NIMFS::new(ccs);
+
+    let (sigmas, thetas) = mf.compute_sigmas_and_thetas(&z1, &z2, &r_x_prime);
+
+    let g = NIMFS::compute_g(&lcccs_instance, &cccs_instance, &z1, &z2, gamma, &beta);
+
+    // we expect g(r_x_prime) to be equal to:
+    // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
+    // from compute_c_from_sigmas_and_thetas
+    let expected_c = g.evaluate(&r_x_prime).unwrap();
+    let c = mf.compute_c_from_sigmas_and_thetas(
+      &sigmas,
+      &thetas,
+      gamma,
+      &beta,
+      &lcccs_instance.r_x,
+      &r_x_prime,
+    );
+    assert_eq!(c, expected_c);
   }
 }

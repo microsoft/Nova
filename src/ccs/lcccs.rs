@@ -187,4 +187,6 @@ mod tests {
 
     assert_eq!(satisfied, false);
   }
+
+  // XXX: Missing folding test.
 }

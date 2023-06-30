@@ -38,6 +38,7 @@ use self::util::compute_all_sum_Mz_evals;
 
 mod cccs;
 mod lcccs;
+mod multifolding;
 mod util;
 
 /// A type that holds the shape of a CCS instance
@@ -198,6 +199,7 @@ impl<G: Group> CCSShape<G> {
   }
 
   /// Checks if the CCS instance is satisfiable given a witness and its shape
+  // XXX: Probably is better to completelly remove the abstraction of Instance and witness and just deal with Z.
   pub fn is_sat(
     &self,
     ck: &CommitmentKey<G>,
@@ -302,7 +304,7 @@ impl<G: Group> CCSShape<G> {
   }
 
   #[cfg(test)]
-  fn gen_test_ccs(z: &Vec<G::Scalar>) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
+  pub(crate) fn gen_test_ccs(z: &Vec<G::Scalar>) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
     let one = G::Scalar::ONE;
     let A = vec![
       (0, 1, one),
@@ -331,7 +333,7 @@ impl<G: Group> CCSShape<G> {
 
   #[cfg(test)]
   /// Computes the z vector for the given input for Vitalik's equation.
-  pub fn get_test_z(input: u64) -> Vec<G::Scalar> {
+  pub(crate) fn get_test_z(input: u64) -> Vec<G::Scalar> {
     // z = (1, io, w)
     let input = G::Scalar::from(input);
     vec![
