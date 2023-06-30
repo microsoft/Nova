@@ -120,7 +120,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   }
 
   /// Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
-  /// W = E = 0, u = 1, X0 = X1 = 0
+  /// W = E = 0, u = 0, X0 = X1 = 0
   pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
     limb_width: usize,
