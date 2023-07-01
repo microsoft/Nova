@@ -36,67 +36,9 @@ use flate2::{write::ZlibEncoder, Compression};
 use sha3::{Digest, Sha3_256};
 
 
-/*
- NIFS (non-interactive folding scheme) is where the folding occurs after the MUX chooses a function.
- It is part of the 'prover'.
 
- Nova case:
- In a single instance it would take ui, Ui and output Ui+1.
- ui = claim about prior step.
- Ui = running instance.
-
- SuperNova case:
- In multi-instance it takes:
- - Claim for C'pci_ui
- - pci = the program counter.
- - RC = a array of running instance [Ui-1, Ui-2, ..]
-
- NIFS returns RESULT = Ui+1,pci.
- A WRITE step takes pci 'aka the current program counter' with RESULT
- and updates RC in the correct index.
-
- MUX and WRITE functions are needed in the prover.
-
-*/
 use crate::nifs::NIFS;
 
-/*
- NIVC contains both prover and verifier.
- It returns an array of updated running claims from NIFS and
- (Zi+1, pci + 1) from the verifier.
-
- Nova case:
- In a single instance it would additionaly have zi -> C -> zi+1 (the verfier portion of folding)
- z0 = initial input.
- 
- SuperNova case:
- In multi-instance it takes as input: 
- - wi = a witness for each step.
- - zi = (witness vector, public input x, the error scalar u)
- - It runs these through two functions Cpci+1 and Phi.
-
- Cpci+1 outputs Zi+1
- Phi outputs =  pci + 1.
-
-*/
-
-pub struct RunningClaims<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
-  RC: Vec<Ca>,
-  _phantom: PhantomData<G>, 
-}
-
-impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca> {
-  pub fn new() -> Self {
-      Self {
-          RC: Vec::new(),
-          _phantom: PhantomData, 
-      }
-  }
-
-  pub fn push_circuit(&mut self, circuit: Ca) {
-    self.RC.push(circuit);
-  }
-}
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
@@ -153,6 +95,7 @@ where
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
+  ck_common: CommitmentKey<G1>,
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
@@ -190,6 +133,9 @@ where
     let _ = circuit_primary.synthesize(&mut cs);
     let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
 
+    // Initialize ck for common
+    let (r1cs_shape_primary, ck_common) = cs.r1cs_shape();
+
     // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
       augmented_circuit_params_secondary.clone(),
@@ -200,6 +146,9 @@ where
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
+
+    //println!("pp: {:?}", ck_primary);
+   //println!("pp: {:?}", ck_secondary);
 
     let mut pp = Self {
       F_arity_primary,
@@ -217,6 +166,7 @@ where
       digest: G1::Scalar::ZERO,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
+      ck_common,
     };
 
     // set the digest in pp
@@ -625,6 +575,40 @@ mod tests {
     }
   }
 
+  /*
+   SuperNova takes Ui a list of running instances. 
+   This will be struct called RunningClaims assumed to be provide by the user.
+  */
+  pub struct RunningClaims<G: Group,
+    Ca: StepCircuit<<G as Group>::Scalar>,
+    Cb: StepCircuit<<G as Group>::Scalar>> {
+    _phantom: PhantomData<G>,
+    claim1: Ca,
+    claim2: Cb,
+  }
+
+  impl<G: Group,
+    Ca: StepCircuit<<G as Group>::Scalar>,
+    Cb: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca, Cb>
+  where Ca: Default, Cb: Default,
+  {
+    pub fn new() -> Self {
+        Self {
+            _phantom: PhantomData, 
+            claim1: Ca::default(),
+            claim2: Cb::default(),
+        }
+    }
+
+    pub fn update_circuit1(&mut self, circuit: Ca) {
+      self.claim1 = circuit;
+    }
+
+    pub fn update_circuit2(&mut self, circuit: Cb) {
+        self.claim2 = circuit;
+    }
+
+  }
 
   fn test_trivial_nivc_with<G1, G2>(num_steps: usize)
   where
@@ -633,15 +617,13 @@ mod tests {
   {
 
     // Structuring running claims      
-    let mut running_claim1 = RunningClaims::<G2, CubicCircuit<<G2 as Group>::Scalar>>::new();
+    let mut running_claims = RunningClaims::<G1, CubicCircuit<<G1 as Group>::Scalar>, TrivialTestCircuit<<G1 as Group>::Scalar>>::new();
     let test_circuit1 = CubicCircuit::default();
-    running_claim1.push_circuit(test_circuit1);
+    running_claims.update_circuit1(test_circuit1);
 
-    let mut running_claim2 = RunningClaims::<G2, CubicCircuit<<G2 as Group>::Scalar>>::new();
-    let test_circuit2 = CubicCircuit::default();
-    running_claim2.push_circuit(test_circuit2);
+    let test_circuit2 = TrivialTestCircuit::default();
+    running_claims.update_circuit2(test_circuit2);
 
-    let claims_tuple = (running_claim1, running_claim2);
     
     let circuit_primary = TrivialTestCircuit::default();
 
@@ -649,9 +631,9 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
-      CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), claims_tuple.0.RC[0].clone());
+      CubicCircuit<<G1 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
+    >::setup(running_claims.claim1.clone(), circuit_primary.clone());
 
     let num_steps = 3;
 
@@ -660,8 +642,8 @@ mod tests {
       NivcSNARK<
         G1,
         G2,
-        TrivialTestCircuit<<G1 as Group>::Scalar>,
-        CubicCircuit<<G2 as Group>::Scalar>,
+        CubicCircuit<<G1 as Group>::Scalar>,
+        TrivialTestCircuit<<G2 as Group>::Scalar>,
       >,
     > = None;
 
@@ -669,8 +651,8 @@ mod tests {
       let res = NivcSNARK::prove_step(
         &pp,
         recursive_snark,
+        running_claims.claim1.clone(),
         circuit_primary.clone(),
-        claims_tuple.0.RC[0].clone(),
         vec![<G1 as Group>::Scalar::ONE],
         vec![<G2 as Group>::Scalar::ZERO],
       );

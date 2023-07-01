@@ -67,13 +67,16 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) u: G::Scalar,
 }
 
+// For SuperNova we can iterate over the F and find the one with the highest value.
+// multiply by # of F to make a a long enough vector of generators.
 impl<G: Group> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn commitment_key(S: &R1CSShape<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
     let total_nz = S.A.len() + S.B.len() + S.C.len();
-    G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz))
+    println!("cimmiut: {:?}", max(max(num_cons, num_vars), total_nz));
+    G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz) * 2)
   }
 }
 

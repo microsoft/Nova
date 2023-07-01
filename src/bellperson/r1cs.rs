@@ -68,6 +68,10 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
       );
     }
 
+    println!("num_constraints: {:?}", num_constraints);
+    println!("num_vars: {:?}", num_vars);
+    println!("num_inputs - 1: {:?}", num_inputs - 1);
+
     assert_eq!(num_cons_added, num_constraints);
 
     let S: R1CSShape<G> = {
@@ -77,6 +81,7 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
     };
 
     let ck = R1CS::<G>::commitment_key(&S);
+    //println!("ck: {:?}", ck);
 
     (S, ck)
   }
