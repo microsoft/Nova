@@ -18,16 +18,16 @@ const KECCAK256_PREFIX_CHALLENGE_HI: u8 = 1;
 pub struct Keccak256Transcript<G: Group> {
   round: u16,
   state: [u8; KECCAK256_STATE_SIZE],
-  transcript: Vec<u8>,
+  transcript: Keccak256,
   _p: PhantomData<G>,
 }
 
-fn compute_updated_state(input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
+fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
   let input_lo = [input, &[KECCAK256_PREFIX_CHALLENGE_LO]].concat();
   let input_hi = [input, &[KECCAK256_PREFIX_CHALLENGE_HI]].concat();
 
-  let mut hasher_lo = Keccak256::new();
-  let mut hasher_hi = Keccak256::new();
+  let mut hasher_lo = keccak_instance.clone();
+  let mut hasher_hi = keccak_instance;
 
   hasher_lo.input(&input_lo);
   hasher_hi.input(&input_hi);
@@ -44,27 +44,28 @@ fn compute_updated_state(input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
 
 impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
   fn new(label: &'static [u8]) -> Self {
+    let keccak_instance = Keccak256::new();
     let input = [PERSONA_TAG, label].concat();
-    let output = compute_updated_state(&input);
+    let output = compute_updated_state(keccak_instance.clone(), &input);
 
     Self {
       round: 0u16,
       state: output,
-      transcript: vec![],
+      transcript: keccak_instance,
       _p: Default::default(),
     }
   }
 
   fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
+    // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
-      self.transcript.as_ref(),
       DOM_SEP_TAG,
       self.round.to_le_bytes().as_ref(),
       self.state.as_ref(),
       label,
     ]
     .concat();
-    let output = compute_updated_state(&input);
+    let output = compute_updated_state(self.transcript.clone(), &input);
 
     // update state
     self.round = {
@@ -75,20 +76,20 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
       }
     };
     self.state.copy_from_slice(&output);
-    self.transcript = vec![];
+    self.transcript = Keccak256::new();
 
     // squeeze out a challenge
     Ok(G::Scalar::from_uniform(&output))
   }
 
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T) {
-    self.transcript.extend_from_slice(label);
-    self.transcript.extend_from_slice(&o.to_transcript_bytes());
+    self.transcript.input(label);
+    self.transcript.input(&o.to_transcript_bytes());
   }
 
   fn dom_sep(&mut self, bytes: &'static [u8]) {
-    self.transcript.extend_from_slice(DOM_SEP_TAG);
-    self.transcript.extend_from_slice(bytes);
+    self.transcript.input(DOM_SEP_TAG);
+    self.transcript.input(bytes);
   }
 }
 
