@@ -23,14 +23,17 @@ pub struct Keccak256Transcript<G: Group> {
 }
 
 fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
-  let input_lo = [input, &[KECCAK256_PREFIX_CHALLENGE_LO]].concat();
-  let input_hi = [input, &[KECCAK256_PREFIX_CHALLENGE_HI]].concat();
+  let mut updated_instance = keccak_instance;
+  updated_instance.input(input);
 
-  let mut hasher_lo = keccak_instance.clone();
-  let mut hasher_hi = keccak_instance;
+  let input_lo = &[KECCAK256_PREFIX_CHALLENGE_LO];
+  let input_hi = &[KECCAK256_PREFIX_CHALLENGE_HI];
 
-  hasher_lo.input(&input_lo);
-  hasher_hi.input(&input_hi);
+  let mut hasher_lo = updated_instance.clone();
+  let mut hasher_hi = updated_instance;
+
+  hasher_lo.input(input_lo);
+  hasher_hi.input(input_hi);
 
   let output_lo = hasher_lo.result();
   let output_hi = hasher_hi.result();
