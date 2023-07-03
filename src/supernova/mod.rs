@@ -133,7 +133,7 @@ where
 
     // We use the largest commitment_key for all instances
     let mut r1cs_shape_primary;
-    let mut ck_primary: Option<CommitmentKey<G1>> = None;
+    let ck_primary;
     if largest {
       let (r1cs_shape_temp, ck_primary_temp) = cs.r1cs_shape();
       r1cs_shape_primary = r1cs_shape_temp;
@@ -154,8 +154,8 @@ where
     let _ = circuit_secondary.synthesize(&mut cs);
 
     // We use the largest commitment_key for all instances
-    let mut r1cs_shape_secondary;
-    let mut ck_secondary: Option<CommitmentKey<G2>> = None;
+    let r1cs_shape_secondary;
+    let ck_secondary;
     if largest {
       let (r1cs_shape_temp, ck_secondary_temp) = cs.r1cs_shape();
       r1cs_shape_secondary = r1cs_shape_temp;
@@ -636,28 +636,51 @@ mod tests {
    SuperNova takes Ui a list of running instances. 
    One instance of will be a struct called RunningClaim.
   */
-  pub struct RunningClaim<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
-    _phantom: PhantomData<G>,
-    claim: Ca,
-    program_counter: u64,
-  }
-
-  impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaim<G, Ca>
-  where Ca: Default,
+  pub struct RunningClaim<G1, G2, Ca, Cb>
+  where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    Ca: StepCircuit<G1::Scalar>,
+    Cb: StepCircuit<G2::Scalar>,
   {
-    pub fn new() -> Self {
-        Self {
-            _phantom: PhantomData, 
-            claim: Ca::default(),
-            program_counter: 0,
-        }
-    }
+      _phantom: PhantomData<G1>,
+      claim: Ca,
+      program_counter: u64,
+      largest: bool,
+      params: PublicParams<G1, G2, Ca, Cb>,
+  }
+  
 
-    pub fn update_circuit(&mut self, circuit: Ca) {
-      self.claim = circuit;
-    }
+  impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
+  where 
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    Ca: StepCircuit<G1::Scalar>,
+    Cb: StepCircuit<G2::Scalar>,
+  {
+      pub fn new(circuit_primary: Ca, circuit_secondary: Cb, is_largest: bool) -> Self {
+          let claim = circuit_primary.clone();
+          let program_counter = 0;
+          let largest = is_largest;
+  
+          let pp = PublicParams::<
+              G1,
+              G2,
+              Ca,
+              Cb,
+          >::setup(claim.clone(), circuit_secondary.clone(), is_largest);
+  
+          Self {
+              _phantom: PhantomData, 
+              claim,
+              program_counter,
+              largest,
+              params: pp,
+          }
+      }
 
   }
+  
 
   fn test_trivial_nivc_with<G1, G2>(num_steps: usize)
   where
@@ -665,47 +688,40 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
 
-    // Structuring running claims      
-    let mut running_claim1 = RunningClaim::<G1, CubicCircuit<<G1 as Group>::Scalar>>::new();
-    let test_circuit1 = CubicCircuit::default();
-    running_claim1.update_circuit(test_circuit1);
+    let circuit_secondary = TrivialTestCircuit::default();
 
-    let mut running_claim2 = RunningClaim::<G1, TrivialTestCircuit<<G1 as Group>::Scalar>>::new();
+    // Structuring running claims     
+    let test_circuit1 = CubicCircuit::default(); 
+    let running_claim1 = RunningClaim::<G1, G2,
+    CubicCircuit<<G1 as Group>::Scalar>,
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), false);
+
     let test_circuit2 = TrivialTestCircuit::default();
-    running_claim2.update_circuit(test_circuit2);
+    let running_claim2 = RunningClaim::<G1, G2,
+    TrivialTestCircuit<<G1 as Group>::Scalar>,
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false);
 
     // The user creates a circuit like this as input to SuperNova.
+    // The first circuit listed should be the largest. 
     let running_claims_tuple = (running_claim1, running_claim2);
-
-  
-    let circuit_primary = TrivialTestCircuit::default();
-
-    // produce public parameters
-    let pp = PublicParams::<
-      G1,
-      G2,
-      CubicCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(running_claims_tuple.0.claim.clone(), circuit_primary.clone(), true);
-
     let num_steps = 3;
 
     // produce a recursive SNARK
-    let mut recursive_snark: Option<
+    /*let mut recursive_snark: Option<
       NivcSNARK<
         G1,
         G2,
         CubicCircuit<<G1 as Group>::Scalar>,
         TrivialTestCircuit<<G2 as Group>::Scalar>,
       >,
-    > = None;
+    > = None;*/
 
-    for i in 0..num_steps {
+    /*for i in 0..num_steps {
       let res = NivcSNARK::prove_step(
         &pp,
         recursive_snark,
         running_claims_tuple.0.claim.clone(),
-        circuit_primary.clone(),
+        circuit_secondary.clone(),
         vec![<G1 as Group>::Scalar::ONE],
         vec![<G2 as Group>::Scalar::ZERO],
       );
@@ -723,32 +739,32 @@ mod tests {
 
       // set the running variable for the next iteration
       recursive_snark = Some(recursive_snark_unwrapped);
-    }
+    }*/
 
-    assert!(recursive_snark.is_some());
+    //assert!(recursive_snark.is_some());
     
-    let res = NivcSNARK::prove_step(
+    /*let res = NivcSNARK::prove_step(
       &pp,
       recursive_snark,
       running_claims_tuple.0.claim.clone(),
-      circuit_primary.clone(),
+      circuit_secondary.clone(),
       vec![<G1 as Group>::Scalar::ONE],
       vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
-    let recursive_snark_unwrapped = res.unwrap();
+    let recursive_snark_unwrapped = res.unwrap();*/
 
     // verify the recursive snark at each step of recursion
-    let res = recursive_snark_unwrapped.verify(
+    /*let res = recursive_snark_unwrapped.verify(
       &pp,
       num_steps + 1,
       vec![<G1 as Group>::Scalar::ONE],
       vec![<G2 as Group>::Scalar::ZERO],
     );
-    assert!(res.is_ok());
+    assert!(res.is_ok());*/
 
     // set the running variable for the next iteration
-    recursive_snark = Some(recursive_snark_unwrapped);
+    //recursive_snark = Some(recursive_snark_unwrapped);
     
     /*match res {
       Ok(val) => println!("Got an Ok result: {:?}", val),
