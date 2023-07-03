@@ -84,18 +84,17 @@ where
   F_arity_secondary: usize,
   ro_consts_primary: ROConstants<G1>,
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
-  ck_primary: CommitmentKey<G1>,
+  ck_primary: Option<CommitmentKey<G1>>,
   r1cs_shape_primary: R1CSShape<G1>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
-  ck_secondary: CommitmentKey<G2>,
+  ck_secondary: Option<CommitmentKey<G2>>,
   r1cs_shape_secondary: R1CSShape<G2>,
   augmented_circuit_params_primary: NovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
-  ck_common: CommitmentKey<G1>,
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
@@ -106,7 +105,7 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
+  pub fn setup(c_primary: C1, c_secondary: C2, largest: bool) -> Self {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -131,10 +130,18 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
 
-    // Initialize ck for common
-    let (r1cs_shape_primary, ck_common) = cs.r1cs_shape();
+    // We use the largest commitment_key for all instances
+    let mut r1cs_shape_primary;
+    let mut ck_primary: Option<CommitmentKey<G1>> = None;
+    if largest {
+      let (r1cs_shape_temp, ck_primary_temp) = cs.r1cs_shape();
+      r1cs_shape_primary = r1cs_shape_temp;
+      ck_primary = Some(ck_primary_temp);
+    } else {
+        r1cs_shape_primary = cs.r1cs_shape_supernova();
+        ck_primary = None;
+    }
 
     // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
@@ -145,10 +152,18 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
 
-    //println!("pp: {:?}", ck_primary);
-   //println!("pp: {:?}", ck_secondary);
+    // We use the largest commitment_key for all instances
+    let mut r1cs_shape_secondary;
+    let mut ck_secondary: Option<CommitmentKey<G2>> = None;
+    if largest {
+      let (r1cs_shape_temp, ck_secondary_temp) = cs.r1cs_shape();
+      r1cs_shape_secondary = r1cs_shape_temp;
+      ck_secondary = Some(ck_secondary_temp);
+    } else {
+      r1cs_shape_secondary = cs.r1cs_shape_supernova();
+      ck_secondary = None;
+    }
 
     let mut pp = Self {
       F_arity_primary,
@@ -166,7 +181,6 @@ where
       digest: G1::Scalar::ZERO,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
-      ck_common,
     };
 
     // set the digest in pp
@@ -258,9 +272,17 @@ where
           pp.ro_consts_circuit_primary.clone(),
         );
         let _ = circuit_primary.synthesize(&mut cs_primary);
-        let (u_primary, w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
-          .map_err(|_e| NovaError::UnSat)?;
+        let (u_primary, w_primary) = match pp.ck_primary.as_ref() {
+            Some(ck) => {
+                cs_primary
+                    .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck)
+                    .map_err(|_e| NovaError::UnSat)?
+            },
+            None => {
+                return Err(NovaError::MissingCK);
+            },
+        };
+      
 
         // base case for the secondary
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -280,27 +302,45 @@ where
           pp.ro_consts_circuit_secondary.clone(),
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
-        let (u_secondary, w_secondary) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
-          .map_err(|_e| NovaError::UnSat)?;
+        let (u_secondary, w_secondary) = match pp.ck_secondary.as_ref() {
+          Some(ck) => cs_secondary
+              .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck)
+              .map_err(|_e| NovaError::UnSat)?,
+          None => {
+            return Err(NovaError::MissingCK); 
+          }
+        };
+      
 
         // IVC proof for the primary circuit
         let l_w_primary = w_primary;
         let l_u_primary = u_primary;
         let r_W_primary =
           RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
-        let r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(
-          &pp.ck_primary,
-          &pp.r1cs_shape_primary,
-          &l_u_primary,
-        );
+
+        let r_U_primary = match pp.ck_primary.as_ref() {
+            Some(ck) => {
+                RelaxedR1CSInstance::from_r1cs_instance(
+                    ck,
+                    &pp.r1cs_shape_primary,
+                    &l_u_primary,
+                )
+            },
+            None => {
+                return Err(NovaError::MissingCK); 
+            },
+        };
+        
 
         // IVC proof of the secondary circuit
         let l_w_secondary = w_secondary;
         let l_u_secondary = u_secondary;
         let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
-        let r_U_secondary =
-          RelaxedR1CSInstance::<G2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
+        let r_U_secondary = match pp.ck_secondary.as_ref() {
+          Some(ck) => RelaxedR1CSInstance::default(ck, &pp.r1cs_shape_secondary),
+          None => return Err(NovaError::MissingCK),
+        };
+        
 
         // Outputs of the two circuits thus far
         let zi_primary = c_primary.output(&z0_primary);
@@ -327,16 +367,21 @@ where
       }
       Some(r_snark) => {
         // fold the secondary circuit's instance
-        let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
-          &pp.ck_secondary,
-          &pp.ro_consts_secondary,
-          &scalar_as_base::<G1>(pp.digest),
-          &pp.r1cs_shape_secondary,
-          &r_snark.r_U_secondary,
-          &r_snark.r_W_secondary,
-          &r_snark.l_u_secondary,
-          &r_snark.l_w_secondary,
-        )?;
+
+        let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = pp.ck_secondary.as_ref() {
+          NIFS::prove(
+            ck,
+            &pp.ro_consts_secondary,
+            &scalar_as_base::<G1>(pp.digest),
+            &pp.r1cs_shape_secondary,
+            &r_snark.r_U_secondary,
+            &r_snark.r_W_secondary,
+            &r_snark.l_u_secondary,
+            &r_snark.l_w_secondary,
+          )?
+        } else {
+          return Err(NovaError::MissingCK);
+        };
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
@@ -357,21 +402,29 @@ where
         );
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
-        let (l_u_primary, l_w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
-          .map_err(|_e| NovaError::UnSat)?;
+        let (l_u_primary, l_w_primary) = if let Some(ck) = pp.ck_primary.as_ref() {
+          cs_primary
+              .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck)
+              .map_err(|_e| NovaError::UnSat)?
+        } else {
+          return Err(NovaError::MissingCK);
+        };
+        
 
-        // fold the primary circuit's instance
-        let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
-          &pp.ck_primary,
-          &pp.ro_consts_primary,
-          &pp.digest,
-          &pp.r1cs_shape_primary,
-          &r_snark.r_U_primary,
-          &r_snark.r_W_primary,
-          &l_u_primary,
-          &l_w_primary,
-        )?;
+        let (nifs_primary, (r_U_primary, r_W_primary)) = if let Some(ck) = pp.ck_primary.as_ref() {
+          NIFS::prove(
+              ck,
+              &pp.ro_consts_primary,
+              &pp.digest,
+              &pp.r1cs_shape_primary,
+              &r_snark.r_U_primary,
+              &r_snark.r_W_primary,
+              &l_u_primary,
+              &l_w_primary,
+              )?
+          } else {
+            return Err(NovaError::MissingCK);
+          };
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
@@ -392,9 +445,13 @@ where
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
-        let (l_u_secondary, l_w_secondary) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
-          .map_err(|_e| NovaError::UnSat)?;
+        let (l_u_secondary, l_w_secondary) = if let Some(ck) = pp.ck_secondary.as_ref() {
+          cs_secondary
+              .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck)
+              .map_err(|_e| NovaError::UnSat)?
+        } else {
+          return Err(NovaError::MissingCK);
+        };
 
         // update the running instances and witnesses
         let zi_primary = c_primary.output(&r_snark.zi_primary);
@@ -489,20 +546,20 @@ where
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary
-          .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
+          .is_sat_relaxed(&pp.ck_primary.as_ref().unwrap(), &self.r_U_primary, &self.r_W_primary)
       },
       || {
         rayon::join(
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
-              &pp.ck_secondary,
+              &pp.ck_secondary.as_ref().unwrap(),
               &self.r_U_secondary,
               &self.r_W_secondary,
             )
           },
           || {
             pp.r1cs_shape_secondary.is_sat(
-              &pp.ck_secondary,
+              &pp.ck_secondary.as_ref().unwrap(),
               &self.l_u_secondary,
               &self.l_w_secondary,
             )
@@ -577,35 +634,27 @@ mod tests {
 
   /*
    SuperNova takes Ui a list of running instances. 
-   This will be struct called RunningClaims assumed to be provide by the user.
+   One instance of will be a struct called RunningClaim.
   */
-  pub struct RunningClaims<G: Group,
-    Ca: StepCircuit<<G as Group>::Scalar>,
-    Cb: StepCircuit<<G as Group>::Scalar>> {
+  pub struct RunningClaim<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> {
     _phantom: PhantomData<G>,
-    claim1: Ca,
-    claim2: Cb,
+    claim: Ca,
+    program_counter: u64,
   }
 
-  impl<G: Group,
-    Ca: StepCircuit<<G as Group>::Scalar>,
-    Cb: StepCircuit<<G as Group>::Scalar>> RunningClaims<G, Ca, Cb>
-  where Ca: Default, Cb: Default,
+  impl<G: Group, Ca: StepCircuit<<G as Group>::Scalar>> RunningClaim<G, Ca>
+  where Ca: Default,
   {
     pub fn new() -> Self {
         Self {
             _phantom: PhantomData, 
-            claim1: Ca::default(),
-            claim2: Cb::default(),
+            claim: Ca::default(),
+            program_counter: 0,
         }
     }
 
-    pub fn update_circuit1(&mut self, circuit: Ca) {
-      self.claim1 = circuit;
-    }
-
-    pub fn update_circuit2(&mut self, circuit: Cb) {
-        self.claim2 = circuit;
+    pub fn update_circuit(&mut self, circuit: Ca) {
+      self.claim = circuit;
     }
 
   }
@@ -617,14 +666,18 @@ mod tests {
   {
 
     // Structuring running claims      
-    let mut running_claims = RunningClaims::<G1, CubicCircuit<<G1 as Group>::Scalar>, TrivialTestCircuit<<G1 as Group>::Scalar>>::new();
+    let mut running_claim1 = RunningClaim::<G1, CubicCircuit<<G1 as Group>::Scalar>>::new();
     let test_circuit1 = CubicCircuit::default();
-    running_claims.update_circuit1(test_circuit1);
+    running_claim1.update_circuit(test_circuit1);
 
+    let mut running_claim2 = RunningClaim::<G1, TrivialTestCircuit<<G1 as Group>::Scalar>>::new();
     let test_circuit2 = TrivialTestCircuit::default();
-    running_claims.update_circuit2(test_circuit2);
+    running_claim2.update_circuit(test_circuit2);
 
-    
+    // The user creates a circuit like this as input to SuperNova.
+    let running_claims_tuple = (running_claim1, running_claim2);
+
+  
     let circuit_primary = TrivialTestCircuit::default();
 
     // produce public parameters
@@ -633,7 +686,7 @@ mod tests {
       G2,
       CubicCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(running_claims.claim1.clone(), circuit_primary.clone());
+    >::setup(running_claims_tuple.0.claim.clone(), circuit_primary.clone(), true);
 
     let num_steps = 3;
 
@@ -651,7 +704,7 @@ mod tests {
       let res = NivcSNARK::prove_step(
         &pp,
         recursive_snark,
-        running_claims.claim1.clone(),
+        running_claims_tuple.0.claim.clone(),
         circuit_primary.clone(),
         vec![<G1 as Group>::Scalar::ONE],
         vec![<G2 as Group>::Scalar::ZERO],
@@ -673,21 +726,34 @@ mod tests {
     }
 
     assert!(recursive_snark.is_some());
-    let recursive_snark = recursive_snark.unwrap();
-
-    // verify the recursive SNARK
-    let res = recursive_snark.verify(
+    
+    let res = NivcSNARK::prove_step(
       &pp,
-      num_steps,
+      recursive_snark,
+      running_claims_tuple.0.claim.clone(),
+      circuit_primary.clone(),
       vec![<G1 as Group>::Scalar::ONE],
       vec![<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
-    match res {
+    let recursive_snark_unwrapped = res.unwrap();
+
+    // verify the recursive snark at each step of recursion
+    let res = recursive_snark_unwrapped.verify(
+      &pp,
+      num_steps + 1,
+      vec![<G1 as Group>::Scalar::ONE],
+      vec![<G2 as Group>::Scalar::ZERO],
+    );
+    assert!(res.is_ok());
+
+    // set the running variable for the next iteration
+    recursive_snark = Some(recursive_snark_unwrapped);
+    
+    /*match res {
       Ok(val) => println!("Got an Ok result: {:?}", val),
       Err(err) => println!("Got an error: {:?}", err),
-    }
-    //assert!(res.is_ok());
+    }*/
     
   }
 
