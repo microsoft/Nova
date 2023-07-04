@@ -75,7 +75,6 @@ impl<G: Group> R1CS<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
     let total_nz = S.A.len() + S.B.len() + S.C.len();
-    println!("cimmiut: {:?}", max(max(num_cons, num_vars), total_nz));
     G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz) * 2)
   }
 }

@@ -206,6 +206,57 @@ where
   }
 }
 
+/*
+   SuperNova takes Ui a list of running instances. 
+   One instance of will be a struct called RunningClaim.
+  */
+  pub struct RunningClaim<G1, G2, Ca, Cb>
+  where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    Ca: StepCircuit<G1::Scalar>,
+    Cb: StepCircuit<G2::Scalar>,
+  {
+      _phantom: PhantomData<G1>,
+      claim: Ca,
+      circuit_secondary: Cb,
+      program_counter: u64,
+      largest: bool,
+      params: PublicParams<G1, G2, Ca, Cb>,
+  }
+  
+
+  impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
+  where 
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    Ca: StepCircuit<G1::Scalar>,
+    Cb: StepCircuit<G2::Scalar>,
+  {
+      pub fn new(circuit_primary: Ca, circuit_secondary: Cb, is_largest: bool) -> Self {
+          let claim = circuit_primary.clone();
+          let program_counter = 0;
+          let largest = is_largest;
+  
+          let pp = PublicParams::<
+              G1,
+              G2,
+              Ca,
+              Cb,
+          >::setup(claim.clone(), circuit_secondary.clone(), is_largest);
+  
+          Self {
+              _phantom: PhantomData, 
+              claim,
+              circuit_secondary: circuit_secondary.clone(),
+              program_counter,
+              largest,
+              params: pp,
+          }
+      }
+
+  }
+
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -575,6 +626,52 @@ where
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
+
+  fn execute_and_verify_circuits(
+    running_claim: RunningClaim<G1, G2, C1, C2>,
+    num_steps: usize,
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>), Box<dyn std::error::Error>>
+  where
+      G1: Group<Base = <G2 as Group>::Scalar>,
+      G2: Group<Base = <G1 as Group>::Scalar>,
+      C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
+      C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
+  {
+      if num_steps < 1 {
+        return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "num_steps must be greater than 0",
+        )));
+      }
+      // Produce a recursive SNARK
+      let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
+
+      for i in 0..num_steps {
+          let res = NivcSNARK::prove_step(
+              &running_claim.params,
+              recursive_snark,
+              running_claim.claim.clone(),
+              running_claim.circuit_secondary.clone(),
+              vec![<G1 as Group>::Scalar::ONE],
+              vec![<G2 as Group>::Scalar::ZERO],
+          );
+          let recursive_snark_unwrapped = res.unwrap();
+
+          // Verify the recursive snark at each step of recursion
+          let res = recursive_snark_unwrapped.verify(
+              &running_claim.params,
+              i + 1,
+              vec![<G1 as Group>::Scalar::ONE],
+              vec![<G2 as Group>::Scalar::ZERO],
+          );
+          assert!(res.is_ok());
+          println!("result: {:?}", res);
+
+          // Set the running variable for the next iteration
+          recursive_snark = Some(recursive_snark_unwrapped);
+      }
+      recursive_snark.ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>)
+  }
 }
 
 #[cfg(test)]
@@ -632,55 +729,53 @@ mod tests {
     }
   }
 
-  /*
-   SuperNova takes Ui a list of running instances. 
-   One instance of will be a struct called RunningClaim.
-  */
-  pub struct RunningClaim<G1, G2, Ca, Cb>
+  #[derive(Clone, Debug, Default)]
+  struct SquareCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F> StepCircuit<F> for SquareCircuit<F>
   where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-    Ca: StepCircuit<G1::Scalar>,
-    Cb: StepCircuit<G2::Scalar>,
+    F: PrimeField,
   {
-      _phantom: PhantomData<G1>,
-      claim: Ca,
-      program_counter: u64,
-      largest: bool,
-      params: PublicParams<G1, G2, Ca, Cb>,
-  }
-  
+    fn arity(&self) -> usize {
+      1
+    }
 
-  impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
-  where 
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-    Ca: StepCircuit<G1::Scalar>,
-    Cb: StepCircuit<G2::Scalar>,
-  {
-      pub fn new(circuit_primary: Ca, circuit_secondary: Cb, is_largest: bool) -> Self {
-          let claim = circuit_primary.clone();
-          let program_counter = 0;
-          let largest = is_largest;
-  
-          let pp = PublicParams::<
-              G1,
-              G2,
-              Ca,
-              Cb,
-          >::setup(claim.clone(), circuit_secondary.clone(), is_largest);
-  
-          Self {
-              _phantom: PhantomData, 
-              claim,
-              program_counter,
-              largest,
-              params: pp,
-          }
-      }
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      cs: &mut CS,
+      z: &[AllocatedNum<F>],
+    ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      // Consider a cubic equation: `x^2 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      let x = &z[0];
+      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
+      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+        Ok(x_sq.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
+      })?;
 
-  }
-  
+      cs.enforce(
+        || "y = x^2 + x + 5",
+        |lc| {
+          lc + x_sq.get_variable()
+            + x.get_variable()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+            + CS::one()
+        },
+        |lc| lc + CS::one(),
+        |lc| lc + y.get_variable(),
+      );
+
+      Ok(vec![y])
+    }
+
+    fn output(&self, z: &[F]) -> Vec<F> {
+      vec![z[0] * z[0] + z[0] + F::from(5u64)]
+    }
+  }  
 
   fn test_trivial_nivc_with<G1, G2>(num_steps: usize)
   where
@@ -694,54 +789,31 @@ mod tests {
     let test_circuit1 = CubicCircuit::default(); 
     let running_claim1 = RunningClaim::<G1, G2,
     CubicCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), false);
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true);
 
     let test_circuit2 = TrivialTestCircuit::default();
     let running_claim2 = RunningClaim::<G1, G2,
     TrivialTestCircuit<<G1 as Group>::Scalar>,
     TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false);
 
-    // The user creates a circuit like this as input to SuperNova.
-    // The first circuit listed should be the largest. 
-    let running_claims_tuple = (running_claim1, running_claim2);
-    let num_steps = 3;
+    let test_circuit3 = SquareCircuit::default();
+    let circuit_secondary2 = SquareCircuit::default();
+    let running_claim3 = RunningClaim::<G1, G2,
+    SquareCircuit<<G1 as Group>::Scalar>,
+    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false);
 
     // produce a recursive SNARK
-    /*let mut recursive_snark: Option<
+    let mut recursive_snark: Option<
       NivcSNARK<
         G1,
         G2,
         CubicCircuit<<G1 as Group>::Scalar>,
         TrivialTestCircuit<<G2 as Group>::Scalar>,
       >,
-    > = None;*/
+    > = None;
 
-    /*for i in 0..num_steps {
-      let res = NivcSNARK::prove_step(
-        &pp,
-        recursive_snark,
-        running_claims_tuple.0.claim.clone(),
-        circuit_secondary.clone(),
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
-      );
-      assert!(res.is_ok());
-      let recursive_snark_unwrapped = res.unwrap();
-
-      // verify the recursive snark at each step of recursion
-      let res = recursive_snark_unwrapped.verify(
-        &pp,
-        i + 1,
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
-      );
-      assert!(res.is_ok());
-
-      // set the running variable for the next iteration
-      recursive_snark = Some(recursive_snark_unwrapped);
-    }*/
-
-    //assert!(recursive_snark.is_some());
+    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(running_claim1, 1).unwrap();
+    //assert!(recursive_snark_unwrapped.is_valid());
     
     /*let res = NivcSNARK::prove_step(
       &pp,
