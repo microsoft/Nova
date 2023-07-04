@@ -297,6 +297,8 @@ where
     c_secondary: C2,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
+    ck_primary: Option<CommitmentKey<G1>>,
+    ck_secondary: Option<CommitmentKey<G2>>,
   ) -> Result<Self, NovaError> {
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidInitialInputLength);
@@ -323,7 +325,7 @@ where
           pp.ro_consts_circuit_primary.clone(),
         );
         let _ = circuit_primary.synthesize(&mut cs_primary);
-        let (u_primary, w_primary) = match pp.ck_primary.as_ref() {
+        let (u_primary, w_primary) = match ck_primary.as_ref() {
             Some(ck) => {
                 cs_primary
                     .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck)
@@ -353,7 +355,7 @@ where
           pp.ro_consts_circuit_secondary.clone(),
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
-        let (u_secondary, w_secondary) = match pp.ck_secondary.as_ref() {
+        let (u_secondary, w_secondary) = match ck_secondary.as_ref() {
           Some(ck) => cs_secondary
               .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck)
               .map_err(|_e| NovaError::UnSat)?,
@@ -369,7 +371,7 @@ where
         let r_W_primary =
           RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
 
-        let r_U_primary = match pp.ck_primary.as_ref() {
+        let r_U_primary = match ck_primary.as_ref() {
             Some(ck) => {
                 RelaxedR1CSInstance::from_r1cs_instance(
                     ck,
@@ -387,7 +389,7 @@ where
         let l_w_secondary = w_secondary;
         let l_u_secondary = u_secondary;
         let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
-        let r_U_secondary = match pp.ck_secondary.as_ref() {
+        let r_U_secondary = match ck_secondary.as_ref() {
           Some(ck) => RelaxedR1CSInstance::default(ck, &pp.r1cs_shape_secondary),
           None => return Err(NovaError::MissingCK),
         };
@@ -419,7 +421,7 @@ where
       Some(r_snark) => {
         // fold the secondary circuit's instance
 
-        let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = pp.ck_secondary.as_ref() {
+        let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = ck_secondary.as_ref() {
           NIFS::prove(
             ck,
             &pp.ro_consts_secondary,
@@ -453,7 +455,7 @@ where
         );
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
-        let (l_u_primary, l_w_primary) = if let Some(ck) = pp.ck_primary.as_ref() {
+        let (l_u_primary, l_w_primary) = if let Some(ck) = ck_primary.as_ref() {
           cs_primary
               .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck)
               .map_err(|_e| NovaError::UnSat)?
@@ -462,7 +464,7 @@ where
         };
         
 
-        let (nifs_primary, (r_U_primary, r_W_primary)) = if let Some(ck) = pp.ck_primary.as_ref() {
+        let (nifs_primary, (r_U_primary, r_W_primary)) = if let Some(ck) = ck_primary.as_ref() {
           NIFS::prove(
               ck,
               &pp.ro_consts_primary,
@@ -496,7 +498,7 @@ where
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
-        let (l_u_secondary, l_w_secondary) = if let Some(ck) = pp.ck_secondary.as_ref() {
+        let (l_u_secondary, l_w_secondary) = if let Some(ck) = ck_secondary.as_ref() {
           cs_secondary
               .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck)
               .map_err(|_e| NovaError::UnSat)?
@@ -629,10 +631,13 @@ where
   }
 
   fn execute_and_verify_circuits(
+    circuit_index: usize,
     mut running_claim: RunningClaim<G1, G2, C1, C2>,
+    large_claim2: Option<RunningClaim<G1, G2, C1, C2>>,
     num_steps: usize,
     mut pci: usize,
-  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize), Box<dyn std::error::Error>>
+    mut U_i: Vec<(usize, usize)>,  // Added this argument
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize, Vec<(usize, usize)>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
@@ -645,22 +650,50 @@ where
             "num_steps must be greater than 0",
         )));
       }
+
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
       let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> = Err(NovaError::InvalidInitialInputLength);
 
       for i in 0..num_steps {
-          let res = NivcSNARK::prove_step(
-              &running_claim.params,
-              recursive_snark,
-              running_claim.claim.clone(),
-              running_claim.circuit_secondary.clone(),
-              vec![<G1 as Group>::Scalar::ONE],
-              vec![<G2 as Group>::Scalar::ZERO],
-          );
+
+          let res = match &large_claim2 {
+            Some(lc2) => {
+                if running_claim.largest {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "It cannot be the largest and also use a larger set of commitement keys.",
+                    )));
+                }
+                NivcSNARK::prove_step(
+                    &running_claim.params,
+                    recursive_snark,
+                    running_claim.claim.clone(),
+                    running_claim.circuit_secondary.clone(),
+                    vec![<G1 as Group>::Scalar::ONE],
+                    vec![<G2 as Group>::Scalar::ZERO],
+                    lc2.params.ck_primary.clone(),
+                    lc2.params.ck_secondary.clone(),
+                )
+            },
+            None => {
+                NivcSNARK::prove_step(
+                    &running_claim.params,
+                    recursive_snark,
+                    running_claim.claim.clone(),
+                    running_claim.circuit_secondary.clone(),
+                    vec![<G1 as Group>::Scalar::ONE],
+                    vec![<G2 as Group>::Scalar::ZERO],
+                    running_claim.params.ck_primary.clone(),
+                    running_claim.params.ck_secondary.clone(),
+                )
+            },
+          };
+
           let recursive_snark_unwrapped = res.unwrap();
 
           running_claim.program_counter = running_claim.program_counter + 1;
+          U_i.push((circuit_index, pci));
 
           // Verify the recursive snark at each step of recursion
           let res = recursive_snark_unwrapped.verify(
@@ -672,13 +705,13 @@ where
           );
           assert!(res.is_ok());
           let (zi_primary, zi_secondary, new_pci) = res.unwrap();
-          pci = new_pci;
+          pci = new_pci + 1;
           final_result = Ok((zi_primary, zi_secondary));
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
       recursive_snark
-      .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>).map(|snark| (snark, final_result, pci))
+      .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>).map(|snark| (snark, final_result, pci, U_i))
   }
 }
 
@@ -810,48 +843,38 @@ mod tests {
     SquareCircuit<<G1 as Group>::Scalar>,
     SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false);
 
-    // produce a recursive SNARK
-    let mut recursive_snark: Option<
-      NivcSNARK<
-        G1,
-        G2,
-        CubicCircuit<<G1 as Group>::Scalar>,
-        TrivialTestCircuit<<G2 as Group>::Scalar>,
-      >,
-    > = None;
+    /* 
+      We do not know how many times a certain circuit will be run.
 
-    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(running_claim1, 1, 0).unwrap();
-    println!("here: {:?}", recursive_snark_unwrapped.1.unwrap().0);
-    //assert!(recursive_snark_unwrapped.is_valid());
-    
-    /*let res = NivcSNARK::prove_step(
-      &pp,
-      recursive_snark,
-      running_claims_tuple.0.claim.clone(),
-      circuit_secondary.clone(),
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-    let recursive_snark_unwrapped = res.unwrap();*/
+      1. "Checks that Ui and PCi are contained in the public output of the instance ui.
+      This enforces that Ui and PCi are indeed produced by the prior step."
 
-    // verify the recursive snark at each step of recursion
+      In this implementation we make a vector U_i that adds the PCi at each step.
+      [(0, 1), (0, 1), (0, 2), (0, 3)] for a 4 step instance; 0 is the circuit_index.
+      We check that both of these are containted in the public output of instance ui.
+    */
+
+    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(
+      0, // This is used 
+      running_claim1, //Running claim that the user wants to prove
+      None, //largest claim that the commitment_keys come from
+      2, //amount of times the user wants to loop
+      0, // PCi
+      [].to_vec()
+    ).unwrap(); // U_i
+
+    println!("Show Result: {:?}", recursive_snark_unwrapped.1.unwrap());
+    println!("Show PCi: {:?}", recursive_snark_unwrapped.2);
+    println!("Show U_i: {:?}", recursive_snark_unwrapped.3);
+
+    // verify the recursive snark at final step of recursion
     /*let res = recursive_snark_unwrapped.verify(
       &pp,
       num_steps + 1,
       vec![<G1 as Group>::Scalar::ONE],
       vec![<G2 as Group>::Scalar::ZERO],
     );
-    assert!(res.is_ok());*/
-
-    // set the running variable for the next iteration
-    //recursive_snark = Some(recursive_snark_unwrapped);
-    
-    /*match res {
-      Ok(val) => println!("Got an Ok result: {:?}", val),
-      Err(err) => println!("Got an error: {:?}", err),
-    }*/
-    
+    assert!(res.is_ok());*/    
   }
 
   #[test]
