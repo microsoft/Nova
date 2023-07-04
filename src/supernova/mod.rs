@@ -220,7 +220,7 @@ where
       _phantom: PhantomData<G1>,
       claim: Ca,
       circuit_secondary: Cb,
-      program_counter: u64,
+      program_counter: usize,
       largest: bool,
       params: PublicParams<G1, G2, Ca, Cb>,
   }
@@ -530,9 +530,10 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
+    pci: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
-  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -624,13 +625,14 @@ where
     res_r_secondary?;
     res_l_secondary?;
 
-    Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
+    Ok((self.zi_primary.clone(), self.zi_secondary.clone(), pci))
   }
 
   fn execute_and_verify_circuits(
-    running_claim: RunningClaim<G1, G2, C1, C2>,
+    mut running_claim: RunningClaim<G1, G2, C1, C2>,
     num_steps: usize,
-  ) -> Result<(NivcSNARK<G1, G2, C1, C2>), Box<dyn std::error::Error>>
+    mut pci: usize,
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
@@ -645,6 +647,7 @@ where
       }
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
+      let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> = Err(NovaError::InvalidInitialInputLength);
 
       for i in 0..num_steps {
           let res = NivcSNARK::prove_step(
@@ -657,20 +660,25 @@ where
           );
           let recursive_snark_unwrapped = res.unwrap();
 
+          running_claim.program_counter = running_claim.program_counter + 1;
+
           // Verify the recursive snark at each step of recursion
           let res = recursive_snark_unwrapped.verify(
               &running_claim.params,
-              i + 1,
+              running_claim.program_counter,
+              pci,
               vec![<G1 as Group>::Scalar::ONE],
               vec![<G2 as Group>::Scalar::ZERO],
           );
           assert!(res.is_ok());
-          println!("result: {:?}", res);
-
+          let (zi_primary, zi_secondary, new_pci) = res.unwrap();
+          pci = new_pci;
+          final_result = Ok((zi_primary, zi_secondary));
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
-      recursive_snark.ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>)
+      recursive_snark
+      .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>).map(|snark| (snark, final_result, pci))
   }
 }
 
@@ -812,7 +820,8 @@ mod tests {
       >,
     > = None;
 
-    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(running_claim1, 1).unwrap();
+    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(running_claim1, 1, 0).unwrap();
+    println!("here: {:?}", recursive_snark_unwrapped.1.unwrap().0);
     //assert!(recursive_snark_unwrapped.is_valid());
     
     /*let res = NivcSNARK::prove_step(
