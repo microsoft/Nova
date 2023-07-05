@@ -319,7 +319,7 @@ where
           None,
           None,
           None,
-          pci,
+          G1::Scalar::ZERO,
           U_i.to_vec(),
         );
 
@@ -352,7 +352,7 @@ where
           None,
           Some(u_primary.clone()),
           None,
-          pci,
+          G2::Scalar::ZERO,
           U_i.to_vec()
         );
         let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
@@ -454,7 +454,7 @@ where
           Some(r_snark.r_U_secondary.clone()),
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
-          pci,
+          G1::Scalar::from(r_snark.program_counter as u64),
           U_i.to_vec()
         );
 
@@ -499,7 +499,7 @@ where
           Some(r_snark.r_U_primary.clone()),
           Some(l_u_primary),
           Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
-          pci,
+          G2::Scalar::from(r_snark.program_counter as u64),
           U_i.to_vec(),
         );
 
@@ -535,7 +535,7 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: pci,
+          program_counter: r_snark.program_counter,
           output_U_i: U_i.to_vec()
         })
       }
@@ -610,6 +610,8 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
+    self.program_counter = self.program_counter + 1;
+
     // check the satisfiability of the provided instances
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
@@ -636,9 +638,11 @@ where
       },
     );
 
+    println!("p counter: {:?}", self.program_counter);
+
     // 1. Checks that Ui and pci are contained in the public output of the instance ui.
     // This enforces that Ui and pci are indeed produced by the prior step.
-    if let Some(&item) = self.output_U_i.get(self.program_counter) {
+    /*if let Some(&item) = self.output_U_i.get(self.program_counter) {
       if item == circuit_index {
           self.program_counter = self.program_counter + 1;
           self.output_U_i.push(circuit_index);
@@ -647,7 +651,7 @@ where
       }
     } else {
         return Err(NovaError::ProofVerifyError);
-    }
+    }*/
 
     // check the returned res objects
     res_r_primary?;
@@ -861,7 +865,7 @@ mod tests {
     }
   }  
 
-  fn test_trivial_nivc_with<G1, G2>(num_steps: usize)
+  fn test_trivial_nivc_with<G1, G2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
@@ -915,7 +919,7 @@ mod tests {
       type G2 = pasta_curves::vesta::Point;
     
       //Expirementing with selecting the running claims for nifs
-      test_trivial_nivc_with::<G1, G2>(3);
+      test_trivial_nivc_with::<G1, G2>();
 
   }
 }

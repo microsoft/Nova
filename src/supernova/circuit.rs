@@ -1,7 +1,7 @@
 //! The augmented circuit F' for  SuperNova that includes everything from Nova
 //!   and additionally checks:
 //!    1. Ui and pci are contained in the public output.
-//!    2. Insance is folded into Ui[pci] correctly; just like Nova.
+//!    2. Instance is folded into Ui[pci] correctly; just like Nova.
 //!    3. Invokes the function ϕ on input (zi, ωi) to compute pci+1, which represents
 //!    the index of the function Fj currently being run. pci+1 is then sent to the
 //!    next invocation of an augmented circuit (which contains a verifier circuit).
@@ -67,7 +67,7 @@ pub struct CircuitInputs<G: Group> {
   U: Option<RelaxedR1CSInstance<G>>,
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
-  program_counter: usize,
+  program_counter: G::Base,
   output_U_i: Vec<usize>,
 }
 
@@ -82,7 +82,7 @@ impl<G: Group> CircuitInputs<G> {
     U: Option<RelaxedR1CSInstance<G>>,
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
-    program_counter: usize,
+    program_counter: G::Base,
     output_U_i: Vec<usize>,
   ) -> Self {
     Self {
@@ -138,6 +138,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
       AllocatedRelaxedR1CSInstance<G>,
       AllocatedR1CSInstance<G>,
       AllocatedPoint<G>,
+      AllocatedNum<G::Base>,
     ),
     SynthesisError,
   > {
@@ -149,6 +150,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
 
     // Allocate i
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
+
+    // Allocate pci
+    let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || Ok(self.inputs.get()?.program_counter))?;
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -195,7 +199,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
       }),
     )?;
 
-    Ok((params, i, z_0, z_i, U, u, T))
+    Ok((params, i, z_0, z_i, U, u, T, program_counter))
   }
 
   /// Synthesizes base case and returns the new relaxed R1CSInstance
@@ -237,6 +241,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G>,
     arity: usize,
+    program_counter: AllocatedNum<G::Base>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
@@ -274,11 +279,17 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
 
     Ok((U_fold, check_pass))
   }
+
+  // The output pci
+  pub fn output_program_counter(&self) -> Option<G::Base> {
+    self.inputs.as_ref().map(|inputs| inputs.program_counter)
+  }
 }
 
 impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
   for NovaCircuit<G, SC>
 {
+
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
@@ -286,7 +297,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T) =
+    let (params, i, z_0, z_i, U, u, T, program_counter) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -308,6 +319,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       u.clone(),
       T,
       arity,
+      program_counter.clone(),
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -339,6 +351,17 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       |lc| lc,
       |lc| lc,
       |lc| lc + i_new.get_variable() - CS::one() - i.get_variable(),
+    );
+
+    // Compute pci + 1
+    let program_counter_new = AllocatedNum::alloc(cs.namespace(|| "program_counter + 1"), || {
+      Ok(*program_counter.get_value().get()? + G::Base::ONE)
+    })?;
+    cs.enforce(
+      || "check program_counter + 1",
+      |lc| lc,
+      |lc| lc,
+      |lc| lc + program_counter_new.get_variable() - CS::one() - program_counter.get_variable(),
     );
 
     // Compute z_{i+1}
@@ -446,7 +469,7 @@ mod tests {
       None,
       None,
       None,
-      0,
+      zero1,
       vec![0]
     );
     let circuit1: NovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
@@ -472,7 +495,7 @@ mod tests {
       None,
       Some(inst1),
       None,
-      0,
+      zero2,
       vec![0]
     );
     let circuit2: NovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
