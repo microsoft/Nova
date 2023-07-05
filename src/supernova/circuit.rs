@@ -364,6 +364,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       |lc| lc + program_counter_new.get_variable() - CS::one() - program_counter.get_variable(),
     );
 
+    //println!("pin counter: {:?}", program_counter_new.get_value());
+    //println!("pin counter2: {:?}", program_counter.get_value());
+
     // Compute z_{i+1}
     let z_input = conditionally_select_vec(
       cs.namespace(|| "select input to F"),

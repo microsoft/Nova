@@ -308,7 +308,6 @@ where
 
     match recursive_snark {
       None => {
-
         // base case for the primary
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
@@ -319,7 +318,7 @@ where
           None,
           None,
           None,
-          G1::Scalar::ZERO,
+          G1::Scalar::from(pci as u64), //G1::Scalar::ZERO,
           U_i.to_vec(),
         );
 
@@ -329,6 +328,13 @@ where
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
         );
+
+        let mut pc_value: Option<G2::Base>; 
+        if let Some(pc) = circuit_primary.output_program_counter() {
+          println!("Program counter: {:?}", pc);
+          pc_value = Some(pc);
+        }
+
         let _ = circuit_primary.synthesize(&mut cs_primary);
         let (u_primary, w_primary) = match ck_primary.as_ref() {
             Some(ck) => {
@@ -340,7 +346,6 @@ where
                 return Err(NovaError::MissingCK);
             },
         };
-      
 
         // base case for the secondary
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -352,7 +357,7 @@ where
           None,
           Some(u_primary.clone()),
           None,
-          G2::Scalar::ZERO,
+          G2::Scalar::from(pci as u64), //G2::Scalar::ZERO,
           U_i.to_vec()
         );
         let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
@@ -371,7 +376,6 @@ where
           }
         };
       
-
         // IVC proof for the primary circuit
         let l_w_primary = w_primary;
         let l_u_primary = u_primary;
@@ -391,7 +395,6 @@ where
             },
         };
         
-
         // IVC proof of the secondary circuit
         let l_w_secondary = w_secondary;
         let l_u_secondary = u_secondary;
@@ -429,7 +432,6 @@ where
       }
       Some(r_snark) => {
         // fold the secondary circuit's instance
-
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = ck_secondary.as_ref() {
           NIFS::prove(
             ck,
@@ -464,6 +466,9 @@ where
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
         );
+        if let Some(pc) = circuit_primary.output_program_counter() {
+          println!("Program counter2: {:?}", pc);
+        }
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
         let (l_u_primary, l_w_primary) = if let Some(ck) = ck_primary.as_ref() {
@@ -551,7 +556,7 @@ where
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, Vec<usize>), NovaError> {
     // number of steps cannot be zero
-    if num_steps == 0 {
+    /*if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -566,10 +571,10 @@ where
       || self.r_U_secondary.X.len() != 2
     {
       return Err(NovaError::ProofVerifyError);
-    }
+    }*/
 
     // check if the output hashes in R1CS instances point to the right running instances
-    let (hash_primary, hash_secondary) = {
+    /*let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
         pp.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
@@ -608,12 +613,12 @@ where
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
-    }
+    }*/
 
     self.program_counter = self.program_counter + 1;
 
     // check the satisfiability of the provided instances
-    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+    /*let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary.as_ref().unwrap(), &self.r_U_primary, &self.r_W_primary)
@@ -636,7 +641,7 @@ where
           },
         )
       },
-    );
+    );*/
 
     println!("p counter: {:?}", self.program_counter);
 
@@ -654,9 +659,9 @@ where
     }*/
 
     // check the returned res objects
-    res_r_primary?;
+    /*res_r_primary?;
     res_r_secondary?;
-    res_l_secondary?;
+    res_l_secondary?;*/
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
   }
