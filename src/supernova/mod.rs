@@ -6,7 +6,6 @@
 #![allow(dead_code)]
 
 use crate::ccs;
-
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
@@ -17,7 +16,6 @@ use crate::{
     circuit::TrivialTestCircuit, circuit::StepCircuit,
     commitment::{CommitmentEngineTrait, CommitmentTrait}},
   Commitment, CommitmentKey, CompressedCommitment,
-  circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams},
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS}
 };
 
@@ -35,10 +33,10 @@ use ::bellperson::{Circuit, ConstraintSystem};
 use flate2::{write::ZlibEncoder, Compression};
 use sha3::{Digest, Sha3_256};
 
-
-
 use crate::nifs::NIFS;
 
+use self::circuit::{NovaCircuit, CircuitInputs, CircuitParams};
+mod circuit;
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
@@ -90,8 +88,8 @@ where
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
   ck_secondary: Option<CommitmentKey<G2>>,
   r1cs_shape_secondary: R1CSShape<G2>,
-  augmented_circuit_params_primary: NovaAugmentedCircuitParams,
-  augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
+  augmented_circuit_params_primary: CircuitParams,
+  augmented_circuit_params_secondary: CircuitParams,
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
@@ -107,9 +105,9 @@ where
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2, largest: bool) -> Self {
     let augmented_circuit_params_primary =
-      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+      CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
-      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+      CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
@@ -122,7 +120,7 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+    let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
       augmented_circuit_params_primary.clone(),
       None,
       c_primary,
@@ -144,7 +142,7 @@ where
     }
 
     // Initialize ck for the secondary
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+    let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
       augmented_circuit_params_secondary.clone(),
       None,
       c_secondary,
@@ -278,7 +276,8 @@ where
   zi_secondary: Vec<G2::Scalar>,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
-  program_counter: i32,
+  program_counter: usize,
+  output_Ui: Vec<usize>,
 }
 
 impl<G1, G2, C1, C2> NivcSNARK<G1, G2, C1, C2>
@@ -291,6 +290,9 @@ where
   /// Create a new `NivcSNARK` (or updates the provided `NivcSNARK`)
   /// by executing a step of the incremental computation
   pub fn prove_step(
+    circuit_index: usize,
+    mut pci: usize,
+    mut U_i: &mut Vec<usize>,
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: Option<Self>,
     c_primary: C1,
@@ -306,9 +308,10 @@ where
 
     match recursive_snark {
       None => {
+
         // base case for the primary
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
+        let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
           scalar_as_base::<G1>(pp.digest),
           G1::Scalar::ZERO,
           z0_primary.clone(),
@@ -316,9 +319,11 @@ where
           None,
           None,
           None,
+          pci,
+          U_i.to_vec(),
         );
 
-        let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+        let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
           pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
@@ -339,7 +344,7 @@ where
 
         // base case for the secondary
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
+        let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
           pp.digest,
           G2::Scalar::ZERO,
           z0_secondary.clone(),
@@ -347,8 +352,10 @@ where
           None,
           Some(u_primary.clone()),
           None,
+          pci,
+          U_i.to_vec()
         );
-        let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+        let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
           pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
@@ -395,14 +402,15 @@ where
         };
         
 
-        // Outputs of the two circuits thus far
+        // Outputs of the two circuits thus far.
+        // For the base case they are just taking the inputs of the function.
+        // This is also true of our program_counter and output_U_i.
         let zi_primary = c_primary.output(&z0_primary);
         let zi_secondary = c_secondary.output(&z0_secondary);
 
         if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
           return Err(NovaError::InvalidStepOutputLength);
         }
-
         Ok(Self {
           r_W_primary,
           r_U_primary,
@@ -415,7 +423,8 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: 0
+          program_counter: pci,
+          output_Ui: U_i.to_vec()
         })
       }
       Some(r_snark) => {
@@ -437,7 +446,7 @@ where
         };
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
+        let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
           scalar_as_base::<G1>(pp.digest),
           G1::Scalar::from(r_snark.i as u64),
           z0_primary,
@@ -445,9 +454,11 @@ where
           Some(r_snark.r_U_secondary.clone()),
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
+          pci,
+          U_i.to_vec()
         );
 
-        let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+        let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
           pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
@@ -480,7 +491,7 @@ where
           };
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
+        let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
           pp.digest,
           G2::Scalar::from(r_snark.i as u64),
           z0_secondary,
@@ -488,9 +499,11 @@ where
           Some(r_snark.r_U_primary.clone()),
           Some(l_u_primary),
           Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
+          pci,
+          U_i.to_vec(),
         );
 
-        let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+        let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
           pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
@@ -522,7 +535,8 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: 0
+          program_counter: 0,
+          output_Ui: U_i.to_vec()
         })
       }
     }
@@ -636,8 +650,8 @@ where
     large_claim2: Option<RunningClaim<G1, G2, C1, C2>>,
     num_steps: usize,
     mut pci: usize,
-    mut U_i: Vec<(usize, usize)>,  // Added this argument
-  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize, Vec<(usize, usize)>), Box<dyn std::error::Error>>
+    mut U_i: Vec<usize>,
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize, Vec<usize>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
@@ -647,13 +661,23 @@ where
       if num_steps < 1 {
         return Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "num_steps must be greater than 0",
+            "num_steps must be greater than 1",
         )));
       }
 
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
       let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> = Err(NovaError::InvalidInitialInputLength);
+
+      // 1. Checks that Ui and pci are contained in the public output of the instance ui.
+      // This enforces that Ui and pci are indeed produced by the prior step
+      if U_i.len() != 0 {
+        // if not the first RunningInstance a verifier check might need to be done here.
+        // for Ui and pci.
+      } else {
+        // Base case for U_i and pci.
+        U_i.push(circuit_index);
+      }
 
       for i in 0..num_steps {
 
@@ -666,6 +690,9 @@ where
                     )));
                 }
                 NivcSNARK::prove_step(
+                    circuit_index,
+                    pci,
+                    &mut U_i,
                     &running_claim.params,
                     recursive_snark,
                     running_claim.claim.clone(),
@@ -678,6 +705,9 @@ where
             },
             None => {
                 NivcSNARK::prove_step(
+                    circuit_index,
+                    pci,
+                    &mut U_i,
                     &running_claim.params,
                     recursive_snark,
                     running_claim.claim.clone(),
@@ -693,7 +723,6 @@ where
           let recursive_snark_unwrapped = res.unwrap();
 
           running_claim.program_counter = running_claim.program_counter + 1;
-          U_i.push((circuit_index, pci));
 
           // Verify the recursive snark at each step of recursion
           let res = recursive_snark_unwrapped.verify(
@@ -849,19 +878,19 @@ mod tests {
       1. "Checks that Ui and PCi are contained in the public output of the instance ui.
       This enforces that Ui and PCi are indeed produced by the prior step."
 
-      In this implementation we make a vector U_i that adds the PCi at each step.
+      In this implementation we make a vector U_i that pushes the PCi at each step.
       [(0, 1), (0, 1), (0, 2), (0, 3)] for a 4 step instance; 0 is the circuit_index.
       We check that both of these are containted in the public output of instance ui.
     */
 
     let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(
-      0, // This is used 
-      running_claim1, //Running claim that the user wants to prove
-      None, //largest claim that the commitment_keys come from
-      2, //amount of times the user wants to loop
+      0, // This is used for the internal running claim index. Which Fi?
+      running_claim1, // Running claim that the user wants to fold
+      None, // largest claim that the commitment_keys come from
+      2, // amount of times the user wants to loop
       0, // PCi
-      [].to_vec()
-    ).unwrap(); // U_i
+      [].to_vec() // U_i
+    ).unwrap(); 
 
     println!("Show Result: {:?}", recursive_snark_unwrapped.1.unwrap());
     println!("Show PCi: {:?}", recursive_snark_unwrapped.2);
