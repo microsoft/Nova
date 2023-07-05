@@ -201,6 +201,7 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::provider::bn256_grumpkin::bn256;
   use crate::{
     bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
     gadgets::utils::le_bits_to_num, traits::Group,
@@ -242,8 +243,7 @@ mod tests {
 
   #[test]
   fn test_poseidon_ro() {
-    type G = pasta_curves::pallas::Point;
-
-    test_poseidon_ro_with::<G>()
+    test_poseidon_ro_with::<pasta_curves::pallas::Point>();
+    test_poseidon_ro_with::<bn256::Point>();
   }
 }
