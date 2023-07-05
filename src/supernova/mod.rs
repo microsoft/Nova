@@ -898,19 +898,27 @@ mod tests {
     /* 
       We do not know how many times a certain circuit will be run.
 
-      1. "Checks that Ui and PCi are contained in the public output of the instance ui.
+      "1. Checks that Ui and PCi are contained in the public output of the instance ui.
       This enforces that Ui and PCi are indeed produced by the prior step."
 
-      In this implementation we make a vector U_i that pushes the PCi at each step.
-      [(0, 1), (0, 1), (0, 2), (0, 3)] for a 4 step instance; 0 is the circuit_index.
+      In this implementation we make a vector U_i that pushes the circuit_index at each step.
+      [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F'.
       We check that both of these are containted in the public output of instance ui.
+      In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
+      is a satisfying Nova instance. If all are satisfying and U_i and pci are in the public output
+      we have a valid SuperNova proof.
+
+      "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
+      (ui,wi) is a satisfying instance witness pair with respect to function F0pci,
+      the public IO of ui contains Ui and pci, and for each j ∈ {1, . . . , `} check that (Ui [j], Wi
+      [j]) is a satisfying instance-witness pair with respect to function F0j." pg15.
     */
 
     let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(
       0, // This is used for the internal running claim index. Which Fi?
       running_claim1, // Running claim that the user wants to fold
       None, // largest claim that the commitment_keys come from
-      2, // amount of times the user wants to loop
+      2, // amount of times the user wants to loop this circuit.
       0, // PCi
       [].to_vec() // U_i
     ).unwrap(); 
