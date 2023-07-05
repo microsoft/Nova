@@ -68,7 +68,7 @@ pub struct CircuitInputs<G: Group> {
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
   program_counter: usize,
-  output_Ui: Vec<usize>,
+  output_U_i: Vec<usize>,
 }
 
 impl<G: Group> CircuitInputs<G> {
@@ -83,7 +83,7 @@ impl<G: Group> CircuitInputs<G> {
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
     program_counter: usize,
-    output_Ui: Vec<usize>,
+    output_U_i: Vec<usize>,
   ) -> Self {
     Self {
       params,
@@ -94,7 +94,7 @@ impl<G: Group> CircuitInputs<G> {
       u,
       T,
       program_counter,
-      output_Ui,
+      output_U_i,
     }
   }
 }

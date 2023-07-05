@@ -277,7 +277,7 @@ where
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
   program_counter: usize,
-  output_Ui: Vec<usize>,
+  output_U_i: Vec<usize>,
 }
 
 impl<G1, G2, C1, C2> NivcSNARK<G1, G2, C1, C2>
@@ -424,7 +424,7 @@ where
           _p_c1: Default::default(),
           _p_c2: Default::default(),
           program_counter: pci,
-          output_Ui: U_i.to_vec()
+          output_U_i: U_i.to_vec()
         })
       }
       Some(r_snark) => {
@@ -535,21 +535,21 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: 0,
-          output_Ui: U_i.to_vec()
+          program_counter: pci,
+          output_U_i: U_i.to_vec()
         })
       }
     }
   }
 
   pub fn verify(
-    &self,
+    &mut self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
-    pci: usize,
+    circuit_index: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
-  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> {
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, Vec<usize>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -636,12 +636,25 @@ where
       },
     );
 
+    // 1. Checks that Ui and pci are contained in the public output of the instance ui.
+    // This enforces that Ui and pci are indeed produced by the prior step.
+    if let Some(&item) = self.output_U_i.get(self.program_counter) {
+      if item == circuit_index {
+          self.program_counter = self.program_counter + 1;
+          self.output_U_i.push(circuit_index);
+      } else {
+          return Err(NovaError::ProofVerifyError);
+      }
+    } else {
+        return Err(NovaError::ProofVerifyError);
+    }
+
     // check the returned res objects
     res_r_primary?;
     res_r_secondary?;
     res_l_secondary?;
 
-    Ok((self.zi_primary.clone(), self.zi_secondary.clone(), pci))
+    Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
   }
 
   fn execute_and_verify_circuits(
@@ -651,7 +664,7 @@ where
     num_steps: usize,
     mut pci: usize,
     mut U_i: Vec<usize>,
-  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError>, usize, Vec<usize>), Box<dyn std::error::Error>>
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError>, usize, Vec<usize>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
@@ -667,7 +680,7 @@ where
 
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
-      let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> = Err(NovaError::InvalidInitialInputLength);
+      let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> = Err(NovaError::InvalidInitialInputLength);
 
       // 1. Checks that Ui and pci are contained in the public output of the instance ui.
       // This enforces that Ui and pci are indeed produced by the prior step
@@ -720,7 +733,7 @@ where
             },
           };
 
-          let recursive_snark_unwrapped = res.unwrap();
+          let mut recursive_snark_unwrapped = res.unwrap();
 
           running_claim.program_counter = running_claim.program_counter + 1;
 
@@ -728,14 +741,15 @@ where
           let res = recursive_snark_unwrapped.verify(
               &running_claim.params,
               running_claim.program_counter,
-              pci,
+              circuit_index,
               vec![<G1 as Group>::Scalar::ONE],
               vec![<G2 as Group>::Scalar::ZERO],
           );
           assert!(res.is_ok());
-          let (zi_primary, zi_secondary, new_pci) = res.unwrap();
-          pci = new_pci + 1;
-          final_result = Ok((zi_primary, zi_secondary));
+          let (zi_primary, zi_secondary, new_pci, new_U_i) = res.unwrap();
+          final_result = Ok((zi_primary, zi_secondary, new_pci));
+          pci = new_pci;
+          U_i = new_U_i;
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
@@ -892,18 +906,6 @@ mod tests {
       [].to_vec() // U_i
     ).unwrap(); 
 
-    println!("Show Result: {:?}", recursive_snark_unwrapped.1.unwrap());
-    println!("Show PCi: {:?}", recursive_snark_unwrapped.2);
-    println!("Show U_i: {:?}", recursive_snark_unwrapped.3);
-
-    // verify the recursive snark at final step of recursion
-    /*let res = recursive_snark_unwrapped.verify(
-      &pp,
-      num_steps + 1,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());*/    
   }
 
   #[test]
