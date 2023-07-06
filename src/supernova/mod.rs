@@ -206,7 +206,7 @@ where
 
 /*
    SuperNova takes Ui a list of running instances. 
-   One instance of will be a struct called RunningClaim.
+   One instance of Ui is a struct called RunningClaim.
   */
   pub struct RunningClaim<G1, G2, Ca, Cb>
   where
@@ -746,7 +746,7 @@ where
 
           running_claim.program_counter = running_claim.program_counter + 1;
 
-          // Verify the recursive snark at each step of recursion
+          // Verify the recursive Nova snark at each step of recursion
           let res = recursive_snark_unwrapped.verify(
               &running_claim.params,
               running_claim.program_counter,
@@ -840,7 +840,7 @@ mod tests {
       cs: &mut CS,
       z: &[AllocatedNum<F>],
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-      // Consider a cubic equation: `x^2 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      // Consider an equation: `x^2 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
       let x_sq = x.square(cs.namespace(|| "x_sq"))?;
       let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
@@ -896,22 +896,67 @@ mod tests {
     SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false);
 
     /* 
-      We do not know how many times a certain circuit will be run.
+      Needs:
+      - We do not know how many times a certain circuit will be run.
+      - The user should be able to run any circuits in any order and re-use RunningInstance.
+      - Only the commitment key of the largest circuit is needed.
+
+      Representing pci and U_i to make sure sequencing is done correctly: 
 
       "1. Checks that Ui and PCi are contained in the public output of the instance ui.
       This enforces that Ui and PCi are indeed produced by the prior step."
 
       In this implementation we make a vector U_i that pushes the circuit_index at each step.
       [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F'.
-      We check that both of these are containted in the public output of instance ui.
+      We check that both U_i and pci are contained in the public output of instance ui.
       In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
       is a satisfying Nova instance. If all are satisfying and U_i and pci are in the public output
       we have a valid SuperNova proof.
+
+      pci is enforced in the augmented circuit as pci + 1 increment.
+      pci and U_i length need to be the same and checked in the augmented verifier.  
+      https://youtu.be/ilrvqajkrYY?t=2559
 
       "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
       (ui,wi) is a satisfying instance witness pair with respect to function F0pci,
       the public IO of ui contains Ui and pci, and for each j ∈ {1, . . . , `} check that (Ui [j], Wi
       [j]) is a satisfying instance-witness pair with respect to function F0j." pg15.
+
+      ---------
+    
+      "2. Runs the non-interactive folding scheme’s verifier to fold an instance that
+        claims the correct execution of the previous step, ui, into Ui [pci] to produce
+        an updated list of running instances Ui+1. This ensures that checking Ui+1
+        implies checking Ui and ui while maintaining that Ui+1 does not grow in size
+        with respect to Ui."
+               
+      The latest U_i[pci] at that index needs to be a satisfying instance.
+      This is mostly done with the existing Nova code.
+
+      Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
+
+      Correct sequencing is enfored by the latest pci at U_i. 
+      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (ui, wi, z0, zi, i)
+      and should be satisfying only if all previous instance were run in the correct sequence.
+
+      By checking the latest RunningInstance at each step U_i[pci] is sat, we know order is done correctly.
+
+      --------
+
+      "3. Invokes the function ϕ on input (zi, ωi) to compute pci+1, which represents
+      the index of the function Fj currently being run. pci+1 is then sent to the
+      next invocation of an augmented circuit (which contains a verifier circuit)."
+
+      Step three is done in the augmented circuit and is simply pci+1.
+      The circuit_index is decided by the user and if they change it mid-way it will create a false proof.
+
+      Would changing the index of RunningInstance 0 at the end to 7 break this?
+      i.e. [0, 1, 0, 0, 2, 3] becomes [0, 1, 0, 7, 2, 3]
+
+      It would be an invalid proof as the count of 0 would not match i and the individual proof for
+      L[pci] would fail as the Nova proofs require the correct step # to be valid.
+      This is enforeced by a hasher in Nova and is unchanged here.
+      
     */
 
     let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(
@@ -922,6 +967,9 @@ mod tests {
       0, // PCi
       [].to_vec() // U_i
     ).unwrap(); 
+
+    // TODO: more testing with more circuit types to follow and then a function for a final SuperNova proof
+    // and verifer. 
 
   }
 
