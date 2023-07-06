@@ -1,6 +1,6 @@
 //! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
-//! We provide two implementations, one in snark.rs (which does not use any preprocessing) 
+//! We provide two implementations, one in snark.rs (which does not use any preprocessing)
 //! and another in ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS scheme provides a succinct verifier)
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
 pub mod direct;
