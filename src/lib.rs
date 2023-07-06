@@ -872,7 +872,7 @@ mod tests {
       .to_repr()
       .as_ref()
       .iter()
-      .map(|b| format!("{:02x}", b))
+      .map(|b| format!("{b:02x}"))
       .collect::<String>();
     assert_eq!(digest_str, expected);
   }
