@@ -101,9 +101,10 @@ mod tests {
   use crate::{
     provider::bn256_grumpkin::bn256,
     provider::keccak::Keccak256Transcript,
-    traits::{Group, TranscriptEngineTrait},
+    traits::{Group, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
   use ff::PrimeField;
+  use rand::Rng;
   use sha3::{Digest, Keccak256};
 
   fn test_keccak_transcript_with<G: Group>(expected_h1: &'static str, expected_h2: &'static str) {
@@ -154,5 +155,89 @@ mod tests {
       hex::encode(output),
       "29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238"
     );
+  }
+
+  use super::{
+    DOM_SEP_TAG, KECCAK256_PREFIX_CHALLENGE_HI, KECCAK256_PREFIX_CHALLENGE_LO,
+    KECCAK256_STATE_SIZE, PERSONA_TAG,
+  };
+
+  fn compute_updated_state_for_testing(input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
+    let input_lo = [input, &[KECCAK256_PREFIX_CHALLENGE_LO]].concat();
+    let input_hi = [input, &[KECCAK256_PREFIX_CHALLENGE_HI]].concat();
+
+    let mut hasher_lo = Keccak256::new();
+    let mut hasher_hi = Keccak256::new();
+
+    hasher_lo.input(&input_lo);
+    hasher_hi.input(&input_hi);
+
+    let output_lo = hasher_lo.result();
+    let output_hi = hasher_hi.result();
+
+    [output_lo, output_hi]
+      .concat()
+      .as_slice()
+      .try_into()
+      .unwrap()
+  }
+
+  fn squeeze_for_testing(
+    transcript: &[u8],
+    round: u16,
+    state: [u8; KECCAK256_STATE_SIZE],
+    label: &'static [u8],
+  ) -> [u8; 64] {
+    let input = [
+      transcript,
+      DOM_SEP_TAG,
+      round.to_le_bytes().as_ref(),
+      state.as_ref(),
+      label,
+    ]
+    .concat();
+    compute_updated_state_for_testing(&input)
+  }
+
+  // This test is meant to ensure compatibility between the incremental way of computing the transcript above, and
+  // the former, which materialized the entirety of the input vector before calling Keccak256 on it.
+  fn test_keccak_transcript_incremental_vs_explicit_with<G: Group>() {
+    let test_label = b"test";
+    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(test_label);
+    let mut rng = rand::thread_rng();
+
+    // ten scalars
+    let scalars = std::iter::from_fn(|| Some(<G as Group>::Scalar::from(rng.gen::<u64>())))
+      .take(10)
+      .collect::<Vec<_>>();
+
+    // add the scalars to the transcripts,
+    let mut manual_transcript: Vec<u8> = vec![];
+    let labels = vec![
+      b"s1", b"s2", b"s3", b"s4", b"s5", b"s6", b"s7", b"s8", b"s9", b"s0",
+    ];
+
+    for i in 0..10 {
+      transcript.absorb(&labels[i][..], &scalars[i]);
+      manual_transcript.extend(labels[i]);
+      manual_transcript.extend(scalars[i].to_transcript_bytes());
+    }
+
+    // compute the initial state
+    let input = [PERSONA_TAG, test_label].concat();
+    let initial_state = compute_updated_state_for_testing(&input);
+
+    // make a challenge
+    let c1: <G as Group>::Scalar = transcript.squeeze(b"c1").unwrap();
+
+    let c1_bytes = squeeze_for_testing(&manual_transcript[..], 0u16, initial_state, b"c1");
+    let to_hex = |g: G::Scalar| hex::encode(g.to_repr().as_ref());
+    assert_eq!(to_hex(c1), to_hex(G::Scalar::from_uniform(&c1_bytes)));
+  }
+
+  #[test]
+  fn test_keccak_transcript_incremental_vs_explicit() {
+    test_keccak_transcript_incremental_vs_explicit_with::<pasta_curves::pallas::Point>();
+    test_keccak_transcript_incremental_vs_explicit_with::<bn256::Point>();
   }
 }
