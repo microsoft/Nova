@@ -1,6 +1,7 @@
 //! This module implements the Nova traits for bn256::Point, bn256::Scalar, grumpkin::Point, grumpkin::Scalar.
 use crate::{
   provider::{
+    cpu_best_multiexp,
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
@@ -207,18 +208,6 @@ impl_traits!(
   GrumpkinAffine,
   "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
 );
-
-/// Performs a multi-exponentiation operation without GPU acceleration.
-///
-/// This function will panic if coeffs and bases have a different length.
-///
-/// This will use multithreading if beneficial.
-/// Adapted from zcash/halo2
-// TODO: update once https://github.com/privacy-scaling-explorations/halo2curves/pull/29
-// (or a successor thereof) is merged
-fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-  crate::provider::pasta::cpu_best_multiexp(coeffs, bases)
-}
 
 #[cfg(test)]
 mod tests {
