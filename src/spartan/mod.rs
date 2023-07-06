@@ -357,7 +357,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     ));
 
     // We will now reduce a vector of claims of evaluations at different points into claims about them at the same point.
-    // For example, eval_W =? W(r_y[1..]) and eval_W =? E(r_x) into
+    // For example, eval_W =? W(r_y[1..]) and eval_E =? E(r_x) into
     // two claims: eval_W_prime =? W(rz) and eval_E_prime =? E(rz)
     // We can them combine the two into one: eval_W_prime + gamma * eval_E_prime =? (W + gamma*E)(rz),
     // where gamma is a public challenge
