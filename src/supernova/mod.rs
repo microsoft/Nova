@@ -914,12 +914,12 @@ mod tests {
       In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
       is a satisfying Nova instance. 
       
-      If all U_i  are satisfying and U_i and pci are
+      If all U_i are satisfying and U_i and pci are
       in the public output (and were checked at each RunningInstance)
       we have a valid SuperNova proof.
 
       pci is enforced in the augmented circuit as pci + 1 increment.
-      pci and U_i length need to be the same and checked in the augmented verifier.  
+      pci and U_i.length need to be the same and checked in the augmented verifier.  
       https://youtu.be/ilrvqajkrYY?t=2559
 
       "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
