@@ -936,7 +936,7 @@ mod tests {
       Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
 
       Correct sequencing is enfored by the latest pci at U_i. 
-      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (ui, wi, z0, zi, i)
+      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (ui, pci, wi, zi)
       and should be satisfying only if all previous instance were run in the correct sequence.
 
       By checking the latest RunningInstance at each step U_i[pci] is sat, we know order is done correctly.
