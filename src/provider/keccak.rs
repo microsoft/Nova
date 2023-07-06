@@ -57,10 +57,10 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
 
   fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
     let input = [
+      self.transcript.as_ref(),
       DOM_SEP_TAG,
       self.round.to_le_bytes().as_ref(),
       self.state.as_ref(),
-      self.transcript.as_ref(),
       label,
     ]
     .concat();
@@ -131,13 +131,13 @@ mod tests {
   #[test]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<pasta_curves::pallas::Point>(
-      "432d5811c8be3d44d47f52108a8749ae18482efd1a37b830f966456b5d75340c",
-      "65f7908d53abcd18f3b1d767456ef9009b91c7566a635e9ca7be26e21d4d7a10",
+      "5ddffa8dc091862132788b8976af88b9a2c70594727e611c7217ba4c30c8c70a",
+      "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
     );
 
     test_keccak_transcript_with::<bn256::Point>(
-      "93f9160d5501865b399ee4ff0ffe17b697a4023e33e931e2597d36e6cc4ac602",
-      "bca8bdb96608a8277a7cb34bd493dfbc5baf2a080d1d6c9d32d7ab4f238eb803",
+      "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
+      "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
     );
   }
 
