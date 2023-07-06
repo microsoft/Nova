@@ -907,10 +907,15 @@ mod tests {
       This enforces that Ui and PCi are indeed produced by the prior step."
 
       In this implementation we make a vector U_i that pushes the circuit_index at each step.
-      [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F'.
+      [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F',
+      here is is run three times.
+
       We check that both U_i and pci are contained in the public output of instance ui.
       In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
-      is a satisfying Nova instance. If all are satisfying and U_i and pci are in the public output
+      is a satisfying Nova instance. 
+      
+      If all U_i  are satisfying and U_i and pci are
+      in the public output (and were checked at each RunningInstance)
       we have a valid SuperNova proof.
 
       pci is enforced in the augmented circuit as pci + 1 increment.
@@ -936,10 +941,10 @@ mod tests {
       Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
 
       Correct sequencing is enfored by the latest pci at U_i. 
-      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (ui, pci, wi, zi)
+      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (U_i, ui, pci, wi, zi)
       and should be satisfying only if all previous instance were run in the correct sequence.
 
-      By checking the latest RunningInstance at each step U_i[pci] is sat, we know order is done correctly.
+      By checking the latest RunningInstance at each step U_i[pci] is sat, we know sequencing is done correctly.
 
       --------
 
