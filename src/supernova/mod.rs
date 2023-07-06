@@ -935,8 +935,8 @@ mod tests {
         implies checking Ui and ui while maintaining that Ui+1 does not grow in size
         with respect to Ui."
                
-      The latest U_i[pci] at that index needs to be a satisfying instance.
-      This is mostly done with the existing Nova code.
+      This is mostly done with the existing Nova code. With additions of U_i and pci checks
+      in the augmented circuit. The latest U_i[pci] at that index needs to be a satisfying instance.
 
       Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
 
