@@ -908,7 +908,7 @@ mod tests {
 
       In this implementation we make a vector U_i that pushes the circuit_index at each step.
       [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F',
-      here is is run three times.
+      here it is run three times.
 
       We check that both U_i and pci are contained in the public output of instance ui.
       In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
