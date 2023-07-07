@@ -7,7 +7,6 @@
 
 use crate::ccs;
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
@@ -433,7 +432,7 @@ where
       Some(r_snark) => {
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = ck_secondary.as_ref() {
-          NIFS::prove(
+          NIFS::prove_supernova(
             ck,
             &pp.ro_consts_secondary,
             &scalar_as_base::<G1>(pp.digest),
@@ -481,7 +480,7 @@ where
         
 
         let (nifs_primary, (r_U_primary, r_W_primary)) = if let Some(ck) = ck_primary.as_ref() {
-          NIFS::prove(
+          NIFS::prove_supernova(
               ck,
               &pp.ro_consts_primary,
               &pp.digest,
@@ -697,7 +696,7 @@ where
         // if not the first RunningInstance a verifier check might need to be done here.
         // for Ui and pci.
       } else {
-        // Base case for U_i and pci.
+        // Base case for U_i.
         U_i.push(circuit_index);
       }
 
@@ -898,7 +897,7 @@ mod tests {
     /* 
       Needs:
       - We do not know how many times a certain circuit will be run.
-      - The user should be able to run any circuits in any order and re-use RunningInstance.
+      - The user should be able to run any circuits in any order and re-use RunningClaim.
       - Only the commitment key of the largest circuit is needed.
 
       Representing pci and U_i to make sure sequencing is done correctly: 
@@ -915,7 +914,7 @@ mod tests {
       is a satisfying Nova instance. 
       
       If all U_i are satisfying and U_i and pci are
-      in the public output (and were checked at each RunningInstance)
+      in the public output (and were checked at each RunningClaim)
       we have a valid SuperNova proof.
 
       pci is enforced in the augmented circuit as pci + 1 increment.
@@ -955,12 +954,12 @@ mod tests {
       Step three is done in the augmented circuit and is simply pci+1.
       The circuit_index is decided by the user and if they change it mid-way it will create a false proof.
 
-      Would changing the index of RunningInstance 0 at the end to 7 break this?
+      Would changing the index of RunningClaim 0 at the end to 7 break this?
       i.e. [0, 1, 0, 0, 2, 3] becomes [0, 1, 0, 7, 2, 3]
 
       It would be an invalid proof as the count of 0 would not match i and the individual proof for
       L[pci] would fail as the Nova proofs require the correct step # to be valid.
-      This is enforeced by a hasher in Nova and is unchanged here.
+      This is enforced by a hasher in Nova and is unchanged here.
       
     */
 

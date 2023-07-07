@@ -3,7 +3,7 @@
 #![allow(clippy::type_complexity)]
 
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_SUPERNOVA},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
@@ -92,6 +92,84 @@ impl<G: Group> NIFS<G> {
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
+
+    // append U1 and U2 to transcript
+    U1.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro(&mut ro);
+
+    // append `comm_T` to the transcript and obtain a challenge
+    let comm_T = Commitment::<G>::decompress(&self.comm_T)?;
+    comm_T.absorb_in_ro(&mut ro);
+
+    // compute a challenge from the RO
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // fold the instance using `r` and `comm_T`
+    let U = U1.fold(U2, &comm_T, &r)?;
+
+    // return the folded instance
+    Ok(U)
+  }
+
+  //Supernova has more public inputs and outputs.
+  #[allow(clippy::too_many_arguments)]
+  pub fn prove_supernova(
+    ck: &CommitmentKey<G>,
+    ro_consts: &ROConstants<G>,
+    pp_digest: &G::Scalar,
+    S: &R1CSShape<G>,
+    U1: &RelaxedR1CSInstance<G>,
+    W1: &RelaxedR1CSWitness<G>,
+    U2: &R1CSInstance<G>,
+    W2: &R1CSWitness<G>,
+  ) -> Result<(NIFS<G>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
+    // initialize a new RO
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_SUPERNOVA);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
+
+    // append U1 and U2 to transcript
+    U1.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro(&mut ro);
+
+    // compute a commitment to the cross-term
+    let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2)?;
+
+    // append `comm_T` to the transcript and obtain a challenge
+    comm_T.absorb_in_ro(&mut ro);
+
+    // compute a challenge from the RO
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // fold the instance using `r` and `comm_T`
+    let U = U1.fold(U2, &comm_T, &r)?;
+
+    // fold the witness using `r` and `T`
+    let W = W1.fold(W2, &T, &r)?;
+
+    // return the folded instance and witness
+    Ok((
+      Self {
+        comm_T: comm_T.compress(),
+        _p: Default::default(),
+      },
+      (U, W),
+    ))
+  }
+
+  pub fn verify_supernova(
+    &self,
+    ro_consts: &ROConstants<G>,
+    pp_digest: &G::Scalar,
+    U1: &RelaxedR1CSInstance<G>,
+    U2: &R1CSInstance<G>,
+  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
+    // initialize a new RO
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_SUPERNOVA);
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<G>(*pp_digest));
