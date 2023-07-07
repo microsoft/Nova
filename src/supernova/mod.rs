@@ -330,7 +330,7 @@ where
 
         let mut pc_value: Option<G2::Base>; 
         if let Some(pc) = circuit_primary.output_program_counter() {
-          println!("Program counter: {:?}", pc);
+          //println!("Program counter: {:?}", pc);
           pc_value = Some(pc);
         }
 
@@ -413,6 +413,7 @@ where
         if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
           return Err(NovaError::InvalidStepOutputLength);
         }
+
         Ok(Self {
           r_W_primary,
           r_U_primary,
@@ -429,7 +430,7 @@ where
           output_U_i: U_i.to_vec()
         })
       }
-      Some(r_snark) => {
+      Some(mut r_snark) => {
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = ck_secondary.as_ref() {
           NIFS::prove_supernova(
@@ -456,7 +457,7 @@ where
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
           G1::Scalar::from(r_snark.program_counter as u64),
-          U_i.to_vec().iter().map(|&num| G1::Scalar::from(num as u64)).collect(),
+          r_snark.output_U_i.to_vec().iter().map(|&num| G1::Scalar::from(num as u64)).collect(),
         );
 
         let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
@@ -466,10 +467,10 @@ where
           pp.ro_consts_circuit_primary.clone(),
         );
         if let Some(pc) = circuit_primary.output_program_counter() {
-          println!("Program counter2: {:?}", pc);
+          //println!("Program counter2: {:?}", pc);
         }
         if let Some(output_U_i) = circuit_primary.output_U_i() {
-          println!("output_U_i2: {:?}", output_U_i);
+          //println!("output_U_i2: {:?}", output_U_i);
         }
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
@@ -507,7 +508,7 @@ where
           Some(l_u_primary),
           Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
           G2::Scalar::from(r_snark.program_counter as u64),
-          U_i.to_vec().iter().map(|&num| G2::Scalar::from(num as u64)).collect(),
+          r_snark.output_U_i.iter().map(|&num| G2::Scalar::from(num as u64)).collect(),
         );
 
         let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
@@ -530,6 +531,8 @@ where
         let zi_primary = c_primary.output(&r_snark.zi_primary);
         let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
 
+        r_snark.output_U_i.push(circuit_index);
+       
         Ok(Self {
           r_W_primary,
           r_U_primary,
@@ -542,8 +545,8 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: r_snark.program_counter,
-          output_U_i: r_snark.output_U_i
+          program_counter: r_snark.program_counter + 1,
+          output_U_i: r_snark.output_U_i,
         })
       }
     }
@@ -617,10 +620,10 @@ where
       return Err(NovaError::ProofVerifyError);
     }*/
 
-    self.program_counter = self.program_counter + 1;
+    //self.program_counter = self.program_counter + 5;
 
     // check the satisfiability of the provided instances
-    /*let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary.as_ref().unwrap(), &self.r_U_primary, &self.r_W_primary)
@@ -643,9 +646,10 @@ where
           },
         )
       },
-    );*/
+    );
 
-    println!("p counter: {:?}", self.program_counter);
+    //println!("p counter: {:?}", self.program_counter);
+    //println!("p counter: {:?}", self.i);
 
     // 1. Checks that Ui and pci are contained in the public output of the instance ui.
     // This enforces that Ui and pci are indeed produced by the prior step.
@@ -659,11 +663,9 @@ where
     } else {
         return Err(NovaError::ProofVerifyError);
     }*/
-
-    // check the returned res objects
-    /*res_r_primary?;
+    res_r_primary?;
     res_r_secondary?;
-    res_l_secondary?;*/
+    res_l_secondary?;
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
   }
@@ -759,8 +761,8 @@ where
           assert!(res.is_ok());
           let (zi_primary, zi_secondary, new_pci, new_U_i) = res.unwrap();
           final_result = Ok((zi_primary, zi_secondary, new_pci));
-          pci = new_pci;
-          U_i.push(circuit_index);
+          //pci = pci + 1;
+          //U_i.push(circuit_index);
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
@@ -959,8 +961,8 @@ mod tests {
       0, // This is used for the internal running claim index. Which Fi?
       running_claim1, // Running claim that the user wants to fold
       None, // largest claim that the commitment_keys come from
-      2, // amount of times the user wants to loop this circuit.
-      0, // PCi
+      3, // amount of times the user wants to loop this circuit.
+      1, // PCi
       [].to_vec() // U_i
     ).unwrap(); 
 
