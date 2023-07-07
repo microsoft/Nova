@@ -1,4 +1,4 @@
-use super::cccs::CCCSShape;
+use super::cccs::{CCCSInstance, CCCSShape};
 use super::lcccs::LCCCS;
 use super::util::{compute_sum_Mz, VirtualPolynomial};
 use super::{CCSShape, CCSWitness};
@@ -123,6 +123,71 @@ impl<G: Group> Multifolding<G> {
     Q.scalar_mul(&gamma_t1);
     g = g.add(&Q);
     g
+  }
+
+  // XXX: This might need to be mutable if we want to hold an LCCCS instance as the IVC inside the
+  // NIMFS object.
+  pub fn fold(
+    &self,
+    lcccs1: &LCCCS<G>,
+    cccs2: &CCCSInstance<G>,
+    sigmas: &[G::Scalar],
+    thetas: &[G::Scalar],
+    r_x_prime: Vec<G::Scalar>,
+    rho: G::Scalar,
+  ) -> LCCCS<G> {
+    let C = lcccs1.C + cccs2.C.mul(rho);
+    let u = lcccs1.u + rho;
+    let x: Vec<G::Scalar> = lcccs1
+      .x
+      .iter()
+      .zip(
+        cccs2
+          .x
+          .iter()
+          .map(|x_i| *x_i * rho)
+          .collect::<Vec<G::Scalar>>(),
+      )
+      .map(|(a_i, b_i)| *a_i + b_i)
+      .collect();
+    let v: Vec<G::Scalar> = sigmas
+      .iter()
+      .zip(
+        thetas
+          .iter()
+          .map(|x_i| *x_i * rho)
+          .collect::<Vec<G::Scalar>>(),
+      )
+      .map(|(a_i, b_i)| *a_i + b_i)
+      .collect();
+
+    LCCCS {
+      matrix_mles: lcccs1.matrix_mles.clone(),
+      C,
+      ccs: lcccs1.ccs.clone(),
+      u,
+      x,
+      r_x: r_x_prime,
+      v,
+    }
+  }
+
+  pub fn fold_witness(w1: &CCSWitness<G>, w2: &CCSWitness<G>, rho: G::Scalar) -> CCSWitness<G> {
+    let w = w1
+      .w
+      .iter()
+      .zip(
+        w2.w
+          .iter()
+          .map(|x_i| *x_i * rho)
+          .collect::<Vec<G::Scalar>>(),
+      )
+      .map(|(a_i, b_i)| *a_i + b_i)
+      .collect();
+
+    // XXX: There's no handling of r_w atm. So we will ingore until all folding is implemented,
+    // let r_w = w1.r_w + rho * w2.r_w;
+    CCSWitness { w }
   }
 }
 
@@ -272,5 +337,48 @@ mod tests {
       &r_x_prime,
     );
     assert_eq!(c, expected_c);
+  }
+
+  #[test]
+  fn test_lcccs_fold() {
+    let z1 = CCSShape::<Ep>::get_test_z(3);
+    let z2 = CCSShape::<Ep>::get_test_z(4);
+
+    let (ccs, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z2);
+    let (_, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z1);
+    let ck = ccs.commitment_key();
+
+    assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
+    assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
+
+    let mut rng = OsRng;
+    let r_x_prime: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+
+    // Generate a new multifolding instance
+    let mut nimfs = NIMFS::new(ccs.clone());
+
+    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&z1, &z2, &r_x_prime);
+
+    // Initialize a multifolding object
+    let (lcccs_instance, lcccs_witness) = ccs.to_lcccs(&mut rng, &ck, &z1);
+    assert!(lcccs_instance.is_sat(&ck, &lcccs_witness).is_ok());
+    let (cccs_instance, _, _) = ccs.to_cccs_artifacts(&mut rng, &ck, &z2);
+
+    let mut rng = OsRng;
+    let rho = Fq::random(&mut rng);
+
+    let folded = nimfs.fold(
+      &lcccs_instance,
+      &cccs_instance,
+      &sigmas,
+      &thetas,
+      r_x_prime,
+      rho,
+    );
+
+    let w_folded = NIMFS::fold_witness(&ccs_witness_1, &ccs_witness_2, rho);
+
+    // check lcccs relation
+    assert!(folded.is_sat(&ck, &w_folded).is_ok());
   }
 }
