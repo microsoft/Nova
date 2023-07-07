@@ -159,7 +159,7 @@ mod tests {
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
-    let mut rng = OsRng; // TMP
+    let mut rng = OsRng;
     let gamma: Fq = Fq::random(&mut rng);
     let beta: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
 
@@ -225,17 +225,45 @@ mod tests {
     let (cccs_instance) = ccs.to_cccs_shape();
 
     // Generate a new multifolding instance
-    let mf = NIMFS::new(ccs);
+    let nimfs = NIMFS::new(ccs.clone());
 
-    let (sigmas, thetas) = mf.compute_sigmas_and_thetas(&z1, &z2, &r_x_prime);
+    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&z1, &z2, &r_x_prime);
 
     let g = NIMFS::compute_g(&lcccs_instance, &cccs_instance, &z1, &z2, gamma, &beta);
 
+    // Assert `g` is correctly computed here.
+    {
+      // evaluate g(x) over x \in {0,1}^s
+      let mut g_on_bhc = Fq::zero();
+      for x in BooleanHypercube::new(ccs.s).into_iter() {
+        g_on_bhc += g.evaluate(&x).unwrap();
+      }
+      // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
+      let mut sum_Lj_on_bhc = Fq::zero();
+      let vec_L = lcccs_instance.compute_Ls(&z1);
+      for x in BooleanHypercube::new(ccs.s).into_iter() {
+        for j in 0..vec_L.len() {
+          let gamma_j = gamma.pow([j as u64]);
+          sum_Lj_on_bhc += vec_L[j].evaluate(&x).unwrap() * gamma_j;
+        }
+      }
+
+      // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
+      // sum of gamma^j * Lj(x) over the boolean hypercube
+      assert_eq!(g_on_bhc, sum_Lj_on_bhc);
+    };
+
+    // XXX: We need a better way to do this. Sum_Mz has also the same issue.
+    // reverse the `r` given to evaluate to match Spartan/Nova endianness.
+    let mut revsersed = r_x_prime.clone();
+    revsersed.reverse();
+
     // we expect g(r_x_prime) to be equal to:
     // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
-    // from compute_c_from_sigmas_and_thetas
-    let expected_c = g.evaluate(&r_x_prime).unwrap();
-    let c = mf.compute_c_from_sigmas_and_thetas(
+    // from `compute_c_from_sigmas_and_thetas`
+    let expected_c = g.evaluate(&revsersed).unwrap();
+
+    let c = nimfs.compute_c_from_sigmas_and_thetas(
       &sigmas,
       &thetas,
       gamma,
