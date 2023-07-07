@@ -468,6 +468,9 @@ where
         if let Some(pc) = circuit_primary.output_program_counter() {
           println!("Program counter2: {:?}", pc);
         }
+        if let Some(output_U_i) = circuit_primary.output_U_i() {
+          println!("output_U_i2: {:?}", output_U_i);
+        }
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
         let (l_u_primary, l_w_primary) = if let Some(ck) = ck_primary.as_ref() {
@@ -757,7 +760,7 @@ where
           let (zi_primary, zi_secondary, new_pci, new_U_i) = res.unwrap();
           final_result = Ok((zi_primary, zi_secondary, new_pci));
           pci = new_pci;
-          U_i = new_U_i;
+          U_i.push(circuit_index);
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
