@@ -799,10 +799,10 @@ mod tests {
   use super::*;
   type EE1<G1> = provider::ipa_pc::EvaluationEngine<G1>;
   type EE2<G2> = provider::ipa_pc::EvaluationEngine<G2>;
-  type S1<G1> = spartan::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2<G2> = spartan::RelaxedR1CSSNARK<G2, EE2<G2>>;
-  type S1Prime<G1> = spartan::pp::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2Prime<G2> = spartan::pp::RelaxedR1CSSNARK<G2, EE2<G2>>;
+  type S1<G1> = spartan::snark::RelaxedR1CSSNARK<G1, EE1<G1>>;
+  type S2<G2> = spartan::snark::RelaxedR1CSSNARK<G2, EE2<G2>>;
+  type S1Prime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1<G1>>;
+  type S2Prime<G2> = spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2<G2>>;
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
