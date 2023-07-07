@@ -9,3 +9,4 @@ pub mod keccak;
 pub mod pasta;
 pub mod pedersen;
 pub mod poseidon;
+pub mod secpsecq;
