@@ -68,7 +68,7 @@ pub struct CircuitInputs<G: Group> {
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
   program_counter: G::Base,
-  output_U_i: Vec<usize>,
+  output_U_i: Vec<G::Base>,
 }
 
 impl<G: Group> CircuitInputs<G> {
@@ -83,7 +83,7 @@ impl<G: Group> CircuitInputs<G> {
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
     program_counter: G::Base,
-    output_U_i: Vec<usize>,
+    output_U_i: Vec<G::Base>,
   ) -> Self {
     Self {
       params,
@@ -101,14 +101,14 @@ impl<G: Group> CircuitInputs<G> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
+pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
   params: CircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
+impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
     params: CircuitParams,
@@ -139,6 +139,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
       AllocatedR1CSInstance<G>,
       AllocatedPoint<G>,
       AllocatedNum<G::Base>,
+      Vec<AllocatedNum<G::Base>>,
     ),
     SynthesisError,
   > {
@@ -153,6 +154,15 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
 
     // Allocate pci
     let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || Ok(self.inputs.get()?.program_counter))?;
+
+    // Allocate U_i
+    let output_U_i = (0..arity)
+    .map(|i| {
+      AllocatedNum::alloc(cs.namespace(|| format!("output_U_i_{i}")), || {
+        Ok(self.inputs.get()?.output_U_i[i])
+      })
+    })
+    .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -199,7 +209,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
       }),
     )?;
 
-    Ok((params, i, z_0, z_i, U, u, T, program_counter))
+    Ok((params, i, z_0, z_i, U, u, T, program_counter, output_U_i))
   }
 
   /// Synthesizes base case and returns the new relaxed R1CSInstance
@@ -242,6 +252,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
     T: AllocatedPoint<G>,
     arity: usize,
     program_counter: AllocatedNum<G::Base>,
+    output_U_i: Vec<AllocatedNum<G::Base>>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
@@ -308,7 +319,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
 }
 
 impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for NovaCircuit<G, SC>
+  for SuperNovaCircuit<G, SC>
 {
 
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -318,7 +329,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T, program_counter) =
+    let (params, i, z_0, z_i, U, u, T, program_counter, output_U_i) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -341,6 +352,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       T,
       arity,
       program_counter.clone(),
+      output_U_i.clone(),
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -387,6 +399,21 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 
     program_counter
     .inputize(cs.namespace(|| "Output pci"))?;
+
+    // Compute length of U_i and make sure it is the same as program_counter
+    let output_U_i_length = AllocatedNum::alloc(cs.namespace(|| "output_U_i length"), || {
+      Ok(G::Base::from(output_U_i.len() as u64))
+    })?;
+    cs.enforce(
+      || "check output_U_i length",
+      |lc| lc + output_U_i_length.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc + program_counter.get_variable()
+    );
+
+    for (i, num) in output_U_i.iter().enumerate() {
+      num.inputize(cs.namespace(|| format!("Output U_i_{}", i)))?;
+    }
 
     // Compute z_{i+1}
     let z_input = conditionally_select_vec(
@@ -437,7 +464,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       https://eprint.iacr.org/2022/1758.pdf
     */
 
-    // Compute the new hash H(pci, z0, z_{i+1})
+    // Compute the SuperNova hash H(pci, z0, z_{i+1})
     let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 3 * arity);
     ro2.absorb(program_counter_new.clone());
     for e in &z_0 {
@@ -488,8 +515,8 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // Initialize the shape and ck for the primary
-    let circuit1: NovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaCircuit::new(
+    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      SuperNovaCircuit::new(
         primary_params.clone(),
         None,
         TrivialTestCircuit::default(),
@@ -501,8 +528,8 @@ mod tests {
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaCircuit::new(
+    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      SuperNovaCircuit::new(
         secondary_params.clone(),
         None,
         TrivialTestCircuit::default(),
@@ -525,10 +552,10 @@ mod tests {
       None,
       None,
       zero1,
-      vec![0]
+      vec![zero1]
     );
-    let circuit1: NovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaCircuit::new(
+    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      SuperNovaCircuit::new(
         primary_params,
         Some(inputs1),
         TrivialTestCircuit::default(),
@@ -551,10 +578,10 @@ mod tests {
       Some(inst1),
       None,
       zero2,
-      vec![0]
+      vec![zero2]
     );
-    let circuit2: NovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaCircuit::new(
+    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      SuperNovaCircuit::new(
         secondary_params,
         Some(inputs2),
         TrivialTestCircuit::default(),

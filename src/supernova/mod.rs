@@ -34,7 +34,7 @@ use sha3::{Digest, Sha3_256};
 
 use crate::nifs::NIFS;
 
-use self::circuit::{NovaCircuit, CircuitInputs, CircuitParams};
+use self::circuit::{SuperNovaCircuit, CircuitInputs, CircuitParams};
 mod circuit;
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
@@ -119,7 +119,7 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
+    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
       augmented_circuit_params_primary.clone(),
       None,
       c_primary,
@@ -141,7 +141,7 @@ where
     }
 
     // Initialize ck for the secondary
-    let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
+    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
       augmented_circuit_params_secondary.clone(),
       None,
       c_secondary,
@@ -318,10 +318,10 @@ where
           None,
           None,
           G1::Scalar::from(pci as u64), //G1::Scalar::ZERO,
-          U_i.to_vec(),
+          U_i.to_vec().iter().map(|&num| G1::Scalar::from(num as u64)).collect(),
         );
 
-        let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
+        let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
           pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
@@ -357,9 +357,9 @@ where
           Some(u_primary.clone()),
           None,
           G2::Scalar::from(pci as u64), //G2::Scalar::ZERO,
-          U_i.to_vec()
+          U_i.to_vec().iter().map(|&num| G2::Scalar::from(num as u64)).collect(),
         );
-        let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
+        let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
           pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
@@ -456,10 +456,10 @@ where
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
           G1::Scalar::from(r_snark.program_counter as u64),
-          U_i.to_vec()
+          U_i.to_vec().iter().map(|&num| G1::Scalar::from(num as u64)).collect(),
         );
 
-        let circuit_primary: NovaCircuit<G2, C1> = NovaCircuit::new(
+        let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
           pp.augmented_circuit_params_primary.clone(),
           Some(inputs_primary),
           c_primary.clone(),
@@ -504,10 +504,10 @@ where
           Some(l_u_primary),
           Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
           G2::Scalar::from(r_snark.program_counter as u64),
-          U_i.to_vec(),
+          U_i.to_vec().iter().map(|&num| G2::Scalar::from(num as u64)).collect(),
         );
 
-        let circuit_secondary: NovaCircuit<G1, C2> = NovaCircuit::new(
+        let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
           pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
@@ -540,7 +540,7 @@ where
           _p_c1: Default::default(),
           _p_c2: Default::default(),
           program_counter: r_snark.program_counter,
-          output_U_i: U_i.to_vec()
+          output_U_i: r_snark.output_U_i
         })
       }
     }
@@ -910,15 +910,15 @@ mod tests {
       here it is run three times.
 
       We check that both U_i and pci are contained in the public output of instance ui.
-      In the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
+      For the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
       is a satisfying Nova instance. 
       
-      If all U_i are satisfying and U_i and pci are
-      in the public output (and were checked at each RunningClaim)
-      we have a valid SuperNova proof.
+      If all U_i are satisfying and U_i, pci, and a pre-image of a hash(U_i-1, pci-1, zi-1) are
+      in the public output we have a valid SuperNova proof.
 
       pci is enforced in the augmented circuit as pci + 1 increment.
-      pci and U_i.length need to be the same and checked in the augmented verifier.  
+      ϕ does not exist in this implementation as F' are chosen by the user.
+      pci and U_i.length are checked in the augmented verifier.  
       https://youtu.be/ilrvqajkrYY?t=2559
 
       "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
@@ -939,11 +939,7 @@ mod tests {
 
       Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
 
-      Correct sequencing is enfored by the latest pci at U_i. 
-      i.e. [0, 1, 0, 0, 2, 3] in this case the running instance F'[3] should take (U_i, ui, pci, wi, zi)
-      and should be satisfying only if all previous instance were run in the correct sequence.
-
-      By checking the latest RunningInstance at each step U_i[pci] is sat, we know sequencing is done correctly.
+      Correct sequencing is enfored by checking the preimage hash(pci,  U_i, zi).
 
       --------
 
@@ -951,15 +947,8 @@ mod tests {
       the index of the function Fj currently being run. pci+1 is then sent to the
       next invocation of an augmented circuit (which contains a verifier circuit)."
 
-      Step three is done in the augmented circuit and is simply pci+1.
-      The circuit_index is decided by the user and if they change it mid-way it will create a false proof.
-
-      Would changing the index of RunningClaim 0 at the end to 7 break this?
-      i.e. [0, 1, 0, 0, 2, 3] becomes [0, 1, 0, 7, 2, 3]
-
-      It would be an invalid proof as the count of 0 would not match i and the individual proof for
-      L[pci] would fail as the Nova proofs require the correct step # to be valid.
-      This is enforced by a hasher in Nova and is unchanged here.
+      This is done in the augmented circuit and is just pci+1.
+      The circuit_index is decided by the user.
       
     */
 
@@ -971,9 +960,6 @@ mod tests {
       0, // PCi
       [].to_vec() // U_i
     ).unwrap(); 
-
-    // TODO: more testing with more circuit types to follow and then a function for a final SuperNova proof
-    // and verifer. 
 
   }
 
