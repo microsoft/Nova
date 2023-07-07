@@ -250,11 +250,11 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
     );
     ro.absorb(params.clone());
     ro.absorb(i);
-    for e in z_0 {
-      ro.absorb(e);
+    for e in &z_0 {
+      ro.absorb(e.clone());
     }
-    for e in z_i {
-      ro.absorb(e);
+    for e in &z_i {
+      ro.absorb(e.clone());
     }
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
 
@@ -264,6 +264,27 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaCircuit<G, SC> {
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       &u.X0,
       &hash,
+    )?;
+
+    //Check that hash H(pci, z0, z_{i+1})
+    let mut ro2 = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      3 * arity,
+    );
+    ro2.absorb(program_counter);
+    for e in &z_0 {
+      ro2.absorb(e.clone());
+    }
+    for e in &z_i {
+      ro2.absorb(e.clone());
+    }
+
+    let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "Input U_i hash"), NUM_HASH_BITS)?;
+    let supernova_hash = le_bits_to_num(cs.namespace(|| "bits to U_i hash"), supernova_hash_bits)?;
+    let check_pass2 = alloc_num_equals(
+      cs.namespace(|| "check consistency of u.X[0] with H(program_counter, z0, zi)"),
+      &u.X0,
+      &supernova_hash,
     )?;
 
     // Run NIFS Verifier
@@ -364,9 +385,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       |lc| lc + program_counter_new.get_variable() - CS::one() - program_counter.get_variable(),
     );
 
-    //tln!("pin counter: {:?}", program_counter_new.get_value());
-    //println!("pin counter2: {:?}", program_counter.get_value());
-
     program_counter
     .inputize(cs.namespace(|| "Output pci"))?;
 
@@ -389,18 +407,49 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
     ro.absorb(params);
     ro.absorb(i_new.clone());
-    for e in z_0 {
-      ro.absorb(e);
+    for e in &z_0 {
+      ro.absorb(e.clone());
     }
-    for e in z_next {
-      ro.absorb(e);
+    for e in &z_next {
+      ro.absorb(e.clone());
     }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
+
+    /*
+      To check correct sequencing we are just going to make a hash with PCI and
+      the other public outputs. The next RunningInstance can take the pre-image of the hash.
+      *Works much like Nova but with the hash being used outside of the F'[pci].
+
+      "Finally, there is a subtle sizing issue in the above description: in each step,
+      because Ui+1 is produced as the public IO of F0 pci+1, it must be contained in
+      the public IO of instance ui+1. In the next iteration, because ui+1 is folded
+      into Ui+1[pci+1], this means that Ui+1[pci+1] is at least as large as Ui by the
+      properties of the folding scheme. This means that the list of running instances
+      grows in each step. To alleviate this issue, we have each F0j only produce a hash
+      of its outputs as public output. In the subsequent step, the next augmented
+      function takes as non-deterministic input a preimage to this hash." pg.16
+
+      https://eprint.iacr.org/2022/1758.pdf
+    */
+
+    // Compute the new hash H(pci, z0, z_{i+1})
+    let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 3 * arity);
+    ro2.absorb(program_counter_new.clone());
+    for e in &z_0 {
+      ro2.absorb(e.clone());
+    }
+    for e in &z_next {
+      ro2.absorb(e.clone());
+    }
+    let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "output hash U_i"), NUM_HASH_BITS)?;
+    
+    let supernova_hash = le_bits_to_num(cs.namespace(|| "convert U_i hash to num"), supernova_hash_bits)?;
+    supernova_hash.inputize(cs.namespace(|| "output new hash U_i of this circuit"))?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     u.X1
