@@ -8,7 +8,7 @@ use crate::{
   },
   traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };
-use digest::{ExtendableOutput, Input};
+use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
 use num_bigint::BigInt;
 use num_traits::Num;
@@ -80,8 +80,8 @@ macro_rules! impl_traits {
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
         let mut shake = Shake256::default();
-        shake.input(label);
-        let mut reader = shake.xof_result();
+        shake.update(label);
+        let mut reader = shake.finalize_xof();
         let mut uniform_bytes_vec = Vec::new();
         for _ in 0..n {
           let mut uniform_bytes = [0u8; 32];
@@ -216,8 +216,8 @@ mod tests {
 
   fn from_label_serial(label: &'static [u8], n: usize) -> Vec<Bn256Affine> {
     let mut shake = Shake256::default();
-    shake.input(label);
-    let mut reader = shake.xof_result();
+    shake.update(label);
+    let mut reader = shake.finalize_xof();
     let mut ck = Vec::new();
     for _ in 0..n {
       let mut uniform_bytes = [0u8; 32];

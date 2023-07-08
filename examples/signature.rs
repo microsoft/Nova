@@ -100,10 +100,10 @@ where
 
   pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> G::Scalar {
     let mut hasher = Sha3_512::new();
-    hasher.input(persona);
-    hasher.input(a);
-    hasher.input(b);
-    let digest = hasher.result();
+    hasher.update(persona);
+    hasher.update(a);
+    hasher.update(b);
+    let digest = hasher.finalize();
     Self::to_uniform(digest.as_ref())
   }
 }
