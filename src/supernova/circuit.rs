@@ -285,7 +285,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     //Check that hash H(pci, z0, z_{i+1})
     let mut ro2 = G::ROCircuit::new(
       self.ro_consts.clone(),
-      ((3 + u_i_length) * arity),
+      3 + u_i_length * arity,
     );
     ro2.absorb(program_counter.clone());
     for e in &z_0 {
@@ -410,32 +410,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       |lc| lc,
       |lc| lc + program_counter_new.get_variable() - CS::one() - program_counter.get_variable(),
     );
-
-    // Compute length of U_i and make sure it is the same as program_counter
-    /*let output_U_i_length = AllocatedNum::alloc(cs.namespace(|| "output_U_i length"), || {
-      Ok(G::Base::from(output_U_i.len() as u64))
-    })?;
-    for (i, item) in output_U_i.iter().enumerate() {
-      println!("output_U_i[{}]: {:?}", i, item.get_value());
-    }
-    println!("afaf: {:?}", output_U_i_length.get_value());
-    println!("bbbcb: {:?}", program_counter.get_value());
-    cs.enforce(
-      || "check output_U_i length equals program counter",
-      |lc| lc + output_U_i_length.get_variable() - program_counter.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc,
-    );*/
-
-    /*let new_element = AllocatedNum::alloc(
-      cs.namespace(|| format!("new element")), 
-        || {
-            Ok(G::Base::from(0 as u64)) // `n` is the value you want to add.
-        }
-    )?;
-    
-    output_U_i.push(new_element);*/
-
 
     // Compute z_{i+1}
     let z_input = conditionally_select_vec(

@@ -538,8 +538,6 @@ where
         // update the running instances and witnesses
         let zi_primary = c_primary.output(&r_snark.zi_primary);
         let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
-
-        r_snark.output_U_i.push(circuit_index);
        
         Ok(Self {
           r_W_primary,
@@ -569,7 +567,7 @@ where
     z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, Vec<usize>), NovaError> {
     // number of steps cannot be zero
-    /*if num_steps == 0 {
+    if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -584,10 +582,12 @@ where
       || self.r_U_secondary.X.len() != 2
     {
       return Err(NovaError::ProofVerifyError);
-    }*/
+    }
+
+   // println!("here {:?}", self.l_u_secondary.X[0]);
 
     // check if the output hashes in R1CS instances point to the right running instances
-    /*let (hash_primary, hash_secondary) = {
+    let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
         pp.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
@@ -626,7 +626,7 @@ where
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
-    }*/
+    }
 
     //self.program_counter = self.program_counter + 5;
 
@@ -656,21 +656,6 @@ where
       },
     );
 
-    //println!("p counter: {:?}", self.program_counter);
-    //println!("p counter: {:?}", self.i);
-
-    // 1. Checks that Ui and pci are contained in the public output of the instance ui.
-    // This enforces that Ui and pci are indeed produced by the prior step.
-    /*if let Some(&item) = self.output_U_i.get(self.program_counter) {
-      if item == circuit_index {
-          self.program_counter = self.program_counter + 1;
-          self.output_U_i.push(circuit_index);
-      } else {
-          return Err(NovaError::ProofVerifyError);
-      }
-    } else {
-        return Err(NovaError::ProofVerifyError);
-    }*/
     res_r_primary?;
     res_r_secondary?;
     res_l_secondary?;
@@ -769,8 +754,6 @@ where
           assert!(res.is_ok());
           let (zi_primary, zi_secondary, new_pci, new_U_i) = res.unwrap();
           final_result = Ok((zi_primary, zi_secondary, new_pci));
-          //pci = pci + 1;
-          //U_i.push(circuit_index);
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
@@ -890,24 +873,29 @@ mod tests {
 
     let circuit_secondary = TrivialTestCircuit::default();
 
-    let how_many_circuits = 3;
+    /* 
+      'Let the corresponding NIVC proof be Πi , which consists of a vector of ` instances Ui..' pg.15
+      The user sets a list 'Ui' of all of the functions that they plan on using. This is used as public input
+      for the verifier. 
+    */
+    let U_i = [0, 1, 2];
 
     // Structuring running claims     
     let test_circuit1 = CubicCircuit::default(); 
     let running_claim1 = RunningClaim::<G1, G2,
     CubicCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true, how_many_circuits);
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true, U_i.len());
 
     let test_circuit2 = TrivialTestCircuit::default();
     let running_claim2 = RunningClaim::<G1, G2,
     TrivialTestCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false, how_many_circuits);
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false, U_i.len());
 
     let test_circuit3 = SquareCircuit::default();
     let circuit_secondary2 = SquareCircuit::default();
     let running_claim3 = RunningClaim::<G1, G2,
     SquareCircuit<<G1 as Group>::Scalar>,
-    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false, how_many_circuits);
+    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false, U_i.len());
 
     /* 
       Needs:
@@ -971,7 +959,7 @@ mod tests {
       None, // largest claim that the commitment_keys come from
       3, // amount of times the user wants to loop this circuit.
       1, // PCi
-      [0, 1, 2].to_vec() // U_i
+      U_i.to_vec() // U_i
     ).unwrap(); 
 
   }
