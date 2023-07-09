@@ -102,7 +102,7 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup(c_primary: C1, c_secondary: C2, largest: bool) -> Self {
+  pub fn setup(c_primary: C1, c_secondary: C2, largest: bool, output_U_i_length: usize) -> Self {
     let augmented_circuit_params_primary =
       CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -124,6 +124,7 @@ where
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
+      output_U_i_length,
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
@@ -146,6 +147,7 @@ where
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
+      output_U_i_length,
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
@@ -220,6 +222,7 @@ where
       program_counter: usize,
       largest: bool,
       params: PublicParams<G1, G2, Ca, Cb>,
+      output_U_i_length: usize,
   }
   
 
@@ -230,7 +233,7 @@ where
     Ca: StepCircuit<G1::Scalar>,
     Cb: StepCircuit<G2::Scalar>,
   {
-      pub fn new(circuit_primary: Ca, circuit_secondary: Cb, is_largest: bool) -> Self {
+      pub fn new(circuit_primary: Ca, circuit_secondary: Cb, is_largest: bool, output_U_i_length: usize) -> Self {
           let claim = circuit_primary.clone();
           let program_counter = 0;
           let largest = is_largest;
@@ -240,7 +243,7 @@ where
               G2,
               Ca,
               Cb,
-          >::setup(claim.clone(), circuit_secondary.clone(), is_largest);
+          >::setup(claim.clone(), circuit_secondary.clone(), is_largest, output_U_i_length);
   
           Self {
               _phantom: PhantomData, 
@@ -249,6 +252,7 @@ where
               program_counter,
               largest,
               params: pp,
+              output_U_i_length: output_U_i_length,
           }
       }
 
@@ -326,6 +330,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
+          U_i.len()
         );
 
         let mut pc_value: Option<G2::Base>; 
@@ -364,6 +369,7 @@ where
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
+          U_i.len()
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
         let (u_secondary, w_secondary) = match ck_secondary.as_ref() {
@@ -465,6 +471,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
+          U_i.len()
         );
         if let Some(pc) = circuit_primary.output_program_counter() {
           //println!("Program counter2: {:?}", pc);
@@ -516,6 +523,7 @@ where
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
+          U_i.len()
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
@@ -702,7 +710,7 @@ where
         // for Ui and pci.
       } else {
         // Base case for U_i.
-        U_i.push(circuit_index);
+        //U_i.push(circuit_index);
       }
 
       for i in 0..num_steps {
@@ -882,22 +890,24 @@ mod tests {
 
     let circuit_secondary = TrivialTestCircuit::default();
 
+    let how_many_circuits = 3;
+
     // Structuring running claims     
     let test_circuit1 = CubicCircuit::default(); 
     let running_claim1 = RunningClaim::<G1, G2,
     CubicCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true);
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true, how_many_circuits);
 
     let test_circuit2 = TrivialTestCircuit::default();
     let running_claim2 = RunningClaim::<G1, G2,
     TrivialTestCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false);
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false, how_many_circuits);
 
     let test_circuit3 = SquareCircuit::default();
     let circuit_secondary2 = SquareCircuit::default();
     let running_claim3 = RunningClaim::<G1, G2,
     SquareCircuit<<G1 as Group>::Scalar>,
-    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false);
+    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false, how_many_circuits);
 
     /* 
       Needs:
@@ -961,7 +971,7 @@ mod tests {
       None, // largest claim that the commitment_keys come from
       3, // amount of times the user wants to loop this circuit.
       1, // PCi
-      [].to_vec() // U_i
+      [0, 1, 2].to_vec() // U_i
     ).unwrap(); 
 
   }

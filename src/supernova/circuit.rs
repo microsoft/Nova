@@ -106,6 +106,7 @@ pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
+  u_i_length: usize
 }
 
 impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
@@ -115,12 +116,14 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     inputs: Option<CircuitInputs<G>>,
     step_circuit: SC,
     ro_consts: ROConstantsCircuit<G>,
+    u_i_length: usize,
   ) -> Self {
     Self {
       params,
       inputs,
       step_circuit,
       ro_consts,
+      u_i_length,
     }
   }
 
@@ -129,6 +132,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     &self,
     mut cs: CS,
     arity: usize,
+    u_i_length: usize,
   ) -> Result<
     (
       AllocatedNum<G::Base>,
@@ -156,7 +160,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || Ok(self.inputs.get()?.program_counter))?;
 
     // Allocate U_i
-    let output_U_i = (0..arity)
+    let output_U_i = (0..u_i_length)
     .map(|i| {
       AllocatedNum::alloc(cs.namespace(|| format!("output_U_i_{i}")), || {
         Ok(self.inputs.get()?.output_U_i[i])
@@ -251,6 +255,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G>,
     arity: usize,
+    u_i_length: usize,
     program_counter: AllocatedNum<G::Base>,
     output_U_i: Vec<AllocatedNum<G::Base>>,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
@@ -280,7 +285,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     //Check that hash H(pci, z0, z_{i+1})
     let mut ro2 = G::ROCircuit::new(
       self.ro_consts.clone(),
-      4 * arity,
+      ((3 + u_i_length) * arity),
     );
     ro2.absorb(program_counter.clone());
     for e in &z_0 {
@@ -334,10 +339,11 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     let arity = self.step_circuit.arity();
+    let u_i_length = self.u_i_length;
 
     // Allocate all witnesses
     let (params, i, z_0, z_i, U, u, T, program_counter, mut output_U_i) =
-      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
+      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity, u_i_length)?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
@@ -358,6 +364,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       u.clone(),
       T,
       arity,
+      u_i_length,
       program_counter.clone(),
       output_U_i.clone(),
     )?;
@@ -405,7 +412,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     );
 
     // Compute length of U_i and make sure it is the same as program_counter
-    let output_U_i_length = AllocatedNum::alloc(cs.namespace(|| "output_U_i length"), || {
+    /*let output_U_i_length = AllocatedNum::alloc(cs.namespace(|| "output_U_i length"), || {
       Ok(G::Base::from(output_U_i.len() as u64))
     })?;
     for (i, item) in output_U_i.iter().enumerate() {
@@ -418,7 +425,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       |lc| lc + output_U_i_length.get_variable() - program_counter.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc,
-    );
+    );*/
 
     /*let new_element = AllocatedNum::alloc(
       cs.namespace(|| format!("new element")), 
@@ -539,6 +546,7 @@ mod tests {
         None,
         TrivialTestCircuit::default(),
         ro_consts1.clone(),
+        1,
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -552,6 +560,7 @@ mod tests {
         None,
         TrivialTestCircuit::default(),
         ro_consts2.clone(),
+        1,
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -578,6 +587,7 @@ mod tests {
         Some(inputs1),
         TrivialTestCircuit::default(),
         ro_consts1,
+        1,
       );
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
@@ -604,6 +614,7 @@ mod tests {
         Some(inputs2),
         TrivialTestCircuit::default(),
         ro_consts2,
+        1,
       );
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
