@@ -911,11 +911,10 @@ mod tests {
       This enforces that Ui and PCi are indeed produced by the prior step."
 
       In this implementation we make a vector U_i that pushes the circuit_index at each step.
-      [0, 0, 0, 1, 2, 3] for a 6 step instance; 0 is the circuit_index for the first F',
-      here it is run three times.
+      [0, 1, 2, 3] for a 4 running instance proof; 0 is the circuit_index for the first F'.
 
       We check that both U_i and pci are contained in the public output of instance ui.
-      For the SuperNova proof we check each F'[count of circuit index for F'; i.e. 3 for F'0]
+      For the SuperNova proof we check each F'[i for F'i]
       is a satisfying Nova instance. 
       
       If all U_i are satisfying and U_i, pci, and a pre-image of a hash(U_i-1, pci-1, zi-1) are
@@ -942,9 +941,8 @@ mod tests {
       This is mostly done with the existing Nova code. With additions of U_i and pci checks
       in the augmented circuit. The latest U_i[pci] at that index needs to be a satisfying instance.
 
-      Would mixing up the order of U_i as input break this? i.e. [0, 1, 0, 0, 2, 3]
-
-      Correct sequencing is enfored by checking the preimage hash(pci,  U_i, zi).
+      Would mixing up the order of U_i as input break this? i.e. [1, 0, 2, 3]
+      Correct sequencing is enfored by checking the preimage hash(pci - 1, U_i - 1, zi -1).
 
       --------
 
