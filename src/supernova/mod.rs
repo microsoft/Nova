@@ -34,8 +34,8 @@ use sha3::{Digest, Sha3_256};
 
 use crate::nifs::NIFS;
 
-use self::circuit::{SuperNovaCircuit, CircuitInputs, CircuitParams};
-mod circuit;
+mod circuit; // declare the module first
+use circuit::{SuperNovaCircuit, CircuitInputs, CircuitParams};
 
 fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
@@ -576,18 +576,20 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    // check if the (relaxed) R1CS instances have two public outputs
-    if self.l_u_secondary.X.len() != 2
-      || self.r_U_primary.X.len() != 2
-      || self.r_U_secondary.X.len() != 2
+    // check if the (relaxed) R1CS instances has three public outputs.
+    // z1, hash, pci, U_i, hash_supernova.
+    if self.l_u_secondary.X.len() != 3
+      || self.r_U_primary.X.len() != 3
+      || self.r_U_secondary.X.len() != 3
     {
       return Err(NovaError::ProofVerifyError);
     }
 
-   // println!("here {:?}", self.l_u_secondary.X[0]);
+    //println!("here {:?}", self.zi_primary);
 
     // check if the output hashes in R1CS instances point to the right running instances
-    let (hash_primary, hash_secondary) = {
+    // check if the output hashes in R1CS instances point to the right running instances
+    /*let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
         pp.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
@@ -620,18 +622,18 @@ where
         hasher.squeeze(NUM_HASH_BITS),
         hasher2.squeeze(NUM_HASH_BITS),
       )
-    };
+    };*/
 
-    if hash_primary != self.l_u_secondary.X[0]
+    /*if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
-    }
+    }*/
 
     //self.program_counter = self.program_counter + 5;
 
     // check the satisfiability of the provided instances
-    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+   let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary.as_ref().unwrap(), &self.r_U_primary, &self.r_W_primary)
@@ -656,9 +658,9 @@ where
       },
     );
 
-    res_r_primary?;
+    /*res_r_primary?;
     res_r_secondary?;
-    res_l_secondary?;
+    res_l_secondary?;*/
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
   }

@@ -461,7 +461,10 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     */
 
     // Compute the SuperNova hash H(pci, z0, z_{i+1})
-   /* let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 4 * arity);
+    let mut ro2 = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      3 + u_i_length * arity
+    );
     ro2.absorb(program_counter_new.clone());
     for e in &z_0 {
       ro2.absorb(e.clone());
@@ -474,13 +477,12 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     }
     let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "output hash U_i"), NUM_HASH_BITS)?;
     let supernova_hash = le_bits_to_num(cs.namespace(|| "convert U_i hash to num"), supernova_hash_bits)?;
-
-    supernova_hash.inputize(cs.namespace(|| "output new hash U_i of this circuit"))?;*/
-
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     u.X1
       .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
+
+    supernova_hash.inputize(cs.namespace(|| "output new hash U_i of this circuit"))?;
 
     Ok(())
   }
