@@ -18,7 +18,7 @@ use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
-    r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
+    r1cs::{AllocatedR1CSInstanceSuperNova, AllocatedRelaxedR1CSInstanceSuperNova},
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
@@ -139,8 +139,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       AllocatedNum<G::Base>,
       Vec<AllocatedNum<G::Base>>,
       Vec<AllocatedNum<G::Base>>,
-      AllocatedRelaxedR1CSInstance<G>,
-      AllocatedR1CSInstance<G>,
+      AllocatedRelaxedR1CSInstanceSuperNova<G>,
+      AllocatedR1CSInstanceSuperNova<G>,
       AllocatedPoint<G>,
       AllocatedNum<G::Base>,
       Vec<AllocatedNum<G::Base>>,
@@ -188,7 +188,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate the running instance
-    let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
+    let U: AllocatedRelaxedR1CSInstanceSuperNova<G> = AllocatedRelaxedR1CSInstanceSuperNova::alloc(
       cs.namespace(|| "Allocate U"),
       self.inputs.get().map_or(None, |inputs| {
         inputs.U.get().map_or(None, |U| Some(U.clone()))
@@ -198,7 +198,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     )?;
 
     // Allocate the instance to be folded in
-    let u = AllocatedR1CSInstance::alloc(
+    let u = AllocatedR1CSInstanceSuperNova::alloc(
       cs.namespace(|| "allocate instance u to fold"),
       self.inputs.get().map_or(None, |inputs| {
         inputs.u.get().map_or(None, |u| Some(u.clone()))
@@ -220,18 +220,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    u: AllocatedR1CSInstance<G>,
-  ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
-    let U_default: AllocatedRelaxedR1CSInstance<G> = if self.params.is_primary_circuit {
+    u: AllocatedR1CSInstanceSuperNova<G>,
+  ) -> Result<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError> {
+    let U_default: AllocatedRelaxedR1CSInstanceSuperNova<G> = if self.params.is_primary_circuit {
       // The primary circuit just returns the default R1CS instance
-      AllocatedRelaxedR1CSInstance::default(
+      AllocatedRelaxedR1CSInstanceSuperNova::default(
         cs.namespace(|| "Allocate U_default"),
         self.params.limb_width,
         self.params.n_limbs,
       )?
     } else {
       // The secondary circuit returns the incoming R1CS instance
-      AllocatedRelaxedR1CSInstance::from_r1cs_instance(
+      AllocatedRelaxedR1CSInstanceSuperNova::from_r1cs_instance(
         cs.namespace(|| "Allocate U_default"),
         u,
         self.params.limb_width,
@@ -251,18 +251,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     i: AllocatedNum<G::Base>,
     z_0: Vec<AllocatedNum<G::Base>>,
     z_i: Vec<AllocatedNum<G::Base>>,
-    U: AllocatedRelaxedR1CSInstance<G>,
-    u: AllocatedR1CSInstance<G>,
+    U: AllocatedRelaxedR1CSInstanceSuperNova<G>,
+    u: AllocatedR1CSInstanceSuperNova<G>,
     T: AllocatedPoint<G>,
     arity: usize,
     u_i_length: usize,
     program_counter: AllocatedNum<G::Base>,
     output_U_i: Vec<AllocatedNum<G::Base>>,
-  ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
+  ) -> Result<(AllocatedRelaxedR1CSInstanceSuperNova<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * arity,
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -285,8 +285,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     //Check that hash H(pci, z0, z_{i+1})
     let mut ro2 = G::ROCircuit::new(
       self.ro_consts.clone(),
-      3 + u_i_length * arity,
+      3 + u_i_length * arity
     );
+    //6, 29
     ro2.absorb(program_counter.clone());
     for e in &z_0 {
       ro2.absorb(e.clone());
@@ -430,7 +431,10 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * arity
+    );
     ro.absorb(params);
     ro.absorb(i_new.clone());
     for e in &z_0 {
@@ -606,7 +610,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 9815, 10347,
+      params1, params2, ro_consts1, ro_consts2, 14678, 15477,
     );
   }
 }

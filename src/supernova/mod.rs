@@ -585,14 +585,11 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    //println!("here {:?}", self.zi_primary);
-
     // check if the output hashes in R1CS instances point to the right running instances
-    // check if the output hashes in R1CS instances point to the right running instances
-    /*let (hash_primary, hash_secondary) = {
+    let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(
         pp.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * pp.F_arity_primary,
       );
       hasher.absorb(pp.digest);
       hasher.absorb(G1::Scalar::from(num_steps as u64));
@@ -606,7 +603,7 @@ where
 
       let mut hasher2 = <G1 as Group>::RO::new(
         pp.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * pp.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.digest));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
@@ -622,15 +619,13 @@ where
         hasher.squeeze(NUM_HASH_BITS),
         hasher2.squeeze(NUM_HASH_BITS),
       )
-    };*/
+    };
 
-    /*if hash_primary != self.l_u_secondary.X[0]
+    if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
     {
       return Err(NovaError::ProofVerifyError);
-    }*/
-
-    //self.program_counter = self.program_counter + 5;
+    }
 
     // check the satisfiability of the provided instances
    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
@@ -658,9 +653,9 @@ where
       },
     );
 
-    /*res_r_primary?;
+    res_r_primary?;
     res_r_secondary?;
-    res_l_secondary?;*/
+    res_l_secondary?;
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
   }
