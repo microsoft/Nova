@@ -793,15 +793,16 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
 
 #[cfg(test)]
 mod tests {
+  use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use crate::provider::pedersen::CommitmentKeyExtTrait;
 
   use super::*;
   type EE1<G1> = provider::ipa_pc::EvaluationEngine<G1>;
   type EE2<G2> = provider::ipa_pc::EvaluationEngine<G2>;
-  type S1<G1> = spartan::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2<G2> = spartan::RelaxedR1CSSNARK<G2, EE2<G2>>;
-  type S1Prime<G1> = spartan::pp::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2Prime<G2> = spartan::pp::RelaxedR1CSSNARK<G2, EE2<G2>>;
+  type S1<G1> = spartan::snark::RelaxedR1CSSNARK<G1, EE1<G1>>;
+  type S2<G2> = spartan::snark::RelaxedR1CSSNARK<G2, EE2<G2>>;
+  type S1Prime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1<G1>>;
+  type S2Prime<G2> = spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2<G2>>;
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
@@ -871,7 +872,7 @@ mod tests {
       .to_repr()
       .as_ref()
       .iter()
-      .map(|b| format!("{:02x}", b))
+      .map(|b| format!("{b:02x}"))
       .collect::<String>();
     assert_eq!(digest_str, expected);
   }
@@ -894,6 +895,23 @@ mod tests {
       cubic_circuit1,
       trivial_circuit2,
       "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
+    );
+
+    let trivial_circuit1_grumpkin =
+      TrivialTestCircuit::<<bn256::Point as Group>::Scalar>::default();
+    let trivial_circuit2_grumpkin =
+      TrivialTestCircuit::<<grumpkin::Point as Group>::Scalar>::default();
+    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
+
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      trivial_circuit1_grumpkin,
+      trivial_circuit2_grumpkin.clone(),
+      "967acca1d6b4731cd65d4072c12bbaca9648f24d7bcc2877aee720e4265d4302",
+    );
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      cubic_circuit1_grumpkin,
+      trivial_circuit2_grumpkin,
+      "44629f26a78bf6c4e3077f940232050d1793d304fdba5e221d0cf66f76a37903",
     );
   }
 
@@ -949,6 +967,8 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
     test_ivc_trivial_with::<G1, G2>();
+
+    test_ivc_trivial_with::<bn256::Point, grumpkin::Point>();
   }
 
   fn test_ivc_nontrivial_with<G1, G2>()
@@ -1030,6 +1050,7 @@ mod tests {
     type G2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with::<G1, G2>();
+    test_ivc_nontrivial_with::<bn256::Point, grumpkin::Point>();
   }
 
   fn test_ivc_nontrivial_with_compression_with<G1, G2>()
@@ -1124,6 +1145,7 @@ mod tests {
     type G2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with_compression_with::<G1, G2>();
+    test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point>();
   }
 
   fn test_ivc_nontrivial_with_spark_compression_with<G1, G2>()
@@ -1221,6 +1243,7 @@ mod tests {
     type G2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with_spark_compression_with::<G1, G2>();
+    test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point>();
   }
 
   fn test_ivc_nondet_with_compression_with<G1, G2>()
@@ -1377,6 +1400,7 @@ mod tests {
     type G2 = pasta_curves::vesta::Point;
 
     test_ivc_nondet_with_compression_with::<G1, G2>();
+    test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point>();
   }
 
   fn test_ivc_base_with<G1, G2>()
@@ -1443,5 +1467,6 @@ mod tests {
     type G2 = pasta_curves::vesta::Point;
 
     test_ivc_base_with::<G1, G2>();
+    test_ivc_base_with::<bn256::Point, grumpkin::Point>();
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.21.0"
+version = "0.22.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
@@ -36,6 +36,10 @@ halo2curves = { path = "/Users/pierredm/repos/forks/halo2curves-dmpierre/halo2cu
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }
+
+[target.wasm32-unknown-unknown.dependencies]
+# see https://github.com/rust-random/rand/pull/948
+getrandom = { version = "0.2.0", default-features = false, features = ["js"]}
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }

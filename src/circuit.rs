@@ -376,6 +376,7 @@ mod tests {
   type PastaG2 = pasta_curves::vesta::Point;
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+  use crate::provider;
   use crate::{
     bellperson::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
@@ -471,7 +472,7 @@ mod tests {
   }
 
   #[test]
-  fn test_recursive_circuit() {
+  fn test_recursive_circuit_pasta() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
@@ -480,5 +481,20 @@ mod tests {
     test_recursive_circuit_with::<PastaG1, PastaG2>(
       params1, params2, ro_consts1, ro_consts2, 9815, 10347,
     );
+  }
+
+  #[test]
+  fn test_recursive_circuit_grumpkin() {
+    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let ro_consts1: ROConstantsCircuit<provider::bn256_grumpkin::grumpkin::Point> =
+      PoseidonConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<provider::bn256_grumpkin::bn256::Point> =
+      PoseidonConstantsCircuit::new();
+
+    test_recursive_circuit_with::<
+      provider::bn256_grumpkin::bn256::Point,
+      provider::bn256_grumpkin::grumpkin::Point,
+    >(params1, params2, ro_consts1, ro_consts2, 9983, 10536);
   }
 }

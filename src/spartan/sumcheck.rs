@@ -43,7 +43,7 @@ impl<G: Group> SumcheckProof<G> {
       }
 
       // we do not need to check if poly(0) + poly(1) = e, as
-      // decompress() call above already ensures that hods
+      // decompress() call above already ensures that holds
       debug_assert_eq!(poly.eval_at_zero() + poly.eval_at_one(), e);
 
       // append the prover's message to the transcript

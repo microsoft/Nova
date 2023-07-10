@@ -1,4 +1,4 @@
-//! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
+//! This module implements the Nova traits for bn256::Point, bn256::Scalar, grumpkin::Point, grumpkin::Scalar.
 use crate::{
   provider::{
     cpu_best_multiexp,
@@ -16,39 +16,35 @@ use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
-  pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use sha3::Shake256;
 use std::io::Read;
 
-/// A wrapper for compressed group elements of pallas
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PallasCompressedElementWrapper {
-  repr: [u8; 32],
+use halo2curves::bn256::{
+  G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G1 as Bn256Point,
+};
+use halo2curves::grumpkin::{
+  G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint,
+};
+
+/// Re-exports that give access to the standard aliases used in the code base, for bn256
+pub mod bn256 {
+  pub use halo2curves::bn256::{
+    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
+  };
 }
 
-impl PallasCompressedElementWrapper {
-  /// Wraps repr into the wrapper
-  pub fn new(repr: [u8; 32]) -> Self {
-    Self { repr }
-  }
+/// Re-exports that give access to the standard aliases used in the code base, for grumpkin
+pub mod grumpkin {
+  pub use halo2curves::grumpkin::{
+    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
+  };
 }
 
-/// A wrapper for compressed group elements of vesta
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct VestaCompressedElementWrapper {
-  repr: [u8; 32],
-}
-
-impl VestaCompressedElementWrapper {
-  /// Wraps repr into the wrapper
-  pub fn new(repr: [u8; 32]) -> Self {
-    Self { repr }
-  }
-}
-
+// This implementation behaves in ways specific to the bn256/grumpkin curves in:
+// - to_coordinates,
+// - vartime_multiscalar_mul, where it does not call into accelerated implementations.
 macro_rules! impl_traits {
   (
     $name:ident,
@@ -67,19 +63,6 @@ macro_rules! impl_traits {
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
-      #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::PreprocessedGroupElement],
-      ) -> Self {
-        if scalars.len() >= 128 {
-          pasta_msm::$name(bases, scalars)
-        } else {
-          cpu_best_multiexp(scalars, bases)
-        }
-      }
-
-      #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
@@ -92,7 +75,7 @@ macro_rules! impl_traits {
       }
 
       fn compress(&self) -> Self::CompressedGroupElement {
-        $name_compressed::new(self.to_bytes())
+        self.to_bytes()
       }
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
@@ -105,7 +88,7 @@ macro_rules! impl_traits {
           reader.read_exact(&mut uniform_bytes).unwrap();
           uniform_bytes_vec.push(uniform_bytes);
         }
-        let ck_proj: Vec<$name_curve> = (0..n)
+        let gens_proj: Vec<$name_curve> = (0..n)
           .collect::<Vec<usize>>()
           .into_par_iter()
           .map(|i| {
@@ -115,22 +98,22 @@ macro_rules! impl_traits {
           .collect();
 
         let num_threads = rayon::current_num_threads();
-        if ck_proj.len() > num_threads {
-          let chunk = (ck_proj.len() as f64 / num_threads as f64).ceil() as usize;
+        if gens_proj.len() > num_threads {
+          let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
           (0..num_threads)
             .collect::<Vec<usize>>()
             .into_par_iter()
             .map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {
-                ck_proj.len()
+                gens_proj.len()
               } else {
-                core::cmp::min((i + 1) * chunk, ck_proj.len())
+                core::cmp::min((i + 1) * chunk, gens_proj.len())
               };
               if end > start {
-                let mut ck = vec![$name_curve_affine::identity(); end - start];
-                <Self as Curve>::batch_normalize(&ck_proj[start..end], &mut ck);
-                ck
+                let mut gens = vec![$name_curve_affine::identity(); end - start];
+                <Self as Curve>::batch_normalize(&gens_proj[start..end], &mut gens);
+                gens
               } else {
                 vec![]
               }
@@ -140,15 +123,18 @@ macro_rules! impl_traits {
             .flatten()
             .collect()
         } else {
-          let mut ck = vec![$name_curve_affine::identity(); n];
-          <Self as Curve>::batch_normalize(&ck_proj, &mut ck);
-          ck
+          let mut gens = vec![$name_curve_affine::identity(); n];
+          <Self as Curve>::batch_normalize(&gens_proj, &mut gens);
+          gens
         }
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
         let coordinates = self.to_affine().coordinates();
-        if coordinates.is_some().unwrap_u8() == 1 {
+        if coordinates.is_some().unwrap_u8() == 1
+          // The bn256/grumpkin convention is to define and return the identity point's affine encoding (not None)
+          && (Self::PreprocessedGroupElement::identity() != self.to_affine())
+        {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
@@ -181,7 +167,7 @@ macro_rules! impl_traits {
 
     impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.repr.to_vec()
+        self.as_ref().to_vec()
       }
     }
 
@@ -189,46 +175,46 @@ macro_rules! impl_traits {
       type GroupElement = $name::Point;
 
       fn decompress(&self) -> Option<$name::Point> {
-        Some($name_curve::from_bytes(&self.repr).unwrap())
+        Some($name_curve::from_bytes(&self).unwrap())
       }
     }
   };
 }
 
-impl<G: Group> TranscriptReprTrait<G> for pallas::Base {
+impl<G: Group> TranscriptReprTrait<G> for grumpkin::Base {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for pallas::Scalar {
+impl<G: Group> TranscriptReprTrait<G> for grumpkin::Scalar {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
 }
 
 impl_traits!(
-  pallas,
-  PallasCompressedElementWrapper,
-  Ep,
-  EpAffine,
-  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001"
+  bn256,
+  Bn256Compressed,
+  Bn256Point,
+  Bn256Affine,
+  "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
 );
 
 impl_traits!(
-  vesta,
-  VestaCompressedElementWrapper,
-  Eq,
-  EqAffine,
-  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
+  grumpkin,
+  GrumpkinCompressed,
+  GrumpkinPoint,
+  GrumpkinAffine,
+  "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
 );
 
 #[cfg(test)]
 mod tests {
   use super::*;
-  type G = pasta_curves::pallas::Point;
+  type G = bn256::Point;
 
-  fn from_label_serial(label: &'static [u8], n: usize) -> Vec<EpAffine> {
+  fn from_label_serial(label: &'static [u8], n: usize) -> Vec<Bn256Affine> {
     let mut shake = Shake256::default();
     shake.input(label);
     let mut reader = shake.xof_result();
@@ -236,7 +222,7 @@ mod tests {
     for _ in 0..n {
       let mut uniform_bytes = [0u8; 32];
       reader.read_exact(&mut uniform_bytes).unwrap();
-      let hash = Ep::hash_to_curve("from_uniform_bytes");
+      let hash = bn256::Point::hash_to_curve("from_uniform_bytes");
       ck.push(hash(&uniform_bytes).to_affine());
     }
     ck

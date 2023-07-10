@@ -57,7 +57,7 @@ where
     let mut t = [0u8; 80];
     rng.fill_bytes(&mut t[..]);
 
-    // h = H*(T || M)
+    // h = H(T || M)
     let h = Self::hash_to_scalar(b"Nova_Ecdsa_Hash", &t[..], c.to_repr().as_mut());
 
     // R = [h]G

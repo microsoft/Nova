@@ -78,7 +78,7 @@ impl<G: Group> NIFS<G> {
     ))
   }
 
-  /// Takes as input a relaxed R1CS instance `U1` and and R1CS instance `U2`
+  /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,
   /// and outputs a folded instance `U` with the same shape,
   /// with the guarantee that the folded instance `U`
@@ -210,6 +210,8 @@ mod tests {
   #[test]
   fn test_tiny_r1cs_bellperson() {
     test_tiny_r1cs_bellperson_with::<G>();
+
+    test_tiny_r1cs_bellperson_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -384,5 +386,6 @@ mod tests {
   #[test]
   fn test_tiny_r1cs() {
     test_tiny_r1cs_with::<pasta_curves::pallas::Point>();
+    test_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 }
