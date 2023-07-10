@@ -11,13 +11,14 @@ use digest::{ExtendableOutput, Input};
 use ff::{FromUniformBytes, PrimeField};
 use halo2curves::{
   secp256k1::{Secp256k1, Secp256k1Affine, Secp256k1Compressed},
-  secq256k1::{Secq256k1, Secq256k1Affine, Secq256k1Compressed}, CurveAffine,
+  secq256k1::{Secq256k1, Secq256k1Affine, Secq256k1Compressed},
+  CurveAffine,
 };
 use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
   self,
-  arithmetic::{CurveExt},
+  arithmetic::CurveExt,
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
 };
 
@@ -52,19 +53,6 @@ impl<G: Group> TranscriptReprTrait<G> for secp256k1::Scalar {
     self.to_repr().to_vec()
   }
 }
-
-impl<G: Group> TranscriptReprTrait<G> for secq256k1::Base {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
-impl<G: Group> TranscriptReprTrait<G> for secq256k1::Scalar {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
 
 macro_rules! impl_traits {
   (
@@ -345,6 +333,7 @@ fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 
 #[cfg(test)]
 mod tests {
+
   use super::*;
   type G = secp256k1::Point;
 

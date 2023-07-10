@@ -203,7 +203,7 @@ mod tests {
   use super::*;
   use crate::{
     bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num, traits::Group,
+    gadgets::utils::le_bits_to_num, traits::Group, provider::secpsecq,
   };
   use ff::Field;
   use rand::rngs::OsRng;
@@ -243,6 +243,20 @@ mod tests {
   #[test]
   fn test_poseidon_ro() {
     type G = pasta_curves::pallas::Point;
+
+    test_poseidon_ro_with::<G>()
+  }
+
+  #[test]
+  fn test_poseidon_ro_secp() {
+    type G = secpsecq::secp256k1::Point;
+
+    test_poseidon_ro_with::<G>()
+  }
+
+  #[test]
+  fn test_poseidon_ro_secq() {
+    type G = secpsecq::secq256k1::Point;
 
     test_poseidon_ro_with::<G>()
   }

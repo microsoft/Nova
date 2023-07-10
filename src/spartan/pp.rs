@@ -2184,7 +2184,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>, C: StepCircuit<G::Scala
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use crate::provider::secpsecq;
+
+use super::*;
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -2241,6 +2243,22 @@ mod tests {
   #[test]
   fn test_spartan_snark() {
     type G = pasta_curves::pallas::Point;
+    type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
+
+    test_spartan_snark_with::<G, EE>();
+  }
+
+  #[test]
+  fn test_spartan_snark_secp() {
+    type G = secpsecq::secp256k1::Point;
+    type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
+
+    test_spartan_snark_with::<G, EE>();
+  }
+
+  #[test]
+  fn test_spartan_snark_secq() {
+    type G = secpsecq::secq256k1::Point;
     type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
 
     test_spartan_snark_with::<G, EE>();
