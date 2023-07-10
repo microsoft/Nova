@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use super::util::compute_sum_Mz;
 use super::util::virtual_poly::VirtualPolynomial;
-use super::CCSShape;
+use super::{CCSShape, CCSWitness};
 
 /// A type that holds the shape of a Committed CCS (CCCS) instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +110,31 @@ impl<G: Group> CCCSShape<G> {
   ) -> Result<VirtualPolynomial<G::Scalar>, NovaError> {
     let q = self.compute_q(z)?;
     q.build_f_hat(beta)
+  }
+
+  /// Perform the check of the CCCS instance described at section 4.1
+  pub fn is_sat(
+    &self,
+    ck: &CommitmentKey<G>,
+    w: &CCSWitness<G>,
+    x: &CCCSInstance<G>,
+  ) -> Result<(), NovaError> {
+    // check that C is the commitment of w. Notice that this is not verifying a Pedersen
+    // opening, but checking that the Commmitment comes from committing to the witness.
+    assert_eq!(x.C, CE::<G>::commit(ck, &w.w));
+
+    // check CCCS relation
+    let z: Vec<G::Scalar> = [vec![G::Scalar::ONE], x.x.clone(), w.w.to_vec()].concat();
+
+    // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in the hypercube
+    let q_x = self.compute_q(&z).unwrap();
+    for x in BooleanHypercube::new(self.ccs.s) {
+      if !q_x.evaluate(&x).unwrap().is_zero().unwrap_u8() == 0 {
+        return Err(NovaError::UnSat);
+      }
+    }
+
+    Ok(())
   }
 }
 

@@ -362,9 +362,11 @@ mod tests {
     // Initialize a multifolding object
     let (lcccs_instance, lcccs_witness) = ccs.to_lcccs(&mut rng, &ck, &z1);
     assert!(lcccs_instance.is_sat(&ck, &lcccs_witness).is_ok());
-    let (cccs_instance, _, _) = ccs.to_cccs_artifacts(&mut rng, &ck, &z2);
+    let (cccs_instance, cccs_witness, cccs_shape) = ccs.to_cccs_artifacts(&mut rng, &ck, &z2);
+    assert!(cccs_shape
+      .is_sat(&ck, &ccs_witness_2, &cccs_instance)
+      .is_ok());
 
-    let mut rng = OsRng;
     let rho = Fq::random(&mut rng);
 
     let folded = nimfs.fold(

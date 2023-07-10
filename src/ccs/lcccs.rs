@@ -66,6 +66,9 @@ impl<G: Group> LCCCS<G> {
       compute_all_sum_Mz_evals::<G>(&self.matrix_mles, &z, &self.r_x, self.ccs.s_prime);
     let vs_eq = computed_v == self.v;
 
+    dbg!(vs_eq);
+    dbg!(comm_eq);
+
     if vs_eq && comm_eq {
       Ok(())
     } else {
@@ -187,6 +190,4 @@ mod tests {
 
     assert_eq!(satisfied, false);
   }
-
-  // XXX: Missing folding test.
 }
