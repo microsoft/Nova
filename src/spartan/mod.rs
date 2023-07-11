@@ -1,6 +1,6 @@
 //! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
-mod math;
+pub(crate) mod math;
 pub(crate) mod polynomial;
 pub mod ppsnark;
 pub mod snark;
