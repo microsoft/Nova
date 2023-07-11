@@ -750,11 +750,14 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::{
-    r1cs::{NovaShape, NovaWitness},
-    {shape_cs::ShapeCS, solver::SatisfyingAssignment},
-  };
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
+  use crate::{
+    bellperson::{
+      r1cs::{NovaShape, NovaWitness},
+      {shape_cs::ShapeCS, solver::SatisfyingAssignment},
+    },
+    provider::secp_secq::{secp256k1, secq256k1},
+  };
   use ff::{Field, PrimeFieldBits};
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
   use rand::rngs::OsRng;
@@ -899,6 +902,9 @@ mod tests {
 
     test_ecc_ops_with::<bn256::Affine, bn256::Point>();
     test_ecc_ops_with::<grumpkin::Affine, grumpkin::Point>();
+
+    test_ecc_ops_with::<secp256k1::Affine, secp256k1::Point>();
+    test_ecc_ops_with::<secq256k1::Affine, secq256k1::Point>();
   }
 
   fn test_ecc_ops_with<C, G>()
@@ -983,6 +989,9 @@ mod tests {
 
     test_ecc_circuit_ops_with::<bn256::Point, grumpkin::Point>();
     test_ecc_circuit_ops_with::<grumpkin::Point, bn256::Point>();
+
+    test_ecc_circuit_ops_with::<secp256k1::Point, secq256k1::Point>();
+    test_ecc_circuit_ops_with::<secq256k1::Point, secp256k1::Point>();
   }
 
   fn test_ecc_circuit_ops_with<G1, G2>()
@@ -1036,6 +1045,9 @@ mod tests {
 
     test_ecc_circuit_add_equal_with::<bn256::Point, grumpkin::Point>();
     test_ecc_circuit_add_equal_with::<grumpkin::Point, bn256::Point>();
+
+    test_ecc_circuit_add_equal_with::<secp256k1::Point, secq256k1::Point>();
+    test_ecc_circuit_add_equal_with::<secq256k1::Point, secp256k1::Point>();
   }
 
   fn test_ecc_circuit_add_equal_with<G1, G2>()
@@ -1093,6 +1105,9 @@ mod tests {
 
     test_ecc_circuit_add_negation_with::<bn256::Point, grumpkin::Point>();
     test_ecc_circuit_add_negation_with::<grumpkin::Point, bn256::Point>();
+
+    test_ecc_circuit_add_negation_with::<secp256k1::Point, secq256k1::Point>();
+    test_ecc_circuit_add_negation_with::<secq256k1::Point, secp256k1::Point>();
   }
 
   fn test_ecc_circuit_add_negation_with<G1, G2>()

@@ -204,7 +204,7 @@ mod tests {
   use crate::provider::bn256_grumpkin::bn256;
   use crate::{
     bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num, traits::Group, provider::secpsecq,
+    gadgets::utils::le_bits_to_num, traits::Group, provider::secp_secq,
   };
   use ff::Field;
   use rand::rngs::OsRng;
@@ -245,19 +245,8 @@ mod tests {
   fn test_poseidon_ro() {
     test_poseidon_ro_with::<pasta_curves::pallas::Point>();
     test_poseidon_ro_with::<bn256::Point>();
+    test_poseidon_ro_with::<secp_secq::secp256k1::Point>();
+    test_poseidon_ro_with::<secp_secq::secq256k1::Point>();
   }
 
-  #[test]
-  fn test_poseidon_ro_secp() {
-    type G = secpsecq::secp256k1::Point;
-
-    test_poseidon_ro_with::<G>()
-  }
-
-  #[test]
-  fn test_poseidon_ro_secq() {
-    type G = secpsecq::secq256k1::Point;
-
-    test_poseidon_ro_with::<G>()
-  }
 }

@@ -795,6 +795,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
 mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use crate::provider::pedersen::CommitmentKeyExtTrait;
+  use crate::provider::secp_secq::{secp256k1, secq256k1};
 
   use super::*;
   type EE1<G1> = provider::ipa_pc::EvaluationEngine<G1>;
@@ -913,6 +914,23 @@ mod tests {
       trivial_circuit2_grumpkin,
       "44629f26a78bf6c4e3077f940232050d1793d304fdba5e221d0cf66f76a37903",
     );
+
+    let trivial_circuit1_secp =
+      TrivialTestCircuit::<<secp256k1::Point as Group>::Scalar>::default();
+    let trivial_circuit2_secp =
+      TrivialTestCircuit::<<secq256k1::Point as Group>::Scalar>::default();
+    let cubic_circuit1_secp = CubicCircuit::<<secp256k1::Point as Group>::Scalar>::default();
+
+    test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
+      trivial_circuit1_secp,
+      trivial_circuit2_secp.clone(),
+      "b99760668a42354643e17b2f0a2d54f173d237eb213e7e758b20a88b4c653c01",
+    );
+    test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
+      cubic_circuit1_secp,
+      trivial_circuit2_secp,
+      "68db620e610a3cd75146a1e1bdd168f486b82c0b670277ad1e3d50441c501502",
+    );
   }
 
   fn test_ivc_trivial_with<G1, G2>()
@@ -966,9 +984,10 @@ mod tests {
   fn test_ivc_trivial() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    test_ivc_trivial_with::<G1, G2>();
 
+    test_ivc_trivial_with::<G1, G2>();
     test_ivc_trivial_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_trivial_with::<secp256k1::Point, secq256k1::Point>();
   }
 
   fn test_ivc_nontrivial_with<G1, G2>()
@@ -1051,6 +1070,7 @@ mod tests {
 
     test_ivc_nontrivial_with::<G1, G2>();
     test_ivc_nontrivial_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_nontrivial_with::<secp256k1::Point, secq256k1::Point>();
   }
 
   fn test_ivc_nontrivial_with_compression_with<G1, G2>()
@@ -1146,6 +1166,7 @@ mod tests {
 
     test_ivc_nontrivial_with_compression_with::<G1, G2>();
     test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_nontrivial_with_compression_with::<secp256k1::Point, secq256k1::Point>();
   }
 
   fn test_ivc_nontrivial_with_spark_compression_with<G1, G2>()
@@ -1244,6 +1265,7 @@ mod tests {
 
     test_ivc_nontrivial_with_spark_compression_with::<G1, G2>();
     test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_nontrivial_with_spark_compression_with::<secp256k1::Point, secq256k1::Point>();
   }
 
   fn test_ivc_nondet_with_compression_with<G1, G2>()
@@ -1401,6 +1423,7 @@ mod tests {
 
     test_ivc_nondet_with_compression_with::<G1, G2>();
     test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_nondet_with_compression_with::<secp256k1::Point, secq256k1::Point>();
   }
 
   fn test_ivc_base_with<G1, G2>()
@@ -1468,5 +1491,6 @@ mod tests {
 
     test_ivc_base_with::<G1, G2>();
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();
+    test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
   }
 }
