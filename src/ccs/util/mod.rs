@@ -189,7 +189,7 @@ mod tests {
 
     // Generate other artifacts
     let ck = CCSShape::<Ep>::commitment_key(&ccs);
-    let (_, _, cccs) = ccs.to_cccs_artifacts(&mut OsRng, &ck, &z);
+    let (_, _, cccs) = ccs.to_cccs(&mut OsRng, &ck, &z);
 
     let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
 
@@ -218,7 +218,7 @@ mod tests {
 
     // Generate other artifacts
     let ck = CCSShape::<Ep>::commitment_key(&ccs);
-    let (_, _, cccs) = ccs.to_cccs_artifacts(&mut OsRng, &ck, &z);
+    let (_, _, cccs) = ccs.to_cccs(&mut OsRng, &ck, &z);
 
     let mut r = vec![Fq::ONE, Fq::ZERO];
     let res = compute_all_sum_Mz_evals::<Ep>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);

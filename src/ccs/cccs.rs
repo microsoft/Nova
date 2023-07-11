@@ -52,14 +52,6 @@ pub struct CCCSInstance<G: Group> {
   pub(crate) x: Vec<G::Scalar>,
 }
 
-// NOTE: We deal with `r` parameter later in `nimfs.rs` when running `execute_sequence` with `ro_consts`
-/// A type that holds a witness for a given CCCS instance
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CCCSWitness<G: Group> {
-  // Multilinear polynomial w_mle in s' - 1 variables
-  pub(crate) w_mle: Vec<G::Scalar>,
-}
-
 impl<G: Group> CCCSShape<G> {
   // Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   // polynomial over x

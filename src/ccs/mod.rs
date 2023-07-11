@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::ops::{Add, Mul};
 
-use self::cccs::{CCCSInstance, CCCSShape, CCCSWitness};
+use self::cccs::{CCCSInstance, CCCSShape};
 use self::lcccs::LCCCS;
 use self::util::compute_all_sum_Mz_evals;
 
@@ -126,12 +126,12 @@ impl<G: Group> CCSShape<G> {
   }
 
   // Transform the CCS instance into a CCCS instance by providing a commitment key.
-  pub fn to_cccs_artifacts<R: RngCore>(
+  pub fn to_cccs<R: RngCore>(
     &self,
     rng: &mut R,
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
     z: &[G::Scalar],
-  ) -> (CCCSInstance<G>, CCCSWitness<G>, CCCSShape<G>) {
+  ) -> (CCCSInstance<G>, CCSWitness<G>, CCCSShape<G>) {
     let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
     // XXX: API doesn't offer a way to handle this apparently?
     // Need to investigate
@@ -143,7 +143,7 @@ impl<G: Group> CCSShape<G> {
         C,
         x: z[1..(1 + self.l)].to_vec(),
       },
-      CCCSWitness { w_mle: w },
+      CCSWitness { w: w },
       self.to_cccs_shape(),
     )
   }

@@ -363,7 +363,7 @@ mod tests {
     let (lcccs_instance, lcccs_witness) = ccs1.to_lcccs(&mut rng, &ck, &z2);
     assert!(lcccs_instance.is_sat(&ck, &lcccs_witness).is_ok());
 
-    let (cccs_instance, cccs_witness, cccs_shape) = ccs1.to_cccs_artifacts(&mut rng, &ck, &z1);
+    let (cccs_instance, cccs_witness, cccs_shape) = ccs1.to_cccs(&mut rng, &ck, &z1);
 
     assert!(cccs_shape
       .is_sat(&ck, &ccs_witness_1, &cccs_instance)
