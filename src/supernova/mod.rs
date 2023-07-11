@@ -68,7 +68,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
 }
 
 /// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
 pub struct PublicParams<G1, G2, C1, C2>
 where
@@ -209,6 +209,7 @@ where
    SuperNova takes Ui a list of running instances. 
    One instance of Ui is a struct called RunningClaim.
   */
+  #[derive(Clone)]
   pub struct RunningClaim<G1, G2, Ca, Cb>
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
@@ -666,20 +667,24 @@ where
     ))
   }
 
-  fn execute_and_verify_circuits(
+  fn execute_and_verify_circuits<C3, C4, C5, C6>(
     circuit_index: usize,
     mut running_claim: RunningClaim<G1, G2, C1, C2>,
-    large_claim2: Option<RunningClaim<G1, G2, C1, C2>>,
+    large_claim: Option<RunningClaim<G1, G2, C3, C4>>,
     num_steps: usize,
     mut pci: usize,
     mut U_i: Vec<usize>,
-    lastRunningInstance: Option<NivcSNARK<G1, G2, C1, C2>>,
+    lastRunningInstance: Option<NivcSNARK<G1, G2, C5, C6>>,
   ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
       C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
       C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
+      C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
+      C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
+      C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
+      C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
   {
       if num_steps < 1 {
         return Err(Box::new(std::io::Error::new(
@@ -714,14 +719,8 @@ where
 
       for i in 0..num_steps {
 
-          let res = match &large_claim2 {
+          let res = match &large_claim {
             Some(lc2) => {
-                if running_claim.largest {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "It cannot be the largest and also use a larger set of commitement keys.",
-                    )));
-                }
                 NivcSNARK::prove_step(
                     circuit_index,
                     pci,
@@ -885,14 +884,13 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
 
-    let circuit_secondary = TrivialTestCircuit::default();
-
     /* 
       'Let the corresponding NIVC proof be Πi , which consists of a vector of ` instances Ui..' pg.15
       The user sets a list 'Ui' of all of the functions that they plan on using. This is used as public input
       for the verifier. 
     */
     let U_i = [0, 1, 2];
+    let circuit_secondary = TrivialTestCircuit::default();
 
     // Structuring running claims     
     let test_circuit1 = CubicCircuit::default(); 
@@ -900,16 +898,10 @@ mod tests {
     CubicCircuit<<G1 as Group>::Scalar>,
     TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit1, circuit_secondary.clone(), true, U_i.len());
 
-    let test_circuit2 = TrivialTestCircuit::default();
+    let test_circuit2 = SquareCircuit::default();
     let running_claim2 = RunningClaim::<G1, G2,
-    TrivialTestCircuit<<G1 as Group>::Scalar>,
-    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), false, U_i.len());
-
-    let test_circuit3 = SquareCircuit::default();
-    let circuit_secondary2 = SquareCircuit::default();
-    let running_claim3 = RunningClaim::<G1, G2,
     SquareCircuit<<G1 as Group>::Scalar>,
-    SquareCircuit<<G2 as Group>::Scalar>>::new(test_circuit3, circuit_secondary2.clone(), false, U_i.len());
+    TrivialTestCircuit<<G2 as Group>::Scalar>>::new(test_circuit2, circuit_secondary.clone(), true, U_i.len());
 
     /* 
       Needs:
@@ -922,8 +914,8 @@ mod tests {
       "1. Checks that Ui and PCi are contained in the public output of the instance ui.
       This enforces that Ui and PCi are indeed produced by the prior step."
 
-      In this implementation we make a vector U_i that pushes the circuit_index at each step.
-      [0, 1, 2, 3] for a 4 running instance proof; 0 is the circuit_index for the first F'.
+      In this implementation we use a vector U_i, which is pre-deteremind by the user.
+      i.e. [0, 1, 2, 3] for a 4 running instance proof; 0 is the circuit_index for the first F'.
 
       We check that both U_i and pci are contained in the public output of instance ui.
       For the SuperNova proof we check each F'[i for F'i]
@@ -934,7 +926,7 @@ mod tests {
 
       pci is enforced in the augmented circuit as pci + 1 increment.
       ϕ does not exist in this implementation as F' are chosen by the user.
-      pci and U_i.length are checked in the augmented verifier.  
+      pci and U_i are checked in the augmented verifier.  
       https://youtu.be/ilrvqajkrYY?t=2559
 
       "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
@@ -963,18 +955,23 @@ mod tests {
       next invocation of an augmented circuit (which contains a verifier circuit)."
 
       This is done in the augmented circuit and is just pci+1.
-      The circuit_index is decided by the user.
+      The circuit_index, and U_i are decided by the user.
       
     */
 
+    let mut dummy_snark: Option<NivcSNARK<G1, G2,
+    CubicCircuit<<G1 as Group>::Scalar>,
+    TrivialTestCircuit<<G2 as Group>::Scalar>>> = None;
+
+
     let rc1 = NivcSNARK::execute_and_verify_circuits(
-      0, // This is used for the internal running claim index. Which Fi?
-      running_claim1, // Running claim that the user wants to fold
-      None, // largest claim that the commitment_keys come from
+      0, // Which Fi?
+      running_claim1.clone(), // Running claim that the user wants to fold
+      Some(running_claim1.clone()), // largest claim that the commitment_keys come from
       3, // amount of times the user wants to loop this circuit.
       1, // PCi
       U_i.to_vec(), // U_im
-      None, // last running instance.
+      dummy_snark, // last running instance.
     ).unwrap(); 
 
     // Destructure the tuple into nivc_snark and result
@@ -986,6 +983,17 @@ mod tests {
         println!("zi_secondary: {:?}", zi_secondary);
         println!("new_pci: {:?}", new_pci);
         println!("new_super_nova_hash: {:?}", new_super_nova_hash);
+
+        let rc2 = NivcSNARK::execute_and_verify_circuits(
+          1, // Which Fi?
+          running_claim2.clone(), // Running claim that the user wants to fold
+          Some(running_claim1.clone()), // largest claim that the commitment_keys come from
+          2, // amount of times the user wants to loop this circuit.
+          new_pci, // PCi
+          U_i.to_vec(), // U_im
+          Some(nivc_snark), // last running instance.
+        ).unwrap();
+
     } else if let Err(e) = result {
         println!("Error: {:?}", e);
     }
