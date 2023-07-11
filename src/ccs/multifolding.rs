@@ -344,29 +344,31 @@ mod tests {
     let z1 = CCSShape::<Ep>::get_test_z(3);
     let z2 = CCSShape::<Ep>::get_test_z(4);
 
-    let (ccs1, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z1);
-    let (_ccs2, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z2);
-    let ck = ccs1.commitment_key();
+    // ccs stays the same regardless of z1 or z2
+    let (ccs, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z1);
+    let (_, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z2);
+    let ck = ccs.commitment_key();
 
-    assert!(ccs1.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
-    assert!(ccs1.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
+    assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
+    assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     let mut rng = OsRng;
-    let r_x_prime: Vec<Fq> = (0..ccs1.s).map(|_| Fq::random(&mut rng)).collect();
+    let r_x_prime: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
 
     // Generate a new multifolding instance
-    let mut nimfs = NIMFS::new(ccs1.clone());
+    let mut nimfs = NIMFS::new(ccs.clone());
 
-    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&z2, &z1, &r_x_prime);
+    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&z1, &z2, &r_x_prime);
 
     // Initialize a multifolding object
-    let (lcccs_instance, lcccs_witness) = ccs1.to_lcccs(&mut rng, &ck, &z2);
+    let (lcccs_instance, lcccs_witness) = ccs.to_lcccs(&mut rng, &ck, &z1);
+
+    let (cccs_instance, cccs_witness, cccs_shape) = ccs.to_cccs(&mut rng, &ck, &z2);
+
     assert!(lcccs_instance.is_sat(&ck, &lcccs_witness).is_ok());
 
-    let (cccs_instance, cccs_witness, cccs_shape) = ccs1.to_cccs(&mut rng, &ck, &z1);
-
     assert!(cccs_shape
-      .is_sat(&ck, &ccs_witness_1, &cccs_instance)
+      .is_sat(&ck, &ccs_witness_2, &cccs_instance)
       .is_ok());
 
     let rho = Fq::random(&mut rng);
@@ -380,7 +382,7 @@ mod tests {
       rho,
     );
 
-    let w_folded = NIMFS::fold_witness(&ccs_witness_1, &ccs_witness_2, rho);
+    let w_folded = NIMFS::fold_witness(&lcccs_witness, &cccs_witness, rho);
 
     // check lcccs relation
     assert!(folded.is_sat(&ck, &w_folded).is_ok());
