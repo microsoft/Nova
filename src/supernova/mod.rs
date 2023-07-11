@@ -130,7 +130,7 @@ where
     let _ = circuit_primary.synthesize(&mut cs);
 
     // We use the largest commitment_key for all instances
-    let mut r1cs_shape_primary;
+    let r1cs_shape_primary;
     let ck_primary;
     if largest {
       let (r1cs_shape_temp, ck_primary_temp) = cs.r1cs_shape();
@@ -295,8 +295,8 @@ where
   /// by executing a step of the incremental computation
   pub fn prove_step(
     circuit_index: usize,
-    mut pci: usize,
-    mut U_i: &mut Vec<usize>,
+    pci: usize,
+    U_i: &mut Vec<usize>,
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: Option<Self>,
     c_primary: C1,
@@ -334,7 +334,7 @@ where
           U_i.len()
         );
 
-        let mut pc_value: Option<G2::Base>; 
+        let pc_value: Option<G2::Base>; 
         if let Some(pc) = circuit_primary.output_program_counter() {
           //println!("Program counter: {:?}", pc);
           pc_value = Some(pc);
@@ -437,7 +437,7 @@ where
           output_U_i: U_i.to_vec()
         })
       }
-      Some(mut r_snark) => {
+      Some(r_snark) => {
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) = if let Some(ck) = ck_secondary.as_ref() {
           NIFS::prove_supernova(
@@ -667,14 +667,15 @@ where
     ))
   }
 
-  fn execute_and_verify_circuits<C3, C4, C5, C6>(
+  fn execute_and_verify_circuits<C3, C4, C5, C6, C7, C8>(
     circuit_index: usize,
     mut running_claim: RunningClaim<G1, G2, C1, C2>,
     large_claim: Option<RunningClaim<G1, G2, C3, C4>>,
     num_steps: usize,
     mut pci: usize,
     mut U_i: Vec<usize>,
-    lastRunningInstance: Option<NivcSNARK<G1, G2, C5, C6>>,
+    last_running_instance: Option<NivcSNARK<G1, G2, C5, C6>>,
+    last_running_claim: Option<RunningClaim<G1, G2, C7, C8>>
   ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
@@ -683,8 +684,10 @@ where
       C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
       C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
       C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
-      C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
-      C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
+      C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+      C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+      C7: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+      C8: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
   {
       if num_steps < 1 {
         return Err(Box::new(std::io::Error::new(
@@ -707,13 +710,31 @@ where
         )));
       }
 
+      if U_i.get(circuit_index).is_none() {
+        return Err(Box::new(std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          "Your circuit_index must exist in U_i",
+        )));
+      }
+
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
       let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError> = Err(NovaError::InvalidInitialInputLength);
 
       // Check that the hash is pointing to the correct SuperNova instance (i.e. ensure correct sequencing).
-      if let Some(_instance) = lastRunningInstance {
-        // lastRunningInstance exists, do something with _instance
+      if let Some(_instance) = last_running_instance {
+        //println!("ah: {:?}", _instance);
+        running_claim.program_counter = pci;
+        // Verify the SuperNova snark at each step of recursion.
+        /*let res = recursive_snark_unwrapped.verify_supernova(
+          &running_claim.params,
+          i + 1,
+          circuit_index,
+          vec![<G1 as Group>::Scalar::ONE],
+          vec![<G2 as Group>::Scalar::ZERO],
+        );*/
+        //assert!(res.is_ok());
+        pci = pci + 1;
       }
 
 
@@ -759,7 +780,7 @@ where
           // Verify the recursive Nova snark at each step of recursion
           let res = recursive_snark_unwrapped.verify(
               &running_claim.params,
-              running_claim.program_counter,
+              i + 1,
               circuit_index,
               vec![<G1 as Group>::Scalar::ONE],
               vec![<G2 as Group>::Scalar::ZERO],
@@ -889,7 +910,7 @@ mod tests {
       The user sets a list 'Ui' of all of the functions that they plan on using. This is used as public input
       for the verifier. 
     */
-    let U_i = [0, 1, 2];
+    let U_i = [0, 1];
     let circuit_secondary = TrivialTestCircuit::default();
 
     // Structuring running claims     
@@ -959,7 +980,7 @@ mod tests {
       
     */
 
-    let mut dummy_snark: Option<NivcSNARK<G1, G2,
+    let dummy_snark: Option<NivcSNARK<G1, G2,
     CubicCircuit<<G1 as Group>::Scalar>,
     TrivialTestCircuit<<G2 as Group>::Scalar>>> = None;
 
@@ -972,6 +993,7 @@ mod tests {
       1, // PCi
       U_i.to_vec(), // U_im
       dummy_snark, // last running instance.
+      Some(running_claim1.clone()) // last running claim
     ).unwrap(); 
 
     // Destructure the tuple into nivc_snark and result
@@ -979,10 +1001,10 @@ mod tests {
 
     // Now you can handle the Result using if let
     if let Ok((zi_primary, zi_secondary, new_pci, new_super_nova_hash)) = result {
-        println!("zi_primary: {:?}", zi_primary);
+       /*println!("zi_primary: {:?}", zi_primary);
         println!("zi_secondary: {:?}", zi_secondary);
         println!("new_pci: {:?}", new_pci);
-        println!("new_super_nova_hash: {:?}", new_super_nova_hash);
+        println!("new_super_nova_hash: {:?}", new_super_nova_hash);*/
 
         let rc2 = NivcSNARK::execute_and_verify_circuits(
           1, // Which Fi?
@@ -992,6 +1014,7 @@ mod tests {
           new_pci, // PCi
           U_i.to_vec(), // U_im
           Some(nivc_snark), // last running instance.
+          Some(running_claim1.clone()) // last running claim
         ).unwrap();
 
     } else if let Err(e) = result {

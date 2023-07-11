@@ -298,11 +298,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "Input U_i hash"), NUM_HASH_BITS)?;
     let supernova_hash = le_bits_to_num(cs.namespace(|| "bits to U_i hash"), supernova_hash_bits)?;
-    let check_pass2 = alloc_num_equals(
-      cs.namespace(|| "check consistency of u.X[0] with H(program_counter, z0, zi)"),
-      &u.X0,
-      &supernova_hash,
-    )?;
 
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
@@ -340,7 +335,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let u_i_length = self.u_i_length;
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T, program_counter, mut output_U_i) =
+    let (params, i, z_0, z_i, U, u, T, program_counter, output_U_i) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity, u_i_length)?;
 
     // Compute variable indicating if this is the base case
