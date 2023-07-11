@@ -565,7 +565,7 @@ where
     circuit_index: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
-  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, Vec<usize>), NovaError> {
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, Vec<usize>, G2::Scalar), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -657,7 +657,13 @@ where
     res_r_secondary?;
     res_l_secondary?;
 
-    Ok((self.zi_primary.clone(), self.zi_secondary.clone(), self.program_counter, self.output_U_i.clone()))
+    Ok((
+      self.zi_primary.clone(),
+      self.zi_secondary.clone(),
+      self.program_counter,
+      self.output_U_i.clone(),
+      self.l_u_secondary.X[1], //output hash for SuperNova.
+    ))
   }
 
   fn execute_and_verify_circuits(
@@ -667,7 +673,8 @@ where
     num_steps: usize,
     mut pci: usize,
     mut U_i: Vec<usize>,
-  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError>, usize, Vec<usize>), Box<dyn std::error::Error>>
+    lastRunningInstance: Option<NivcSNARK<G1, G2, C1, C2>>,
+  ) -> Result<(NivcSNARK<G1, G2, C1, C2>, Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError>), Box<dyn std::error::Error>>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
@@ -681,19 +688,29 @@ where
         )));
       }
 
+      // Check that Ui and pci are contained in the public output of the instance ui.
+      if U_i.len() <= 0 {
+        return Err(Box::new(std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          "U_i must be included and have elements.",
+        )));
+      }
+      if pci < 1 {
+        return Err(Box::new(std::io::Error::new(
+          std::io::ErrorKind::InvalidInput,
+          "pci must be greater than 1",
+        )));
+      }
+
       // Produce a recursive SNARK
       let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
-      let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> = Err(NovaError::InvalidInitialInputLength);
+      let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError> = Err(NovaError::InvalidInitialInputLength);
 
-      // 1. Checks that Ui and pci are contained in the public output of the instance ui.
-      // This enforces that Ui and pci are indeed produced by the prior step
-      if U_i.len() != 0 {
-        // if not the first RunningInstance a verifier check might need to be done here.
-        // for Ui and pci.
-      } else {
-        // Base case for U_i.
-        //U_i.push(circuit_index);
+      // Check that the hash is pointing to the correct SuperNova instance (i.e. ensure correct sequencing).
+      if let Some(_instance) = lastRunningInstance {
+        // lastRunningInstance exists, do something with _instance
       }
+
 
       for i in 0..num_steps {
 
@@ -749,13 +766,13 @@ where
               vec![<G2 as Group>::Scalar::ZERO],
           );
           assert!(res.is_ok());
-          let (zi_primary, zi_secondary, new_pci, new_U_i) = res.unwrap();
-          final_result = Ok((zi_primary, zi_secondary, new_pci));
+          let (zi_primary, zi_secondary, new_pci, new_U_i, new_super_nova_hash) = res.unwrap();
+          final_result = Ok((zi_primary, zi_secondary, new_pci, new_super_nova_hash));
           // Set the running variable for the next iteration
           recursive_snark = Some(recursive_snark_unwrapped);
       }
       recursive_snark
-      .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>).map(|snark| (snark, final_result, pci, U_i))
+      .ok_or_else(|| Box::new(std::io::Error::new(std::io::ErrorKind::Other, "an error occured in recursive_snark")) as Box<dyn std::error::Error>).map(|snark| (snark, final_result))
   }
 }
 
@@ -950,14 +967,28 @@ mod tests {
       
     */
 
-    let recursive_snark_unwrapped = NivcSNARK::execute_and_verify_circuits(
+    let rc1 = NivcSNARK::execute_and_verify_circuits(
       0, // This is used for the internal running claim index. Which Fi?
       running_claim1, // Running claim that the user wants to fold
       None, // largest claim that the commitment_keys come from
       3, // amount of times the user wants to loop this circuit.
       1, // PCi
-      U_i.to_vec() // U_i
+      U_i.to_vec(), // U_im
+      None, // last running instance.
     ).unwrap(); 
+
+    // Destructure the tuple into nivc_snark and result
+    let (nivc_snark, result) = rc1;
+
+    // Now you can handle the Result using if let
+    if let Ok((zi_primary, zi_secondary, new_pci, new_super_nova_hash)) = result {
+        println!("zi_primary: {:?}", zi_primary);
+        println!("zi_secondary: {:?}", zi_secondary);
+        println!("new_pci: {:?}", new_pci);
+        println!("new_super_nova_hash: {:?}", new_super_nova_hash);
+    } else if let Err(e) = result {
+        println!("Error: {:?}", e);
+    }
 
   }
 

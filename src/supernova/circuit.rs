@@ -282,16 +282,13 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       &hash,
     )?;
 
-    //Check that hash H(pci, z0, z_{i+1})
+    // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
     let mut ro2 = G::ROCircuit::new(
       self.ro_consts.clone(),
-      3 + u_i_length * arity
+      2 + u_i_length * arity
     );
-    //6, 29
+    
     ro2.absorb(program_counter.clone());
-    for e in &z_0 {
-      ro2.absorb(e.clone());
-    }
     for e in &z_i {
       ro2.absorb(e.clone());
     }
@@ -449,7 +446,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 
     /*
       To check correct sequencing we are just going to make a hash with PCI and
-      the other public outputs. The next RunningInstance can take the pre-image of the hash.
+      z_{i+1}, U_i. The next RunningInstance can take the pre-image of the hash.
       *Works much like Nova but with the hash being used outside of the F'[pci].
 
       "Finally, there is a subtle sizing issue in the above description: in each step,
@@ -464,15 +461,12 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       https://eprint.iacr.org/2022/1758.pdf
     */
 
-    // Compute the SuperNova hash H(pci, z0, z_{i+1})
+    // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
     let mut ro2 = G::ROCircuit::new(
       self.ro_consts.clone(),
-      3 + u_i_length * arity
+      2 + u_i_length * arity
     );
     ro2.absorb(program_counter_new.clone());
-    for e in &z_0 {
-      ro2.absorb(e.clone());
-    }
     for e in &z_next {
       ro2.absorb(e.clone());
     }
