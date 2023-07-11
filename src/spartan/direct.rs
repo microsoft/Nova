@@ -258,7 +258,7 @@ mod tests {
       let io = z_i
         .clone()
         .into_iter()
-        .chain(z_i_plus_one.clone().into_iter())
+        .chain(z_i_plus_one.clone())
         .collect::<Vec<_>>();
       let res = snark.verify(&vk, &io);
       assert!(res.is_ok());

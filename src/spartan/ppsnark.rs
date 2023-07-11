@@ -838,8 +838,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARK<G, EE>
       let claims_inner = inner.initial_claims();
       claims_mem
         .into_iter()
-        .chain(claims_outer.into_iter())
-        .chain(claims_inner.into_iter())
+        .chain(claims_outer)
+        .chain(claims_inner)
         .collect::<Vec<G::Scalar>>()
     };
 
@@ -1176,9 +1176,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       eval_Az, eval_Bz, eval_Cz, eval_E, eval_E_row, eval_E_col, eval_val_A, eval_val_B, eval_val_C,
     ]
     .into_iter()
-    .chain(eval_left_vec.clone().into_iter())
-    .chain(eval_right_vec.clone().into_iter())
-    .chain(eval_output_vec.clone().into_iter())
+    .chain(eval_left_vec.clone())
+    .chain(eval_right_vec.clone())
+    .chain(eval_output_vec.clone())
     .collect::<Vec<G::Scalar>>();
 
     // absorb all the claimed evaluations
@@ -1211,7 +1211,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let evals = eval_input_vec
       .clone()
       .into_iter()
-      .chain(eval_output2_vec.clone().into_iter())
+      .chain(eval_output2_vec.clone())
       .collect::<Vec<G::Scalar>>();
     transcript.absorb(b"e", &evals.as_slice());
 
@@ -1700,9 +1700,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       self.eval_val_C,
     ]
     .into_iter()
-    .chain(self.eval_left_arr.into_iter())
-    .chain(self.eval_right_arr.into_iter())
-    .chain(self.eval_output_arr.into_iter())
+    .chain(self.eval_left_arr)
+    .chain(self.eval_right_arr)
+    .chain(self.eval_output_arr)
     .collect::<Vec<G::Scalar>>();
 
     transcript.absorb(b"e", &eval_vec.as_slice());
@@ -1722,7 +1722,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let evals = self
       .eval_input_arr
       .into_iter()
-      .chain(self.eval_output2_arr.into_iter())
+      .chain(self.eval_output2_arr)
       .collect::<Vec<G::Scalar>>();
     transcript.absorb(b"e", &evals.as_slice());
 
