@@ -106,7 +106,7 @@ pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
-  u_i_length: usize
+  u_i_length: usize,
 }
 
 impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
@@ -157,16 +157,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
     // Allocate pci
-    let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || Ok(self.inputs.get()?.program_counter))?;
+    let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || {
+      Ok(self.inputs.get()?.program_counter)
+    })?;
 
     // Allocate U_i
     let output_U_i = (0..u_i_length)
-    .map(|i| {
-      AllocatedNum::alloc(cs.namespace(|| format!("output_U_i_{i}")), || {
-        Ok(self.inputs.get()?.output_U_i[i])
+      .map(|i| {
+        AllocatedNum::alloc(cs.namespace(|| format!("output_U_i_{i}")), || {
+          Ok(self.inputs.get()?.output_U_i[i])
+        })
       })
-    })
-    .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -262,7 +264,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * arity,
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * arity,
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -276,18 +278,15 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-    let check_pass = alloc_num_equals(
+    let check_pass1: AllocatedBit = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       &u.X0,
       &hash,
     )?;
 
-    // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
-    let mut ro2 = G::ROCircuit::new(
-      self.ro_consts.clone(),
-      2 + u_i_length * arity
-    );
-    
+    // Check that u.x[1] = Hash(program_counter, zi, U_i)
+    let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
+
     ro2.absorb(program_counter.clone());
     for e in &z_i {
       ro2.absorb(e.clone());
@@ -298,6 +297,17 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "Input U_i hash"), NUM_HASH_BITS)?;
     let supernova_hash = le_bits_to_num(cs.namespace(|| "bits to U_i hash"), supernova_hash_bits)?;
+    let check_pass2 = alloc_num_equals(
+      cs.namespace(|| "check consistency of u.X[1] with H(program_counter, zi, U_i)"),
+      &u.X1,
+      &supernova_hash,
+    )?;
+
+    let check_pass = AllocatedBit::and(
+      cs.namespace(|| "all check must pass"),
+      &check_pass1,
+      &check_pass2,
+    )?;
 
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
@@ -323,10 +333,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   }
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for SuperNovaCircuit<G, SC>
-{
-
+impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNovaCircuit<G, SC> {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
@@ -335,8 +342,11 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let u_i_length = self.u_i_length;
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T, program_counter, output_U_i) =
-      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity, u_i_length)?;
+    let (params, i, z_0, z_i, U, u, T, program_counter, output_U_i) = self.alloc_witness(
+      cs.namespace(|| "allocate the circuit witness"),
+      arity,
+      u_i_length,
+    )?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
@@ -425,7 +435,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 6 * arity
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * arity,
     );
     ro.absorb(params);
     ro.absorb(i_new.clone());
@@ -457,10 +467,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     */
 
     // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
-    let mut ro2 = G::ROCircuit::new(
-      self.ro_consts.clone(),
-      2 + u_i_length * arity
-    );
+    let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
     ro2.absorb(program_counter_new.clone());
     for e in &z_next {
       ro2.absorb(e.clone());
@@ -469,13 +476,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       ro2.absorb(e.clone());
     }
     let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "output hash U_i"), NUM_HASH_BITS)?;
-    let supernova_hash = le_bits_to_num(cs.namespace(|| "convert U_i hash to num"), supernova_hash_bits)?;
-    // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-    u.X1
-      .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
+    let supernova_hash = le_bits_to_num(
+      cs.namespace(|| "convert U_i hash to num"),
+      supernova_hash_bits,
+    )?;
+    // Bypass unmodified hash/supernova_hash of other circuit as next X[0]/X[1]
+    // and output the computed the computed hash/supernova_hash as next X[2]/X[3]
+    u.X2
+      .inputize(cs.namespace(|| "bypass unmodified hash of the other circuit"))?;
+    u.X3
+      .inputize(cs.namespace(|| "bypass unmodified supernova_hash of the other circuit"))?;
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
-
-    supernova_hash.inputize(cs.namespace(|| "output new hash U_i of this circuit"))?;
+    supernova_hash.inputize(cs.namespace(|| "output new supernova_hash of this circuit"))?;
 
     Ok(())
   }
@@ -548,7 +560,7 @@ mod tests {
       None,
       None,
       zero1,
-      vec![zero1]
+      vec![zero1],
     );
     let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
@@ -575,7 +587,7 @@ mod tests {
       Some(inst1),
       None,
       zero2,
-      vec![zero2]
+      vec![zero2],
     );
     let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
