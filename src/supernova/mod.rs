@@ -257,6 +257,54 @@ where
           }
       }
 
+      pub fn verify_supernova_step(
+        &mut self,
+        pp: PublicParams<G1, G2, Ca, Cb>,
+        pci: usize,
+        l_u_secondary: R1CSInstance<G2>,
+        zi_primary: Vec<G1::Scalar>,
+        U_i: &mut Vec<usize>,
+        z0_primary: Vec<G1::Scalar>,
+        z0_secondary: Vec<G2::Scalar>,
+      ) -> Result<(), NovaError> {
+    
+        // check if the (relaxed) R1CS instances has three public outputs.
+        if l_u_secondary.X.len() != 3
+        {
+          return Err(NovaError::ProofVerifyError);
+        }
+
+        println!("hash should be {:?}", l_u_secondary.X);
+    
+        // check if the output hashes in R1CS point to last running instance.
+        let hash_primary = {
+          let mut hasher = <G2 as Group>::RO::new(
+            pp.ro_consts_secondary.clone(),
+            2 + U_i.len() * pp.F_arity_primary
+          );
+          hasher.absorb(G1::Scalar::from(pci as u64));
+          for e in &zi_primary {
+            hasher.absorb(*e);
+          }
+          let values_U_i: Vec<G1::Scalar> = U_i.to_vec().iter().map(|&num| G1::Scalar::from(num as u64)).collect();
+          for e in values_U_i {
+            hasher.absorb(e.clone());
+          }  
+    
+          hasher.squeeze(NUM_HASH_BITS)
+        };
+
+        println!("hash out {:?}", hash_primary);
+    
+        /*if hash_primary != self.l_u_secondary.X[0]
+          || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
+        {
+          return Err(NovaError::ProofVerifyError);
+        }*/
+    
+        Ok(())
+      }
+
   }
 
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
@@ -578,7 +626,6 @@ where
     }
 
     // check if the (relaxed) R1CS instances has three public outputs.
-    // z1, hash, pci, U_i, hash_supernova.
     if self.l_u_secondary.X.len() != 3
       || self.r_U_primary.X.len() != 3
       || self.r_U_secondary.X.len() != 3
@@ -663,7 +710,7 @@ where
       self.zi_secondary.clone(),
       self.program_counter,
       self.output_U_i.clone(),
-      self.l_u_secondary.X[1], //output hash for SuperNova.
+      self.l_u_secondary.X[2], //output hash for SuperNova.
     ))
   }
 
@@ -726,14 +773,23 @@ where
         //println!("ah: {:?}", _instance);
         running_claim.program_counter = pci;
         // Verify the SuperNova snark at each step of recursion.
-        /*let res = recursive_snark_unwrapped.verify_supernova(
-          &running_claim.params,
-          i + 1,
-          circuit_index,
-          vec![<G1 as Group>::Scalar::ONE],
-          vec![<G2 as Group>::Scalar::ZERO],
-        );*/
-        //assert!(res.is_ok());
+        if let Some(mut _claim) = last_running_claim {
+          let res = _claim.verify_supernova_step(
+            _claim.params.clone(),
+            pci,
+            _instance.l_u_secondary,
+            _instance.zi_primary,
+            &mut U_i,
+            vec![<G1 as Group>::Scalar::ONE],
+            vec![<G2 as Group>::Scalar::ZERO],
+          );
+                  //assert!(res.is_ok());
+        } else {
+          return Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "You need a previous running claim.",
+          )));
+        }
         pci = pci + 1;
       }
 
@@ -991,7 +1047,7 @@ mod tests {
       Some(running_claim1.clone()), // largest claim that the commitment_keys come from
       3, // amount of times the user wants to loop this circuit.
       1, // PCi
-      U_i.to_vec(), // U_im
+      U_i.to_vec(), // U_i
       dummy_snark, // last running instance.
       Some(running_claim1.clone()) // last running claim
     ).unwrap(); 
@@ -1012,9 +1068,9 @@ mod tests {
           Some(running_claim1.clone()), // largest claim that the commitment_keys come from
           2, // amount of times the user wants to loop this circuit.
           new_pci, // PCi
-          U_i.to_vec(), // U_im
+          U_i.to_vec(), // U_i
           Some(nivc_snark), // last running instance.
-          Some(running_claim1.clone()) // last running claim
+          Some(running_claim1.clone()), // last running claim
         ).unwrap();
 
     } else if let Err(e) = result {
