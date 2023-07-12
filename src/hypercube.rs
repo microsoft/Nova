@@ -1,4 +1,5 @@
 //! This module defines basic types related to Boolean hypercubes.
+#![allow(unused)]
 use std::marker::PhantomData;
 
 use crate::utils::*;

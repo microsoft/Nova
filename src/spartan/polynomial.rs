@@ -142,6 +142,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   // Multiplies `self` by a scalar.
+  #[allow(unused)]
   pub fn scalar_mul(&self, scalar: &Scalar) -> Self {
     let mut new_poly = self.clone();
     for z in &mut new_poly.Z {

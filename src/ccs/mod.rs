@@ -1,6 +1,7 @@
 //! This module defines CCS related types and functions.
 #![allow(unused_imports)]
 #![allow(dead_code)]
+#![allow(unused)]
 #![allow(clippy::type_complexity)]
 
 use crate::hypercube::BooleanHypercube;

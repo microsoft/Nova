@@ -1,4 +1,5 @@
 //! Basic utils
+#![allow(unused)]
 use std::sync::Arc;
 
 use crate::errors::NovaError;
