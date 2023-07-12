@@ -320,6 +320,8 @@ impl<G: Group> CCSShape<G> {
     let C = vec![(0, 3, one), (1, 4, one), (2, 5, one), (3, 2, one)];
 
     // 2. Take R1CS and convert to CCS
+    // TODO: The third argument should be 2 or similar, need to adjust test case
+    // See https://github.com/privacy-scaling-explorations/Nova/issues/30
     let ccs = CCSShape::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
     // Generate other artifacts
     let ck = CCSShape::<G>::commitment_key(&ccs);

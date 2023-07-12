@@ -118,11 +118,17 @@ impl<G: Group> R1CSShape<G> {
       return Err(NovaError::InvalidIndex);
     }
 
-    // // We require the number of public inputs/outputs to be even
+    // We require the number of public inputs/outputs to be even
+    #[cfg(not(feature = "hypernova"))]
+    if num_io % 2 != 0 {
+      return Err(NovaError::OddInputLength);
+    }
+
+    // TODO: See https://github.com/privacy-scaling-explorations/Nova/issues/30
+    #[cfg(feature = "hypernova")]
     // if num_io % 2 != 0 {
     //   return Err(NovaError::OddInputLength);
     // }
-
     Ok(R1CSShape {
       num_cons,
       num_vars,
