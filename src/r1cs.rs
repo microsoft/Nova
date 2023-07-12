@@ -218,6 +218,12 @@ impl<G: Group> R1CSShape<G> {
     if res_eq && res_comm {
       Ok(())
     } else {
+      if !res_eq {
+        println!("res_eq not true")
+      }
+      if !res_comm {
+        println!("res_comm not true")
+      }
       Err(NovaError::UnSat)
     }
   }

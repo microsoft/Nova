@@ -413,7 +413,7 @@ impl<G: Group> AllocatedR1CSInstanceSuperNova<G> {
     )?;
     let X3 = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "allocate X[3]"),
-      u.get().map_or(None, |u| Some(u.X[2])),
+      u.get().map_or(None, |u| Some(u.X[3])),
     )?;
 
     Ok(AllocatedR1CSInstanceSuperNova { W, X0, X1, X2, X3 })

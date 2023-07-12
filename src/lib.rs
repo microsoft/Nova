@@ -25,6 +25,9 @@ pub mod provider;
 pub mod spartan;
 pub mod traits;
 
+#[cfg(feature = "supernova")]
+mod supernova;
+
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
   shape_cs::ShapeCS,
