@@ -137,14 +137,16 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
   let num_samples = 10;
   let num_cons_verifier_circuit_primary = 9819;
   // we vary the number of constraints in the step circuit
-  for &num_cons_in_augmented_circuit in
-    [9819, 16384, 32768, 65536, 131072, 262144, 524288, 1048576].iter()
-  {
+  for &num_cons_in_augmented_circuit in [9819, 16384, 32768, 65536, 131072, 262144].iter() {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
 
-    let mut group = c.benchmark_group(format!("CompressedSNARK-Commitments-StepCircuitSize-{num_cons}"));
-    group.sample_size(num_samples);
+    let mut group = c.benchmark_group(format!(
+      "CompressedSNARK-Commitments-StepCircuitSize-{num_cons}"
+    ));
+    group
+      .sampling_mode(SamplingMode::Flat)
+      .sample_size(num_samples);
 
     let c_primary = NonTrivialTestCircuit::new(num_cons);
     let c_secondary = TrivialTestCircuit::default();
