@@ -776,8 +776,8 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   let bytes = bincode::serialize(o).unwrap();
   // convert pp_bytes into a short digest
   let mut hasher = Sha3_256::new();
-  hasher.input(&bytes);
-  let digest = hasher.result();
+  hasher.update(&bytes);
+  let digest = hasher.finalize();
 
   // truncate the digest to NUM_HASH_BITS bits
   let bv = (0..NUM_HASH_BITS).map(|i| {

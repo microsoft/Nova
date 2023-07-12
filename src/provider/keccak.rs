@@ -24,7 +24,7 @@ pub struct Keccak256Transcript<G: Group> {
 
 fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
   let mut updated_instance = keccak_instance;
-  updated_instance.input(input);
+  updated_instance.update(input);
 
   let input_lo = &[KECCAK256_PREFIX_CHALLENGE_LO];
   let input_hi = &[KECCAK256_PREFIX_CHALLENGE_HI];
@@ -32,11 +32,11 @@ fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCA
   let mut hasher_lo = updated_instance.clone();
   let mut hasher_hi = updated_instance;
 
-  hasher_lo.input(input_lo);
-  hasher_hi.input(input_hi);
+  hasher_lo.update(input_lo);
+  hasher_hi.update(input_hi);
 
-  let output_lo = hasher_lo.result();
-  let output_hi = hasher_hi.result();
+  let output_lo = hasher_lo.finalize();
+  let output_hi = hasher_hi.finalize();
 
   [output_lo, output_hi]
     .concat()
@@ -86,13 +86,13 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
   }
 
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T) {
-    self.transcript.input(label);
-    self.transcript.input(&o.to_transcript_bytes());
+    self.transcript.update(label);
+    self.transcript.update(&o.to_transcript_bytes());
   }
 
   fn dom_sep(&mut self, bytes: &'static [u8]) {
-    self.transcript.input(DOM_SEP_TAG);
-    self.transcript.input(bytes);
+    self.transcript.update(DOM_SEP_TAG);
+    self.transcript.update(bytes);
   }
 }
 
@@ -149,8 +149,8 @@ mod tests {
   #[test]
   fn test_keccak_example() {
     let mut hasher = Keccak256::new();
-    hasher.input(0xffffffff_u32.to_le_bytes());
-    let output: [u8; 32] = hasher.result().try_into().unwrap();
+    hasher.update(0xffffffff_u32.to_le_bytes());
+    let output: [u8; 32] = hasher.finalize().try_into().unwrap();
     assert_eq!(
       hex::encode(output),
       "29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238"
@@ -169,11 +169,11 @@ mod tests {
     let mut hasher_lo = Keccak256::new();
     let mut hasher_hi = Keccak256::new();
 
-    hasher_lo.input(&input_lo);
-    hasher_hi.input(&input_hi);
+    hasher_lo.update(&input_lo);
+    hasher_hi.update(&input_hi);
 
-    let output_lo = hasher_lo.result();
-    let output_hi = hasher_hi.result();
+    let output_lo = hasher_lo.finalize();
+    let output_hi = hasher_hi.finalize();
 
     [output_lo, output_hi]
       .concat()
@@ -213,7 +213,7 @@ mod tests {
 
     // add the scalars to the transcripts,
     let mut manual_transcript: Vec<u8> = vec![];
-    let labels = vec![
+    let labels = [
       b"s1", b"s2", b"s3", b"s4", b"s5", b"s6", b"s7", b"s8", b"s9", b"s0",
     ];
 
