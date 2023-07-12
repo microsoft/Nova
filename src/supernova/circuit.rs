@@ -285,8 +285,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     )?;
 
     // Check that u.x[1] = Hash(program_counter, zi, U_i)
+    // let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
     let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
-
     ro2.absorb(program_counter.clone());
     for e in &z_i {
       ro2.absorb(e.clone());
@@ -468,6 +468,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
 
     // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
     let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
+    // let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 3 * arity);
     ro2.absorb(program_counter_new.clone());
     for e in &z_next {
       ro2.absorb(e.clone());
@@ -611,7 +612,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 14678, 15477,
+      params1, params2, ro_consts1, ro_consts2, 18161, 19221,
     );
   }
 }

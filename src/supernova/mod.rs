@@ -141,6 +141,8 @@ where
       ck_primary = None;
     }
 
+    println!("cs primary num_constraints {:?}", cs.num_constraints());
+
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
       augmented_circuit_params_secondary.clone(),
@@ -151,6 +153,8 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
+
+    println!("cs secondary num_constraints {:?}", cs.num_constraints());
 
     // We use the largest commitment_key for all instances
     let r1cs_shape_secondary;
@@ -260,56 +264,6 @@ where
       output_U_i_length: output_U_i_length,
     }
   }
-
-  pub fn verify_supernova_step(
-    &mut self,
-    pp: PublicParams<G1, G2, Ca, Cb>,
-    pci: usize,
-    l_u_secondary: R1CSInstance<G2>,
-    zi_primary: Vec<G1::Scalar>,
-    U_i: &mut Vec<usize>,
-    z0_primary: Vec<G1::Scalar>,
-    z0_secondary: Vec<G2::Scalar>,
-  ) -> Result<(), NovaError> {
-    // check if the (relaxed) R1CS instances has three public outputs.
-    if l_u_secondary.X.len() != 3 {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    println!("hash should be {:?}", l_u_secondary.X);
-
-    // check if the output hashes in R1CS point to last running instance.
-    let hash_primary = {
-      let mut hasher = <G2 as Group>::RO::new(
-        pp.ro_consts_secondary.clone(),
-        2 + U_i.len() * pp.F_arity_primary,
-      );
-      hasher.absorb(G1::Scalar::from(pci as u64));
-      for e in &zi_primary {
-        hasher.absorb(*e);
-      }
-      let values_U_i: Vec<G1::Scalar> = U_i
-        .to_vec()
-        .iter()
-        .map(|&num| G1::Scalar::from(num as u64))
-        .collect();
-      for e in values_U_i {
-        hasher.absorb(e.clone());
-      }
-
-      hasher.squeeze(NUM_HASH_BITS)
-    };
-
-    println!("hash out {:?}", hash_primary);
-
-    /*if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1])
-    {
-      return Err(NovaError::ProofVerifyError);
-    }*/
-
-    Ok(())
-  }
 }
 
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
@@ -348,7 +302,7 @@ where
   /// by executing a step of the incremental computation
   pub fn prove_step(
     circuit_index: usize,
-    pci: usize,
+    program_counter: usize,
     U_i: &mut Vec<usize>,
     pp: &PublicParams<G1, G2, C1, C2>,
     recursive_snark: Option<Self>,
@@ -365,6 +319,8 @@ where
 
     match recursive_snark {
       None => {
+        // assert base case pci is equal to 0
+        assert_eq!(program_counter, 0);
         // base case for the primary
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
@@ -375,7 +331,7 @@ where
           None,
           None,
           None,
-          G1::Scalar::from(pci as u64), //G1::Scalar::ZERO,
+          G1::Scalar::from(program_counter as u64), //G1::Scalar::ZERO,
           U_i
             .to_vec()
             .iter()
@@ -417,7 +373,7 @@ where
           None,
           Some(u_primary.clone()),
           None,
-          G2::Scalar::from(pci as u64), //G2::Scalar::ZERO,
+          G2::Scalar::from(program_counter as u64), //G2::Scalar::ZERO,
           U_i
             .to_vec()
             .iter()
@@ -475,6 +431,8 @@ where
           return Err(NovaError::InvalidStepOutputLength);
         }
 
+        let program_counter_next = program_counter + 1;
+
         Ok(Self {
           r_W_primary,
           r_U_primary,
@@ -482,16 +440,18 @@ where
           r_U_secondary,
           l_w_secondary,
           l_u_secondary,
-          i: 1_usize,
+          i: 1_usize, // after base case, next iteration start from 1
           zi_primary,
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: pci,
+          program_counter: program_counter_next,
           output_U_i: U_i.to_vec(),
         })
       }
       Some(r_snark) => {
+        // snark program_counter iteration is equal to pci
+        assert!(r_snark.program_counter == program_counter);
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary, r_W_secondary)) =
           if let Some(ck) = ck_secondary.as_ref() {
@@ -603,6 +563,7 @@ where
         let zi_primary = c_primary.output(&r_snark.zi_primary);
         let zi_secondary = c_secondary.output(&r_snark.zi_secondary);
 
+        let program_counter_next = program_counter + 1;
         Ok(Self {
           r_W_primary,
           r_U_primary,
@@ -615,7 +576,7 @@ where
           zi_secondary,
           _p_c1: Default::default(),
           _p_c2: Default::default(),
-          program_counter: r_snark.program_counter + 1,
+          program_counter: program_counter_next,
           output_U_i: r_snark.output_U_i,
         })
       }
@@ -625,7 +586,7 @@ where
   pub fn verify(
     &mut self,
     pp: &PublicParams<G1, G2, C1, C2>,
-    num_steps: usize,
+    expected_i: usize,
     circuit_index: usize,
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
@@ -640,12 +601,17 @@ where
     NovaError,
   > {
     // number of steps cannot be zero
-    if num_steps == 0 {
+    if self.i == 0 {
+      println!("must verify on valid NivcSNARK where i > 0");
       return Err(NovaError::ProofVerifyError);
     }
 
     // check if the provided proof has executed num_steps
-    if self.i != num_steps {
+    if self.i != expected_i {
+      println!(
+        "expected i {:?} not equal to NivcSNARK i {:?}",
+        expected_i, self.i
+      );
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -664,7 +630,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * pp.F_arity_primary,
       );
       hasher.absorb(pp.digest);
-      hasher.absorb(G1::Scalar::from(num_steps as u64));
+      hasher.absorb(G1::Scalar::from(self.program_counter as u64));
       for e in &z0_primary {
         hasher.absorb(*e);
       }
@@ -678,7 +644,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * pp.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.digest));
-      hasher2.absorb(G2::Scalar::from(num_steps as u64));
+      hasher2.absorb(G2::Scalar::from(self.program_counter as u64));
       for e in &z0_secondary {
         hasher2.absorb(*e);
       }
@@ -750,15 +716,13 @@ where
     ))
   }
 
-  fn execute_and_verify_circuits<C3, C4, C5, C6, C7, C8>(
+  fn execute_and_verify_circuits(
     circuit_index: usize,
     mut running_claim: RunningClaim<G1, G2, C1, C2>,
-    large_claim: Option<RunningClaim<G1, G2, C3, C4>>,
+    large_claim: Option<RunningClaim<G1, G2, C1, C2>>,
     num_steps: usize,
-    mut pci: usize,
     mut U_i: Vec<usize>,
-    last_running_instance: Option<NivcSNARK<G1, G2, C5, C6>>,
-    last_running_claim: Option<RunningClaim<G1, G2, C7, C8>>,
+    last_running_instance: Option<NivcSNARK<G1, G2, C1, C2>>,
   ) -> Result<
     (
       NivcSNARK<G1, G2, C1, C2>,
@@ -769,14 +733,14 @@ where
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
-    C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
-    C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
-    C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
-    C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    C7: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    C8: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    // C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
+    // C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
+    // C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    // C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    // C7: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    // C8: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
   {
     if num_steps < 1 {
       return Err(Box::new(std::io::Error::new(
@@ -785,17 +749,10 @@ where
       )));
     }
 
-    // Check that Ui and pci are contained in the public output of the instance ui.
     if U_i.len() <= 0 {
       return Err(Box::new(std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         "U_i must be included and have elements.",
-      )));
-    }
-    if pci < 1 {
-      return Err(Box::new(std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        "pci must be greater than 1",
       )));
     }
 
@@ -807,40 +764,21 @@ where
     }
 
     // Produce a recursive SNARK
-    let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = None;
+    let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = last_running_instance;
     let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError> =
       Err(NovaError::InvalidInitialInputLength);
 
     // Check that the hash is pointing to the correct SuperNova instance (i.e. ensure correct sequencing).
-    if let Some(_instance) = last_running_instance {
-      //println!("ah: {:?}", _instance);
-      running_claim.program_counter = pci;
-      // Verify the SuperNova snark at each step of recursion.
-      if let Some(mut _claim) = last_running_claim {
-        let res = _claim.verify_supernova_step(
-          _claim.params.clone(),
-          pci,
-          _instance.l_u_secondary,
-          _instance.zi_primary,
-          &mut U_i,
-          vec![<G1 as Group>::Scalar::ONE],
-          vec![<G2 as Group>::Scalar::ZERO],
-        );
-        //assert!(res.is_ok());
-      } else {
-        return Err(Box::new(std::io::Error::new(
-          std::io::ErrorKind::InvalidInput,
-          "You need a previous running claim.",
-        )));
-      }
-      pci = pci + 1;
+    // Here also set the running_claim.program_counter to align with last last_running_instance, i.e. NivcSNARK.program_counter
+    if let Some(last_nivcsnark) = recursive_snark.clone() {
+      running_claim.program_counter = last_nivcsnark.program_counter;
     }
 
-    for i in 0..num_steps {
+    for _ in 0..num_steps {
       let res = match &large_claim {
         Some(lc2) => NivcSNARK::prove_step(
           circuit_index,
-          pci,
+          running_claim.program_counter,
           &mut U_i,
           &running_claim.params,
           recursive_snark,
@@ -853,7 +791,7 @@ where
         ),
         None => NivcSNARK::prove_step(
           circuit_index,
-          pci,
+          running_claim.program_counter,
           &mut U_i,
           &running_claim.params,
           recursive_snark,
@@ -868,19 +806,28 @@ where
 
       let mut recursive_snark_unwrapped = res.unwrap();
 
-      running_claim.program_counter = running_claim.program_counter + 1;
+      // update program_counter to next rount.
+      running_claim.program_counter += 1;
+      assert!(running_claim.program_counter == recursive_snark_unwrapped.program_counter);
 
       // Verify the recursive Nova snark at each step of recursion
+      // here the verified
       let res = recursive_snark_unwrapped.verify(
         &running_claim.params,
-        i + 1,
+        running_claim.program_counter,
         circuit_index,
         vec![<G1 as Group>::Scalar::ONE],
         vec![<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
-      let (zi_primary, zi_secondary, new_pci, new_U_i, new_super_nova_hash) = res.unwrap();
-      final_result = Ok((zi_primary, zi_secondary, new_pci, new_super_nova_hash));
+      let (zi_primary, zi_secondary, program_counter_next, new_U_i, new_super_nova_hash) =
+        res.unwrap();
+      final_result = Ok((
+        zi_primary,
+        zi_secondary,
+        program_counter_next,
+        new_super_nova_hash,
+      ));
       // Set the running variable for the next iteration
       recursive_snark = Some(recursive_snark_unwrapped);
     }
@@ -1034,7 +981,7 @@ mod tests {
       - The user should be able to run any circuits in any order and re-use RunningClaim.
       - Only the commitment key of the largest circuit is needed.
 
-      Representing pci and U_i to make sure sequencing is done correctly:
+      Representing program_counter and U_i to make sure sequencing is done correctly:
 
       "1. Checks that Ui and PCi are contained in the public output of the instance ui.
       This enforces that Ui and PCi are indeed produced by the prior step."
@@ -1042,20 +989,20 @@ mod tests {
       In this implementation we use a vector U_i, which is pre-deteremind by the user.
       i.e. [0, 1, 2, 3] for a 4 running instance proof; 0 is the circuit_index for the first F'.
 
-      We check that both U_i and pci are contained in the public output of instance ui.
+      We check that both U_i and program_counter are contained in the public output of instance ui.
       For the SuperNova proof we check each F'[i for F'i]
       is a satisfying Nova instance.
 
       If all U_i are satisfying and U_i, pci, and a pre-image of a hash(U_i-1, pci-1, zi-1) are
       in the public output we have a valid SuperNova proof.
 
-      pci is enforced in the augmented circuit as pci + 1 increment.
+      program_counter is enforced in the augmented circuit as program_counter + 1 increment.
       ϕ does not exist in this implementation as F' are chosen by the user.
-      pci and U_i are checked in the augmented verifier.
+      program_counter and U_i are checked in the augmented verifier.
       https://youtu.be/ilrvqajkrYY?t=2559
 
       "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
-      (ui,wi) is a satisfying instance witness pair with respect to function F0pci,
+      (ui,wi) is a satisfying instance witness pair with respect to function F0_pci,
       the public IO of ui contains Ui and pci, and for each j ∈ {1, . . . , `} check that (Ui [j], Wi
       [j]) is a satisfying instance-witness pair with respect to function F0j." pg15.
 
@@ -1098,10 +1045,8 @@ mod tests {
       running_claim1.clone(),       // Running claim that the user wants to fold
       Some(running_claim1.clone()), // largest claim that the commitment_keys come from
       3,                            // amount of times the user wants to loop this circuit.
-      1,                            // PCi
       U_i.to_vec(),                 // U_i
       dummy_snark,                  // last running instance.
-      Some(running_claim1.clone()), // last running claim
     )
     .unwrap();
 
@@ -1109,23 +1054,22 @@ mod tests {
     let (nivc_snark, result) = rc1;
 
     // Now you can handle the Result using if let
-    if let Ok((zi_primary, zi_secondary, new_pci, new_super_nova_hash)) = result {
+    if let Ok((zi_primary, zi_secondary, program_counter, super_nova_hash)) = result {
       /*println!("zi_primary: {:?}", zi_primary);
       println!("zi_secondary: {:?}", zi_secondary);
       println!("new_pci: {:?}", new_pci);
       println!("new_super_nova_hash: {:?}", new_super_nova_hash);*/
 
-      let rc2 = NivcSNARK::execute_and_verify_circuits(
-        1,                            // Which Fi?
-        running_claim2.clone(),       // Running claim that the user wants to fold
-        Some(running_claim1.clone()), // largest claim that the commitment_keys come from
-        2,                            // amount of times the user wants to loop this circuit.
-        new_pci,                      // PCi
-        U_i.to_vec(),                 // U_i
-        Some(nivc_snark),             // last running instance.
-        Some(running_claim1.clone()), // last running claim
-      )
-      .unwrap();
+      // let rc2 = NivcSNARK::execute_and_verify_circuits(
+      //   1,                            // Which Fi?
+      //   running_claim2.clone(),       // Running claim that the user wants to fold
+      //   Some(running_claim1.clone()), // largest claim that the commitment_keys come from
+      //   2,                            // amount of times the user wants to loop this circuit.
+      //   U_i.to_vec(),                 // U_i
+      //   Some(nivc_snark),             // last running instance.
+      //   Some(running_claim1.clone()), // last running claim
+      // )
+      // .unwrap();
     } else if let Err(e) = result {
       println!("Error: {:?}", e);
     }
