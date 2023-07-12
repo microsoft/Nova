@@ -40,7 +40,7 @@ pub struct LCCCS<G: Group> {
   pub(crate) v: Vec<G::Scalar>,
   // Random evaluation point for the v_i
   pub r_x: Vec<G::Scalar>,
-  // This should not need to be here. Should be a reference only.
+  // XXX: This should not need to be here. Should be a reference only.
   pub(crate) matrix_mles: Vec<MultilinearPolynomial<G::Scalar>>,
   pub(crate) ccs: CCSShape<G>,
 }

@@ -30,12 +30,12 @@ use std::collections::HashMap;
 use std::ops::{Add, Mul};
 use std::sync::Arc;
 
-// A bit of collage-programming here.
-// As a tmp way to have multilinear polynomial product+addition.
+// A bit of hacky programming here.
+// As a temporary way to have multilinear polynomial product+addition.
 // The idea is to re-evaluate once everything works and decide if we replace this code
 // by something else.
 //
-// THIS CODE HAS BEEN TAKEN FpOM THE ESPRESSO SYSTEMS LIB:
+// THIS CODE HAS BEEN TAKEN FROM THE ESPRESSO SYSTEMS LIB:
 // <https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs#L22-L332>
 //
 #[rustfmt::skip]

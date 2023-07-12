@@ -100,12 +100,13 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
-  // NOTE: this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
+  // NOTE: this is equivalent to Espresso/HyperPlonk's 'fix_last_variables' method
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 
     let (left, right) = self.Z.split_at_mut(n);
-    // XXX: This literally does nothing at all.. What is this?
+
+    // XXX: What does this do? Seems like nothing?
     let (right, _) = right.split_at(n);
 
     left

@@ -161,9 +161,9 @@ mod tests {
 
       assert_eq!(A_mle_op.Z, column_i);
 
-      // // Now check that fixing last variables pins down a row
-      // // i.e. fixing y to 0 will return the first row
-      // //      fixing y to 1 will return the second row etc.
+      // Now check that fixing last variables pins down a row
+      // i.e. fixing y to 0 will return the first row
+      //      fixing y to 1 will return the second row etc.
       let row_i: Vec<Fq> = A
         .clone()
         .coeffs()

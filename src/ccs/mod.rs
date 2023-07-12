@@ -134,8 +134,7 @@ impl<G: Group> CCSShape<G> {
     z: &[G::Scalar],
   ) -> (CCCSInstance<G>, CCSWitness<G>, CCCSShape<G>) {
     let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
-    // XXX: API doesn't offer a way to handle this apparently?
-    // Need to investigate
+    // XXX: API doesn't offer a way to handle this apparently? Need to investigate
     let _r_w = G::Scalar::random(rng);
     let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
 
@@ -191,7 +190,6 @@ impl<G: Group> CCSShape<G> {
     compute_all_sum_Mz_evals::<G>(&M_mle, &z.to_vec(), r, self.s_prime)
   }
 
-  // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
   /// Samples public parameters for the specified number of constraints and variables in an CCS
   pub fn commitment_key(&self) -> CommitmentKey<G> {
     let total_nz = self.M.iter().fold(0, |acc, m| acc + m.coeffs().len());
@@ -200,7 +198,7 @@ impl<G: Group> CCSShape<G> {
   }
 
   /// Checks if the CCS instance is satisfiable given a witness and its shape
-  // XXX: Probably is better to completelly remove the abstraction of Instance and witness and just deal with Z.
+  // XXX: Probably better to completely remove the abstraction of Instance and witness and just deal with Z.
   pub fn is_sat(
     &self,
     ck: &CommitmentKey<G>,
@@ -323,6 +321,7 @@ impl<G: Group> CCSShape<G> {
     // TODO: The third argument should be 2 or similar, need to adjust test case
     // See https://github.com/privacy-scaling-explorations/Nova/issues/30
     let ccs = CCSShape::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
+
     // Generate other artifacts
     let ck = CCSShape::<G>::commitment_key(&ccs);
     let ccs_w = CCSWitness::new(z[2..].to_vec());

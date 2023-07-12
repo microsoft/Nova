@@ -63,7 +63,7 @@ impl<G: Group> CCCSShape<G> {
     }
 
     // Using `fold` requires to not have results inside. So we unwrap for now but
-    // a better approach is needed (we ca just keep the for loop otherwise.)
+    // a better approach is needed (we can just keep the for loop otherwise.)
     Ok((0..self.ccs.q).into_iter().fold(
       VirtualPolynomial::<G::Scalar>::new(self.ccs.s),
       |q, idx| {
@@ -92,8 +92,8 @@ impl<G: Group> CCCSShape<G> {
     ))
   }
 
-  /// Computes Q(x) = eq(beta, x) * q(x)
-  ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
+  /// Computes Q(x) = \hat eq(beta, x) * q(x)
+  ///               = \hat eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   /// polynomial over x
   pub fn compute_Q(
     &self,
@@ -145,12 +145,12 @@ mod tests {
   use rand_core::OsRng;
   use rand_core::RngCore;
 
-  // Deduplicate this
+  // TODO: Deduplicate this
   fn to_F_matrix<F: PrimeField>(m: Vec<Vec<u64>>) -> Vec<Vec<F>> {
     m.iter().map(|x| to_F_vec(x.clone())).collect()
   }
 
-  // Deduplicate this
+  //  TODO: Deduplicate this
   fn to_F_vec<F: PrimeField>(v: Vec<u64>) -> Vec<F> {
     v.iter().map(|x| F::from(*x)).collect()
   }
@@ -168,9 +168,10 @@ mod tests {
     let z = CCSShape::<Ep>::get_test_z(3);
     let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
 
-    // generate ck
+    // Generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
-    // ensure CCS is satisfied
+
+    // Ensure CCS is satisfied
     ccs_shape.is_sat(&ck, &ccs_instance, &ccs_witness).unwrap();
 
     // Generate CCCS artifacts
@@ -239,9 +240,10 @@ mod tests {
     let z = CCSShape::<Ep>::get_test_z(3);
     let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
 
-    // generate ck
+    // Generate ck
     let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
-    // ensure CCS is satisfied
+
+    // Ensure CCS is satisfied
     ccs_shape.is_sat(&ck, &ccs_instance, &ccs_witness).unwrap();
 
     // Generate CCCS artifacts
