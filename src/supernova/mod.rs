@@ -72,12 +72,10 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "")]
-pub struct PublicParams<G1, G2, C1, C2>
+pub struct PublicParams<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar>,
-  C2: StepCircuit<G2::Scalar>,
 {
   F_arity_primary: usize,
   F_arity_secondary: usize,
@@ -92,19 +90,20 @@ where
   augmented_circuit_params_primary: CircuitParams,
   augmented_circuit_params_secondary: CircuitParams,
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
+impl<G1, G2> PublicParams<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar>,
-  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup(c_primary: C1, c_secondary: C2, largest: bool, output_U_i_length: usize) -> Self {
+  pub fn setup<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
+    c_primary: C1,
+    c_secondary: C2,
+    largest: bool,
+    output_U_i_length: usize,
+  ) -> Self where {
     let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
@@ -141,8 +140,6 @@ where
       ck_primary = None;
     }
 
-    println!("cs primary num_constraints {:?}", cs.num_constraints());
-
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
       augmented_circuit_params_secondary.clone(),
@@ -153,8 +150,6 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-
-    println!("cs secondary num_constraints {:?}", cs.num_constraints());
 
     // We use the largest commitment_key for all instances
     let r1cs_shape_secondary;
@@ -182,12 +177,10 @@ where
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
       digest: G1::Scalar::ZERO,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
     };
 
     // set the digest in pp
-    pp.digest = compute_digest::<G1, PublicParams<G1, G2, C1, C2>>(&pp);
+    pp.digest = compute_digest::<G1, PublicParams<G1, G2>>(&pp);
 
     pp
   }
@@ -226,7 +219,7 @@ where
   circuit_secondary: Cb,
   program_counter: usize,
   largest: bool,
-  params: PublicParams<G1, G2, Ca, Cb>,
+  params: PublicParams<G1, G2>,
   output_U_i_length: usize,
 }
 
@@ -247,7 +240,7 @@ where
     let program_counter = 0;
     let largest = is_largest;
 
-    let pp = PublicParams::<G1, G2, Ca, Cb>::setup(
+    let pp = PublicParams::<G1, G2>::setup(
       claim.clone(),
       circuit_secondary.clone(),
       is_largest,
@@ -269,12 +262,10 @@ where
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NivcSNARK<G1, G2, C1, C2>
+pub struct NivcSNARK<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar>,
-  C2: StepCircuit<G2::Scalar>,
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
@@ -285,26 +276,22 @@ where
   i: usize,
   zi_primary: Vec<G1::Scalar>,
   zi_secondary: Vec<G2::Scalar>,
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
   program_counter: usize,
   output_U_i: Vec<usize>,
 }
 
-impl<G1, G2, C1, C2> NivcSNARK<G1, G2, C1, C2>
+impl<G1, G2> NivcSNARK<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<G1::Scalar>,
-  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `NivcSNARK` (or updates the provided `NivcSNARK`)
   /// by executing a step of the incremental computation
-  pub fn prove_step(
+  pub fn prove_step<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     circuit_index: usize,
     program_counter: usize,
     U_i: &mut Vec<usize>,
-    pp: &PublicParams<G1, G2, C1, C2>,
+    pp: &PublicParams<G1, G2>,
     recursive_snark: Option<Self>,
     c_primary: C1,
     c_secondary: C2,
@@ -443,8 +430,6 @@ where
           i: 1_usize, // after base case, next iteration start from 1
           zi_primary,
           zi_secondary,
-          _p_c1: Default::default(),
-          _p_c2: Default::default(),
           program_counter: program_counter_next,
           output_U_i: U_i.to_vec(),
         })
@@ -574,8 +559,6 @@ where
           i: r_snark.i + 1,
           zi_primary,
           zi_secondary,
-          _p_c1: Default::default(),
-          _p_c2: Default::default(),
           program_counter: program_counter_next,
           output_U_i: r_snark.output_U_i,
         })
@@ -585,7 +568,7 @@ where
 
   pub fn verify(
     &mut self,
-    pp: &PublicParams<G1, G2, C1, C2>,
+    pp: &PublicParams<G1, G2>,
     expected_i: usize,
     circuit_index: usize,
     z0_primary: Vec<G1::Scalar>,
@@ -716,16 +699,16 @@ where
     ))
   }
 
-  fn execute_and_verify_circuits(
+  fn execute_and_verify_circuits<C1, C2, C3, C4>(
     circuit_index: usize,
     mut running_claim: RunningClaim<G1, G2, C1, C2>,
-    large_claim: Option<RunningClaim<G1, G2, C1, C2>>,
+    large_claim: Option<RunningClaim<G1, G2, C3, C4>>,
     num_steps: usize,
     mut U_i: Vec<usize>,
-    last_running_instance: Option<NivcSNARK<G1, G2, C1, C2>>,
+    last_running_instance: Option<NivcSNARK<G1, G2>>,
   ) -> Result<
     (
-      NivcSNARK<G1, G2, C1, C2>,
+      NivcSNARK<G1, G2>,
       Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError>,
     ),
     Box<dyn std::error::Error>,
@@ -735,12 +718,8 @@ where
     G2: Group<Base = <G1 as Group>::Scalar>,
     C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
     C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    // C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
-    // C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
-    // C5: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    // C6: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    // C7: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    // C8: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    C3: StepCircuit<<G1 as Group>::Scalar> + Clone + Default,
+    C4: StepCircuit<<G2 as Group>::Scalar> + Clone + Default,
   {
     if num_steps < 1 {
       return Err(Box::new(std::io::Error::new(
@@ -764,7 +743,7 @@ where
     }
 
     // Produce a recursive SNARK
-    let mut recursive_snark: Option<NivcSNARK<G1, G2, C1, C2>> = last_running_instance;
+    let mut recursive_snark: Option<NivcSNARK<G1, G2>> = last_running_instance.clone();
     let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize, G2::Scalar), NovaError> =
       Err(NovaError::InvalidInitialInputLength);
 
@@ -973,7 +952,7 @@ mod tests {
       G2,
       SquareCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::new(test_circuit2, circuit_secondary.clone(), true, U_i.len());
+    >::new(test_circuit2, circuit_secondary.clone(), false, U_i.len());
 
     /*
       Needs:
@@ -1031,20 +1010,13 @@ mod tests {
 
     */
 
-    let dummy_snark: Option<
-      NivcSNARK<
-        G1,
-        G2,
-        CubicCircuit<<G1 as Group>::Scalar>,
-        TrivialTestCircuit<<G2 as Group>::Scalar>,
-      >,
-    > = None;
+    let dummy_snark: Option<NivcSNARK<G1, G2>> = None;
 
     let rc1 = NivcSNARK::execute_and_verify_circuits(
       0,                            // Which Fi?
       running_claim1.clone(),       // Running claim that the user wants to fold
       Some(running_claim1.clone()), // largest claim that the commitment_keys come from
-      3,                            // amount of times the user wants to loop this circuit.
+      1,                            // amount of times the user wants to loop this circuit.
       U_i.to_vec(),                 // U_i
       dummy_snark,                  // last running instance.
     )
@@ -1060,16 +1032,15 @@ mod tests {
       println!("new_pci: {:?}", new_pci);
       println!("new_super_nova_hash: {:?}", new_super_nova_hash);*/
 
-      // let rc2 = NivcSNARK::execute_and_verify_circuits(
-      //   1,                            // Which Fi?
-      //   running_claim2.clone(),       // Running claim that the user wants to fold
-      //   Some(running_claim1.clone()), // largest claim that the commitment_keys come from
-      //   2,                            // amount of times the user wants to loop this circuit.
-      //   U_i.to_vec(),                 // U_i
-      //   Some(nivc_snark),             // last running instance.
-      //   Some(running_claim1.clone()), // last running claim
-      // )
-      // .unwrap();
+      let rc2 = NivcSNARK::execute_and_verify_circuits(
+        1,                            // Which Fi?
+        running_claim2.clone(),       // Running claim that the user wants to fold
+        Some(running_claim1.clone()), // largest claim that the commitment_keys come from
+        2,                            // amount of times the user wants to loop this circuit.
+        U_i.to_vec(),                 // U_i
+        Some(nivc_snark),             // last running instance.
+      )
+      .unwrap();
     } else if let Err(e) = result {
       println!("Error: {:?}", e);
     }
