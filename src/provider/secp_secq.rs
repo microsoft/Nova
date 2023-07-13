@@ -128,8 +128,11 @@ macro_rules! impl_traits {
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
+        // see: grumpkin implementation at src/provider/bn256_grumpkin.rs
         let coordinates = self.to_affine().coordinates();
-        if coordinates.is_some().unwrap_u8() == 1 {
+        if coordinates.is_some().unwrap_u8() == 1
+          && (Self::PreprocessedGroupElement::identity() != self.to_affine())
+        {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
