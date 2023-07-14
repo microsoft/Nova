@@ -13,14 +13,13 @@ use serde::{Deserialize, Serialize};
 /// A matrix structure represented on a sparse form.
 /// First element is row index, second column, third value stored
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct SparseMatrix<G: Group> {
+pub struct SparseMatrix<F: PrimeField> {
   n_rows: usize,
   n_cols: usize,
-  coeffs: Vec<(usize, usize, G::Scalar)>,
+  coeffs: Vec<(usize, usize, F)>,
 }
 
-impl<G: Group> SparseMatrix<G> {
+impl<F: PrimeField> SparseMatrix<F> {
   pub fn new(n_rows: usize, n_cols: usize) -> Self {
     Self {
       n_rows,
@@ -29,7 +28,7 @@ impl<G: Group> SparseMatrix<G> {
     }
   }
 
-  pub fn with_coeffs(n_rows: usize, n_cols: usize, coeffs: Vec<(usize, usize, G::Scalar)>) -> Self {
+  pub fn with_coeffs(n_rows: usize, n_cols: usize, coeffs: Vec<(usize, usize, F)>) -> Self {
     Self {
       n_rows,
       n_cols,
@@ -58,7 +57,7 @@ impl<G: Group> SparseMatrix<G> {
   }
 
   // Return the non-0 coefficients of this matrix.
-  pub fn coeffs(&self) -> &[(usize, usize, G::Scalar)] {
+  pub fn coeffs(&self) -> &[(usize, usize, F)] {
     self.coeffs.as_slice()
   }
 
@@ -88,12 +87,12 @@ impl<G: Group> SparseMatrix<G> {
   }
 
   // Gives the MLE of the given matrix.
-  pub fn to_mle(&self) -> MultilinearPolynomial<G::Scalar> {
+  pub fn to_mle(&self) -> MultilinearPolynomial<F> {
     // Matrices might need to get padded before turned into an MLE
     let mut padded_matrix = self.clone();
     padded_matrix.pad();
 
-    sparse_vec_to_mle::<G>(
+    sparse_vec_to_mle::<F>(
       padded_matrix.n_rows(),
       padded_matrix.n_cols(),
       padded_matrix.coeffs().to_vec(),
@@ -106,13 +105,13 @@ impl<G: Group> SparseMatrix<G> {
 // coefficients, maybe the method should be renamed, because is not to convert 'any' vector but a
 // vector of matrix coefficients. A better option probably is to replace the two inputs n_rows &
 // n_cols by directly the n_vars.
-pub fn sparse_vec_to_mle<G: Group>(
+pub fn sparse_vec_to_mle<F: PrimeField>(
   n_rows: usize,
   n_cols: usize,
-  v: Vec<(usize, usize, G::Scalar)>,
-) -> MultilinearPolynomial<G::Scalar> {
+  v: Vec<(usize, usize, F)>,
+) -> MultilinearPolynomial<F> {
   let n_vars: usize = (log2(n_rows) + log2(n_cols)) as usize; // n_vars = s + s'
-  let mut padded_vec = vec![G::Scalar::ZERO; 1 << n_vars];
+  let mut padded_vec = vec![F::ZERO; 1 << n_vars];
   v.iter().copied().for_each(|(row, col, coeff)| {
     padded_vec[(n_cols * row) + col] = coeff;
   });
@@ -176,11 +175,11 @@ pub fn matrix_vector_product<F: PrimeField>(matrix: &Vec<Vec<F>>, vector: &Vec<F
 // Matrix vector product where matrix is sparse
 // First element is row index, second column, third value stored
 // XXX: This could be implemented via Mul trait in the lib. We should consider as it will reduce imports.
-pub fn matrix_vector_product_sparse<G: Group>(
-  matrix: &SparseMatrix<G>,
-  vector: &Vec<G::Scalar>,
-) -> Vec<G::Scalar> {
-  let mut res = vec![G::Scalar::ZERO; matrix.n_rows()];
+pub fn matrix_vector_product_sparse<F: PrimeField>(
+  matrix: &SparseMatrix<F>,
+  vector: &Vec<F>,
+) -> Vec<F> {
+  let mut res = vec![F::ZERO; matrix.n_rows()];
   for &(row, col, value) in matrix.coeffs.iter() {
     res[row] += value * vector[col];
   }
@@ -279,10 +278,10 @@ pub(crate) fn log2(x: usize) -> u32 {
 
 #[cfg(test)]
 mod tests {
+  use super::*;
   use crate::hypercube::BooleanHypercube;
 
-  use super::*;
-  use pasta_curves::{Ep, Fq};
+  use pasta_curves::Fq;
 
   fn to_F_vec<F: PrimeField>(v: Vec<u64>) -> Vec<F> {
     v.iter().map(|x| F::from(*x)).collect()
@@ -292,93 +291,85 @@ mod tests {
     m.iter().map(|x| to_F_vec(x.clone())).collect()
   }
 
-  #[test]
-  fn test_vector_add() {
-    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
-    let b = to_F_vec::<Fq>(vec![4, 5, 6]);
-    let res = vector_add(&a, &b);
-    assert_eq!(res, to_F_vec::<Fq>(vec![5, 7, 9]));
+  fn test_vector_add_with<F: PrimeField>() {
+    let a = to_F_vec::<F>(vec![1, 2, 3]);
+    let b = to_F_vec::<F>(vec![4, 5, 6]);
+    let res = vector_add::<F>(&a, &b);
+    assert_eq!(res, to_F_vec::<F>(vec![5, 7, 9]));
   }
 
-  #[test]
-  fn test_vector_elem_product() {
-    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
-    let e = Fq::from(2);
+  fn test_vector_elem_product_with<F: PrimeField>() {
+    let a = to_F_vec::<F>(vec![1, 2, 3]);
+    let e = F::from(2);
     let res = vector_elem_product(&a, &e);
-    assert_eq!(res, to_F_vec::<Fq>(vec![2, 4, 6]));
+    assert_eq!(res, to_F_vec::<F>(vec![2, 4, 6]));
   }
 
-  #[test]
-  fn test_matrix_vector_product() {
+  fn test_matrix_vector_product_with<F: PrimeField>() {
     let matrix = vec![vec![1, 2, 3], vec![4, 5, 6]];
     let vector = vec![1, 2, 3];
-    let A = to_F_matrix::<Fq>(matrix);
-    let z = to_F_vec::<Fq>(vector);
+    let A = to_F_matrix::<F>(matrix);
+    let z = to_F_vec::<F>(vector);
     let res = matrix_vector_product(&A, &z);
 
-    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+    assert_eq!(res, to_F_vec::<F>(vec![14, 32]));
   }
 
-  #[test]
-  fn test_hadamard_product() {
-    let a = to_F_vec::<Fq>(vec![1, 2, 3]);
-    let b = to_F_vec::<Fq>(vec![4, 5, 6]);
+  fn test_hadamard_product_with<F: PrimeField>() {
+    let a = to_F_vec::<F>(vec![1, 2, 3]);
+    let b = to_F_vec::<F>(vec![4, 5, 6]);
     let res = hadamard_product(&a, &b);
-    assert_eq!(res, to_F_vec::<Fq>(vec![4, 10, 18]));
+    assert_eq!(res, to_F_vec::<F>(vec![4, 10, 18]));
   }
 
-  #[test]
-  fn test_matrix_vector_product_sparse() {
+  fn test_matrix_vector_product_sparse_with<F: PrimeField>() {
     let matrix = vec![
-      (0, 0, Fq::from(1)),
-      (0, 1, Fq::from(2)),
-      (0, 2, Fq::from(3)),
-      (1, 0, Fq::from(4)),
-      (1, 1, Fq::from(5)),
-      (1, 2, Fq::from(6)),
+      (0, 0, F::from(1u64)),
+      (0, 1, F::from(2u64)),
+      (0, 2, F::from(3u64)),
+      (1, 0, F::from(4u64)),
+      (1, 1, F::from(5u64)),
+      (1, 2, F::from(6u64)),
     ];
 
-    let z = to_F_vec::<Fq>(vec![1, 2, 3]);
-    let res =
-      matrix_vector_product_sparse::<Ep>(&SparseMatrix::<Ep>::with_coeffs(2, 3, matrix), &z);
+    let z = to_F_vec::<F>(vec![1, 2, 3]);
+    let res = matrix_vector_product_sparse::<F>(&SparseMatrix::<F>::with_coeffs(2, 3, matrix), &z);
 
-    assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
+    assert_eq!(res, to_F_vec::<F>(vec![14, 32]));
   }
 
-  #[test]
-  fn test_sparse_matrix_n_cols_rows() {
+  fn test_sparse_matrix_n_cols_rows_with<F: PrimeField>() {
     let matrix = vec![
-      (0, 0, Fq::from(1u64)),
-      (0, 1, Fq::from(2u64)),
-      (0, 2, Fq::from(3u64)),
-      (1, 0, Fq::from(4u64)),
-      (1, 1, Fq::from(5u64)),
-      (1, 2, Fq::from(6u64)),
-      (4, 5, Fq::from(1u64)),
+      (0, 0, F::from(1u64)),
+      (0, 1, F::from(2u64)),
+      (0, 2, F::from(3u64)),
+      (1, 0, F::from(4u64)),
+      (1, 1, F::from(5u64)),
+      (1, 2, F::from(6u64)),
+      (4, 5, F::from(1u64)),
     ];
-    let A = SparseMatrix::<Ep>::with_coeffs(5, 6, matrix.clone());
+    let A = SparseMatrix::<F>::with_coeffs(5, 6, matrix.clone());
     assert_eq!(A.n_cols(), 6);
     assert_eq!(A.n_rows(), 5);
 
     // Since is sparse, the empty rows/cols at the end are not accounted unless we provide the info.
-    let A = SparseMatrix::<Ep>::with_coeffs(10, 10, matrix);
+    let A = SparseMatrix::<F>::with_coeffs(10, 10, matrix);
     assert_eq!(A.n_cols(), 10);
     assert_eq!(A.n_rows(), 10);
   }
 
-  #[test]
-  fn test_matrix_to_mle() {
-    let A = SparseMatrix::<Ep>::with_coeffs(
+  fn test_matrix_to_mle_with<F: PrimeField>() {
+    let A = SparseMatrix::<F>::with_coeffs(
       5,
       5,
       vec![
-        (0usize, 0usize, Fq::from(1u64)),
-        (0, 1, Fq::from(2u64)),
-        (0, 2, Fq::from(3u64)),
-        (1, 0, Fq::from(4u64)),
-        (1, 1, Fq::from(5u64)),
-        (1, 2, Fq::from(6u64)),
-        (3, 4, Fq::from(1u64)),
+        (0usize, 0usize, F::from(1u64)),
+        (0, 1, F::from(2u64)),
+        (0, 2, F::from(3u64)),
+        (1, 0, F::from(4u64)),
+        (1, 1, F::from(5u64)),
+        (1, 2, F::from(6u64)),
+        (3, 4, F::from(1u64)),
       ],
     );
 
@@ -387,42 +378,42 @@ mod tests {
 
     // hardcoded testvector to ensure that in the future the SparseMatrix.to_mle method holds
     let expected = vec![
-      Fq::from(1u64),
-      Fq::from(2u64),
-      Fq::from(3u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(4u64),
-      Fq::from(5u64),
-      Fq::from(6u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(0u64),
-      Fq::from(1u64),
+      F::from(1u64),
+      F::from(2u64),
+      F::from(3u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(4u64),
+      F::from(5u64),
+      F::from(6u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(1u64),
       // the rest are zeroes
     ];
     assert_eq!(A_mle.Z[..29], expected);
-    assert_eq!(A_mle.Z[29..], vec![Fq::ZERO; 64 - 29]);
+    assert_eq!(A_mle.Z[29..], vec![F::ZERO; 64 - 29]);
 
     // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
-    let bhc = BooleanHypercube::<Fq>::new(A_mle.get_num_vars());
+    let bhc = BooleanHypercube::<F>::new(A_mle.get_num_vars());
     let mut A_padded = A.clone();
     A_padded.pad();
     for term in A_padded.coeffs.iter() {
@@ -430,5 +421,40 @@ mod tests {
       let s_i_j = bhc.evaluate_at(i * A_padded.n_cols + j);
       assert_eq!(&A_mle.evaluate(&s_i_j), coeff)
     }
+  }
+
+  #[test]
+  fn test_vector_add() {
+    test_vector_add_with::<Fq>();
+  }
+
+  #[test]
+  fn test_vector_elem_product() {
+    test_vector_elem_product_with::<Fq>();
+  }
+
+  #[test]
+  fn test_matrix_vector_product() {
+    test_matrix_vector_product_with::<Fq>();
+  }
+
+  #[test]
+  fn test_hadamard_product() {
+    test_hadamard_product_with::<Fq>();
+  }
+
+  #[test]
+  fn test_matrix_vector_product_sparse() {
+    test_matrix_vector_product_sparse_with::<Fq>();
+  }
+
+  #[test]
+  fn test_sparse_matrix_n_cols_rows() {
+    test_sparse_matrix_n_cols_rows_with::<Fq>();
+  }
+
+  #[test]
+  fn test_matrix_to_mle() {
+    test_matrix_to_mle_with::<Fq>();
   }
 }
