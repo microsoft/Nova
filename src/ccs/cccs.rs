@@ -64,9 +64,8 @@ impl<G: Group> CCCSShape<G> {
 
     // Using `fold` requires to not have results inside. So we unwrap for now but
     // a better approach is needed (we ca just keep the for loop otherwise.)
-    Ok((0..self.ccs.q).into_iter().fold(
-      VirtualPolynomial::<G::Scalar>::new(self.ccs.s),
-      |q, idx| {
+    Ok(
+      (0..self.ccs.q).fold(VirtualPolynomial::<G::Scalar>::new(self.ccs.s), |q, idx| {
         let mut prod = VirtualPolynomial::<G::Scalar>::new(self.ccs.s);
 
         for &j in &self.ccs.S[idx] {
@@ -88,8 +87,8 @@ impl<G: Group> CCCSShape<G> {
         prod.scalar_mul(&self.ccs.c[idx]);
         // Add it to the running sum
         q.add(&prod)
-      },
-    ))
+      }),
+    )
   }
 
   /// Computes Q(x) = eq(beta, x) * q(x)
@@ -179,9 +178,9 @@ mod tests {
     let q = cccs_shape.compute_q(&z).unwrap();
 
     // Evaluate inside the hypercube
-    for x in BooleanHypercube::new(ccs_shape.s).into_iter() {
+    BooleanHypercube::new(ccs_shape.s).for_each(|x| {
       assert_eq!(Fq::zero(), q.evaluate(&x).unwrap());
-    }
+    });
 
     // Evaluate outside the hypercube
     let beta: Vec<Fq> = (0..ccs_shape.s).map(|_| Fq::random(&mut rng)).collect();
@@ -223,7 +222,6 @@ mod tests {
 
     // Now sum Q(x) evaluations in the hypercube and expect it to be 0
     let r = BooleanHypercube::new(ccs_shape.s)
-      .into_iter()
       .map(|x| Q.evaluate(&x).unwrap())
       .fold(Fq::zero(), |acc, result| acc + result);
     assert_eq!(r, Fq::zero());
@@ -233,7 +231,7 @@ mod tests {
   /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
   /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
   #[test]
-  fn test_Q_against_q() -> () {
+  fn test_Q_against_q() {
     let mut rng = OsRng;
 
     let z = CCSShape::<Ep>::get_test_z(3);
@@ -259,7 +257,6 @@ mod tests {
 
       // Get G(d) by summing over Q_d(x) over the hypercube
       let G_at_d = BooleanHypercube::new(ccs_shape.s)
-        .into_iter()
         .map(|x| Q_at_d.evaluate(&x).unwrap())
         .fold(Fq::zero(), |acc, result| acc + result);
       assert_eq!(G_at_d, q.evaluate(&d).unwrap());
@@ -273,7 +270,6 @@ mod tests {
 
     // Get G(d) by summing over Q_d(x) over the hypercube
     let G_at_r = BooleanHypercube::new(ccs_shape.s)
-      .into_iter()
       .map(|x| Q_at_r.evaluate(&x).unwrap())
       .fold(Fq::zero(), |acc, result| acc + result);
     assert_ne!(G_at_r, q.evaluate(&r).unwrap());

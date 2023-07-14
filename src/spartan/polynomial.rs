@@ -270,11 +270,11 @@ mod tests {
     assert_eq!(y, Fp::one());
 
     let eval_list = eq_poly.evals();
-    for i in 0..(2_usize).pow(3) {
+    for (i, &coeff) in eval_list.iter().enumerate().take((2_usize).pow(3)) {
       if i == 5 {
-        assert_eq!(eval_list[i], Fp::one());
+        assert_eq!(coeff, Fp::one());
       } else {
-        assert_eq!(eval_list[i], Fp::zero());
+        assert_eq!(coeff, Fp::zero());
       }
     }
   }

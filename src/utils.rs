@@ -141,10 +141,10 @@ pub fn vector_add<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
   res
 }
 
-pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: &F) -> Vec<F> {
+pub fn vector_elem_product<F: PrimeField>(a: &Vec<F>, e: F) -> Vec<F> {
   let mut res = Vec::with_capacity(a.len());
-  for i in 0..a.len() {
-    res.push(a[i] * e);
+  for &item in a {
+    res.push(item * e);
   }
 
   res
@@ -161,10 +161,10 @@ pub fn matrix_vector_product<F: PrimeField>(matrix: &Vec<Vec<F>>, vector: &Vec<F
     "matrix rows != vector length"
   );
   let mut res = Vec::with_capacity(matrix.len());
-  for i in 0..matrix.len() {
+  for row in matrix {
     let mut sum = F::ZERO;
-    for j in 0..matrix[i].len() {
-      sum += matrix[i][j] * vector[j];
+    for j in 0..row.len() {
+      sum += row[j] * vector[j];
     }
     res.push(sum);
   }
@@ -177,7 +177,7 @@ pub fn matrix_vector_product<F: PrimeField>(matrix: &Vec<Vec<F>>, vector: &Vec<F
 // XXX: This could be implemented via Mul trait in the lib. We should consider as it will reduce imports.
 pub fn matrix_vector_product_sparse<F: PrimeField>(
   matrix: &SparseMatrix<F>,
-  vector: &Vec<F>,
+  vector: &[F],
 ) -> Vec<F> {
   let mut res = vec![F::ZERO; matrix.n_rows()];
   for &(row, col, value) in matrix.coeffs.iter() {
@@ -258,12 +258,10 @@ pub fn random_zero_mle_list<F: PrimeField, R: RngCore>(
     }
   }
 
-  let list = multiplicands
+  multiplicands
     .into_iter()
     .map(|x| Arc::new(MultilinearPolynomial::new(x)))
-    .collect();
-
-  list
+    .collect()
 }
 
 pub(crate) fn log2(x: usize) -> u32 {
@@ -301,7 +299,7 @@ mod tests {
   fn test_vector_elem_product_with<F: PrimeField>() {
     let a = to_F_vec::<F>(vec![1, 2, 3]);
     let e = F::from(2);
-    let res = vector_elem_product(&a, &e);
+    let res = vector_elem_product(&a, e);
     assert_eq!(res, to_F_vec::<F>(vec![2, 4, 6]));
   }
 
@@ -414,7 +412,7 @@ mod tests {
 
     // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
     let bhc = BooleanHypercube::<F>::new(A_mle.get_num_vars());
-    let mut A_padded = A.clone();
+    let mut A_padded = A;
     A_padded.pad();
     for term in A_padded.coeffs.iter() {
       let (i, j, coeff) = term;

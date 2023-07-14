@@ -100,8 +100,8 @@ impl<G: Group> CCSShape<G> {
     // We require the number of public inputs/outputs to be even
     assert_ne!(l % 2, 0, " number of public i/o has to be even");
 
-    let s = m.log_2() as usize;
-    let s_prime = n.log_2() as usize;
+    let s = m.log_2();
+    let s_prime = n.log_2();
 
     CCSShape {
       M: M.to_vec(),
@@ -144,7 +144,7 @@ impl<G: Group> CCSShape<G> {
         C,
         x: z[1..(1 + self.l)].to_vec(),
       },
-      CCSWitness { w: w },
+      CCSWitness { w },
       self.to_cccs_shape(),
     )
   }
@@ -226,22 +226,19 @@ impl<G: Group> CCSShape<G> {
 
     let z = concat(vec![vec![G::Scalar::ONE], U.x.clone(), W.w.clone()]);
 
-    let r = (0..self.q)
-      .into_iter()
-      .fold(vec![G::Scalar::ZERO; self.m], |r, idx| {
-        let hadamard_output = self.S[idx]
-          .iter()
-          .fold(vec![G::Scalar::ZERO; self.m], |acc, j| {
-            let mvp = matrix_vector_product_sparse(&self.M[*j], &z);
-            hadamard_product(&acc, &mvp)
-          });
+    let r = (0..self.q).fold(vec![G::Scalar::ZERO; self.m], |r, idx| {
+      let hadamard_output = self.S[idx]
+        .iter()
+        .fold(vec![G::Scalar::ZERO; self.m], |acc, j| {
+          let mvp = matrix_vector_product_sparse(&self.M[*j], &z);
+          hadamard_product(&acc, &mvp)
+        });
 
-        // Multiply by the coefficient of this step
-        let c_M_j_z: Vec<<G as Group>::Scalar> =
-          vector_elem_product(&hadamard_output, &self.c[idx]);
+      // Multiply by the coefficient of this step
+      let c_M_j_z: Vec<<G as Group>::Scalar> = vector_elem_product(&hadamard_output, self.c[idx]);
 
-        vector_add(&r, &c_M_j_z)
-      });
+      vector_add(&r, &c_M_j_z)
+    });
 
     // verify if comm_W is a commitment to W
     let res_comm: bool = U.comm_w == CE::<G>::commit(ck, &W.w);
@@ -282,8 +279,8 @@ impl<G: Group> CCSShape<G> {
       c: vec![G::Scalar::ONE, -G::Scalar::ONE],
       m: r1cs.num_cons,
       n: r1cs.num_vars,
-      s: r1cs.num_cons.log_2() as usize,
-      s_prime: r1cs.num_vars.log_2() as usize,
+      s: r1cs.num_cons.log_2(),
+      s_prime: r1cs.num_vars.log_2(),
     }
   }
 
@@ -305,7 +302,7 @@ impl<G: Group> CCSShape<G> {
   }
 
   #[cfg(test)]
-  pub(crate) fn gen_test_ccs(z: &Vec<G::Scalar>) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
+  pub(crate) fn gen_test_ccs(z: &[G::Scalar]) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
     let one = G::Scalar::ONE;
     let A = vec![
       (0, 1, one),
