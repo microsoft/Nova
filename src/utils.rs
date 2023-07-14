@@ -281,7 +281,7 @@ mod tests {
   use super::*;
   use crate::hypercube::BooleanHypercube;
 
-  use pasta_curves::{Ep, Fq};
+  use pasta_curves::Fq;
 
   fn to_F_vec<F: PrimeField>(v: Vec<u64>) -> Vec<F> {
     v.iter().map(|x| F::from(*x)).collect()
@@ -322,56 +322,54 @@ mod tests {
     assert_eq!(res, to_F_vec::<F>(vec![4, 10, 18]));
   }
 
-  fn test_matrix_vector_product_sparse_with<G: Group>() {
+  fn test_matrix_vector_product_sparse_with<F: PrimeField>() {
     let matrix = vec![
-      (0, 0, G::Scalar::from(1u64)),
-      (0, 1, G::Scalar::from(2u64)),
-      (0, 2, G::Scalar::from(3u64)),
-      (1, 0, G::Scalar::from(4u64)),
-      (1, 1, G::Scalar::from(5u64)),
-      (1, 2, G::Scalar::from(6u64)),
+      (0, 0, F::from(1u64)),
+      (0, 1, F::from(2u64)),
+      (0, 2, F::from(3u64)),
+      (1, 0, F::from(4u64)),
+      (1, 1, F::from(5u64)),
+      (1, 2, F::from(6u64)),
     ];
 
-    let z = to_F_vec::<Fq>(vec![1, 2, 3]);
-    let res =
-      matrix_vector_product_sparse::<Fq>(&SparseMatrix::<Fq>::with_coeffs(2, 3, matrix), &z);
+    let z = to_F_vec::<F>(vec![1, 2, 3]);
+    let res = matrix_vector_product_sparse::<F>(&SparseMatrix::<F>::with_coeffs(2, 3, matrix), &z);
 
-    assert_eq!(res, to_F_vec::<G::Scalar>(vec![14, 32]));
+    assert_eq!(res, to_F_vec::<F>(vec![14, 32]));
   }
 
-  fn test_sparse_matrix_n_cols_rows_with<G: Group>() {
+  fn test_sparse_matrix_n_cols_rows_with<F: PrimeField>() {
     let matrix = vec![
-      (0, 0, G::Scalar::from(1u64)),
-      (0, 1, G::Scalar::from(2u64)),
-      (0, 2, G::Scalar::from(3u64)),
-      (1, 0, G::Scalar::from(4u64)),
-      (1, 1, G::Scalar::from(5u64)),
-      (1, 2, G::Scalar::from(6u64)),
-      (4, 5, G::Scalar::from(1u64)),
+      (0, 0, F::from(1u64)),
+      (0, 1, F::from(2u64)),
+      (0, 2, F::from(3u64)),
+      (1, 0, F::from(4u64)),
+      (1, 1, F::from(5u64)),
+      (1, 2, F::from(6u64)),
+      (4, 5, F::from(1u64)),
     ];
-    let A = SparseMatrix::<Fq>::with_coeffs(5, 6, matrix.clone());
+    let A = SparseMatrix::<F>::with_coeffs(5, 6, matrix.clone());
     assert_eq!(A.n_cols(), 6);
     assert_eq!(A.n_rows(), 5);
 
     // Since is sparse, the empty rows/cols at the end are not accounted unless we provide the info.
-    let A = SparseMatrix::<Fq>::with_coeffs(10, 10, matrix);
+    let A = SparseMatrix::<F>::with_coeffs(10, 10, matrix);
     assert_eq!(A.n_cols(), 10);
     assert_eq!(A.n_rows(), 10);
   }
 
-  #[test]
-  fn test_matrix_to_mle() {
-    let A = SparseMatrix::<Fq>::with_coeffs(
+  fn test_matrix_to_mle_with<F: PrimeField>() {
+    let A = SparseMatrix::<F>::with_coeffs(
       5,
       5,
       vec![
-        (0usize, 0usize, G::Scalar::from(1u64)),
-        (0, 1, G::Scalar::from(2u64)),
-        (0, 2, G::Scalar::from(3u64)),
-        (1, 0, G::Scalar::from(4u64)),
-        (1, 1, G::Scalar::from(5u64)),
-        (1, 2, G::Scalar::from(6u64)),
-        (3, 4, G::Scalar::from(1u64)),
+        (0usize, 0usize, F::from(1u64)),
+        (0, 1, F::from(2u64)),
+        (0, 2, F::from(3u64)),
+        (1, 0, F::from(4u64)),
+        (1, 1, F::from(5u64)),
+        (1, 2, F::from(6u64)),
+        (3, 4, F::from(1u64)),
       ],
     );
 
@@ -380,42 +378,42 @@ mod tests {
 
     // hardcoded testvector to ensure that in the future the SparseMatrix.to_mle method holds
     let expected = vec![
-      G::Scalar::from(1u64),
-      G::Scalar::from(2u64),
-      G::Scalar::from(3u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(4u64),
-      G::Scalar::from(5u64),
-      G::Scalar::from(6u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(0u64),
-      G::Scalar::from(1u64),
+      F::from(1u64),
+      F::from(2u64),
+      F::from(3u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(4u64),
+      F::from(5u64),
+      F::from(6u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(0u64),
+      F::from(1u64),
       // the rest are zeroes
     ];
     assert_eq!(A_mle.Z[..29], expected);
-    assert_eq!(A_mle.Z[29..], vec![G::Scalar::ZERO; 64 - 29]);
+    assert_eq!(A_mle.Z[29..], vec![F::ZERO; 64 - 29]);
 
     // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
-    let bhc = BooleanHypercube::<G::Scalar>::new(A_mle.get_num_vars());
+    let bhc = BooleanHypercube::<F>::new(A_mle.get_num_vars());
     let mut A_padded = A.clone();
     A_padded.pad();
     for term in A_padded.coeffs.iter() {
@@ -447,16 +445,16 @@ mod tests {
 
   #[test]
   fn test_matrix_vector_product_sparse() {
-    test_matrix_vector_product_sparse_with::<Ep>();
+    test_matrix_vector_product_sparse_with::<Fq>();
   }
 
   #[test]
   fn test_sparse_matrix_n_cols_rows() {
-    test_sparse_matrix_n_cols_rows_with::<Ep>();
+    test_sparse_matrix_n_cols_rows_with::<Fq>();
   }
 
   #[test]
   fn test_matrix_to_mle() {
-    test_matrix_to_mle_with::<Ep>();
+    test_matrix_to_mle_with::<Fq>();
   }
 }
