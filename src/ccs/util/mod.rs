@@ -120,7 +120,7 @@ mod tests {
 
   #[test]
   fn test_fix_variables() {
-    let A = SparseMatrix::<Ep>::with_coeffs(
+    let A = SparseMatrix::<Fq>::with_coeffs(
       4,
       4,
       vec![

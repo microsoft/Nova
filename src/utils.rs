@@ -13,14 +13,13 @@ use serde::{Deserialize, Serialize};
 /// A matrix structure represented on a sparse form.
 /// First element is row index, second column, third value stored
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct SparseMatrix<G: Group> {
+pub struct SparseMatrix<F: PrimeField> {
   n_rows: usize,
   n_cols: usize,
-  coeffs: Vec<(usize, usize, G::Scalar)>,
+  coeffs: Vec<(usize, usize, F)>,
 }
 
-impl<G: Group> SparseMatrix<G> {
+impl<F: PrimeField> SparseMatrix<F> {
   pub fn new(n_rows: usize, n_cols: usize) -> Self {
     Self {
       n_rows,
@@ -29,7 +28,7 @@ impl<G: Group> SparseMatrix<G> {
     }
   }
 
-  pub fn with_coeffs(n_rows: usize, n_cols: usize, coeffs: Vec<(usize, usize, G::Scalar)>) -> Self {
+  pub fn with_coeffs(n_rows: usize, n_cols: usize, coeffs: Vec<(usize, usize, F)>) -> Self {
     Self {
       n_rows,
       n_cols,
@@ -58,7 +57,7 @@ impl<G: Group> SparseMatrix<G> {
   }
 
   // Return the non-0 coefficients of this matrix.
-  pub fn coeffs(&self) -> &[(usize, usize, G::Scalar)] {
+  pub fn coeffs(&self) -> &[(usize, usize, F)] {
     self.coeffs.as_slice()
   }
 
@@ -88,12 +87,12 @@ impl<G: Group> SparseMatrix<G> {
   }
 
   // Gives the MLE of the given matrix.
-  pub fn to_mle(&self) -> MultilinearPolynomial<G::Scalar> {
+  pub fn to_mle(&self) -> MultilinearPolynomial<F> {
     // Matrices might need to get padded before turned into an MLE
     let mut padded_matrix = self.clone();
     padded_matrix.pad();
 
-    sparse_vec_to_mle::<G>(
+    sparse_vec_to_mle::<F>(
       padded_matrix.n_rows(),
       padded_matrix.n_cols(),
       padded_matrix.coeffs().to_vec(),
@@ -106,13 +105,13 @@ impl<G: Group> SparseMatrix<G> {
 // coefficients, maybe the method should be renamed, because is not to convert 'any' vector but a
 // vector of matrix coefficients. A better option probably is to replace the two inputs n_rows &
 // n_cols by directly the n_vars.
-pub fn sparse_vec_to_mle<G: Group>(
+pub fn sparse_vec_to_mle<F: PrimeField>(
   n_rows: usize,
   n_cols: usize,
-  v: Vec<(usize, usize, G::Scalar)>,
-) -> MultilinearPolynomial<G::Scalar> {
+  v: Vec<(usize, usize, F)>,
+) -> MultilinearPolynomial<F> {
   let n_vars: usize = (log2(n_rows) + log2(n_cols)) as usize; // n_vars = s + s'
-  let mut padded_vec = vec![G::Scalar::ZERO; 1 << n_vars];
+  let mut padded_vec = vec![F::ZERO; 1 << n_vars];
   v.iter().copied().for_each(|(row, col, coeff)| {
     padded_vec[(n_cols * row) + col] = coeff;
   });
@@ -176,11 +175,11 @@ pub fn matrix_vector_product<F: PrimeField>(matrix: &Vec<Vec<F>>, vector: &Vec<F
 // Matrix vector product where matrix is sparse
 // First element is row index, second column, third value stored
 // XXX: This could be implemented via Mul trait in the lib. We should consider as it will reduce imports.
-pub fn matrix_vector_product_sparse<G: Group>(
-  matrix: &SparseMatrix<G>,
-  vector: &Vec<G::Scalar>,
-) -> Vec<G::Scalar> {
-  let mut res = vec![G::Scalar::ZERO; matrix.n_rows()];
+pub fn matrix_vector_product_sparse<F: PrimeField>(
+  matrix: &SparseMatrix<F>,
+  vector: &Vec<F>,
+) -> Vec<F> {
+  let mut res = vec![F::ZERO; matrix.n_rows()];
   for &(row, col, value) in matrix.coeffs.iter() {
     res[row] += value * vector[col];
   }
@@ -340,7 +339,7 @@ mod tests {
 
     let z = to_F_vec::<Fq>(vec![1, 2, 3]);
     let res =
-      matrix_vector_product_sparse::<Ep>(&SparseMatrix::<Ep>::with_coeffs(2, 3, matrix), &z);
+      matrix_vector_product_sparse::<Fq>(&SparseMatrix::<Fq>::with_coeffs(2, 3, matrix), &z);
 
     assert_eq!(res, to_F_vec::<Fq>(vec![14, 32]));
   }
@@ -356,19 +355,19 @@ mod tests {
       (1, 2, Fq::from(6u64)),
       (4, 5, Fq::from(1u64)),
     ];
-    let A = SparseMatrix::<Ep>::with_coeffs(5, 6, matrix.clone());
+    let A = SparseMatrix::<Fq>::with_coeffs(5, 6, matrix.clone());
     assert_eq!(A.n_cols(), 6);
     assert_eq!(A.n_rows(), 5);
 
     // Since is sparse, the empty rows/cols at the end are not accounted unless we provide the info.
-    let A = SparseMatrix::<Ep>::with_coeffs(10, 10, matrix);
+    let A = SparseMatrix::<Fq>::with_coeffs(10, 10, matrix);
     assert_eq!(A.n_cols(), 10);
     assert_eq!(A.n_rows(), 10);
   }
 
   #[test]
   fn test_matrix_to_mle() {
-    let A = SparseMatrix::<Ep>::with_coeffs(
+    let A = SparseMatrix::<Fq>::with_coeffs(
       5,
       5,
       vec![

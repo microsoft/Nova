@@ -49,7 +49,7 @@ mod util;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CCSShape<G: Group> {
-  pub(crate) M: Vec<SparseMatrix<G>>,
+  pub(crate) M: Vec<SparseMatrix<G::Scalar>>,
   // Num vars
   pub(crate) t: usize,
   // Number of public witness
@@ -74,7 +74,7 @@ pub struct CCSShape<G: Group> {
 impl<G: Group> CCSShape<G> {
   /// Create an object of type `CCSShape` from the explicitly specified CCS matrices
   pub fn new(
-    M: &[SparseMatrix<G>],
+    M: &[SparseMatrix<G::Scalar>],
     t: usize,
     l: usize,
     q: usize,
