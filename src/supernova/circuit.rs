@@ -14,13 +14,19 @@
 //! H(params = H(shape, ck), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
 
+use std::ops::Not;
+
 use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
     ecc::AllocatedPoint,
-    r1cs::{AllocatedR1CSInstanceSuperNova, AllocatedRelaxedR1CSInstanceSuperNova},
+    r1cs::{
+      conditionally_select_relaxed_r1cs_supernova, AllocatedR1CSInstanceSuperNova,
+      AllocatedRelaxedR1CSInstanceSuperNova,
+    },
     utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
+      add_allocated_num, alloc_bignat_constant, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
+      conditionally_select, conditionally_select_vec, le_bits_to_num, scalar_as_base,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -38,6 +44,8 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::Field;
+use itertools::Itertools;
+use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,32 +68,35 @@ impl CircuitParams {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct CircuitInputs<G: Group> {
-  params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+  params_next: G::Scalar,
+  params: G::Scalar,
   i: G::Base,
   z0: Vec<G::Base>,
   zi: Option<Vec<G::Base>>,
-  U: Option<RelaxedR1CSInstance<G>>,
+  U: Option<Vec<RelaxedR1CSInstance<G>>>,
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
   program_counter: G::Base,
-  output_U_i: Vec<G::Base>,
+  last_circuit_index_selector: G::Base,
 }
 
 impl<G: Group> CircuitInputs<G> {
   /// Create new inputs/witness for the verification circuit
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    params_next: G::Scalar, // params_next can not being calculated inside, therefore pass as witness
     params: G::Scalar,
     i: G::Base,
     z0: Vec<G::Base>,
     zi: Option<Vec<G::Base>>,
-    U: Option<RelaxedR1CSInstance<G>>,
+    U: Option<Vec<RelaxedR1CSInstance<G>>>,
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
     program_counter: G::Base,
-    output_U_i: Vec<G::Base>,
+    last_circuit_index_selector: G::Base,
   ) -> Self {
     Self {
+      params_next,
       params,
       i,
       z0,
@@ -94,7 +105,7 @@ impl<G: Group> CircuitInputs<G> {
       u,
       T,
       program_counter,
-      output_U_i,
+      last_circuit_index_selector,
     }
   }
 }
@@ -137,13 +148,14 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     (
       AllocatedNum<G::Base>,
       AllocatedNum<G::Base>,
+      AllocatedNum<G::Base>,
       Vec<AllocatedNum<G::Base>>,
       Vec<AllocatedNum<G::Base>>,
-      AllocatedRelaxedR1CSInstanceSuperNova<G>,
+      Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>,
       AllocatedR1CSInstanceSuperNova<G>,
       AllocatedPoint<G>,
       AllocatedNum<G::Base>,
-      Vec<AllocatedNum<G::Base>>,
+      AllocatedNum<G::Base>,
     ),
     SynthesisError,
   > {
@@ -151,6 +163,15 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     let params = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "params"),
       self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
+    )?;
+
+    // Allocate the params_next
+    let params_next = alloc_scalar_as_base::<G, _>(
+      cs.namespace(|| "params_next"),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| Some(inputs.params_next)),
     )?;
 
     // Allocate i
@@ -161,14 +182,11 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       Ok(self.inputs.get()?.program_counter)
     })?;
 
-    // Allocate U_i
-    let output_U_i = (0..u_i_length)
-      .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("output_U_i_{i}")), || {
-          Ok(self.inputs.get()?.output_U_i[i])
-        })
-      })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+    // Allocate circuit_input_selector
+    let last_circuit_index_selector =
+      AllocatedNum::alloc(cs.namespace(|| "circuit_index_selector"), || {
+        Ok(self.inputs.get()?.last_circuit_index_selector)
+      })?;
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -189,15 +207,19 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       })
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
-    // Allocate the running instance
-    let U: AllocatedRelaxedR1CSInstanceSuperNova<G> = AllocatedRelaxedR1CSInstanceSuperNova::alloc(
-      cs.namespace(|| "Allocate U"),
-      self.inputs.get().map_or(None, |inputs| {
-        inputs.U.get().map_or(None, |U| Some(U.clone()))
-      }),
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;
+    // Allocate the running instances
+    let U = (0..u_i_length)
+      .map(|i| {
+        AllocatedRelaxedR1CSInstanceSuperNova::alloc(
+          cs.namespace(|| format!("Allocate U {:?}", i)),
+          self.inputs.get().map_or(None, |inputs| {
+            inputs.U.get().map_or(None, |U| U.get(i).cloned())
+          }),
+          self.params.limb_width,
+          self.params.n_limbs,
+        )
+      })
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
 
     // Allocate the instance to be folded in
     let u = AllocatedR1CSInstanceSuperNova::alloc(
@@ -215,7 +237,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       }),
     )?;
 
-    Ok((params, i, z_0, z_i, U, u, T, program_counter, output_U_i))
+    Ok((
+      params,
+      params_next,
+      i,
+      z_0,
+      z_i,
+      U,
+      u,
+      T,
+      program_counter,
+      last_circuit_index_selector,
+    ))
   }
 
   /// Synthesizes base case and returns the new relaxed R1CSInstance
@@ -223,22 +256,54 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstanceSuperNova<G>,
-  ) -> Result<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError> {
-    let U_default: AllocatedRelaxedR1CSInstanceSuperNova<G> = if self.params.is_primary_circuit {
-      // The primary circuit just returns the default R1CS instance
-      AllocatedRelaxedR1CSInstanceSuperNova::default(
-        cs.namespace(|| "Allocate U_default"),
-        self.params.limb_width,
-        self.params.n_limbs,
-      )?
+    last_circuit_index_selector: &AllocatedNum<G::Base>,
+    u_i_length: usize,
+  ) -> Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, SynthesisError> {
+    let mut cs = cs.namespace(|| "alloc U_i default");
+
+    // The primary circuit just initialize default AllocatedRelaxedR1CSInstanceSuperNova
+    let U_default = if self.params.is_primary_circuit {
+      (0..u_i_length)
+        .map(|i| {
+          AllocatedRelaxedR1CSInstanceSuperNova::default(
+            cs.namespace(|| format!("Allocate U_default {:?}", i)),
+            self.params.limb_width,
+            self.params.n_limbs,
+          )
+        })
+        .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?
     } else {
-      // The secondary circuit returns the incoming R1CS instance
-      AllocatedRelaxedR1CSInstanceSuperNova::from_r1cs_instance(
-        cs.namespace(|| "Allocate U_default"),
+      // The secondary circuit convert the incoming R1CS instance on index which match circuit index
+      let imcomming_r1cs = AllocatedRelaxedR1CSInstanceSuperNova::from_r1cs_instance(
+        cs.namespace(|| "Allocate imcomming_r1cs"),
         u,
         self.params.limb_width,
         self.params.n_limbs,
-      )?
+      )?;
+      (0..u_i_length)
+        .map(|i| {
+          let i_alloc =
+            AllocatedNum::alloc(cs.namespace(|| format!("i allocated on {:?}", i)), || {
+              Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
+            })?;
+          let equal_bit = Boolean::from(alloc_num_equals(
+            cs.namespace(|| format!("check equal bit {:?}", i)),
+            &i_alloc,
+            &last_circuit_index_selector,
+          )?);
+          let default = &AllocatedRelaxedR1CSInstanceSuperNova::default(
+            cs.namespace(|| format!("Allocate U_default {:?}", i)),
+            self.params.limb_width,
+            self.params.n_limbs,
+          )?;
+          conditionally_select_relaxed_r1cs_supernova(
+            cs.namespace(|| format!("select on index namespace {:?}", i)),
+            &imcomming_r1cs,
+            default,
+            &equal_bit,
+          )
+        })
+        .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?
     };
     Ok(U_default)
   }
@@ -253,64 +318,93 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     i: AllocatedNum<G::Base>,
     z_0: Vec<AllocatedNum<G::Base>>,
     z_i: Vec<AllocatedNum<G::Base>>,
-    U: AllocatedRelaxedR1CSInstanceSuperNova<G>,
+    U: &Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>,
     u: AllocatedR1CSInstanceSuperNova<G>,
     T: AllocatedPoint<G>,
     arity: usize,
-    u_i_length: usize,
+    last_circuit_index_selector: &AllocatedNum<G::Base>,
     program_counter: AllocatedNum<G::Base>,
-    output_U_i: Vec<AllocatedNum<G::Base>>,
   ) -> Result<(AllocatedRelaxedR1CSInstanceSuperNova<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * arity,
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
     );
     ro.absorb(params.clone());
     ro.absorb(i);
+    ro.absorb(program_counter.clone());
+    // NOTE only witness and DO NOT need to constrain last_circuit_index_selector.
+    // Because prover can only make valid IVC proof by folding u into correct U_i[last_circuit_index_selector]
+
     for e in &z_0 {
       ro.absorb(e.clone());
     }
     for e in &z_i {
       ro.absorb(e.clone());
     }
-    U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+
+    U.iter().enumerate().try_for_each(|(i, U)| {
+      U.absorb_in_ro(cs.namespace(|| format!("absorb U {:?}", i)), &mut ro)
+    })?;
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
-    let check_pass1: AllocatedBit = alloc_num_equals(
+    let check_pass: AllocatedBit = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       &u.X0,
       &hash,
     )?;
 
-    // Check that u.x[1] = Hash(program_counter, zi, U_i)
-    // let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
-    let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
-    ro2.absorb(program_counter.clone());
-    for e in &z_i {
-      ro2.absorb(e.clone());
-    }
-    for e in &output_U_i {
-      ro2.absorb(e.clone());
-    }
-
-    let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "Input U_i hash"), NUM_HASH_BITS)?;
-    let supernova_hash = le_bits_to_num(cs.namespace(|| "bits to U_i hash"), supernova_hash_bits)?;
-    let check_pass2 = alloc_num_equals(
-      cs.namespace(|| "check consistency of u.X[1] with H(program_counter, zi, U_i)"),
-      &u.X1,
-      &supernova_hash,
-    )?;
-
-    let check_pass = AllocatedBit::and(
-      cs.namespace(|| "all check must pass"),
-      &check_pass1,
-      &check_pass2,
-    )?;
-
     // Run NIFS Verifier
-    let U_fold = U.fold_with_r1cs(
+    let empty_U = AllocatedRelaxedR1CSInstanceSuperNova::alloc(
+      cs.namespace(|| "empty U"),
+      None,
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
+    // select target when index match or empty
+    let U: Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, SynthesisError> = U
+      .iter()
+      .enumerate()
+      .map(|(i, U)| {
+        let i_alloc =
+          AllocatedNum::alloc(cs.namespace(|| format!("U_i i{:?} allocated", i)), || {
+            Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
+          })?;
+        let equal_bit = Boolean::from(alloc_num_equals(
+          cs.namespace(|| format!("check U {:?} equal bit", i)),
+          &i_alloc,
+          &last_circuit_index_selector,
+        )?);
+        conditionally_select_relaxed_r1cs_supernova(
+          cs.namespace(|| format!("select on index namespace {:?}", i)),
+          &U,
+          &empty_U,
+          &equal_bit,
+        )
+      })
+      .collect();
+
+    // Here purely fold for all field is safe, because only 1 of them != G::Zero while other are all G::Zero
+    let U_to_fold = U?.iter().enumerate().try_fold(empty_U, |agg, (i, U)| {
+      Result::<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError>::Ok(
+        AllocatedRelaxedR1CSInstanceSuperNova {
+          W: agg
+            .W
+            .add(cs.namespace(|| format!("fold W {:?}", i)), &U.W)?,
+          E: agg
+            .E
+            .add(cs.namespace(|| format!("fold E {:?}", i)), &U.E)?,
+          u: {
+            let cs = cs.namespace(|| format!("fold u {:?}", i));
+            add_allocated_num(cs, &agg.u, &U.u)?
+          },
+          X0: agg.X0.add(&U.X0)?,
+          X1: agg.X1.add(&U.X1)?,
+        },
+      )
+    })?;
+    let U_fold = U_to_fold.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
       params,
       u,
@@ -327,10 +421,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   pub fn output_program_counter(&self) -> Option<G::Base> {
     self.inputs.as_ref().map(|inputs| inputs.program_counter)
   }
-  // The output U_i
-  pub fn output_U_i(&self) -> Option<Vec<G::Base>> {
-    self.inputs.as_ref().map(|inputs| inputs.output_U_i.clone())
-  }
 }
 
 impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNovaCircuit<G, SC> {
@@ -341,36 +431,67 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
     let arity = self.step_circuit.arity();
     let u_i_length = self.u_i_length;
 
+    // only support 2 circuit as a demo
+    assert_eq!(u_i_length, 2);
+
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T, program_counter, output_U_i) = self.alloc_witness(
-      cs.namespace(|| "allocate the circuit witness"),
-      arity,
-      u_i_length,
-    )?;
+    let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_circuit_index_selector) =
+      self.alloc_witness(
+        cs.namespace(|| "allocate the circuit witness"),
+        arity,
+        u_i_length,
+      )?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // Synthesize the circuit for the base case and get the new running instance
-    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
+    let Unew_base = self.synthesize_base_case(
+      cs.namespace(|| "base case"),
+      u.clone(),
+      &last_circuit_index_selector,
+      u_i_length,
+    )?;
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
-    let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
+    let (Unew_non_base_folded, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
       params.clone(),
       i.clone(),
       z_0.clone(),
       z_i.clone(),
-      U,
+      &U,
       u.clone(),
       T,
       arity,
-      u_i_length,
+      &last_circuit_index_selector,
       program_counter.clone(),
-      output_U_i.clone(),
     )?;
+
+    // update AllocatedRelaxedR1CSInstanceSuperNova on index match circuit index
+    let Unew_non_base: Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>> = U
+      .iter()
+      .enumerate()
+      .map(|(i, U)| {
+        let mut cs = cs.namespace(|| format!("U_i+1 non_base conditional selection {:?}", i));
+        let i_alloc = AllocatedNum::alloc(cs.namespace(|| "i allocated"), || {
+          Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
+        })?;
+        let equal_bit = Boolean::from(alloc_num_equals(
+          cs.namespace(|| "check equal bit"),
+          &i_alloc,
+          &last_circuit_index_selector,
+        )?);
+        conditionally_select_relaxed_r1cs_supernova(
+          cs.namespace(|| "select on index namespace"),
+          &Unew_non_base_folded,
+          &U,
+          &equal_bit,
+        )
+      })
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
 
     // Either check_non_base_pass=true or we are in the base case
     let should_be_false = AllocatedBit::nor(
@@ -386,11 +507,18 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
     );
 
     // Compute the U_new
-    let Unew = Unew_base.conditionally_select(
-      cs.namespace(|| "compute U_new"),
-      Unew_non_base,
-      &Boolean::from(is_base_case.clone()),
-    )?;
+    let Unew = Unew_non_base
+      .iter()
+      .enumerate()
+      .zip(Unew_base.iter())
+      .map(|((i, Unew_non_base), Unew_base)| {
+        Unew_base.conditionally_select(
+          cs.namespace(|| format!("compute U_new {:?}", i)),
+          Unew_non_base,
+          &Boolean::from(is_base_case.clone()),
+        )
+      })
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
@@ -432,28 +560,33 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       ));
     }
 
-    // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
+    // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_new)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 10 * arity,
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
     );
-    ro.absorb(params);
+    ro.absorb(params_next.clone());
     ro.absorb(i_new.clone());
+    ro.absorb(program_counter_new.clone());
     for e in &z_0 {
       ro.absorb(e.clone());
     }
     for e in &z_next {
       ro.absorb(e.clone());
     }
-    Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
+    Unew.iter().enumerate().try_for_each(|(i, U)| {
+      U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
+    })?;
+
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     /*
       To check correct sequencing we are just going to make a hash with PCI and
       z_{i+1}, U_i. The next RunningInstance can take the pre-image of the hash.
-      *Works much like Nova but with the hash being used outside of the F'[pci].
+      *Works much like Nova.
 
+      TODO: figure out below description still needed or not
       "Finally, there is a subtle sizing issue in the above description: in each step,
       because Ui+1 is produced as the public IO of F0 pci+1, it must be contained in
       the public IO of instance ui+1. In the next iteration, because ui+1 is folded
@@ -466,29 +599,11 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       https://eprint.iacr.org/2022/1758.pdf
     */
 
-    // Compute the SuperNova hash H(pci, z_{i+1}, U_i)
-    let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 2 + u_i_length * arity);
-    // let mut ro2 = G::ROCircuit::new(self.ro_consts.clone(), 3 * arity);
-    ro2.absorb(program_counter_new.clone());
-    for e in &z_next {
-      ro2.absorb(e.clone());
-    }
-    for e in output_U_i {
-      ro2.absorb(e.clone());
-    }
-    let supernova_hash_bits = ro2.squeeze(cs.namespace(|| "output hash U_i"), NUM_HASH_BITS)?;
-    let supernova_hash = le_bits_to_num(
-      cs.namespace(|| "convert U_i hash to num"),
-      supernova_hash_bits,
-    )?;
-    // Bypass unmodified hash/supernova_hash of other circuit as next X[0]/X[1]
-    // and output the computed the computed hash/supernova_hash as next X[2]/X[3]
-    u.X2
+    // Bypass unmodified hash of other circuit as next X[0]
+    // and output the computed the computed hash as next X[1]
+    u.X1
       .inputize(cs.namespace(|| "bypass unmodified hash of the other circuit"))?;
-    u.X3
-      .inputize(cs.namespace(|| "bypass unmodified supernova_hash of the other circuit"))?;
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
-    supernova_hash.inputize(cs.namespace(|| "output new supernova_hash of this circuit"))?;
 
     Ok(())
   }
@@ -528,7 +643,7 @@ mod tests {
         None,
         TrivialTestCircuit::default(),
         ro_consts1.clone(),
-        1,
+        2,
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -542,7 +657,7 @@ mod tests {
         None,
         TrivialTestCircuit::default(),
         ro_consts2.clone(),
-        1,
+        2,
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -554,6 +669,7 @@ mod tests {
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: CircuitInputs<G2> = CircuitInputs::new(
       scalar_as_base::<G1>(zero1), // pass zero for testing
+      scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
       vec![zero1],
       None,
@@ -561,7 +677,7 @@ mod tests {
       None,
       None,
       zero1,
-      vec![zero1],
+      zero1,
     );
     let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
@@ -569,7 +685,7 @@ mod tests {
         Some(inputs1),
         TrivialTestCircuit::default(),
         ro_consts1,
-        1,
+        2,
       );
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
@@ -581,6 +697,7 @@ mod tests {
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: CircuitInputs<G1> = CircuitInputs::new(
       scalar_as_base::<G2>(zero2), // pass zero for testing
+      scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,
       vec![zero2],
       None,
@@ -588,7 +705,7 @@ mod tests {
       Some(inst1),
       None,
       zero2,
-      vec![zero2],
+      zero2,
     );
     let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
@@ -596,7 +713,7 @@ mod tests {
         Some(inputs2),
         TrivialTestCircuit::default(),
         ro_consts2,
-        1,
+        2,
       );
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
@@ -612,7 +729,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 18161, 19221,
+      params1, params2, ro_consts1, ro_consts2, 11866, 12436,
     );
   }
 }

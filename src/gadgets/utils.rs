@@ -1,5 +1,8 @@
 //! This module implements various low-level gadgets
-use super::nonnative::bignat::{nat_to_limbs, BigNat};
+use super::{
+  ecc::AllocatedPoint,
+  nonnative::bignat::{nat_to_limbs, BigNat},
+};
 use crate::traits::Group;
 use bellperson::{
   gadgets::{
@@ -430,5 +433,22 @@ pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
     |lc| lc + c.get_variable() - CS::one(),
   );
 
+  Ok(c)
+}
+
+pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  a: &AllocatedNum<F>,
+  b: &AllocatedNum<F>,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let c = AllocatedNum::alloc(cs.namespace(|| "c"), || {
+    Ok(*a.get_value().get()? + b.get_value().get()?)
+  })?;
+  cs.enforce(
+    || "Check u_fold",
+    |lc| lc,
+    |lc| lc,
+    |lc| lc + c.get_variable() - a.get_variable() - b.get_variable(),
+  );
   Ok(c)
 }

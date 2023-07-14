@@ -13,13 +13,15 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit},
+  traits::{
+    commitment::CommitmentTrait, AbsorbInROTrait, Group, ROCircuitTrait, ROConstantsCircuit,
+  },
 };
 use bellperson::{
   gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
   ConstraintSystem, SynthesisError,
 };
-use ff::Field;
+use ff::{Field, PrimeField};
 
 /// An Allocated R1CS Instance
 #[derive(Clone)]
@@ -383,8 +385,6 @@ pub struct AllocatedR1CSInstanceSuperNova<G: Group> {
   pub(crate) W: AllocatedPoint<G>,
   pub(crate) X0: AllocatedNum<G::Base>,
   pub(crate) X1: AllocatedNum<G::Base>,
-  pub(crate) X2: AllocatedNum<G::Base>,
-  pub(crate) X3: AllocatedNum<G::Base>,
 }
 
 impl<G: Group> AllocatedR1CSInstanceSuperNova<G> {
@@ -407,16 +407,8 @@ impl<G: Group> AllocatedR1CSInstanceSuperNova<G> {
       cs.namespace(|| "allocate X[1]"),
       u.get().map_or(None, |u| Some(u.X[1])),
     )?;
-    let X2 = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "allocate X[2]"),
-      u.get().map_or(None, |u| Some(u.X[2])),
-    )?;
-    let X3 = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "allocate X[3]"),
-      u.get().map_or(None, |u| Some(u.X[3])),
-    )?;
 
-    Ok(AllocatedR1CSInstanceSuperNova { W, X0, X1, X2, X3 })
+    Ok(AllocatedR1CSInstanceSuperNova { W, X0, X1 })
   }
 
   /// Absorb the provided instance in the RO
@@ -426,8 +418,6 @@ impl<G: Group> AllocatedR1CSInstanceSuperNova<G> {
     ro.absorb(self.W.is_infinity.clone());
     ro.absorb(self.X0.clone());
     ro.absorb(self.X1.clone());
-    ro.absorb(self.X2.clone());
-    ro.absorb(self.X3.clone());
   }
 }
 
@@ -437,8 +427,6 @@ pub struct AllocatedRelaxedR1CSInstanceSuperNova<G: Group> {
   pub(crate) u: AllocatedNum<G::Base>,
   pub(crate) X0: BigNat<G::Base>,
   pub(crate) X1: BigNat<G::Base>,
-  pub(crate) X2: BigNat<G::Base>,
-  pub(crate) X3: BigNat<G::Base>,
 }
 
 impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
@@ -493,37 +481,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
       n_limbs,
     )?;
 
-    let X2 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[2]"),
-      || {
-        Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[2]),
-        ))
-      },
-      limb_width,
-      n_limbs,
-    )?;
-
-    let X3 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[3]"),
-      || {
-        Ok(f_to_nat(
-          &inst.clone().map_or(G::Scalar::ZERO, |inst| inst.X[3]),
-        ))
-      },
-      limb_width,
-      n_limbs,
-    )?;
-
-    Ok(AllocatedRelaxedR1CSInstanceSuperNova {
-      W,
-      E,
-      u,
-      X0,
-      X1,
-      X2,
-      X3,
-    })
+    Ok(AllocatedRelaxedR1CSInstanceSuperNova { W, E, u, X0, X1 })
   }
 
   /// Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
@@ -552,29 +510,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
       n_limbs,
     )?;
 
-    let X2 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate x_default[2]"),
-      || Ok(f_to_nat(&G::Scalar::ZERO)),
-      limb_width,
-      n_limbs,
-    )?;
-
-    let X3 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate x_default[3]"),
-      || Ok(f_to_nat(&G::Scalar::ZERO)),
-      limb_width,
-      n_limbs,
-    )?;
-
-    Ok(AllocatedRelaxedR1CSInstanceSuperNova {
-      W,
-      E,
-      u,
-      X0,
-      X1,
-      X2,
-      X3,
-    })
+    Ok(AllocatedRelaxedR1CSInstanceSuperNova { W, E, u, X0, X1 })
   }
 
   /// Allocates the R1CS Instance as a RelaxedR1CSInstance in the circuit.
@@ -603,28 +539,12 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
       n_limbs,
     )?;
 
-    let X2 = BigNat::from_num(
-      cs.namespace(|| "allocate X2 from relaxed r1cs"),
-      Num::from(inst.X2.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
-    let X3 = BigNat::from_num(
-      cs.namespace(|| "allocate X3 from relaxed r1cs"),
-      Num::from(inst.X3.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
     Ok(AllocatedRelaxedR1CSInstanceSuperNova {
       W: inst.W,
       E,
       u,
       X0,
       X1,
-      X2,
-      X3,
     })
   }
 
@@ -674,38 +594,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
       ro.absorb(limb);
     }
 
-    // Analyze X2 as limbs
-    let X2_bn = self
-      .X2
-      .as_limbs()
-      .iter()
-      .enumerate()
-      .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[2] to num")))
-      })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
-
-    // absorb each of the limbs of X[2]
-    for limb in X2_bn.into_iter() {
-      ro.absorb(limb);
-    }
-
-    // Analyze X3 as limbs
-    let X3_bn = self
-      .X3
-      .as_limbs()
-      .iter()
-      .enumerate()
-      .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[3] to num")))
-      })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
-
-    // absorb each of the limbs of X[3]
-    for limb in X3_bn.into_iter() {
-      ro.absorb(limb);
-    }
-
     Ok(())
   }
 
@@ -723,9 +611,13 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
   ) -> Result<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError> {
     // Compute r:
     let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO_SUPERNOVA);
+    // params
     ro.absorb(params);
+    // U
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
+    // u
     u.absorb_in_ro(&mut ro);
+    // T
     ro.absorb(T.x.clone());
     ro.absorb(T.y.clone());
     ro.absorb(T.is_infinity.clone());
@@ -798,44 +690,12 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
     // Now reduce
     let X1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X[1]"), &m_bn)?;
 
-    // Analyze X2 to bignat
-    let X2_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X2_bn"),
-      Num::from(u.X2.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
-    // Fold self.X[2] + r * X[2]
-    let (_, r_2) = X2_bn.mult_mod(cs.namespace(|| "r*X[2]"), &r_bn, &m_bn)?;
-    // add X_r[1]
-    let r_new_2 = self.X2.add(&r_2)?;
-    // Now reduce
-    let X2_fold = r_new_2.red_mod(cs.namespace(|| "reduce folded X[2]"), &m_bn)?;
-
-    // Analyze X3 to bignat
-    let X3_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X3_bn"),
-      Num::from(u.X3.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
-    // Fold self.X[3] + r * X[3]
-    let (_, r_3) = X3_bn.mult_mod(cs.namespace(|| "r*X[3]"), &r_bn, &m_bn)?;
-    // add X_r[3]
-    let r_new_3 = self.X3.add(&r_3)?;
-    // Now reduce
-    let X3_fold = r_new_3.red_mod(cs.namespace(|| "reduce folded X[3]"), &m_bn)?;
-
     Ok(Self {
       W: W_fold,
       E: E_fold,
       u: u_fold,
       X0: X0_fold,
       X1: X1_fold,
-      X2: X2_fold,
-      X3: X3_fold,
     })
   }
 
@@ -843,7 +703,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
   pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    other: AllocatedRelaxedR1CSInstanceSuperNova<G>,
+    other: &AllocatedRelaxedR1CSInstanceSuperNova<G>,
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError> {
     let W = AllocatedPoint::conditionally_select(
@@ -881,28 +741,46 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
       condition,
     )?;
 
-    let X2 = conditionally_select_bignat(
-      cs.namespace(|| "X[2] = cond ? self.X[2] : other.X[2]"),
-      &self.X2,
-      &other.X2,
-      condition,
-    )?;
-
-    let X3 = conditionally_select_bignat(
-      cs.namespace(|| "X[3] = cond ? self.X[3] : other.X[3]"),
-      &self.X3,
-      &other.X3,
-      condition,
-    )?;
-
-    Ok(AllocatedRelaxedR1CSInstanceSuperNova {
-      W,
-      E,
-      u,
-      X0,
-      X1,
-      X2,
-      X3,
-    })
+    Ok(AllocatedRelaxedR1CSInstanceSuperNova { W, E, u, X0, X1 })
   }
+}
+
+/// If condition return a otherwise b
+pub fn conditionally_select_relaxed_r1cs_supernova<
+  G: Group,
+  CS: ConstraintSystem<<G as Group>::Base>,
+>(
+  mut cs: CS,
+  a: &AllocatedRelaxedR1CSInstanceSuperNova<G>,
+  b: &AllocatedRelaxedR1CSInstanceSuperNova<G>,
+  condition: &Boolean,
+) -> Result<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError> {
+  let c = AllocatedRelaxedR1CSInstanceSuperNova {
+    u: conditionally_select(cs.namespace(|| "selected u"), &a.u, &b.u, condition)?,
+    W: conditionally_select_point(cs.namespace(|| "selected W"), &a.W, &b.W, condition)?,
+    E: conditionally_select_point(cs.namespace(|| "selected E"), &a.E, &b.E, condition)?,
+    X0: conditionally_select_bignat(cs.namespace(|| "selected X0"), &a.X0, &b.X0, condition)?,
+    X1: conditionally_select_bignat(cs.namespace(|| "selected X1"), &a.X1, &b.X1, condition)?,
+  };
+  Ok(c)
+}
+
+/// If condition return a otherwise b
+pub fn conditionally_select_point<G: Group, CS: ConstraintSystem<<G as Group>::Base>>(
+  mut cs: CS,
+  a: &AllocatedPoint<G>,
+  b: &AllocatedPoint<G>,
+  condition: &Boolean,
+) -> Result<AllocatedPoint<G>, SynthesisError> {
+  let c = AllocatedPoint {
+    x: conditionally_select(cs.namespace(|| "selected point x"), &a.x, &b.x, condition)?,
+    y: conditionally_select(cs.namespace(|| "selected point y"), &a.y, &b.y, condition)?,
+    is_infinity: conditionally_select(
+      cs.namespace(|| "selected point is_infinity"),
+      &a.is_infinity,
+      &b.is_infinity,
+      condition,
+    )?,
+  };
+  Ok(c)
 }

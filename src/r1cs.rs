@@ -184,6 +184,7 @@ impl<G: Group> R1CSShape<G> {
   }
 
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
+  /// TODO R1CS shape support carry constrains string for better debug
   pub fn is_sat_relaxed(
     &self,
     ck: &CommitmentKey<G>,
@@ -203,7 +204,14 @@ impl<G: Group> R1CSShape<G> {
       assert_eq!(Cz.len(), self.num_cons);
 
       let res: usize = (0..self.num_cons)
-        .map(|i| usize::from(Az[i] * Bz[i] != U.u * Cz[i] + W.E[i]))
+        .map(|i| {
+          let res = usize::from(Az[i] * Bz[i] != U.u * Cz[i] + W.E[i]);
+          if res > 0 {
+            // error
+            println!("is_relaxed_sat relation failed at index i {:?}", i)
+          }
+          res
+        })
         .sum();
 
       res == 0
@@ -248,7 +256,14 @@ impl<G: Group> R1CSShape<G> {
       assert_eq!(Cz.len(), self.num_cons);
 
       let res: usize = (0..self.num_cons)
-        .map(|i| usize::from(Az[i] * Bz[i] != Cz[i]))
+        .map(|i| {
+          let res = usize::from(Az[i] * Bz[i] != Cz[i]);
+          if res > 0 {
+            // error
+            println!("is_sat relation failed at index i {:?}", i)
+          }
+          res
+        })
         .sum();
 
       res == 0
