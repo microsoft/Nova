@@ -894,7 +894,7 @@ mod tests {
       The user sets a list 'Ui' of all of the functions that they plan on using. This is used as public input
       for the verifier.
     */
-    let U_i = [0, 1];
+    let rom = [0, 1, 1, 0, 1, 0, 0];
     let circuit_secondary = TrivialTestCircuit::default();
 
     // Structuring running claims
