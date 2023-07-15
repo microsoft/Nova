@@ -27,7 +27,7 @@ pub trait NovaShape<G: Group> {
   /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
   fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
   /// Return an appropriate `R1CSShape` without `CommitmentKey` structs.
-  fn r1cs_shape_without_commitkey(&self) -> (R1CSShape<G>, Vec<String>);
+  fn r1cs_shape_without_commitkey(&self) -> R1CSShape<G>;
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
@@ -52,6 +52,7 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
     let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
+    let mut constraints_path: Vec<String> = Vec::new();
 
     let mut num_cons_added = 0;
     let mut X = (&mut A, &mut B, &mut C, &mut num_cons_added);
@@ -68,13 +69,22 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
         &constraint.1,
         &constraint.2,
       );
+      constraints_path.push(constraint.3.clone());
     }
 
     assert_eq!(num_cons_added, num_constraints);
 
     let S: R1CSShape<G> = {
       // Don't count One as an input for shape's purposes.
-      let res = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, &A, &B, &C);
+      let res = R1CSShape::new(
+        num_constraints,
+        num_vars,
+        num_inputs - 1,
+        Some(constraints_path),
+        &A,
+        &B,
+        &C,
+      );
       res.unwrap()
     };
 
@@ -83,11 +93,11 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
     (S, ck)
   }
 
-  fn r1cs_shape_without_commitkey(&self) -> (R1CSShape<G>, Vec<String>) {
+  fn r1cs_shape_without_commitkey(&self) -> R1CSShape<G> {
     let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
-    let mut constrain_paths: Vec<String> = Vec::new();
+    let mut constraints_path: Vec<String> = Vec::new();
 
     let mut num_cons_added = 0;
     let mut X = (&mut A, &mut B, &mut C, &mut num_cons_added);
@@ -104,18 +114,26 @@ impl<G: Group> NovaShape<G> for ShapeCS<G> {
         &constraint.1,
         &constraint.2,
       );
-      constrain_paths.push(constraint.3.clone());
+      constraints_path.push(constraint.3.clone());
     }
 
     assert_eq!(num_cons_added, num_constraints);
 
     let S: R1CSShape<G> = {
       // Don't count One as an input for shape's purposes.
-      let res = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, &A, &B, &C);
+      let res = R1CSShape::new(
+        num_constraints,
+        num_vars,
+        num_inputs - 1,
+        Some(constraints_path),
+        &A,
+        &B,
+        &C,
+      );
       res.unwrap()
     };
 
-    (S, constrain_paths)
+    S
   }
 }
 

@@ -20,6 +20,9 @@ use crate::{
   Commitment, CommitmentKey, CompressedCommitment,
 };
 
+use crate::gadgets::utils::alloc_num_equals;
+use crate::gadgets::utils::conditionally_select;
+use bellperson::gadgets::boolean::Boolean;
 use core::marker::PhantomData;
 use ff::Field;
 use ff::PrimeField;
@@ -91,8 +94,6 @@ where
   augmented_circuit_params_primary: CircuitParams,
   augmented_circuit_params_secondary: CircuitParams,
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
-  constrain_paths_primary: Vec<String>,
-  constrain_paths_secondary: Vec<String>,
 }
 
 impl<G1, G2> PublicParams<G1, G2>
@@ -104,7 +105,7 @@ where
   pub fn setup_without_commitkey<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     c_primary: C1,
     c_secondary: C2,
-    output_U_i_length: usize,
+    u_i_length: usize,
   ) -> Self where {
     let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
@@ -125,13 +126,13 @@ where
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
-      output_U_i_length,
+      u_i_length,
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
 
     // We use the largest commitment_key for all instances
-    let (r1cs_shape_primary, constrain_paths_primary) = cs.r1cs_shape_without_commitkey();
+    let r1cs_shape_primary = cs.r1cs_shape_without_commitkey();
 
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
@@ -139,12 +140,12 @@ where
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
-      output_U_i_length,
+      u_i_length,
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
 
-    let (r1cs_shape_secondary, constrain_paths_secondary) = cs.r1cs_shape_without_commitkey();
+    let r1cs_shape_secondary = cs.r1cs_shape_without_commitkey();
 
     let mut pp = Self {
       F_arity_primary,
@@ -160,8 +161,6 @@ where
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
       digest: G1::Scalar::ZERO, // digest will be set later once commitkey ready
-      constrain_paths_primary,
-      constrain_paths_secondary,
     };
 
     pp
@@ -695,7 +694,7 @@ where
   fn execute_and_verify_circuits<C1, C2>(
     circuit_index: usize,
     u_i_length: usize, // total number of F' circuit
-    mut running_claim: RunningClaim<G1, G2, C1, C2>,
+    running_claim: RunningClaim<G1, G2, C1, C2>,
     ck_primary: &CommitmentKey<G1>,
     ck_secondary: &CommitmentKey<G2>,
     last_running_instance: Option<NivcSNARK<G1, G2>>,
@@ -718,15 +717,13 @@ where
       .as_ref()
       .map(|last_nivcsnark| last_nivcsnark.program_counter)
       .unwrap_or_default();
-    let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> =
-      Err(NovaError::InvalidInitialInputLength);
 
     let res = NivcSNARK::prove_step(
       circuit_index,
       u_i_length,
       program_counter,
       &running_claim.params,
-      last_running_instance,
+      recursive_snark,
       running_claim.claim.clone(),
       running_claim.circuit_secondary.clone(),
       vec![<G1 as Group>::Scalar::ONE],
@@ -758,7 +755,7 @@ where
     }
     assert!(res.is_ok());
     let (zi_primary, zi_secondary, program_counter) = res.unwrap();
-    final_result = Ok((zi_primary, zi_secondary, program_counter));
+    let final_result = Ok((zi_primary, zi_secondary, program_counter));
     // Set the running variable for the next iteration
     recursive_snark = Some(recursive_snark_unwrapped);
 
@@ -777,15 +774,94 @@ where
 mod tests {
   use std::cmp::Ordering;
 
-  use crate::r1cs::R1CS;
+  use crate::{
+    gadgets::utils::{add_allocated_num, alloc_zero},
+    r1cs::R1CS,
+  };
 
   use super::*;
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 
+  fn constraint_curcuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
+    mut cs: CS,
+    z: &[AllocatedNum<F>],
+    circuit_index: usize,
+    rom_offset: usize,
+    pc_index: usize,
+  ) -> Result<(), SynthesisError> {
+    let pc = &z[pc_index]; // pc on index 1
+    let circuit_index = AllocatedNum::alloc(cs.namespace(|| "circuit_index"), || {
+      Ok(F::from(circuit_index as u64))
+    })?;
+    let pc_offset_in_z = AllocatedNum::alloc(cs.namespace(|| "pc_offset_in_z"), || {
+      Ok(pc.get_value().unwrap() + F::from(rom_offset as u64))
+    })?;
+
+    // select target when index match or empty
+    let zero = alloc_zero(cs.namespace(|| "zero"))?;
+    let _selected_circuit_index = z
+      .iter()
+      .enumerate()
+      .map(|(i, z)| {
+        let i_alloc = AllocatedNum::alloc(
+          cs.namespace(|| format!("_selected_circuit_index i{:?} allocated", i)),
+          || Ok(F::from(i as u64)),
+        )?;
+        let equal_bit = Boolean::from(alloc_num_equals(
+          cs.namespace(|| format!("check selected_circuit_index {:?} equal bit", i)),
+          &i_alloc,
+          &pc_offset_in_z,
+        )?);
+        conditionally_select(
+          cs.namespace(|| format!("select on index namespace {:?}", i)),
+          &z,
+          &zero,
+          &equal_bit,
+        )
+      })
+      .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
+
+    let selected_circuit_index =
+      _selected_circuit_index
+        .iter()
+        .enumerate()
+        .try_fold(zero, |agg, (i, _circuit_index)| {
+          add_allocated_num(
+            cs.namespace(|| format!("selected_circuit_index {:?}", i)),
+            _circuit_index,
+            &agg,
+          )
+        })?;
+
+    cs.enforce(
+      || "selected_circuit_index == circuit_index",
+      |lc| lc + selected_circuit_index.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc + circuit_index.get_variable(),
+    );
+
+    Ok(())
+  }
+
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
     _p: PhantomData<F>,
+    circuit_index: usize,
+    rom_size: usize,
+  }
+
+  impl<F> CubicCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn new(circuit_index: usize, rom_size: usize) -> Self {
+      CubicCircuit {
+        circuit_index,
+        rom_size,
+        _p: PhantomData,
+      }
+    }
   }
 
   impl<F> StepCircuit<F> for CubicCircuit<F>
@@ -793,7 +869,7 @@ mod tests {
     F: PrimeField,
   {
     fn arity(&self) -> usize {
-      1
+      1 + 1 + self.rom_size // value + pc + rom[].len()
     }
 
     fn synthesize<CS: ConstraintSystem<F>>(
@@ -801,6 +877,14 @@ mod tests {
       cs: &mut CS,
       z: &[AllocatedNum<F>],
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      // constrain rom[pc] equal to `self.circuit_index`
+      constraint_curcuit_index(
+        cs.namespace(|| "CubicCircuit argumented circuit constraint"),
+        z,
+        self.circuit_index,
+        2,
+        1,
+      )?;
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
       let x_sq = x.square(cs.namespace(|| "x_sq"))?;
@@ -835,6 +919,21 @@ mod tests {
   #[derive(Clone, Debug, Default)]
   struct SquareCircuit<F: PrimeField> {
     _p: PhantomData<F>,
+    circuit_index: usize,
+    rom_size: usize,
+  }
+
+  impl<F> SquareCircuit<F>
+  where
+    F: PrimeField,
+  {
+    fn new(circuit_index: usize, rom_size: usize) -> Self {
+      SquareCircuit {
+        circuit_index,
+        rom_size,
+        _p: PhantomData,
+      }
+    }
   }
 
   impl<F> StepCircuit<F> for SquareCircuit<F>
@@ -842,7 +941,7 @@ mod tests {
     F: PrimeField,
   {
     fn arity(&self) -> usize {
-      1
+      1 + 1 + self.rom_size // value + pc + rom[].len()
     }
 
     fn synthesize<CS: ConstraintSystem<F>>(
@@ -850,6 +949,15 @@ mod tests {
       cs: &mut CS,
       z: &[AllocatedNum<F>],
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      // constrain rom[pc] equal to `self.circuit_index`
+      constraint_curcuit_index(
+        cs.namespace(|| "SquareCircuit argumented circuit constraint"),
+        z,
+        self.circuit_index,
+        2,
+        1,
+      )?;
+
       // Consider an equation: `x^2 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
       let x_sq = x.square(cs.namespace(|| "x_sq"))?;
@@ -890,29 +998,40 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     /*
-      'Let the corresponding NIVC proof be Πi , which consists of a vector of ` instances Ui..' pg.15
-      The user sets a list 'Ui' of all of the functions that they plan on using. This is used as public input
-      for the verifier.
+      Here demo that to set a public input `rom` (like a program), and program counter initially point to 0
+      Assume rom is at fixed size of 8
+      Each
     */
-    let rom = [0, 1, 1, 0, 1, 0, 0];
+    let rom = [0, 1, 1, 0, 1, 0, 0, 1]; // rom can be arbitary string
     let circuit_secondary = TrivialTestCircuit::default();
+    let num_of_argumented_circuit = 2;
 
     // Structuring running claims
-    let test_circuit1 = CubicCircuit::default();
+    let mut test_circuit1 = CubicCircuit::new(0, rom.len());
     let mut running_claim1 = RunningClaim::<
       G1,
       G2,
       CubicCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::new(test_circuit1, circuit_secondary.clone(), true, U_i.len());
+    >::new(
+      test_circuit1,
+      circuit_secondary.clone(),
+      true,
+      num_of_argumented_circuit,
+    );
 
-    let test_circuit2 = SquareCircuit::default();
+    let mut test_circuit2 = SquareCircuit::new(1, rom.len());
     let mut running_claim2 = RunningClaim::<
       G1,
       G2,
       SquareCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::new(test_circuit2, circuit_secondary.clone(), false, U_i.len());
+    >::new(
+      test_circuit2,
+      circuit_secondary.clone(),
+      false,
+      num_of_argumented_circuit,
+    );
 
     // generate the commitkey from largest F' size circuit and reused it for all circuits
     let circuit_public_params = vec![&running_claim1.params, &running_claim2.params];
@@ -939,8 +1058,8 @@ mod tests {
     running_claim1.params.digest =
       compute_digest::<G1, PublicParams<G1, G2>>(&running_claim1.params);
 
-    running_claim2.params.ck_primary = Some(ck_primary);
-    running_claim2.params.ck_secondary = Some(ck_secondary);
+    running_claim2.params.ck_primary = Some(ck_primary.clone());
+    running_claim2.params.ck_secondary = Some(ck_secondary.clone());
     running_claim2.params.digest =
       compute_digest::<G1, PublicParams<G1, G2>>(&running_claim2.params);
 
@@ -1003,11 +1122,6 @@ mod tests {
     let num_steps = 10;
     let mut program_counter: usize = 0;
     let mut recursive_snark: Option<NivcSNARK<G1, G2>> = None;
-    // we use first F'circuit commitkey as major commitkey
-    let (ck_primary, ck_secondary) = (
-      running_claim1.clone().params.ck_primary.unwrap(),
-      running_claim1.clone().params.ck_secondary.unwrap(),
-    );
     let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, usize), NovaError> =
       Err(NovaError::InvalidInitialInputLength);
 
@@ -1019,7 +1133,7 @@ mod tests {
       let (nivc_snark, result) = match selector {
         0 => NivcSNARK::execute_and_verify_circuits(
           selector,
-          2, // FIXME: remove hardcode number of circuit
+          num_of_argumented_circuit,
           running_claim1.clone(),
           &ck_primary,
           &ck_secondary,
@@ -1028,7 +1142,7 @@ mod tests {
         .unwrap(),
         1 => NivcSNARK::execute_and_verify_circuits(
           selector,
-          2, // FIXME: remove hardcode number of circuit
+          num_of_argumented_circuit,
           running_claim2.clone(),
           &ck_primary,
           &ck_secondary,

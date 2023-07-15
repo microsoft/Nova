@@ -328,7 +328,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
+      35, // FIXME NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -441,6 +441,16 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
         arity,
         u_i_length,
       )?;
+
+    // for all num-trivial circuit, constrain z_i[1] to be pc
+    if z_i.len() >= 2 {
+      cs.enforce(
+        || "z_i[1] == pc",
+        |lc| lc + z_i[1].get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + program_counter.get_variable(),
+      );
+    }
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
@@ -563,7 +573,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
     // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_new)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
+      35, // NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
     );
     ro.absorb(params_next.clone());
     ro.absorb(i_new.clone());
