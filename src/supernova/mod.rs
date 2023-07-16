@@ -401,18 +401,34 @@ where
         // snark program_counter iteration is equal to pci
         assert!(r_snark.program_counter == program_counter);
         // fold the secondary circuit's instance
-        let (nifs_secondary, (r_U_secondary_next, r_W_secondary_next)) = NIFS::prove_supernova(
+        let (nifs_secondary, (r_U_secondary_folded, r_W_secondary_folded)) = NIFS::prove(
           ck_secondary,
           &pp.ro_consts_secondary,
           &scalar_as_base::<G1>(r_snark.pp_digest),
           &pp.r1cs_shape_secondary,
-          r_snark.last_circuit_index_selector,
-          // FIXME: r_U_secondary should be r_U_primary, r_W_secondary should be r_W_primary
-          r_snark.r_U_secondary.clone(),
-          r_snark.r_W_secondary.clone(),
+          &r_snark
+            .r_U_secondary
+            .get(r_snark.last_circuit_index_selector)
+            .unwrap_or(&None)
+            .clone()
+            .unwrap_or_else(|| {
+              RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
+            }),
+          &r_snark
+            .r_W_secondary
+            .get(r_snark.last_circuit_index_selector)
+            .unwrap_or(&None)
+            .clone()
+            .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary)),
           &r_snark.l_u_secondary,
           &r_snark.l_w_secondary,
         )?;
+
+        // clone and updated running instance on respective circuit_index
+        let mut r_U_secondary_next = r_snark.r_U_secondary.to_vec();
+        r_U_secondary_next[r_snark.last_circuit_index_selector] = Some(r_U_secondary_folded);
+        let mut r_W_secondary_next = r_snark.r_W_secondary.to_vec();
+        r_W_secondary_next[r_snark.last_circuit_index_selector] = Some(r_W_secondary_folded);
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
@@ -452,17 +468,32 @@ where
           .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
           .map_err(|_e| NovaError::UnSat)?;
 
-        let (nifs_primary, (r_U_primary_next, r_W_primary_next)) = NIFS::prove_supernova(
+        let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
           ck_primary,
           &pp.ro_consts_primary,
           &r_snark.pp_digest,
           &pp.r1cs_shape_primary,
-          circuit_index,
-          r_snark.r_U_primary.to_vec(),
-          r_snark.r_W_primary.to_vec(),
+          &r_snark
+            .r_U_primary
+            .get(circuit_index)
+            .unwrap_or(&None)
+            .clone()
+            .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
+          &r_snark
+            .r_W_primary
+            .get(circuit_index)
+            .unwrap_or(&None)
+            .clone()
+            .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
           &l_u_primary,
           &l_w_primary,
         )?;
+
+        // clone and updated running instance on respective circuit_index
+        let mut r_U_primary_next = r_snark.r_U_primary.to_vec();
+        r_U_primary_next[circuit_index] = Some(r_U_primary_folded);
+        let mut r_W_primary_next = r_snark.r_W_primary.to_vec();
+        r_W_primary_next[circuit_index] = Some(r_W_primary_folded);
 
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(

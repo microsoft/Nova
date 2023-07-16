@@ -1,7 +1,5 @@
 //! This module implements various low-level gadgets
-use super::{
-  nonnative::bignat::{nat_to_limbs, BigNat},
-};
+use super::nonnative::bignat::{nat_to_limbs, BigNat};
 use crate::traits::Group;
 use bellperson::{
   gadgets::{

@@ -3,7 +3,7 @@
 #![allow(clippy::type_complexity)]
 
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_SUPERNOVA},
+  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
@@ -112,107 +112,6 @@ impl<G: Group> NIFS<G> {
 
     // return the folded instance
     Ok(U)
-  }
-
-  //Supernova has more public inputs and outputs.
-  #[allow(clippy::too_many_arguments)]
-  pub fn prove_supernova(
-    ck: &CommitmentKey<G>,
-    ro_consts: &ROConstants<G>,
-    pp_digest: &G::Scalar,
-    S: &R1CSShape<G>,
-    last_circuit_index_selector: usize,
-    U1: Vec<Option<RelaxedR1CSInstance<G>>>,
-    W1: Vec<Option<RelaxedR1CSWitness<G>>>,
-    U2: &R1CSInstance<G>,
-    W2: &R1CSWitness<G>,
-  ) -> Result<
-    (
-      NIFS<G>,
-      (
-        Vec<Option<RelaxedR1CSInstance<G>>>,
-        Vec<Option<RelaxedR1CSWitness<G>>>,
-      ),
-    ),
-    NovaError,
-  > {
-    // initialize a new RO
-    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_SUPERNOVA);
-
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<G>(*pp_digest));
-
-    // append U1 and U2 to transcript
-    U1.get(last_circuit_index_selector)
-      .unwrap_or(&None)
-      .clone()
-      .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S))
-      .absorb_in_ro(&mut ro);
-
-    U2.absorb_in_ro(&mut ro);
-
-    // compute a commitment to the cross-term
-    let (T, comm_T) = S.commit_T(
-      ck,
-      &U1[last_circuit_index_selector]
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S)),
-      &W1[last_circuit_index_selector]
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSWitness::default(S)),
-      U2,
-      W2,
-    )?;
-
-    // append `comm_T` to the transcript and obtain a challenge
-    comm_T.absorb_in_ro(&mut ro);
-
-    // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
-
-    let mut U = U1.to_vec();
-    // fold the instance using `r` and `comm_T`
-    U[last_circuit_index_selector] = Some(
-      U1[last_circuit_index_selector]
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S))
-        .fold(U2, &comm_T, &r)?,
-    );
-    // let U_before_fold = U1[last_circuit_index_selector]
-    //   .clone()
-    //   .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
-    // println!(
-    //   "in nifs prover, U_to_fold W {:?} E {:?}",
-    //   U_before_fold.comm_W.to_coordinates(),
-    //   U_before_fold.comm_E.to_coordinates(),
-    // );
-    // println!("in nifs prover, U2 W {:?}", U2.comm_W.to_coordinates(),);
-    // let U_after_fold = U[last_circuit_index_selector]
-    //   .clone()
-    //   .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
-    // println!(
-    //   "in nifs prover, U AFTER fold W {:?} E {:?}",
-    //   U_after_fold.comm_W.to_coordinates(),
-    //   U_after_fold.comm_E.to_coordinates(),
-    // );
-
-    let mut W = W1.to_vec();
-    // fold the witness using `r` and `T`
-    W[last_circuit_index_selector] = Some(
-      W1[last_circuit_index_selector]
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSWitness::default(S))
-        .fold(W2, &T, &r)?,
-    );
-
-    // return the folded instance and witness
-    Ok((
-      Self {
-        comm_T: comm_T.compress(),
-        _p: Default::default(),
-      },
-      (U, W),
-    ))
   }
 }
 
