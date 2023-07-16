@@ -1,6 +1,5 @@
 //! This module implements various low-level gadgets
 use super::{
-  ecc::AllocatedPoint,
   nonnative::bignat::{nat_to_limbs, BigNat},
 };
 use crate::traits::Group;

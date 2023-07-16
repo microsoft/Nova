@@ -1,5 +1,4 @@
 //! This module defines errors returned by the library.
-use bellperson::SynthesisError;
 use core::fmt::Debug;
 use thiserror::Error;
 

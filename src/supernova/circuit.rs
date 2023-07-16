@@ -14,10 +14,8 @@
 //! H(params = H(shape, ck), i, z0, zi, U). Each circuit folds the last invocation of
 //! the other into the running instance
 
-use std::ops::Not;
-
 use crate::{
-  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  constants::NUM_HASH_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{
@@ -25,8 +23,8 @@ use crate::{
       AllocatedRelaxedR1CSInstanceSuperNova,
     },
     utils::{
-      add_allocated_num, alloc_bignat_constant, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
-      conditionally_select, conditionally_select_vec, le_bits_to_num, scalar_as_base,
+      add_allocated_num, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
+      conditionally_select_vec, le_bits_to_num, scalar_as_base,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -45,8 +43,6 @@ use bellperson::{
   Circuit, ConstraintSystem, SynthesisError,
 };
 use ff::Field;
-use itertools::Itertools;
-use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -336,6 +332,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(program_counter.clone());
+
     // NOTE only witness and DO NOT need to constrain last_circuit_index_selector.
     // Because prover can only make valid IVC proof by folding u into correct U_i[last_circuit_index_selector]
 
@@ -554,9 +551,10 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       &Boolean::from(is_base_case),
     )?;
 
-    let (program_counter_new, z_next) = self
-      .step_circuit
-      .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
+    let (program_counter_new, z_next) =
+      self
+        .step_circuit
+        .synthesize(&mut cs.namespace(|| "F"), &program_counter, &z_input)?;
 
     if z_next.len() != arity {
       return Err(SynthesisError::IncompatibleLengthVector(
@@ -564,12 +562,6 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       ));
     }
 
-    // println!(
-    //   "in circuit, i {:?}, program_counter = {:?}, params_next = {:?}",
-    //   i_new.get_value(),
-    //   program_counter_new.get_value(),
-    //   params_next.get_value(),
-    // );
     // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_new)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
@@ -581,27 +573,12 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     ro.absorb(i_new.clone());
     ro.absorb(program_counter_new.clone());
     for e in &z_0 {
-      // println!("in circuit z_0 {:?}", e.get_value(),);
       ro.absorb(e.clone());
     }
     for e in &z_next {
-      // println!("in circuit z_next {:?}", e.get_value(),);
       ro.absorb(e.clone());
     }
     Unew.iter().enumerate().try_for_each(|(i, U)| {
-      // println!(
-      //   "in circuit U i {:?}, U.X0 {:?}, U.X1 {:?}, U.W.x {:?}, U.W.y {:?}, U.W.is_infinity {:?}, U.E.x {:?}, U.E.y {:?}, U.E.is_infinity {:?},  U.u {:?}",
-      //   i,
-      //   U.X0.value,
-      //   U.X1.value,
-      //   U.W.x.get_value(),
-      //   U.W.y.get_value(),
-      //   U.W.is_infinity.get_value(),
-      //   U.E.x.get_value(),
-      //   U.E.y.get_value(),
-      //   U.E.is_infinity.get_value(),
-      //   U.u.get_value(),
-      // );
       U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
     })?;
 
@@ -609,11 +586,9 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
 
     /*
-      To check correct sequencing we are just going to make a hash with PCI and
-      z_{i+1}, U_i. The next RunningInstance can take the pre-image of the hash.
-      *Works much like Nova.
+      To check correct folding sequencing we are just going to make a hash.
+      The next RunningInstance can take the pre-image of the hash as witness.
 
-      TODO: figure out below description still needed or not
       "Finally, there is a subtle sizing issue in the above description: in each step,
       because Ui+1 is produced as the public IO of F0 pci+1, it must be contained in
       the public IO of instance ui+1. In the next iteration, because ui+1 is folded

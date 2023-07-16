@@ -36,6 +36,7 @@ pub trait SuperNovaStepCircuit<F: PrimeField>: Send + Sync + Clone {
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     cs: &mut CS,
+    pc: &AllocatedNum<F>,
     z: &[AllocatedNum<F>],
   ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError>;
 

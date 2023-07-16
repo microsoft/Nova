@@ -10,7 +10,6 @@ use crate::{
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
 };
-use bellperson::gadgets::Assignment;
 use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
@@ -214,37 +213,6 @@ impl<G: Group> NIFS<G> {
       },
       (U, W),
     ))
-  }
-
-  pub fn verify_supernova(
-    &self,
-    ro_consts: &ROConstants<G>,
-    pp_digest: &G::Scalar,
-    U1: &RelaxedR1CSInstance<G>,
-    U2: &R1CSInstance<G>,
-  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
-    // initialize a new RO
-    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_SUPERNOVA);
-
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<G>(*pp_digest));
-
-    // append U1 and U2 to transcript
-    U1.absorb_in_ro(&mut ro);
-    U2.absorb_in_ro(&mut ro);
-
-    // append `comm_T` to the transcript and obtain a challenge
-    let comm_T = Commitment::<G>::decompress(&self.comm_T)?;
-    comm_T.absorb_in_ro(&mut ro);
-
-    // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
-
-    // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
-
-    // return the folded instance
-    Ok(U)
   }
 }
 

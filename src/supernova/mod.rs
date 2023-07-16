@@ -1,32 +1,27 @@
 //! This library implements SuperNova, a Non-Uniform IVC based on Nova.
-#![allow(unused_imports)]
-#![allow(non_snake_case)]
 #![allow(dead_code)]
 
 use crate::ccs;
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{
-    circuit::SuperNovaStepCircuit,
-    circuit::SuperNovaTrivialTestCircuit,
-    commitment::{CommitmentEngineTrait, CommitmentTrait},
-    AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
+    circuit::SuperNovaStepCircuit, circuit::SuperNovaTrivialTestCircuit,
+    commitment::CommitmentTrait, AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit,
+    ROConstantsTrait, ROTrait,
   },
-  Commitment, CommitmentKey, CompressedCommitment,
+  Commitment, CommitmentKey,
 };
 
 use crate::gadgets::utils::alloc_num_equals;
 use crate::gadgets::utils::conditionally_select;
 use bellperson::gadgets::boolean::Boolean;
-use bitvec::macros::internal::funty::Fundamental;
 use core::marker::PhantomData;
 use ff::Field;
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
-use std::default;
 
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
@@ -149,7 +144,7 @@ where
 
     let r1cs_shape_secondary = cs.r1cs_shape_without_commitkey();
 
-    let mut pp = Self {
+    let pp = Self {
       F_arity_primary,
       F_arity_secondary,
       ro_consts_primary,
@@ -233,7 +228,7 @@ where
       circuit_secondary: circuit_secondary.clone(),
       largest,
       params: pp,
-      output_U_i_length: output_U_i_length,
+      output_U_i_length,
     }
   }
 }
@@ -309,12 +304,6 @@ where
           u_i_length,
         );
 
-        let pc_value: Option<G2::Base>;
-        if let Some(pc) = circuit_primary.output_program_counter() {
-          //println!("Program counter: {:?}", pc);
-          pc_value = Some(pc);
-        }
-
         let _ = circuit_primary
           .synthesize(&mut cs_primary)
           .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
@@ -382,7 +371,6 @@ where
         let mut r_U_primary_initial_list = (0..u_i_length)
           .map(|_| None)
           .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
-        println!("r_U_primary_initial_list circuit_index {:?}", circuit_index);
         r_U_primary_initial_list[circuit_index] = Some(r_U_primary);
 
         let mut r_W_secondary_initial_list = (0..u_i_length)
@@ -458,9 +446,7 @@ where
           pp.ro_consts_circuit_primary.clone(),
           u_i_length,
         );
-        if let Some(pc) = circuit_primary.output_program_counter() {
-          //println!("Program counter2: {:?}", pc);
-        };
+
         let _ = circuit_primary.synthesize(&mut cs_primary);
 
         let (l_u_primary, l_w_primary) = cs_primary
@@ -596,54 +582,17 @@ where
       hasher.absorb(pp.digest);
       hasher.absorb(G1::Scalar::from(self.i as u64));
       hasher.absorb(self.program_counter);
-      // println!(
-      //   "in verify, i {:?}, program_counter = {:?}, pp.digest = {:?}",
-      //   self.i,
-      //   self.program_counter,
-      //   scalar_as_base::<G1>(pp.digest),
-      // );
+
       for e in z0_primary {
-        // println!("in verify, z0 {:?}", e);
         hasher.absorb(*e);
       }
       for e in &self.zi_primary {
-        // println!("in verify, zi {:?}", e);
         hasher.absorb(*e);
       }
       self.r_U_secondary.iter().for_each(|U| {
         U.clone()
           .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary))
           .absorb_in_ro(&mut hasher);
-        // if U.is_some() {
-        //   println!(
-        //   "in verify U i {:?}, U.X0 {:?}, U.X1 {:?}, U.W.x {:?}, U.W.y {:?}, U.W.is_infinity {:?}, U.E.x {:?}, U.E.y {:?}, U.E.is_infinity {:?}, U.u {:?}",
-        //   self.i,
-        //   U.clone().unwrap().X[0],
-        //   U.clone().unwrap().X[1],
-        //   U.clone().unwrap().comm_W.to_coordinates().0,
-        //   U.clone().unwrap().comm_W.to_coordinates().1,
-        //   U.clone().unwrap().comm_W.to_coordinates().2,
-        //   U.clone().unwrap().comm_E.to_coordinates().0,
-        //   U.clone().unwrap().comm_E.to_coordinates().1,
-        //   U.clone().unwrap().comm_E.to_coordinates().2,
-        //   U.clone().unwrap().u,
-        //   );
-        // } else {
-        //   let x = RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary);
-        //   println!(
-        //     "in verify U i {:?}, U.X0 {:?}, U.X1 {:?}, U.W.x {:?}, U.W.y {:?}, U.W.is_infinity {:?}, U.E.x {:?}, U.E.y {:?}, U.E.is_infinity {:?}, U.u {:?}",
-        //     self.i,
-        //     x.clone().X[0],
-        //     x.clone().X[1],
-        //     x.clone().comm_W.to_coordinates().0,
-        //     x.clone().comm_W.to_coordinates().1,
-        //     x.clone().comm_W.to_coordinates().2,
-        //     x.clone().comm_E.to_coordinates().0,
-        //     x.clone().comm_E.to_coordinates().1,
-        //     x.clone().comm_E.to_coordinates().2,
-        //     x.clone().u,
-        //     );
-        // }
       });
 
       let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_ro);
@@ -810,8 +759,6 @@ where
 
 #[cfg(test)]
 mod tests {
-  use std::{cmp::Ordering, ops::Mul};
-
   use crate::{
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
     r1cs::R1CS,
@@ -820,8 +767,6 @@ mod tests {
   use super::*;
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
-  use bitvec::macros::internal::funty::Numeric;
-  use ff::PrimeFieldBits;
 
   fn constraint_curcuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
@@ -1004,6 +949,7 @@ mod tests {
     fn synthesize<CS: ConstraintSystem<F>>(
       &self,
       cs: &mut CS,
+      pc_counter: &AllocatedNum<F>,
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
       // constrain rom[pc] equal to `self.circuit_index`
