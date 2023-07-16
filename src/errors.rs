@@ -59,10 +59,4 @@ pub enum NovaError {
   /// returned when the consistency with public IO and assignment used fails
   #[error("IncorrectWitness")]
   IncorrectWitness,
-  /// Tmp error for VirtualPolynomial artih error
-  #[error("VpArith")]
-  VpArith,
-  /// No commitment key.
-  #[error("MissingCK")]
-  MissingCK,
 }

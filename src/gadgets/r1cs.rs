@@ -333,51 +333,16 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   /// If the condition is true then returns this otherwise it returns the other
   pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
-    mut cs: CS,
+    cs: CS,
     other: &AllocatedRelaxedR1CSInstance<G>,
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
-    let W = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "W = cond ? self.W : other.W"),
-      &self.W,
-      &other.W,
-      condition,
-    )?;
-
-    let E = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "E = cond ? self.E : other.E"),
-      &self.E,
-      &other.E,
-      condition,
-    )?;
-
-    let u = conditionally_select(
-      cs.namespace(|| "u = cond ? self.u : other.u"),
-      &self.u,
-      &other.u,
-      condition,
-    )?;
-
-    let X0 = conditionally_select_bignat(
-      cs.namespace(|| "X[0] = cond ? self.X[0] : other.X[0]"),
-      &self.X0,
-      &other.X0,
-      condition,
-    )?;
-
-    let X1 = conditionally_select_bignat(
-      cs.namespace(|| "X[1] = cond ? self.X[1] : other.X[1]"),
-      &self.X1,
-      &other.X1,
-      condition,
-    )?;
-
-    Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
+    conditionally_select_alloc_relaxed_r1cs(cs, &self, other, condition)
   }
 }
 
 /// If condition return a otherwise b
-pub fn conditionally_select_relaxed_r1cs_supernova<
+pub fn conditionally_select_alloc_relaxed_r1cs<
   G: Group,
   CS: ConstraintSystem<<G as Group>::Base>,
 >(

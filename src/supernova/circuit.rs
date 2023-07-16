@@ -19,8 +19,7 @@ use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{
-      conditionally_select_relaxed_r1cs_supernova, AllocatedR1CSInstance,
-      AllocatedRelaxedR1CSInstance,
+      conditionally_select_alloc_relaxed_r1cs, AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance,
     },
     utils::{
       add_allocated_num, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
@@ -295,7 +294,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
             self.params.limb_width,
             self.params.n_limbs,
           )?;
-          conditionally_select_relaxed_r1cs_supernova(
+          conditionally_select_alloc_relaxed_r1cs(
             cs.namespace(|| format!("select on index namespace {:?}", i)),
             &imcomming_r1cs,
             default,
@@ -378,7 +377,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
           &i_alloc,
           &last_circuit_index_selector,
         )?);
-        conditionally_select_relaxed_r1cs_supernova(
+        conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| format!("select on index namespace {:?}", i)),
           &U,
           &empty_U,
@@ -483,7 +482,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
           &i_alloc,
           &last_circuit_index_selector,
         )?);
-        conditionally_select_relaxed_r1cs_supernova(
+        conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| "select on index namespace"),
           &Unew_non_base_folded,
           &U,

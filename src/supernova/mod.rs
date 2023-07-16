@@ -128,7 +128,7 @@ where
     let _ = circuit_primary.synthesize(&mut cs);
 
     // We use the largest commitment_key for all instances
-    let r1cs_shape_primary = cs.r1cs_shape_without_commitkey();
+    let r1cs_shape_primary = cs.r1cs_shape_without_commitmentkey();
 
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
@@ -141,7 +141,7 @@ where
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
 
-    let r1cs_shape_secondary = cs.r1cs_shape_without_commitkey();
+    let r1cs_shape_secondary = cs.r1cs_shape_without_commitmentkey();
 
     let pp = Self {
       F_arity_primary,

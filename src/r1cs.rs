@@ -68,15 +68,13 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) u: G::Scalar,
 }
 
-// For SuperNova we can iterate over the F and find the one with the highest value.
-// multiply by # of F to make a a long enough vector of generators.
 impl<G: Group> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn commitment_key(S: &R1CSShape<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
     let total_nz = S.A.len() + S.B.len() + S.C.len();
-    G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz) * 2)
+    G::CE::setup(b"ck", max(max(num_cons, num_vars), total_nz))
   }
 }
 
@@ -209,13 +207,7 @@ impl<G: Group> R1CSShape<G> {
           let res = usize::from(Az[i] * Bz[i] != U.u * Cz[i] + W.E[i]);
           if res > 0 {
             // error
-            if let Some(constraints_path) = &self.constraints_path {
-              return Err(NovaError::UnSatMsg(format!(
-                "is_relaxed_sat relation failed at constraint path {:?}",
-                constraints_path.get(i).clone().unwrap_or(&"".to_string())
-              )));
-            };
-            Err(NovaError::UnSat)
+            Err(self._get_constraints_path_by_index(i))
           } else {
             Ok(())
           }
@@ -268,23 +260,14 @@ impl<G: Group> R1CSShape<G> {
           let res = usize::from(Az[i] * Bz[i] != Cz[i]);
           if res > 0 {
             // error
-            if let Some(constraints_path) = &self.constraints_path {
-              return Err(NovaError::UnSatMsg(format!(
-                "is_relaxed_sat relation failed at constraint path {:?}",
-                constraints_path.get(i).clone().unwrap_or(&"".to_string())
-              )));
-            };
-            Err(NovaError::UnSat)
+            Err(self._get_constraints_path_by_index(i))
           } else {
             Ok(())
           }
         })
         .collect::<Result<Vec<()>, _>>();
 
-      match res {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-      }
+      res.map(|_| ()) // cleanup as Ok(())
     };
 
     // verify if comm_W is a commitment to W
@@ -406,6 +389,21 @@ impl<G: Group> R1CSShape<G> {
       A: A_padded,
       B: B_padded,
       C: C_padded,
+    }
+  }
+
+  fn _get_constraints_path_by_index(&self, index: usize) -> NovaError {
+    // error
+    if let Some(constraints_path) = &self.constraints_path {
+      NovaError::UnSatMsg(format!(
+        "is_relaxed_sat relation failed at constraint path {:?}",
+        constraints_path
+          .get(index)
+          .clone()
+          .unwrap_or(&"".to_string())
+      ))
+    } else {
+      NovaError::UnSat
     }
   }
 }
