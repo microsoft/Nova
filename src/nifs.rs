@@ -179,23 +179,23 @@ impl<G: Group> NIFS<G> {
         .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S))
         .fold(U2, &comm_T, &r)?,
     );
-    let U_before_fold = U1[last_circuit_index_selector]
-      .clone()
-      .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
-    println!(
-      "in nifs prover, U_to_fold W {:?} E {:?}",
-      U_before_fold.comm_W.to_coordinates(),
-      U_before_fold.comm_E.to_coordinates(),
-    );
-    println!("in nifs prover, U2 W {:?}", U2.comm_W.to_coordinates(),);
-    let U_after_fold = U[last_circuit_index_selector]
-      .clone()
-      .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
-    println!(
-      "in nifs prover, U AFTER fold W {:?} E {:?}",
-      U_after_fold.comm_W.to_coordinates(),
-      U_after_fold.comm_E.to_coordinates(),
-    );
+    // let U_before_fold = U1[last_circuit_index_selector]
+    //   .clone()
+    //   .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
+    // println!(
+    //   "in nifs prover, U_to_fold W {:?} E {:?}",
+    //   U_before_fold.comm_W.to_coordinates(),
+    //   U_before_fold.comm_E.to_coordinates(),
+    // );
+    // println!("in nifs prover, U2 W {:?}", U2.comm_W.to_coordinates(),);
+    // let U_after_fold = U[last_circuit_index_selector]
+    //   .clone()
+    //   .unwrap_or_else(|| RelaxedR1CSInstance::default(ck, S));
+    // println!(
+    //   "in nifs prover, U AFTER fold W {:?} E {:?}",
+    //   U_after_fold.comm_W.to_coordinates(),
+    //   U_after_fold.comm_E.to_coordinates(),
+    // );
 
     let mut W = W1.to_vec();
     // fold the witness using `r` and `T`

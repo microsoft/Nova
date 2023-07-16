@@ -1,4 +1,5 @@
 //! This module defines errors returned by the library.
+use bellperson::SynthesisError;
 use core::fmt::Debug;
 use thiserror::Error;
 
@@ -23,6 +24,9 @@ pub enum NovaError {
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance, with error msg
   #[error("UnSatMsg")]
   UnSatMsg(String),
+  /// returned if synthesis error with error msg
+  #[error("SynthesisError")]
+  SynthesisError(String),
   /// returned when the supplied compressed commitment cannot be decompressed
   #[error("DecompressionError")]
   DecompressionError,

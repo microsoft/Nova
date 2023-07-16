@@ -186,7 +186,6 @@ impl<G: Group> R1CSShape<G> {
   }
 
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
-  /// TODO R1CS shape support carry constrains string for better debug
   pub fn is_sat_relaxed(
     &self,
     ck: &CommitmentKey<G>,

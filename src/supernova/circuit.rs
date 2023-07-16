@@ -31,7 +31,8 @@ use crate::{
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
+    circuit::SuperNovaStepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait,
+    ROConstantsCircuit,
   },
   Commitment,
 };
@@ -51,7 +52,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircuitParams {
   limb_width: usize,
-  n_limbs: usize,
+  pub n_limbs: usize,
   is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
@@ -112,7 +113,7 @@ impl<G: Group> CircuitInputs<G> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
+pub struct SuperNovaCircuit<G: Group, SC: SuperNovaStepCircuit<G::Base>> {
   params: CircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
@@ -120,7 +121,7 @@ pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
   u_i_length: usize,
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
+impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
     params: CircuitParams,
@@ -328,7 +329,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      35, // FIXME NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
+      3 // params_next, i_new, program_counter_new
+        + 2 * arity // zo, z1
+        + self.u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -423,7 +426,9 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   }
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNovaCircuit<G, SC> {
+impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
+  for SuperNovaCircuit<G, SC>
+{
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
@@ -541,17 +546,6 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       |lc| lc + i_new.get_variable() - CS::one() - i.get_variable(),
     );
 
-    // Compute pci + 1
-    let program_counter_new = AllocatedNum::alloc(cs.namespace(|| "program_counter + 1"), || {
-      Ok(*program_counter.get_value().get()? + G::Base::ONE)
-    })?;
-    cs.enforce(
-      || "check program_counter + 1",
-      |lc| lc,
-      |lc| lc,
-      |lc| lc + program_counter_new.get_variable() - CS::one() - program_counter.get_variable(),
-    );
-
     // Compute z_{i+1}
     let z_input = conditionally_select_vec(
       cs.namespace(|| "select input to F"),
@@ -560,7 +554,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       &Boolean::from(is_base_case),
     )?;
 
-    let z_next = self
+    let (program_counter_new, z_next) = self
       .step_circuit
       .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
 
@@ -570,21 +564,44 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       ));
     }
 
+    // println!(
+    //   "in circuit, i {:?}, program_counter = {:?}, params_next = {:?}",
+    //   i_new.get_value(),
+    //   program_counter_new.get_value(),
+    //   params_next.get_value(),
+    // );
     // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_new)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      35, // NUM_FE_WITHOUT_IO_FOR_CRHF + 18 * arity,
+      3 // params_next, i_new, program_counter_new
+        + 2 * arity // zo, z1
+        + self.u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params_next.clone());
     ro.absorb(i_new.clone());
     ro.absorb(program_counter_new.clone());
     for e in &z_0 {
+      // println!("in circuit z_0 {:?}", e.get_value(),);
       ro.absorb(e.clone());
     }
     for e in &z_next {
+      // println!("in circuit z_next {:?}", e.get_value(),);
       ro.absorb(e.clone());
     }
     Unew.iter().enumerate().try_for_each(|(i, U)| {
+      // println!(
+      //   "in circuit U i {:?}, U.X0 {:?}, U.X1 {:?}, U.W.x {:?}, U.W.y {:?}, U.W.is_infinity {:?}, U.E.x {:?}, U.E.y {:?}, U.E.is_infinity {:?},  U.u {:?}",
+      //   i,
+      //   U.X0.value,
+      //   U.X1.value,
+      //   U.W.x.get_value(),
+      //   U.W.y.get_value(),
+      //   U.W.is_infinity.get_value(),
+      //   U.E.x.get_value(),
+      //   U.E.y.get_value(),
+      //   U.E.is_infinity.get_value(),
+      //   U.u.get_value(),
+      // );
       U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
     })?;
 
@@ -631,7 +648,7 @@ mod tests {
     bellperson::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
-    traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
+    traits::{circuit::SuperNovaTrivialTestCircuit, ROConstantsTrait},
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
@@ -647,11 +664,11 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // Initialize the shape and ck for the primary
-    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: SuperNovaCircuit<G2, SuperNovaTrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
         primary_params.clone(),
         None,
-        TrivialTestCircuit::default(),
+        SuperNovaTrivialTestCircuit::default(),
         ro_consts1.clone(),
         2,
       );
@@ -661,11 +678,11 @@ mod tests {
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
-    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: SuperNovaCircuit<G1, SuperNovaTrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
         secondary_params.clone(),
         None,
-        TrivialTestCircuit::default(),
+        SuperNovaTrivialTestCircuit::default(),
         ro_consts2.clone(),
         2,
       );
@@ -689,11 +706,11 @@ mod tests {
       zero1,
       zero1,
     );
-    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: SuperNovaCircuit<G2, SuperNovaTrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
         primary_params,
         Some(inputs1),
-        TrivialTestCircuit::default(),
+        SuperNovaTrivialTestCircuit::default(),
         ro_consts1,
         2,
       );
@@ -717,11 +734,11 @@ mod tests {
       zero2,
       zero2,
     );
-    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: SuperNovaCircuit<G1, SuperNovaTrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
         secondary_params,
         Some(inputs2),
-        TrivialTestCircuit::default(),
+        SuperNovaTrivialTestCircuit::default(),
         ro_consts2,
         2,
       );
