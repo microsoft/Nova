@@ -348,7 +348,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     })?;
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), hash_bits)?;
+    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
     let check_pass: AllocatedBit = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
       &u.X0,
@@ -570,7 +570,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     })?;
 
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), hash_bits)?;
+    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
 
     /*
       To check correct folding sequencing we are just going to make a hash.

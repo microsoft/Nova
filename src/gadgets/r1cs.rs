@@ -525,14 +525,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
 
     let X0 = BigNat::from_num(
       cs.namespace(|| "allocate X0 from relaxed r1cs"),
-      Num::from(inst.X0.clone()),
+      &Num::from(inst.X0.clone()),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::from_num(
       cs.namespace(|| "allocate X1 from relaxed r1cs"),
-      Num::from(inst.X1.clone()),
+      &Num::from(inst.X1.clone()),
       limb_width,
       n_limbs,
     )?;
@@ -620,14 +620,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
     ro.absorb(T.y.clone());
     ro.absorb(T.is_infinity.clone());
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
-    let r = le_bits_to_num(cs.namespace(|| "r"), r_bits.clone())?;
+    let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), r_bits.clone())?;
+    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T
-    let rT = T.scalar_mul(cs.namespace(|| "r * T"), r_bits)?;
+    let rT = T.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
     let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rT)?;
 
     // u_fold = u_r + r
@@ -645,7 +645,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
     // Analyze r into limbs
     let r_bn = BigNat::from_num(
       cs.namespace(|| "allocate r_bn"),
-      Num::from(r.clone()),
+      &Num::from(r.clone()),
       limb_width,
       n_limbs,
     )?;
@@ -661,7 +661,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
     // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(
       cs.namespace(|| "allocate X0_bn"),
-      Num::from(u.X0.clone()),
+      &Num::from(u.X0.clone()),
       limb_width,
       n_limbs,
     )?;
@@ -676,7 +676,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstanceSuperNova<G> {
     // Analyze X1 to bignat
     let X1_bn = BigNat::from_num(
       cs.namespace(|| "allocate X1_bn"),
-      Num::from(u.X1.clone()),
+      &Num::from(u.X1.clone()),
       limb_width,
       n_limbs,
     )?;
