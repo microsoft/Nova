@@ -1,7 +1,6 @@
 use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
 use crate::spartan::polynomial::MultilinearPolynomial;
-use crate::utils::bit_decompose;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -395,6 +394,7 @@ fn build_eq_x_r_helper<F: PrimeField>(r: &[F], buf: &mut Vec<F>) -> Result<(), N
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::hypercube::bit_decompose;
   use pasta_curves::Fp;
   use rand_core::OsRng;
 

@@ -2,7 +2,6 @@
 #![allow(unused)]
 use std::marker::PhantomData;
 
-use crate::utils::*;
 /// There's some overlap with polynomial.rs.
 use ff::PrimeField;
 use itertools::Itertools;
@@ -46,6 +45,17 @@ impl<Scalar: PrimeField> Iterator for BooleanHypercube<Scalar> {
       Some(point)
     }
   }
+}
+
+/// Decompose an integer into a binary vector in little endian.
+pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
+  let mut res = Vec::with_capacity(num_var);
+  let mut i = input;
+  for _ in 0..num_var {
+    res.push(i & 1 == 1);
+    i >>= 1;
+  }
+  res
 }
 
 #[cfg(test)]

@@ -4,7 +4,6 @@ use crate::ccs::util::compute_all_sum_Mz_evals;
 use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
 use crate::spartan::polynomial::MultilinearPolynomial;
-use crate::utils::bit_decompose;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
