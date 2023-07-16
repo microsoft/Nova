@@ -444,16 +444,6 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
         u_i_length,
       )?;
 
-    // for all num-trivial circuit, constrain z_i[1] to be pc
-    if z_i.len() >= 2 {
-      cs.enforce(
-        || "z_i[1] == pc",
-        |lc| lc + z_i[1].get_variable(),
-        |lc| lc + CS::one(),
-        |lc| lc + program_counter.get_variable(),
-      );
-    }
-
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;

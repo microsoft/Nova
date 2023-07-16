@@ -1,7 +1,6 @@
 //! This library implements SuperNova, a Non-Uniform IVC based on Nova.
 #![allow(dead_code)]
 
-use crate::ccs;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
@@ -860,8 +859,17 @@ mod tests {
     fn synthesize<CS: ConstraintSystem<F>>(
       &self,
       cs: &mut CS,
+      pc_counter: &AllocatedNum<F>,
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
+      // constrain z_i == pc
+      cs.enforce(
+        || "z_i[1] == pc",
+        |lc| lc + z[1].get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + pc_counter.get_variable(),
+      );
+
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
         cs.namespace(|| "CubicCircuit argumented circuit constraint"),
@@ -952,6 +960,14 @@ mod tests {
       pc_counter: &AllocatedNum<F>,
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
+      // constrain z_i == pc
+      cs.enforce(
+        || "z_i[1] == pc",
+        |lc| lc + z[1].get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + pc_counter.get_variable(),
+      );
+
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
         cs.namespace(|| "SquareCircuit argumented circuit constraint"),

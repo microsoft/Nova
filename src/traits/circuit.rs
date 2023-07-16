@@ -102,6 +102,7 @@ where
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     _cs: &mut CS,
+    _pc_counter: &AllocatedNum<F>,
     z: &[AllocatedNum<F>],
   ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
     Ok((z[1].clone(), z.to_vec()))
