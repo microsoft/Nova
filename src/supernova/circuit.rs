@@ -433,9 +433,6 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let arity = self.step_circuit.arity();
     let u_i_length = self.u_i_length;
 
-    // only support 2 circuit as a demo
-    assert_eq!(u_i_length, 2);
-
     // Allocate all witnesses
     let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_circuit_index_selector) =
       self.alloc_witness(
