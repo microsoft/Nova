@@ -433,6 +433,7 @@ pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
+#[allow(dead_code)]
 /// c = a + b where a, b is AllocatedNum
 pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
