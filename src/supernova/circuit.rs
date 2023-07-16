@@ -19,8 +19,8 @@ use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{
-      conditionally_select_relaxed_r1cs_supernova, AllocatedR1CSInstanceSuperNova,
-      AllocatedRelaxedR1CSInstanceSuperNova,
+      conditionally_select_relaxed_r1cs_supernova, AllocatedR1CSInstance,
+      AllocatedRelaxedR1CSInstance,
     },
     utils::{
       add_allocated_num, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
@@ -148,8 +148,8 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       AllocatedNum<G::Base>,
       Vec<AllocatedNum<G::Base>>,
       Vec<AllocatedNum<G::Base>>,
-      Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>,
-      AllocatedR1CSInstanceSuperNova<G>,
+      Vec<AllocatedRelaxedR1CSInstance<G>>,
+      AllocatedR1CSInstance<G>,
       AllocatedPoint<G>,
       AllocatedNum<G::Base>,
       AllocatedNum<G::Base>,
@@ -207,23 +207,25 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     // Allocate the running instances
     let U = (0..u_i_length)
       .map(|i| {
-        AllocatedRelaxedR1CSInstanceSuperNova::alloc(
+        AllocatedRelaxedR1CSInstance::alloc(
           cs.namespace(|| format!("Allocate U {:?}", i)),
-          self.inputs.get().map_or(None, |inputs| {
-            inputs.U.get().map_or(None, |U| U.get(i).cloned())
-          }),
+          self
+            .inputs
+            .get()
+            .map_or(None, |inputs| inputs.U.get().map_or(None, |U| U.get(i))),
           self.params.limb_width,
           self.params.n_limbs,
         )
       })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
     // Allocate the instance to be folded in
-    let u = AllocatedR1CSInstanceSuperNova::alloc(
+    let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
-      self.inputs.get().map_or(None, |inputs| {
-        inputs.u.get().map_or(None, |u| Some(u.clone()))
-      }),
+      self
+        .inputs
+        .get()
+        .map_or(None, |inputs| inputs.u.get().map_or(None, |u| Some(u))),
     )?;
 
     // Allocate T
@@ -252,26 +254,26 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    u: AllocatedR1CSInstanceSuperNova<G>,
+    u: AllocatedR1CSInstance<G>,
     last_circuit_index_selector: &AllocatedNum<G::Base>,
     u_i_length: usize,
-  ) -> Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, SynthesisError> {
+  ) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
     let mut cs = cs.namespace(|| "alloc U_i default");
 
-    // The primary circuit just initialize default AllocatedRelaxedR1CSInstanceSuperNova
+    // The primary circuit just initialize default AllocatedRelaxedR1CSInstance
     let U_default = if self.params.is_primary_circuit {
       (0..u_i_length)
         .map(|i| {
-          AllocatedRelaxedR1CSInstanceSuperNova::default(
+          AllocatedRelaxedR1CSInstance::default(
             cs.namespace(|| format!("Allocate U_default {:?}", i)),
             self.params.limb_width,
             self.params.n_limbs,
           )
         })
-        .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?
+        .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?
     } else {
       // The secondary circuit convert the incoming R1CS instance on index which match circuit index
-      let imcomming_r1cs = AllocatedRelaxedR1CSInstanceSuperNova::from_r1cs_instance(
+      let imcomming_r1cs = AllocatedRelaxedR1CSInstance::from_r1cs_instance(
         cs.namespace(|| "Allocate imcomming_r1cs"),
         u,
         self.params.limb_width,
@@ -288,7 +290,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
             &i_alloc,
             &last_circuit_index_selector,
           )?);
-          let default = &AllocatedRelaxedR1CSInstanceSuperNova::default(
+          let default = &AllocatedRelaxedR1CSInstance::default(
             cs.namespace(|| format!("Allocate U_default {:?}", i)),
             self.params.limb_width,
             self.params.n_limbs,
@@ -300,7 +302,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
             &equal_bit,
           )
         })
-        .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?
+        .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?
     };
     Ok(U_default)
   }
@@ -315,13 +317,13 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     i: AllocatedNum<G::Base>,
     z_0: Vec<AllocatedNum<G::Base>>,
     z_i: Vec<AllocatedNum<G::Base>>,
-    U: &Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>,
-    u: AllocatedR1CSInstanceSuperNova<G>,
+    U: &Vec<AllocatedRelaxedR1CSInstance<G>>,
+    u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G>,
     arity: usize,
     last_circuit_index_selector: &AllocatedNum<G::Base>,
     program_counter: AllocatedNum<G::Base>,
-  ) -> Result<(AllocatedRelaxedR1CSInstanceSuperNova<G>, AllocatedBit), SynthesisError> {
+  ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
@@ -356,14 +358,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     )?;
 
     // Run NIFS Verifier
-    let empty_U = AllocatedRelaxedR1CSInstanceSuperNova::alloc(
+    let empty_U = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "empty U"),
       None,
       self.params.limb_width,
       self.params.n_limbs,
     )?;
     // select target when index match or empty
-    let U: Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, SynthesisError> = U
+    let U: Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> = U
       .iter()
       .enumerate()
       .map(|(i, U)| {
@@ -387,28 +389,26 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     // Here purely fold for all field is safe, because only 1 of them != G::Zero while other are all G::Zero
     let U_to_fold = U?.iter().enumerate().try_fold(empty_U, |agg, (i, U)| {
-      Result::<AllocatedRelaxedR1CSInstanceSuperNova<G>, SynthesisError>::Ok(
-        AllocatedRelaxedR1CSInstanceSuperNova {
-          W: agg
-            .W
-            .add(cs.namespace(|| format!("fold W {:?}", i)), &U.W)?,
-          E: agg
-            .E
-            .add(cs.namespace(|| format!("fold E {:?}", i)), &U.E)?,
-          u: {
-            let cs = cs.namespace(|| format!("fold u {:?}", i));
-            add_allocated_num(cs, &agg.u, &U.u)?
-          },
-          X0: agg.X0.add(&U.X0)?,
-          X1: agg.X1.add(&U.X1)?,
+      Result::<AllocatedRelaxedR1CSInstance<G>, SynthesisError>::Ok(AllocatedRelaxedR1CSInstance {
+        W: agg
+          .W
+          .add(cs.namespace(|| format!("fold W {:?}", i)), &U.W)?,
+        E: agg
+          .E
+          .add(cs.namespace(|| format!("fold E {:?}", i)), &U.E)?,
+        u: {
+          let cs = cs.namespace(|| format!("fold u {:?}", i));
+          add_allocated_num(cs, &agg.u, &U.u)?
         },
-      )
+        X0: agg.X0.add(&U.X0)?,
+        X1: agg.X1.add(&U.X1)?,
+      })
     })?;
     let U_fold = U_to_fold.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
       params,
-      u,
-      T,
+      &u,
+      &T,
       self.ro_consts.clone(),
       self.params.limb_width,
       self.params.n_limbs,
@@ -469,8 +469,8 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       program_counter.clone(),
     )?;
 
-    // update AllocatedRelaxedR1CSInstanceSuperNova on index match circuit index
-    let Unew_non_base: Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>> = U
+    // update AllocatedRelaxedR1CSInstance on index match circuit index
+    let Unew_non_base: Vec<AllocatedRelaxedR1CSInstance<G>> = U
       .iter()
       .enumerate()
       .map(|(i, U)| {
@@ -490,7 +490,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
           &equal_bit,
         )
       })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
     // Either check_non_base_pass=true or we are in the base case
     let should_be_false = AllocatedBit::nor(
@@ -517,7 +517,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
           &Boolean::from(is_base_case.clone()),
         )
       })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstanceSuperNova<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
