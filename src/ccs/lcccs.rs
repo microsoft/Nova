@@ -86,7 +86,7 @@ impl<G: Group> LCCCS<G> {
       // Sanity check
       assert_eq!(z_mle.get_num_vars(), self.ccs.s_prime);
 
-      let sum_Mz = compute_sum_Mz::<G>(&M_j, &z_mle);
+      let sum_Mz = compute_sum_Mz::<G>(M_j, &z_mle);
       let sum_Mz_virtual = VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz), G::Scalar::ONE);
       let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
       vec_L_j_x.push(L_j_x);
@@ -127,7 +127,7 @@ mod tests {
 
   #[test]
   /// Test linearized CCCS v_j against the L_j(x)
-  fn test_lcccs_v_j() -> () {
+  fn test_lcccs_v_j() {
     let mut rng = OsRng;
 
     // Gen test vectors & artifacts
@@ -143,7 +143,6 @@ mod tests {
 
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
-        .into_iter()
         .map(|y| L_j_x.evaluate(&y).unwrap())
         .fold(Fq::ZERO, |acc, result| acc + result);
       assert_eq!(v_i, sum_L_j_x);
@@ -152,7 +151,7 @@ mod tests {
 
   /// Given a bad z, check that the v_j should not match with the L_j(x)
   #[test]
-  fn test_bad_v_j() -> () {
+  fn test_bad_v_j() {
     let mut rng = OsRng;
 
     // Gen test vectors & artifacts
@@ -180,7 +179,6 @@ mod tests {
     let mut satisfied = true;
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
-        .into_iter()
         .map(|y| L_j_x.evaluate(&y).unwrap())
         .fold(Fq::ZERO, |acc, result| acc + result);
       if v_i != sum_L_j_x {
@@ -188,6 +186,6 @@ mod tests {
       }
     }
 
-    assert_eq!(satisfied, false);
+    assert!(!satisfied);
   }
 }

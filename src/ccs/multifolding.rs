@@ -242,17 +242,17 @@ mod tests {
 
     // evaluate g(x) over x \in {0,1}^s
     let mut g_on_bhc = Fq::zero();
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
+    for x in BooleanHypercube::new(ccs.s) {
       g_on_bhc += g.evaluate(&x).unwrap();
     }
 
     // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
     let mut sum_Lj_on_bhc = Fq::zero();
     let vec_L = lcccs_instance.compute_Ls(&z1);
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
-      for j in 0..vec_L.len() {
+    for x in BooleanHypercube::new(ccs.s) {
+      for (j, coeff) in vec_L.iter().enumerate() {
         let gamma_j = gamma.pow([j as u64]);
-        sum_Lj_on_bhc += vec_L[j].evaluate(&x).unwrap() * gamma_j;
+        sum_Lj_on_bhc += coeff.evaluate(&x).unwrap() * gamma_j;
       }
     }
 
@@ -269,7 +269,7 @@ mod tests {
   }
 
   #[test]
-  fn test_compute_sigmas_and_thetas() -> () {
+  fn test_compute_sigmas_and_thetas() {
     let z1 = CCSShape::<Ep>::get_test_z(3);
     let z2 = CCSShape::<Ep>::get_test_z(4);
 
@@ -300,16 +300,16 @@ mod tests {
     {
       // evaluate g(x) over x \in {0,1}^s
       let mut g_on_bhc = Fq::zero();
-      for x in BooleanHypercube::new(ccs.s).into_iter() {
+      for x in BooleanHypercube::new(ccs.s) {
         g_on_bhc += g.evaluate(&x).unwrap();
       }
       // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
       let mut sum_Lj_on_bhc = Fq::zero();
       let vec_L = lcccs_instance.compute_Ls(&z1);
-      for x in BooleanHypercube::new(ccs.s).into_iter() {
-        for j in 0..vec_L.len() {
+      for x in BooleanHypercube::new(ccs.s) {
+        for (j, coeff) in vec_L.iter().enumerate() {
           let gamma_j = gamma.pow([j as u64]);
-          sum_Lj_on_bhc += vec_L[j].evaluate(&x).unwrap() * gamma_j;
+          sum_Lj_on_bhc += coeff.evaluate(&x).unwrap() * gamma_j;
         }
       }
 

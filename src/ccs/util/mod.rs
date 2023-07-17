@@ -43,7 +43,7 @@ pub fn compute_sum_Mz<G: Group>(
 
   let bhc = BooleanHypercube::<G::Scalar>::new(z.get_num_vars());
   for y in bhc.into_iter() {
-    let M_y = fix_variables(&M_mle, &y);
+    let M_y = fix_variables(M_mle, &y);
 
     // reverse y to match spartan/polynomial evaluate
     let y_rev: Vec<G::Scalar> = y.into_iter().rev().collect();
@@ -175,7 +175,7 @@ mod tests {
       let mut last_vars_fixed = A_mle.clone();
       // this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
       for bit in y.clone().iter().rev() {
-        last_vars_fixed.bound_poly_var_top(&bit)
+        last_vars_fixed.bound_poly_var_top(bit)
       }
 
       assert_eq!(last_vars_fixed.Z, row_i);
@@ -183,7 +183,7 @@ mod tests {
   }
 
   #[test]
-  fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
+  fn test_compute_sum_Mz_over_boolean_hypercube() {
     let z = CCSShape::<Ep>::get_test_z(3);
     let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
 

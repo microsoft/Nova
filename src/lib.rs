@@ -9,6 +9,7 @@
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::upper_case_acronyms)]
 #![forbid(unsafe_code)]
 
 // private modules
