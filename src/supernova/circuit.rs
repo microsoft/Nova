@@ -432,6 +432,17 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     let arity = self.step_circuit.arity();
     let u_i_length = self.u_i_length;
 
+    if self.inputs.is_some() {
+      let z0_len = self.inputs.get().map_or(0, |inputs| inputs.z0.len());
+      if self.step_circuit.arity() != z0_len {
+        return Err(SynthesisError::IncompatibleLengthVector(format!(
+          "z0_len {:?} != arity lengh {:?}",
+          z0_len,
+          self.step_circuit.arity()
+        )));
+      }
+    }
+
     // Allocate all witnesses
     let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_circuit_index_selector) =
       self.alloc_witness(
@@ -624,31 +635,45 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
+    /*
+    Both circuit1 and circuit2 are SuperNovaTrivialTestCircuit
+    */
+
     // Initialize the shape and ck for the primary
+    let step_circuit1 = SuperNovaTrivialTestCircuit::default();
+    let arity1 = step_circuit1.arity();
     let circuit1: SuperNovaCircuit<G2, SuperNovaTrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
         primary_params.clone(),
         None,
-        SuperNovaTrivialTestCircuit::default(),
+        step_circuit1,
         ro_consts1.clone(),
         2,
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
-    let _ = circuit1.synthesize(&mut cs);
+    let _ = match circuit1.synthesize(&mut cs) {
+      Err(e) => panic!("{}", e),
+      _ => (),
+    };
     let (shape1, ck1) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
+    let step_circuit2 = SuperNovaTrivialTestCircuit::default();
+    let arity2 = step_circuit2.arity();
     let circuit2: SuperNovaCircuit<G1, SuperNovaTrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
         secondary_params.clone(),
         None,
-        SuperNovaTrivialTestCircuit::default(),
+        step_circuit2,
         ro_consts2.clone(),
         2,
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
-    let _ = circuit2.synthesize(&mut cs);
+    let _ = match circuit2.synthesize(&mut cs) {
+      Err(e) => panic!("{}", e),
+      _ => (),
+    };
     let (shape2, ck2) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
@@ -659,7 +684,7 @@ mod tests {
       scalar_as_base::<G1>(zero1), // pass zero for testing
       scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
-      vec![zero1],
+      vec![zero1; arity1],
       None,
       None,
       None,
@@ -675,7 +700,10 @@ mod tests {
         ro_consts1,
         2,
       );
-    let _ = circuit1.synthesize(&mut cs1);
+    let _ = match circuit1.synthesize(&mut cs1) {
+      Err(e) => panic!("{}", e),
+      _ => (),
+    };
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
@@ -687,7 +715,7 @@ mod tests {
       scalar_as_base::<G2>(zero2), // pass zero for testing
       scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,
-      vec![zero2],
+      vec![zero2; arity2],
       None,
       None,
       Some(inst1),
@@ -703,7 +731,10 @@ mod tests {
         ro_consts2,
         2,
       );
-    let _ = circuit2.synthesize(&mut cs2);
+    let _ = match circuit2.synthesize(&mut cs2) {
+      Err(e) => panic!("{}", e),
+      _ => (),
+    };
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
     assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
@@ -717,7 +748,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 11866, 12436,
+      params1, params2, ro_consts1, ro_consts2, 11609, 12179,
     );
   }
 }
