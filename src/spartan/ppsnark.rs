@@ -967,10 +967,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let mut w_u_vec = Vec::new();
 
     // sanity check that R1CSShape has certain size characteristics
-    assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
-    assert_eq!(pk.S.num_vars.next_power_of_two(), pk.S.num_vars);
-    assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
-    assert!(pk.S.num_io < pk.S.num_vars);
+    pk.S.check_regular_shape();
 
     // append the verifier key (which includes commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
