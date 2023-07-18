@@ -408,7 +408,7 @@ where
           &pp.r1cs_shape_secondary,
           &r_snark
             .r_U_secondary
-            .get(r_snark.last_circuit_index_selector)
+            .get(0)
             .unwrap_or(&None)
             .clone()
             .unwrap_or_else(|| {
@@ -416,7 +416,7 @@ where
             }),
           &r_snark
             .r_W_secondary
-            .get(r_snark.last_circuit_index_selector)
+            .get(0)
             .unwrap_or(&None)
             .clone()
             .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary)),
@@ -426,9 +426,9 @@ where
 
         // clone and updated running instance on respective circuit_index
         let mut r_U_secondary_next = r_snark.r_U_secondary.to_vec();
-        r_U_secondary_next[r_snark.last_circuit_index_selector] = Some(r_U_secondary_folded);
+        r_U_secondary_next[0] = Some(r_U_secondary_folded);
         let mut r_W_secondary_next = r_snark.r_W_secondary.to_vec();
-        r_W_secondary_next[r_snark.last_circuit_index_selector] = Some(r_W_secondary_folded);
+        r_W_secondary_next[0] = Some(r_W_secondary_folded);
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
@@ -451,7 +451,7 @@ where
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
           r_snark.program_counter,
-          G1::Scalar::from(r_snark.last_circuit_index_selector as u64),
+          G1::Scalar::from(0 as u64),
         );
 
         let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
