@@ -259,17 +259,13 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   ) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
     let mut cs = cs.namespace(|| "alloc U_i default");
 
-    // The primary circuit just initialize default AllocatedRelaxedR1CSInstance
+    // The primary circuit just initialize single AllocatedRelaxedR1CSInstance
     let U_default = if self.params.is_primary_circuit {
-      (0..u_i_length)
-        .map(|i| {
-          AllocatedRelaxedR1CSInstance::default(
-            cs.namespace(|| format!("Allocate U_default {:?}", i)),
-            self.params.limb_width,
-            self.params.n_limbs,
-          )
-        })
-        .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?
+      vec![AllocatedRelaxedR1CSInstance::default(
+        cs.namespace(|| format!("Allocate primary U_default")),
+        self.params.limb_width,
+        self.params.n_limbs,
+      )?]
     } else {
       // The secondary circuit convert the incoming R1CS instance on index which match circuit index
       let imcomming_r1cs = AllocatedRelaxedR1CSInstance::from_r1cs_instance(
@@ -322,13 +318,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     arity: usize,
     last_circuit_index_selector: &AllocatedNum<G::Base>,
     program_counter: AllocatedNum<G::Base>,
+    u_i_length: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
       3 // params_next, i_new, program_counter_new
         + 2 * arity // zo, z1
-        + self.u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
+        + u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -336,6 +333,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     // NOTE only witness and DO NOT need to constrain last_circuit_index_selector.
     // Because prover can only make valid IVC proof by folding u into correct U_i[last_circuit_index_selector]
+    // therefore last_circuit_index_selector can be just aux
 
     for e in &z_0 {
       ro.absorb(e.clone());
@@ -430,7 +428,12 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     let arity = self.step_circuit.arity();
-    let u_i_length = self.u_i_length;
+    let u_i_length = if self.params.is_primary_circuit {
+      // primary circuit only fold single running instance from secondary circuit
+      1
+    } else {
+      self.u_i_length
+    };
 
     if self.inputs.is_some() {
       let z0_len = self.inputs.get().map_or(0, |inputs| inputs.z0.len());
@@ -440,6 +443,15 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
           z0_len,
           self.step_circuit.arity()
         )));
+      }
+      let last_circuit_index_selector = self
+        .inputs
+        .get()
+        .map_or(G::Base::ZERO, |inputs| inputs.last_circuit_index_selector);
+      if self.params.is_primary_circuit && last_circuit_index_selector != G::Base::ZERO {
+        return Err(SynthesisError::IncompatibleLengthVector(
+          "primary circuit running instance only valid on index 0".to_string(),
+        ));
       }
     }
 
@@ -477,6 +489,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       arity,
       &last_circuit_index_selector,
       program_counter.clone(),
+      u_i_length,
     )?;
 
     // update AllocatedRelaxedR1CSInstance on index match circuit index
@@ -564,7 +577,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       self.ro_consts.clone(),
       3 // params_next, i_new, program_counter_new
         + 2 * arity // zo, z1
-        + self.u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
+        + u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params_next.clone());
     ro.absorb(i_new.clone());

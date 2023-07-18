@@ -242,8 +242,8 @@ where
 {
   r_W_primary: Vec<Option<RelaxedR1CSWitness<G1>>>,
   r_U_primary: Vec<Option<RelaxedR1CSInstance<G1>>>,
-  r_W_secondary: Vec<Option<RelaxedR1CSWitness<G2>>>,
-  r_U_secondary: Vec<Option<RelaxedR1CSInstance<G2>>>,
+  r_W_secondary: Option<RelaxedR1CSWitness<G2>>,
+  r_U_secondary: Option<RelaxedR1CSInstance<G2>>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
   pp_digest: G1::Scalar,
@@ -372,21 +372,11 @@ where
           .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
         r_U_primary_initial_list[circuit_index] = Some(r_U_primary);
 
-        let mut r_W_secondary_initial_list = (0..u_i_length)
-          .map(|_| None)
-          .collect::<Vec<Option<RelaxedR1CSWitness<G2>>>>();
-        r_W_secondary_initial_list[circuit_index] = Some(r_W_secondary);
-
-        let mut r_U_recondary_initial_list = (0..u_i_length)
-          .map(|_| None)
-          .collect::<Vec<Option<RelaxedR1CSInstance<G2>>>>();
-        r_U_recondary_initial_list[circuit_index] = Some(r_U_secondary);
-
         Ok(Self {
           r_W_primary: r_W_primary_initial_list,
           r_U_primary: r_U_primary_initial_list,
-          r_W_secondary: r_W_secondary_initial_list,
-          r_U_secondary: r_U_recondary_initial_list,
+          r_W_secondary: Some(r_W_secondary),
+          r_U_secondary: Some(r_U_secondary),
           l_w_secondary,
           l_u_secondary,
           pp_digest: pp.digest,
@@ -406,18 +396,11 @@ where
           &pp.ro_consts_secondary,
           &scalar_as_base::<G1>(r_snark.pp_digest),
           &pp.r1cs_shape_secondary,
-          &r_snark
-            .r_U_secondary
-            .get(0)
-            .unwrap_or(&None)
-            .clone()
-            .unwrap_or_else(|| {
-              RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
-            }),
+          &r_snark.r_U_secondary.clone().unwrap_or_else(|| {
+            RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
+          }),
           &r_snark
             .r_W_secondary
-            .get(0)
-            .unwrap_or(&None)
             .clone()
             .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary)),
           &r_snark.l_u_secondary,
@@ -425,10 +408,8 @@ where
         )?;
 
         // clone and updated running instance on respective circuit_index
-        let mut r_U_secondary_next = r_snark.r_U_secondary.to_vec();
-        r_U_secondary_next[0] = Some(r_U_secondary_folded);
-        let mut r_W_secondary_next = r_snark.r_W_secondary.to_vec();
-        r_W_secondary_next[0] = Some(r_W_secondary_folded);
+        let r_U_secondary_next = Some(r_U_secondary_folded);
+        let r_W_secondary_next = Some(r_W_secondary_folded);
 
         let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
         let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
@@ -437,17 +418,7 @@ where
           G1::Scalar::from(r_snark.i as u64),
           z0_primary.clone(),
           Some(r_snark.zi_primary.clone()),
-          Some(
-            r_snark
-              .r_U_secondary
-              .iter()
-              .map(|U| {
-                U.clone().unwrap_or_else(|| {
-                  RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
-                })
-              })
-              .collect(),
-          ),
+          r_snark.r_U_secondary.map(|U| vec![U]),
           Some(r_snark.l_u_secondary.clone()),
           Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
           r_snark.program_counter,
@@ -587,28 +558,29 @@ where
       _ => Ok(()),
     })?;
 
-    self
-      .r_U_secondary
-      .iter()
-      .try_for_each(|U| match U.clone() {
-        Some(U) if U.X.len() != 2 => {
-          println!(
-            "r_U_secondary got instance length {:?} != {:?}",
-            U.X.len(),
-            2
-          );
-          Err(NovaError::ProofVerifyError)
-        }
-        _ => Ok(()),
-      })?;
+    self.r_U_secondary.clone().map_or(Ok(()), |U| {
+      if U.X.len() != 2 {
+        println!(
+          "r_U_secondary got instance length {:?} != {:?}",
+          U.X.len(),
+          2
+        );
+        Err(NovaError::ProofVerifyError)
+      } else {
+        Ok(())
+      }
+    })?;
 
     // check if the output hashes in R1CS instances point to the right running instances
-    let num_field_ro = 3 // params_next, i_new, program_counter_new
+    let num_field_primary_ro = 3 // params_next, i_new, program_counter_new
+    + 2 * pp.F_arity_primary // zo, z1
+    + 1 * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
+    let num_field_secondary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
     + u_i_length * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
 
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), num_field_ro);
+      let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), num_field_primary_ro);
       hasher.absorb(pp.digest);
       hasher.absorb(G1::Scalar::from(self.i as u64));
       hasher.absorb(self.program_counter);
@@ -620,12 +592,11 @@ where
         hasher.absorb(*e);
       }
       self.r_U_secondary.iter().for_each(|U| {
-        U.clone()
-          .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary))
-          .absorb_in_ro(&mut hasher);
+        U.absorb_in_ro(&mut hasher);
       });
 
-      let mut hasher2 = <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_ro);
+      let mut hasher2 =
+        <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_secondary_ro);
       hasher2.absorb(scalar_as_base::<G1>(pp.digest));
       hasher2.absorb(G2::Scalar::from(self.i as u64));
       hasher2.absorb(G2::Scalar::ZERO);
@@ -663,6 +634,9 @@ where
     }
 
     // check the satisfiability of the provided `circuit_index` instance
+    let default_r_U_secondary =
+      RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
+    let default_r_W_secondary = RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary);
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary.is_sat_relaxed(
@@ -680,14 +654,14 @@ where
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
               pp.ck_secondary.as_ref().unwrap(),
-              &self.r_U_secondary[circuit_index]
-                .clone()
-                .unwrap_or_else(|| {
-                  RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
-                }),
-              &self.r_W_secondary[circuit_index]
-                .clone()
-                .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary)),
+              self
+                .r_U_secondary
+                .as_ref()
+                .unwrap_or_else(|| &default_r_U_secondary),
+              &self
+                .r_W_secondary
+                .as_ref()
+                .unwrap_or_else(|| &default_r_W_secondary),
             )
           },
           || {
