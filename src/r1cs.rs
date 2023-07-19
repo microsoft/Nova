@@ -31,7 +31,6 @@ pub struct R1CSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
-  pub(crate) constraints_path: Option<Vec<String>>,
   pub(crate) A: Vec<(usize, usize, G::Scalar)>,
   pub(crate) B: Vec<(usize, usize, G::Scalar)>,
   pub(crate) C: Vec<(usize, usize, G::Scalar)>,
@@ -84,7 +83,6 @@ impl<G: Group> R1CSShape<G> {
     num_cons: usize,
     num_vars: usize,
     num_io: usize,
-    constraints_path: Option<Vec<String>>,
     A: &[(usize, usize, G::Scalar)],
     B: &[(usize, usize, G::Scalar)],
     C: &[(usize, usize, G::Scalar)],
@@ -129,7 +127,6 @@ impl<G: Group> R1CSShape<G> {
       num_cons,
       num_vars,
       num_io,
-      constraints_path,
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
@@ -205,7 +202,7 @@ impl<G: Group> R1CSShape<G> {
       (0..self.num_cons).try_for_each(|i| {
         if Az[i] * Bz[i] != U.u * Cz[i] + W.E[i] {
           // constraint failed
-          Err(self._get_constraint_err_by_index(i))
+          Err(NovaError::UnSatIndex(i))
         } else {
           Ok(())
         }
@@ -247,7 +244,7 @@ impl<G: Group> R1CSShape<G> {
       (0..self.num_cons).try_for_each(|i| {
         if Az[i] * Bz[i] != Cz[i] {
           // constraint failed, retrieve constaint name
-          Err(self._get_constraint_err_by_index(i))
+          Err(NovaError::UnSatIndex(i))
         } else {
           Ok(())
         }
@@ -331,7 +328,6 @@ impl<G: Group> R1CSShape<G> {
         num_cons: m,
         num_vars: m,
         num_io: self.num_io,
-        constraints_path: self.constraints_path.clone(),
         A: self.A.clone(),
         B: self.B.clone(),
         C: self.C.clone(),
@@ -365,25 +361,9 @@ impl<G: Group> R1CSShape<G> {
       num_cons: num_cons_padded,
       num_vars: num_vars_padded,
       num_io: self.num_io,
-      constraints_path: self.constraints_path.clone(),
       A: A_padded,
       B: B_padded,
       C: C_padded,
-    }
-  }
-
-  fn _get_constraint_err_by_index(&self, index: usize) -> NovaError {
-    // error
-    if let Some(constraints_path) = &self.constraints_path {
-      NovaError::UnSatMsg(format!(
-        "is_relaxed_sat relation failed at constraint path {:?}",
-        constraints_path
-          .get(index)
-          .clone()
-          .unwrap_or(&"".to_string())
-      ))
-    } else {
-      NovaError::UnSat
     }
   }
 }

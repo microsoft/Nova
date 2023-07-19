@@ -320,7 +320,7 @@ mod tests {
 
     // create a shape object
     let S = {
-      let res = R1CSShape::new(num_cons, num_vars, num_io, None, &A, &B, &C);
+      let res = R1CSShape::new(num_cons, num_vars, num_io, &A, &B, &C);
       assert!(res.is_ok());
       res.unwrap()
     };

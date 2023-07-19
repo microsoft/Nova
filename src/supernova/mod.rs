@@ -34,7 +34,7 @@ mod circuit; // declare the module first
 use circuit::{CircuitInputs, CircuitParams, SuperNovaCircuit};
 
 /// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<G1, G2>
 where
@@ -47,10 +47,12 @@ where
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
   ck_primary: Option<CommitmentKey<G1>>,
   r1cs_shape_primary: R1CSShape<G1>,
+  constraints_path_primary: Vec<String>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
   ck_secondary: Option<CommitmentKey<G2>>,
   r1cs_shape_secondary: R1CSShape<G2>,
+  constraints_path_secondary: Vec<String>,
   augmented_circuit_params_primary: CircuitParams,
   augmented_circuit_params_secondary: CircuitParams,
   digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
@@ -96,6 +98,11 @@ where
 
     // We use the largest commitment_key for all instances
     let r1cs_shape_primary = cs.r1cs_shape();
+    let constraints_path_primary = cs
+      .constraints
+      .iter()
+      .map(|constraint| constraint.3.clone())
+      .collect();
 
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
@@ -107,6 +114,11 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
+    let constraints_path_secondary = cs
+      .constraints
+      .iter()
+      .map(|constraint| constraint.3.clone())
+      .collect();
 
     let r1cs_shape_secondary = cs.r1cs_shape();
 
@@ -117,10 +129,12 @@ where
       ro_consts_circuit_primary,
       ck_primary: None,
       r1cs_shape_primary,
+      constraints_path_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       ck_secondary: None,
       r1cs_shape_secondary,
+      constraints_path_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
       digest: G1::Scalar::ZERO, // digest will be set later once commitkey ready
@@ -152,7 +166,6 @@ where
  SuperNova takes Ui a list of running instances.
  One instance of Ui is a struct called RunningClaim.
 */
-#[derive(Clone)]
 pub struct RunningClaim<G1, G2, Ca, Cb>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -321,15 +334,25 @@ where
         }
 
         // handle the base case by initialize U_next in next round
-        let mut r_W_primary_initial_list = (0..num_augmented_circuits)
-          .map(|_| None)
+        let r_W_primary_initial_list = (0..num_augmented_circuits)
+          .map(|i| {
+            if i == circuit_index {
+              Some(r_W_primary.clone())
+            } else {
+              None
+            }
+          })
           .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
-        r_W_primary_initial_list[circuit_index] = Some(r_W_primary);
 
-        let mut r_U_primary_initial_list = (0..num_augmented_circuits)
-          .map(|_| None)
+        let r_U_primary_initial_list = (0..num_augmented_circuits)
+          .map(|i| {
+            if i == circuit_index {
+              Some(r_U_primary.clone())
+            } else {
+              None
+            }
+          })
           .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
-        r_U_primary_initial_list[circuit_index] = Some(r_U_primary);
 
         Ok(Self {
           r_W_primary: r_W_primary_initial_list,
@@ -346,7 +369,7 @@ where
           augmented_circuit_index: circuit_index,
         })
       }
-      Some(r_snark) => {
+      Some(mut r_snark) => {
         // snark program_counter iteration is equal to program_counter
         assert!(r_snark.program_counter == program_counter);
         // fold the secondary circuit's instance
@@ -419,12 +442,6 @@ where
           &l_w_primary,
         )?;
 
-        // clone and updated running instance on respective circuit_index
-        let mut r_U_primary_next = r_snark.r_U_primary.to_vec();
-        r_U_primary_next[circuit_index] = Some(r_U_primary_folded);
-        let mut r_W_primary_next = r_snark.r_W_primary.to_vec();
-        r_W_primary_next[circuit_index] = Some(r_W_primary_folded);
-
         let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
         let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
           pp.digest,
@@ -470,9 +487,13 @@ where
           return Err(NovaError::InvalidStepOutputLength);
         }
 
+        // clone and updated running instance on respective circuit_index
+        r_snark.r_U_primary[circuit_index] = Some(r_U_primary_folded);
+        r_snark.r_W_primary[circuit_index] = Some(r_W_primary_folded);
+
         Ok(Self {
-          r_W_primary: r_W_primary_next,
-          r_U_primary: r_U_primary_next,
+          r_W_primary: r_snark.r_W_primary,
+          r_U_primary: r_snark.r_U_primary,
           r_W_secondary: r_W_secondary_next,
           r_U_secondary: r_U_secondary_next,
           l_w_secondary: l_w_secondary_next,
@@ -634,9 +655,36 @@ where
       },
     );
 
-    res_r_primary?;
-    res_r_secondary?;
-    res_l_secondary?;
+    res_r_primary.map_err(|err| match err {
+      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
+        "res_r_primary is_sat_relaxed relation failed at constraint path {:?}",
+        pp.constraints_path_primary
+          .get(i)
+          .clone()
+          .unwrap_or(&"".to_string())
+      )),
+      e => e,
+    })?;
+    res_r_secondary.map_err(|err| match err {
+      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
+        "res_r_secondary is_sat_relaxed relation failed at constraint path {:?}",
+        pp.constraints_path_primary
+          .get(i)
+          .clone()
+          .unwrap_or(&"".to_string())
+      )),
+      e => e,
+    })?;
+    res_l_secondary.map_err(|err| match err {
+      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
+        "res_l_secondary is_sat relation failed at constraint path {:?}",
+        pp.constraints_path_primary
+          .get(i)
+          .clone()
+          .unwrap_or(&"".to_string())
+      )),
+      e => e,
+    })?;
 
     Ok((
       self.zi_primary.clone(),
@@ -648,7 +696,7 @@ where
   fn execute_and_verify_circuits<C1, C2>(
     circuit_index: usize,
     num_augmented_circuits: usize, // total number of F' circuit
-    running_claim: RunningClaim<G1, G2, C1, C2>,
+    running_claim: &RunningClaim<G1, G2, C1, C2>,
     ck_primary: &CommitmentKey<G1>,
     ck_secondary: &CommitmentKey<G2>,
     last_running_instance: Option<RecursiveSNARK<G1, G2>>,
@@ -1097,7 +1145,7 @@ mod tests {
         OPCODE_0 => RecursiveSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
           num_augmented_circuit,
-          running_claim1.clone(),
+          &running_claim1,
           &ck_primary,
           &ck_secondary,
           recursive_snark, // last running instance.
@@ -1108,7 +1156,7 @@ mod tests {
         OPCODE_1 => RecursiveSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
           num_augmented_circuit,
-          running_claim2.clone(),
+          &running_claim2,
           &ck_primary,
           &ck_secondary,
           recursive_snark, // last running instance.
