@@ -1,4 +1,4 @@
-//! The augmented circuit F' for  SuperNova that includes everything from Nova
+//! The augmented circuit F' for SuperNova that includes everything from Nova
 //!   and additionally checks:
 //!    1. Ui and pci are contained in the public output.
 //!    2. Instance is folded into Ui[pci] correctly; just like Nova.
@@ -113,7 +113,7 @@ pub struct SuperNovaCircuit<G: Group, SC: SuperNovaStepCircuit<G::Base>> {
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
   step_circuit: SC, // The function that is applied for each step
-  u_i_length: usize,
+  num_augmented_circuit: usize,
 }
 
 impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
@@ -123,14 +123,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     inputs: Option<CircuitInputs<G>>,
     step_circuit: SC,
     ro_consts: ROConstantsCircuit<G>,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
   ) -> Self {
     Self {
       params,
       inputs,
       step_circuit,
       ro_consts,
-      u_i_length,
+      num_augmented_circuit,
     }
   }
 
@@ -139,7 +139,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     &self,
     mut cs: CS,
     arity: usize,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
   ) -> Result<
     (
       AllocatedNum<G::Base>,
@@ -204,7 +204,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate the running instances
-    let U = (0..u_i_length)
+    let U = (0..num_augmented_circuit)
       .map(|i| {
         AllocatedRelaxedR1CSInstance::alloc(
           cs.namespace(|| format!("Allocate U {:?}", i)),
@@ -255,7 +255,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     mut cs: CS,
     u: AllocatedR1CSInstance<G>,
     last_circuit_index_selector: &AllocatedNum<G::Base>,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
   ) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
     let mut cs = cs.namespace(|| "alloc U_i default");
 
@@ -274,7 +274,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
         self.params.limb_width,
         self.params.n_limbs,
       )?;
-      (0..u_i_length)
+      (0..num_augmented_circuit)
         .map(|i| {
           let i_alloc =
             AllocatedNum::alloc(cs.namespace(|| format!("i allocated on {:?}", i)), || {
@@ -318,14 +318,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     arity: usize,
     last_circuit_index_selector: &AllocatedNum<G::Base>,
     program_counter: AllocatedNum<G::Base>,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
       3 // params_next, i_new, program_counter_new
         + 2 * arity // zo, z1
-        + u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
+        + num_augmented_circuit * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params.clone());
     ro.absorb(i);
@@ -428,11 +428,11 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     let arity = self.step_circuit.arity();
-    let u_i_length = if self.params.is_primary_circuit {
+    let num_augmented_circuit = if self.params.is_primary_circuit {
       // primary circuit only fold single running instance from secondary circuit
       1
     } else {
-      self.u_i_length
+      self.num_augmented_circuit
     };
 
     if self.inputs.is_some() {
@@ -460,7 +460,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       self.alloc_witness(
         cs.namespace(|| "allocate the circuit witness"),
         arity,
-        u_i_length,
+        num_augmented_circuit,
       )?;
 
     // Compute variable indicating if this is the base case
@@ -472,7 +472,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       cs.namespace(|| "base case"),
       u.clone(),
       &last_circuit_index_selector,
-      u_i_length,
+      num_augmented_circuit,
     )?;
 
     // Synthesize the circuit for the non-base case and get the new running
@@ -489,7 +489,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       arity,
       &last_circuit_index_selector,
       program_counter.clone(),
-      u_i_length,
+      num_augmented_circuit,
     )?;
 
     // update AllocatedRelaxedR1CSInstance on index match circuit index
@@ -577,7 +577,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       self.ro_consts.clone(),
       3 // params_next, i_new, program_counter_new
         + 2 * arity // zo, z1
-        + u_i_length * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
+        + num_augmented_circuit * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params_next.clone());
     ro.absorb(i_new.clone());

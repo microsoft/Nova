@@ -69,7 +69,7 @@ where
   >(
     c_primary: C1,
     c_secondary: C2,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
   ) -> Self where {
     let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
@@ -90,7 +90,7 @@ where
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
-      u_i_length,
+      num_augmented_circuit,
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
@@ -104,7 +104,7 @@ where
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
-      u_i_length,
+      num_augmented_circuit,
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
@@ -162,9 +162,8 @@ where
   _phantom: PhantomData<G1>,
   claim: Ca,
   circuit_secondary: Cb,
-  largest: bool,
   params: PublicParams<G1, G2>,
-  output_U_i_length: usize,
+  num_augmented_circuit: usize,
 }
 
 impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
@@ -174,28 +173,21 @@ where
   Ca: SuperNovaStepCircuit<G1::Scalar>,
   Cb: SuperNovaStepCircuit<G2::Scalar>,
 {
-  pub fn new(
-    circuit_primary: Ca,
-    circuit_secondary: Cb,
-    is_largest: bool,
-    output_U_i_length: usize,
-  ) -> Self {
+  pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuit: usize) -> Self {
     let claim = circuit_primary.clone();
-    let largest = is_largest;
 
     let pp = PublicParams::<G1, G2>::setup_without_commitkey(
       claim.clone(),
       circuit_secondary.clone(),
-      output_U_i_length,
+      num_augmented_circuit,
     );
 
     Self {
       _phantom: PhantomData,
       claim,
       circuit_secondary: circuit_secondary.clone(),
-      largest,
       params: pp,
-      output_U_i_length,
+      num_augmented_circuit,
     }
   }
 }
@@ -231,7 +223,7 @@ where
   /// by executing a step of the incremental computation
   pub fn prove_step<C1: SuperNovaStepCircuit<G1::Scalar>, C2: SuperNovaStepCircuit<G2::Scalar>>(
     circuit_index: usize,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
     program_counter: G1::Scalar,
     pp: &PublicParams<G1, G2>,
     recursive_snark: Option<Self>,
@@ -268,7 +260,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
-          u_i_length,
+          num_augmented_circuit,
         );
 
         let _ = circuit_primary
@@ -297,7 +289,7 @@ where
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
-          u_i_length,
+          num_augmented_circuit,
         );
         let _ = circuit_secondary
           .synthesize(&mut cs_secondary)
@@ -330,12 +322,12 @@ where
         }
 
         // handle the base case by initialize U_next in next round
-        let mut r_W_primary_initial_list = (0..u_i_length)
+        let mut r_W_primary_initial_list = (0..num_augmented_circuit)
           .map(|_| None)
           .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
         r_W_primary_initial_list[circuit_index] = Some(r_W_primary);
 
-        let mut r_U_primary_initial_list = (0..u_i_length)
+        let mut r_U_primary_initial_list = (0..num_augmented_circuit)
           .map(|_| None)
           .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
         r_U_primary_initial_list[circuit_index] = Some(r_U_primary);
@@ -398,7 +390,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
-          u_i_length,
+          num_augmented_circuit,
         );
 
         let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -463,7 +455,7 @@ where
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
-          u_i_length,
+          num_augmented_circuit,
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
@@ -501,7 +493,7 @@ where
     &mut self,
     pp: &PublicParams<G1, G2>,
     circuit_index: usize,
-    u_i_length: usize,
+    num_augmented_circuit: usize,
     z0_primary: &Vec<G1::Scalar>,
     z0_secondary: &Vec<G2::Scalar>,
     ck_primary: &CommitmentKey<G1>,
@@ -545,7 +537,7 @@ where
     + 1 * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
     let num_field_secondary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
-    + u_i_length * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
+    + num_augmented_circuit * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
 
     let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), num_field_primary_ro);
@@ -656,7 +648,7 @@ where
 
   fn execute_and_verify_circuits<C1, C2>(
     circuit_index: usize,
-    u_i_length: usize, // total number of F' circuit
+    num_augmented_circuit: usize, // total number of F' circuit
     running_claim: RunningClaim<G1, G2, C1, C2>,
     ck_primary: &CommitmentKey<G1>,
     ck_secondary: &CommitmentKey<G2>,
@@ -685,7 +677,7 @@ where
 
     let res = NivcSNARK::prove_step(
       circuit_index,
-      u_i_length,
+      num_augmented_circuit,
       program_counter,
       &running_claim.params,
       recursive_snark,
@@ -703,7 +695,7 @@ where
     let res = recursive_snark_unwrapped.verify(
       &running_claim.params,
       circuit_index,
-      u_i_length,
+      num_augmented_circuit,
       z0_primary,
       z0_secondary,
       ck_primary,
@@ -1020,7 +1012,6 @@ mod tests {
     >::new(
       test_circuit1,
       circuit_secondary.clone(),
-      true,
       num_of_agumented_circuit,
     );
 
@@ -1033,7 +1024,6 @@ mod tests {
     >::new(
       test_circuit2,
       circuit_secondary.clone(),
-      false,
       num_of_agumented_circuit,
     );
 
@@ -1042,12 +1032,7 @@ mod tests {
     let (max_index_circuit, _) = circuit_public_params
       .iter()
       .enumerate()
-      .map(|(i, params)| -> (usize, usize) {
-        (
-          i,
-          params.r1cs_shape_primary.num_io + params.r1cs_shape_primary.num_vars,
-        )
-      })
+      .map(|(i, params)| -> (usize, usize) { (i, params.r1cs_shape_primary.num_cons) })
       .max_by(|(_, circuit_size1), (_, circuit_size2)| circuit_size1.cmp(&circuit_size2))
       .unwrap();
 
