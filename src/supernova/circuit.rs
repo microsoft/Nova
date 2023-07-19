@@ -1,17 +1,16 @@
 //! The augmented circuit F' for SuperNova that includes everything from Nova
 //!   and additionally checks:
-//!    1. Ui and pci are contained in the public output.
-//!    2. Instance is folded into Ui[pci] correctly; just like Nova.
-//!    3. Invokes the function ϕ on input (zi, ωi) to compute pci+1, which represents
-//!    the index of the function Fj currently being run. pci+1 is then sent to the
-//!    next invocation of an augmented circuit (which contains a verifier circuit).
+//!    1. Ui[] are contained in X[0] hash pre-image.
+//!    2. R1CS Instance u is folded into Ui[argumented_circuit_index] correctly; just like Nova IVC.
+//!    3. (optional by F logic) F circuit might check program_counter_{i} invoked current F circuit is legal or not.
+//!    3. F circuit produce program_counter_{i+1} and sent to next round for optionally constraint the next F' argumented circuit.
 
 //! There are two Verification Circuits. The primary and the secondary.
 //! Each of them is over a Pasta curve but
 //! only the primary executes the next step of the computation.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
 //! of the running instances. Each of these hashes is
-//! H(params = H(shape, ck), i, z0, zi, U). Each circuit folds the last invocation of
+//! H(params = H(shape, ck), program_counter, i, z0, zi, U[]). Each circuit folds the last invocation of
 //! the other into the running instance
 
 use crate::{
@@ -47,7 +46,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CircuitParams {
   limb_width: usize,
-  pub n_limbs: usize,
+  n_limbs: usize,
   is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
@@ -58,6 +57,10 @@ impl CircuitParams {
       n_limbs,
       is_primary_circuit,
     }
+  }
+
+  pub fn get_n_limbs(&self) -> usize {
+    self.n_limbs
   }
 }
 
@@ -73,7 +76,7 @@ pub struct CircuitInputs<G: Group> {
   u: Option<R1CSInstance<G>>,
   T: Option<Commitment<G>>,
   program_counter: G::Base,
-  last_circuit_index_selector: G::Base,
+  last_augmented_circuit_index: G::Base,
 }
 
 impl<G: Group> CircuitInputs<G> {
@@ -89,7 +92,7 @@ impl<G: Group> CircuitInputs<G> {
     u: Option<R1CSInstance<G>>,
     T: Option<Commitment<G>>,
     program_counter: G::Base,
-    last_circuit_index_selector: G::Base,
+    last_augmented_circuit_index: G::Base,
   ) -> Self {
     Self {
       params_next,
@@ -101,19 +104,20 @@ impl<G: Group> CircuitInputs<G> {
       u,
       T,
       program_counter,
-      last_circuit_index_selector,
+      last_augmented_circuit_index,
     }
   }
 }
 
-/// The augmented circuit F' in Nova that includes a step circuit F
-/// and the circuit for the verifier in Nova's non-interactive folding scheme
+/// The augmented circuit F' in SuperNova that includes a step circuit F
+/// and the circuit for the verifier in SuperNova's non-interactive folding scheme,
+/// SuperNova NIVS will fold strictly r1cs instance u with respective relaxed r1cs instance U[last_augmented_circuit_index]
 pub struct SuperNovaCircuit<G: Group, SC: SuperNovaStepCircuit<G::Base>> {
   params: CircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
-  step_circuit: SC, // The function that is applied for each step
-  num_augmented_circuit: usize,
+  step_circuit: SC,              // The function that is applied for each step
+  num_augmented_circuits: usize, // number of overall augmented circuits
 }
 
 impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
@@ -123,14 +127,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     inputs: Option<CircuitInputs<G>>,
     step_circuit: SC,
     ro_consts: ROConstantsCircuit<G>,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
   ) -> Self {
     Self {
       params,
       inputs,
       step_circuit,
       ro_consts,
-      num_augmented_circuit,
+      num_augmented_circuits,
     }
   }
 
@@ -139,7 +143,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     &self,
     mut cs: CS,
     arity: usize,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
   ) -> Result<
     (
       AllocatedNum<G::Base>,
@@ -173,15 +177,15 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     // Allocate i
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
-    // Allocate pci
+    // Allocate program_counter
     let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || {
       Ok(self.inputs.get()?.program_counter)
     })?;
 
-    // Allocate circuit_input_selector
-    let last_circuit_index_selector =
-      AllocatedNum::alloc(cs.namespace(|| "circuit_index_selector"), || {
-        Ok(self.inputs.get()?.last_circuit_index_selector)
+    // Allocate last_augmented_circuit_index
+    let last_augmented_circuit_index =
+      AllocatedNum::alloc(cs.namespace(|| "last_augmented_circuit_index"), || {
+        Ok(self.inputs.get()?.last_augmented_circuit_index)
       })?;
 
     // Allocate z0
@@ -204,7 +208,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // Allocate the running instances
-    let U = (0..num_augmented_circuit)
+    let U = (0..num_augmented_circuits)
       .map(|i| {
         AllocatedRelaxedR1CSInstance::alloc(
           cs.namespace(|| format!("Allocate U {:?}", i)),
@@ -218,7 +222,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       })
       .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
-    // Allocate the instance to be folded in
+    // Allocate the r1cs instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
       self
@@ -245,7 +249,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       u,
       T,
       program_counter,
-      last_circuit_index_selector,
+      last_augmented_circuit_index,
     ))
   }
 
@@ -254,8 +258,8 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstance<G>,
-    last_circuit_index_selector: &AllocatedNum<G::Base>,
-    num_augmented_circuit: usize,
+    last_augmented_circuit_index: &AllocatedNum<G::Base>,
+    num_augmented_circuits: usize,
   ) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
     let mut cs = cs.namespace(|| "alloc U_i default");
 
@@ -267,14 +271,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
         self.params.n_limbs,
       )?]
     } else {
-      // The secondary circuit convert the incoming R1CS instance on index which match circuit index
+      // The secondary circuit convert the incoming R1CS instance on index which match last_augmented_circuit_index
       let imcomming_r1cs = AllocatedRelaxedR1CSInstance::from_r1cs_instance(
         cs.namespace(|| "Allocate imcomming_r1cs"),
         u,
         self.params.limb_width,
         self.params.n_limbs,
       )?;
-      (0..num_augmented_circuit)
+      (0..num_augmented_circuits)
         .map(|i| {
           let i_alloc =
             AllocatedNum::alloc(cs.namespace(|| format!("i allocated on {:?}", i)), || {
@@ -283,7 +287,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
           let equal_bit = Boolean::from(alloc_num_equals(
             cs.namespace(|| format!("check equal bit {:?}", i)),
             &i_alloc,
-            &last_circuit_index_selector,
+            &last_augmented_circuit_index,
           )?);
           let default = &AllocatedRelaxedR1CSInstance::default(
             cs.namespace(|| format!("Allocate U_default {:?}", i)),
@@ -316,24 +320,24 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G>,
     arity: usize,
-    last_circuit_index_selector: &AllocatedNum<G::Base>,
+    last_augmented_circuit_index: &AllocatedNum<G::Base>,
     program_counter: AllocatedNum<G::Base>,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
-    // Check that u.x[0] = Hash(params, U, i, z0, zi)
+    // Check that u.x[0] = Hash(params, i, program_counter, U[], z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
       3 // params_next, i_new, program_counter_new
         + 2 * arity // zo, z1
-        + num_augmented_circuit * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
+        + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(params.clone());
     ro.absorb(i);
     ro.absorb(program_counter.clone());
 
-    // NOTE only witness and DO NOT need to constrain last_circuit_index_selector.
-    // Because prover can only make valid IVC proof by folding u into correct U_i[last_circuit_index_selector]
-    // therefore last_circuit_index_selector can be just aux
+    // NOTE only witness and DO NOT need to constrain last_augmented_circuit_index.
+    // Because prover can only make valid IVC proof by folding u into correct U_i[last_augmented_circuit_index]
+    // therefore last_augmented_circuit_index can be just aux
 
     for e in &z_0 {
       ro.absorb(e.clone());
@@ -361,7 +365,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       self.params.limb_width,
       self.params.n_limbs,
     )?;
-    // select target when index match or empty
+    // select target when index match last_augmented_circuit_index, other left as empty
     let U: Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> = U
       .iter()
       .enumerate()
@@ -373,7 +377,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| format!("check U {:?} equal bit", i)),
           &i_alloc,
-          &last_circuit_index_selector,
+          &last_augmented_circuit_index,
         )?);
         conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| format!("select on index namespace {:?}", i)),
@@ -384,7 +388,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
       })
       .collect();
 
-    // Here purely fold for all field is safe, because only 1 of them != G::Zero while other are all G::Zero
+    // Now reduce to one is safe, because only 1 of them != G::Zero based on the previous step
     let U_to_fold = U?.iter().enumerate().try_fold(empty_U, |agg, (i, U)| {
       Result::<AllocatedRelaxedR1CSInstance<G>, SynthesisError>::Ok(AllocatedRelaxedR1CSInstance {
         W: agg
@@ -413,11 +417,6 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
 
     Ok((U_fold, check_pass))
   }
-
-  // The output pci
-  pub fn output_program_counter(&self) -> Option<G::Base> {
-    self.inputs.as_ref().map(|inputs| inputs.program_counter)
-  }
 }
 
 impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
@@ -428,11 +427,12 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     cs: &mut CS,
   ) -> Result<(), SynthesisError> {
     let arity = self.step_circuit.arity();
-    let num_augmented_circuit = if self.params.is_primary_circuit {
-      // primary circuit only fold single running instance from secondary circuit
+    let num_augmented_circuits = if self.params.is_primary_circuit {
+      // primary circuit only fold single running instance with secondary output strict r1cs instance
       1
     } else {
-      self.num_augmented_circuit
+      // secondary circuit contains the logic to choose one of multiple augments running instance to fold
+      self.num_augmented_circuits
     };
 
     if self.inputs.is_some() {
@@ -444,39 +444,39 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
           self.step_circuit.arity()
         )));
       }
-      let last_circuit_index_selector = self
+      let last_augmented_circuit_index = self
         .inputs
         .get()
-        .map_or(G::Base::ZERO, |inputs| inputs.last_circuit_index_selector);
-      if self.params.is_primary_circuit && last_circuit_index_selector != G::Base::ZERO {
+        .map_or(G::Base::ZERO, |inputs| inputs.last_augmented_circuit_index);
+      if self.params.is_primary_circuit && last_augmented_circuit_index != G::Base::ZERO {
         return Err(SynthesisError::IncompatibleLengthVector(
           "primary circuit running instance only valid on index 0".to_string(),
         ));
       }
     }
 
-    // Allocate all witnesses
-    let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_circuit_index_selector) =
+    // Allocate witnesses
+    let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_augmented_circuit_index) =
       self.alloc_witness(
         cs.namespace(|| "allocate the circuit witness"),
         arity,
-        num_augmented_circuit,
+        num_augmented_circuits,
       )?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
-    // Synthesize the circuit for the base case and get the new running instance
+    // Synthesize the circuit for the base case and get the new running instances
     let Unew_base = self.synthesize_base_case(
       cs.namespace(|| "base case"),
       u.clone(),
-      &last_circuit_index_selector,
-      num_augmented_circuit,
+      &last_augmented_circuit_index,
+      num_augmented_circuits,
     )?;
 
     // Synthesize the circuit for the non-base case and get the new running
-    // instance along with a boolean indicating if all checks have passed
+    // instances along with a boolean indicating if all checks have passed
     let (Unew_non_base_folded, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
       params.clone(),
@@ -487,12 +487,12 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       u.clone(),
       T,
       arity,
-      &last_circuit_index_selector,
+      &last_augmented_circuit_index,
       program_counter.clone(),
-      num_augmented_circuit,
+      num_augmented_circuits,
     )?;
 
-    // update AllocatedRelaxedR1CSInstance on index match circuit index
+    // update AllocatedRelaxedR1CSInstance on index match augmented circuit index
     let Unew_non_base: Vec<AllocatedRelaxedR1CSInstance<G>> = U
       .iter()
       .enumerate()
@@ -504,7 +504,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| "check equal bit"),
           &i_alloc,
-          &last_circuit_index_selector,
+          &last_augmented_circuit_index,
         )?);
         conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| "select on index namespace"),
@@ -529,7 +529,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
     );
 
     // Compute the U_new
-    let Unew = Unew_non_base
+    let U_next = Unew_non_base
       .iter()
       .enumerate()
       .zip(Unew_base.iter())
@@ -543,14 +543,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
     // Compute i + 1
-    let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
+    let i_next = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
       Ok(*i.get_value().get()? + G::Base::ONE)
     })?;
     cs.enforce(
       || "check i + 1",
-      |lc| lc,
-      |lc| lc,
-      |lc| lc + i_new.get_variable() - CS::one() - i.get_variable(),
+      |lc| lc + i.get_variable() + CS::one(),
+      |lc| lc + CS::one(),
+      |lc| lc + i_next.get_variable(),
     );
 
     // Compute z_{i+1}
@@ -572,37 +572,14 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       ));
     }
 
-    // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_new)
-    let mut ro = G::ROCircuit::new(
-      self.ro_consts.clone(),
-      3 // params_next, i_new, program_counter_new
-        + 2 * arity // zo, z1
-        + num_augmented_circuit * (7 + 2 * self.params.n_limbs), // #num of u_i * (7 + [X0, X1]*#num_limb)
-    );
-    ro.absorb(params_next.clone());
-    ro.absorb(i_new.clone());
-    ro.absorb(program_counter_new.clone());
-    for e in &z_0 {
-      ro.absorb(e.clone());
-    }
-    for e in &z_next {
-      ro.absorb(e.clone());
-    }
-    Unew.iter().enumerate().try_for_each(|(i, U)| {
-      U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
-    })?;
-
-    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
-
     /*
       To check correct folding sequencing we are just going to make a hash.
-      The next RunningInstance can take the pre-image of the hash as witness.
+      The next RunningInstance folding can take the pre-image of this hash as witness and check.
 
       "Finally, there is a subtle sizing issue in the above description: in each step,
-      because Ui+1 is produced as the public IO of F0 pci+1, it must be contained in
+      because Ui+1 is produced as the public IO of F0 program_counter+1, it must be contained in
       the public IO of instance ui+1. In the next iteration, because ui+1 is folded
-      into Ui+1[pci+1], this means that Ui+1[pci+1] is at least as large as Ui by the
+      into Ui+1[program_counter+1], this means that Ui+1[program_counter+1] is at least as large as Ui by the
       properties of the folding scheme. This means that the list of running instances
       grows in each step. To alleviate this issue, we have each F0j only produce a hash
       of its outputs as public output. In the subsequent step, the next augmented
@@ -611,7 +588,31 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
       https://eprint.iacr.org/2022/1758.pdf
     */
 
-    // Bypass unmodified hash of other circuit as next X[0]
+    // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_next)
+    let mut ro = G::ROCircuit::new(
+      self.ro_consts.clone(),
+      3 // params_next, i_new, program_counter_new
+        + 2 * arity // zo, z1
+        + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
+    );
+    ro.absorb(params_next.clone());
+    ro.absorb(i_next.clone());
+    ro.absorb(program_counter_new.clone());
+    for e in &z_0 {
+      ro.absorb(e.clone());
+    }
+    for e in &z_next {
+      ro.absorb(e.clone());
+    }
+    U_next.iter().enumerate().try_for_each(|(i, U)| {
+      U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
+    })?;
+
+    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
+    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+
+    // We are cycling of curve implementation, so primary/secondary will rotate hash in IO for the others to check
+    // bypass unmodified hash of other circuit as next X[0]
     // and output the computed the computed hash as next X[1]
     u.X1
       .inputize(cs.namespace(|| "bypass unmodified hash of the other circuit"))?;
@@ -668,7 +669,7 @@ mod tests {
       Err(e) => panic!("{}", e),
       _ => (),
     };
-    let (shape1, ck1) = cs.r1cs_shape();
+    let (shape1, ck1) = cs.r1cs_shape_with_commitmentkey();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
@@ -687,7 +688,7 @@ mod tests {
       Err(e) => panic!("{}", e),
       _ => (),
     };
-    let (shape2, ck2) = cs.r1cs_shape();
+    let (shape2, ck2) = cs.r1cs_shape_with_commitmentkey();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary

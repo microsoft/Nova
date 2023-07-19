@@ -1,5 +1,4 @@
 //! This library implements SuperNova, a Non-Uniform IVC based on Nova.
-#![allow(dead_code)]
 
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
@@ -69,7 +68,7 @@ where
   >(
     c_primary: C1,
     c_secondary: C2,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
   ) -> Self where {
     let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
@@ -90,13 +89,13 @@ where
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
-      num_augmented_circuit,
+      num_augmented_circuits,
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
 
     // We use the largest commitment_key for all instances
-    let r1cs_shape_primary = cs.r1cs_shape_without_commitmentkey();
+    let r1cs_shape_primary = cs.r1cs_shape();
 
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
@@ -104,12 +103,12 @@ where
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
-      num_augmented_circuit,
+      num_augmented_circuits,
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
 
-    let r1cs_shape_secondary = cs.r1cs_shape_without_commitmentkey();
+    let r1cs_shape_secondary = cs.r1cs_shape();
 
     let pp = Self {
       F_arity_primary,
@@ -130,6 +129,7 @@ where
     pp
   }
 
+  #[allow(dead_code)]
   /// Returns the number of constraints in the primary and secondary circuits
   pub fn num_constraints(&self) -> (usize, usize) {
     (
@@ -138,6 +138,7 @@ where
     )
   }
 
+  #[allow(dead_code)]
   /// Returns the number of variables in the primary and secondary circuits
   pub fn num_variables(&self) -> (usize, usize) {
     (
@@ -163,7 +164,6 @@ where
   claim: Ca,
   circuit_secondary: Cb,
   params: PublicParams<G1, G2>,
-  num_augmented_circuit: usize,
 }
 
 impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
@@ -173,13 +173,13 @@ where
   Ca: SuperNovaStepCircuit<G1::Scalar>,
   Cb: SuperNovaStepCircuit<G2::Scalar>,
 {
-  pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuit: usize) -> Self {
+  pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuits: usize) -> Self {
     let claim = circuit_primary.clone();
 
     let pp = PublicParams::<G1, G2>::setup_without_commitkey(
       claim.clone(),
       circuit_secondary.clone(),
-      num_augmented_circuit,
+      num_augmented_circuits,
     );
 
     Self {
@@ -187,7 +187,6 @@ where
       claim,
       circuit_secondary: circuit_secondary.clone(),
       params: pp,
-      num_augmented_circuit,
     }
   }
 }
@@ -195,7 +194,7 @@ where
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NivcSNARK<G1, G2>
+pub struct RecursiveSNARK<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
@@ -211,19 +210,19 @@ where
   zi_primary: Vec<G1::Scalar>,
   zi_secondary: Vec<G2::Scalar>,
   program_counter: G1::Scalar,
-  last_circuit_index_selector: usize,
+  augmented_circuit_index: usize,
 }
 
-impl<G1, G2> NivcSNARK<G1, G2>
+impl<G1, G2> RecursiveSNARK<G1, G2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
 {
-  /// Create a new `NivcSNARK` (or updates the provided `NivcSNARK`)
+  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
   /// by executing a step of the incremental computation
   pub fn prove_step<C1: SuperNovaStepCircuit<G1::Scalar>, C2: SuperNovaStepCircuit<G2::Scalar>>(
     circuit_index: usize,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
     program_counter: G1::Scalar,
     pp: &PublicParams<G1, G2>,
     recursive_snark: Option<Self>,
@@ -252,7 +251,7 @@ where
           None,
           None,
           program_counter,
-          G1::Scalar::ZERO, // set circuit index selector to 0 in base case
+          G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
         );
 
         let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
@@ -260,7 +259,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
-          num_augmented_circuit,
+          num_augmented_circuits,
         );
 
         let _ = circuit_primary
@@ -282,14 +281,14 @@ where
           Some(u_primary.clone()),
           None,
           G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-          G2::Scalar::ZERO, // set circuit index selector to 0 in base case
+          G2::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
         );
         let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
           pp.augmented_circuit_params_secondary.clone(),
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
-          num_augmented_circuit,
+          num_augmented_circuits,
         );
         let _ = circuit_secondary
           .synthesize(&mut cs_secondary)
@@ -322,12 +321,12 @@ where
         }
 
         // handle the base case by initialize U_next in next round
-        let mut r_W_primary_initial_list = (0..num_augmented_circuit)
+        let mut r_W_primary_initial_list = (0..num_augmented_circuits)
           .map(|_| None)
           .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
         r_W_primary_initial_list[circuit_index] = Some(r_W_primary);
 
-        let mut r_U_primary_initial_list = (0..num_augmented_circuit)
+        let mut r_U_primary_initial_list = (0..num_augmented_circuits)
           .map(|_| None)
           .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
         r_U_primary_initial_list[circuit_index] = Some(r_U_primary);
@@ -344,11 +343,11 @@ where
           zi_primary,
           zi_secondary,
           program_counter: zi_primary_pc_next,
-          last_circuit_index_selector: circuit_index,
+          augmented_circuit_index: circuit_index,
         })
       }
       Some(r_snark) => {
-        // snark program_counter iteration is equal to pci
+        // snark program_counter iteration is equal to program_counter
         assert!(r_snark.program_counter == program_counter);
         // fold the secondary circuit's instance
         let (nifs_secondary, (r_U_secondary_folded, r_W_secondary_folded)) = NIFS::prove(
@@ -390,7 +389,7 @@ where
           Some(inputs_primary),
           c_primary.clone(),
           pp.ro_consts_circuit_primary.clone(),
-          num_augmented_circuit,
+          num_augmented_circuits,
         );
 
         let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -455,7 +454,7 @@ where
           Some(inputs_secondary),
           c_secondary.clone(),
           pp.ro_consts_circuit_secondary.clone(),
-          num_augmented_circuit,
+          num_augmented_circuits,
         );
         let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
@@ -483,7 +482,7 @@ where
           zi_primary,
           zi_secondary,
           program_counter: zi_primary_pc_next,
-          last_circuit_index_selector: circuit_index,
+          augmented_circuit_index: circuit_index,
         })
       }
     }
@@ -493,7 +492,7 @@ where
     &mut self,
     pp: &PublicParams<G1, G2>,
     circuit_index: usize,
-    num_augmented_circuit: usize,
+    num_augmented_circuits: usize,
     z0_primary: &Vec<G1::Scalar>,
     z0_secondary: &Vec<G2::Scalar>,
     ck_primary: &CommitmentKey<G1>,
@@ -501,7 +500,7 @@ where
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError> {
     // number of steps cannot be zero
     if self.i == 0 {
-      println!("must verify on valid NivcSNARK where i > 0");
+      println!("must verify on valid RecursiveSNARK where i > 0");
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -534,10 +533,10 @@ where
     // check if the output hashes in R1CS instances point to the right running instances
     let num_field_primary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
-    + 1 * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
+    + 1 * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     let num_field_secondary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
-    + num_augmented_circuit * (7 + 2 * pp.augmented_circuit_params_primary.n_limbs); // #num of u_i * (7 + [X0, X1]*#num_limb)
+    + num_augmented_circuits * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
 
     let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), num_field_primary_ro);
@@ -648,16 +647,16 @@ where
 
   fn execute_and_verify_circuits<C1, C2>(
     circuit_index: usize,
-    num_augmented_circuit: usize, // total number of F' circuit
+    num_augmented_circuits: usize, // total number of F' circuit
     running_claim: RunningClaim<G1, G2, C1, C2>,
     ck_primary: &CommitmentKey<G1>,
     ck_secondary: &CommitmentKey<G2>,
-    last_running_instance: Option<NivcSNARK<G1, G2>>,
+    last_running_instance: Option<RecursiveSNARK<G1, G2>>,
     z0_primary: &Vec<G1::Scalar>,
     z0_secondary: &Vec<G2::Scalar>,
   ) -> Result<
     (
-      NivcSNARK<G1, G2>,
+      RecursiveSNARK<G1, G2>,
       Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError>,
     ),
     Box<dyn std::error::Error>,
@@ -669,15 +668,15 @@ where
     C2: SuperNovaStepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
   {
     // Produce a recursive SNARK
-    let mut recursive_snark: Option<NivcSNARK<G1, G2>> = last_running_instance.clone();
+    let mut recursive_snark: Option<RecursiveSNARK<G1, G2>> = last_running_instance.clone();
     let program_counter = last_running_instance
       .as_ref()
       .map(|last_nivcsnark| last_nivcsnark.program_counter)
       .unwrap_or_default();
 
-    let res = NivcSNARK::prove_step(
+    let res = RecursiveSNARK::prove_step(
       circuit_index,
-      num_augmented_circuit,
+      num_augmented_circuits,
       program_counter,
       &running_claim.params,
       recursive_snark,
@@ -695,7 +694,7 @@ where
     let res = recursive_snark_unwrapped.verify(
       &running_claim.params,
       circuit_index,
-      num_augmented_circuit,
+      num_augmented_circuits,
       z0_primary,
       z0_secondary,
       ck_primary,
@@ -988,22 +987,37 @@ mod tests {
     }
   }
 
+  const OPCODE_0: usize = 0;
+  const OPCODE_1: usize = 1;
   fn test_trivial_nivc_with<G1, G2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     /*
-      Here demo that to set a public input `rom` (like a program), and program counter initially point to 0
-      Assume rom is at fixed size of 8
-      Each
+      Here demo a simple RAM machine memory commmitment via a public IO `rom` (like a program)
+      ROM is for constraints the sequence of execusion order for opcode
+      and program counter initially point to 0
+      Rom can be arbitrary length.
+
+      TODO: replace with memory commitment along with suggestion from Supernova 4.4 optimisations
+
+      This is mostly done with the existing Nova code. With additions of U_i[] and program_counter checks
+      in the augmented circuit.
+
+      To save the test time, after each step of iteration, RecursiveSNARK just verfiy the latest U_i[argumented_circuit_index] needs to be a satisfying instance.
+      TODO At the end of this test, RecursiveSNARK need to verify all U_i[] are satisfying instances
+
     */
-    let rom = [0, 1, 1, 0, 1, 0, 0, 1]; // rom can be arbitary string
+
+    let rom = [
+      OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1,
+    ]; // rom can be arbitary length
     let circuit_secondary = SuperNovaTrivialTestCircuit::new(rom.len());
-    let num_of_agumented_circuit = 2;
+    let num_augmented_circuit = 2;
 
     // Structuring running claims
-    let test_circuit1 = CubicCircuit::new(0, rom.len());
+    let test_circuit1 = CubicCircuit::new(OPCODE_0, rom.len());
     let mut running_claim1 = RunningClaim::<
       G1,
       G2,
@@ -1012,10 +1026,10 @@ mod tests {
     >::new(
       test_circuit1,
       circuit_secondary.clone(),
-      num_of_agumented_circuit,
+      num_augmented_circuit,
     );
 
-    let test_circuit2 = SquareCircuit::new(1, rom.len());
+    let test_circuit2 = SquareCircuit::new(OPCODE_1, rom.len());
     let mut running_claim2 = RunningClaim::<
       G1,
       G2,
@@ -1024,10 +1038,10 @@ mod tests {
     >::new(
       test_circuit2,
       circuit_secondary.clone(),
-      num_of_agumented_circuit,
+      num_augmented_circuit,
     );
 
-    // generate the commitkey from largest F' size circuit and reused it for all circuits
+    // generate the commitkey based on max num of constraints and reused it for all other augmented circuit
     let circuit_public_params = vec![&running_claim1.params, &running_claim2.params];
     let (max_index_circuit, _) = circuit_public_params
       .iter()
@@ -1052,65 +1066,9 @@ mod tests {
     running_claim2.params.digest =
       compute_digest::<G1, PublicParams<G1, G2>>(&running_claim2.params);
 
-    /*
-      Needs:
-      - We do not know how many times a certain circuit will be run.
-      - The user should be able to run any circuits in any order and re-use RunningClaim.
-      - Only the commitment key of the largest circuit is needed.
-
-      Representing program_counter and U_i to make sure sequencing is done correctly:
-
-      "1. Checks that Ui and PCi are contained in the public output of the instance ui.
-      This enforces that Ui and PCi are indeed produced by the prior step."
-
-      In this implementation we use a vector U_i, which is pre-deteremind by the user.
-      i.e. [0, 1, 2, 3] for a 4 running instance proof; 0 is the circuit_index for the first F'.
-
-      We check that both U_i and program_counter are contained in the public output of instance ui.
-      For the SuperNova proof we check each F'[i for F'i]
-      is a satisfying Nova instance.
-
-      If all U_i are satisfying and U_i, pci, and a pre-image of a hash(U_i-1, pci-1, zi-1) are
-      in the public output we have a valid SuperNova proof.
-
-      program_counter is enforced in the augmented circuit as program_counter + 1 increment.
-      ϕ does not exist in this implementation as F' are chosen by the user.
-      program_counter and U_i are checked in the augmented verifier.
-      https://youtu.be/ilrvqajkrYY?t=2559
-
-      "So, the verifier can check the NIVC statement (i, z0, zi) by checking the following:
-      (ui,wi) is a satisfying instance witness pair with respect to function F0_pci,
-      the public IO of ui contains Ui and pci, and for each j ∈ {1, . . . , `} check that (Ui [j], Wi
-      [j]) is a satisfying instance-witness pair with respect to function F0j." pg15.
-
-      ---------
-
-      "2. Runs the non-interactive folding scheme’s verifier to fold an instance that
-        claims the correct execution of the previous step, ui, into Ui [pci] to produce
-        an updated list of running instances Ui+1. This ensures that checking Ui+1
-        implies checking Ui and ui while maintaining that Ui+1 does not grow in size
-        with respect to Ui."
-
-      This is mostly done with the existing Nova code. With additions of U_i and pci checks
-      in the augmented circuit. The latest U_i[pci] at that index needs to be a satisfying instance.
-
-      Would mixing up the order of U_i as input break this? i.e. [1, 0, 2, 3]
-      Correct sequencing is enfored by checking the preimage hash(pci - 1, U_i - 1, zi -1).
-
-      --------
-
-      "3. Invokes the function ϕ on input (zi, ωi) to compute pci+1, which represents
-      the index of the function Fj currently being run. pci+1 is then sent to the
-      next invocation of an augmented circuit (which contains a verifier circuit)."
-
-      This is done in the augmented circuit and is just pci+1.
-      The circuit_index, and U_i are decided by the user.
-
-    */
-
     let num_steps = rom.len();
     let mut program_counter = <G1 as Group>::Scalar::from(0);
-    let mut recursive_snark: Option<NivcSNARK<G1, G2>> = None;
+    let mut recursive_snark: Option<RecursiveSNARK<G1, G2>> = None;
     let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError> =
       Err(NovaError::InvalidInitialInputLength);
 
@@ -1136,9 +1094,9 @@ mod tests {
           .unwrap(),
       ) as usize]; // convert program counter from field to usize (only took le 4 bytes)
       let (nivc_snark, result) = match curcuit_index_selector {
-        0 => NivcSNARK::execute_and_verify_circuits(
+        OPCODE_0 => RecursiveSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
-          num_of_agumented_circuit,
+          num_augmented_circuit,
           running_claim1.clone(),
           &ck_primary,
           &ck_secondary,
@@ -1147,9 +1105,9 @@ mod tests {
           &z0_secondary,
         )
         .unwrap(),
-        1 => NivcSNARK::execute_and_verify_circuits(
+        OPCODE_1 => RecursiveSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
-          num_of_agumented_circuit,
+          num_augmented_circuit,
           running_claim2.clone(),
           &ck_primary,
           &ck_secondary,
