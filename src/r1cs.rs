@@ -202,23 +202,16 @@ impl<G: Group> R1CSShape<G> {
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
 
-      let res = (0..self.num_cons)
-        .map(|i| {
-          let res = usize::from(Az[i] * Bz[i] != U.u * Cz[i] + W.E[i]);
-          if res > 0 {
-            // error
-            Err(self._get_constraints_path_by_index(i))
-          } else {
-            Ok(())
-          }
-        })
-        .collect::<Result<Vec<()>, _>>();
-
-      match res {
-        Ok(_) => Ok(()),
-        Err(e) => Err(e),
-      }
+      (0..self.num_cons).try_for_each(|i| {
+        if Az[i] * Bz[i] != U.u * Cz[i] + W.E[i] {
+          // constraint failed
+          Err(self._get_constraint_err_by_index(i))
+        } else {
+          Ok(())
+        }
+      })
     };
+    res_eq?;
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm: bool = {
@@ -227,11 +220,7 @@ impl<G: Group> R1CSShape<G> {
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
-    if res_eq.is_err() {
-      return res_eq;
-    }
     if !res_comm {
-      println!("res_comm not true");
       return Err(NovaError::UnSat);
     }
     Ok(())
@@ -255,29 +244,20 @@ impl<G: Group> R1CSShape<G> {
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
 
-      let res = (0..self.num_cons)
-        .map(|i| {
-          let res = usize::from(Az[i] * Bz[i] != Cz[i]);
-          if res > 0 {
-            // error
-            Err(self._get_constraints_path_by_index(i))
-          } else {
-            Ok(())
-          }
-        })
-        .collect::<Result<Vec<()>, _>>();
-
-      res.map(|_| ()) // cleanup as Ok(())
+      (0..self.num_cons).try_for_each(|i| {
+        if Az[i] * Bz[i] != Cz[i] {
+          // constraint failed, retrieve constaint name
+          Err(self._get_constraint_err_by_index(i))
+        } else {
+          Ok(())
+        }
+      })
     };
+    res_eq?;
 
     // verify if comm_W is a commitment to W
     let res_comm: bool = U.comm_W == CE::<G>::commit(ck, &W.W);
-
-    if res_eq.is_err() {
-      return res_eq;
-    }
     if !res_comm {
-      println!("res_comm not true");
       return Err(NovaError::UnSat);
     }
     Ok(())
@@ -392,7 +372,7 @@ impl<G: Group> R1CSShape<G> {
     }
   }
 
-  fn _get_constraints_path_by_index(&self, index: usize) -> NovaError {
+  fn _get_constraint_err_by_index(&self, index: usize) -> NovaError {
     // error
     if let Some(constraints_path) = &self.constraints_path {
       NovaError::UnSatMsg(format!(

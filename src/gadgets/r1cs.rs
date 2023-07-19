@@ -269,9 +269,9 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     })?;
     cs.enforce(
       || "Check u_fold",
-      |lc| lc,
-      |lc| lc,
-      |lc| lc + u_fold.get_variable() - self.u.get_variable() - r.get_variable(),
+      |lc| lc + self.u.get_variable() + r.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc + u_fold.get_variable(),
     );
 
     // Fold the IO:
@@ -337,11 +337,11 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     other: &AllocatedRelaxedR1CSInstance<G>,
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
-    conditionally_select_alloc_relaxed_r1cs(cs, &self, other, condition)
+    conditionally_select_alloc_relaxed_r1cs(cs, self, other, condition)
   }
 }
 
-/// If condition return a otherwise b
+/// c = cond ? a: b, where a, b: AllocatedRelaxedR1CSInstance
 pub fn conditionally_select_alloc_relaxed_r1cs<
   G: Group,
   CS: ConstraintSystem<<G as Group>::Base>,
@@ -352,16 +352,41 @@ pub fn conditionally_select_alloc_relaxed_r1cs<
   condition: &Boolean,
 ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
   let c = AllocatedRelaxedR1CSInstance {
-    u: conditionally_select(cs.namespace(|| "selected u"), &a.u, &b.u, condition)?,
-    W: conditionally_select_point(cs.namespace(|| "selected W"), &a.W, &b.W, condition)?,
-    E: conditionally_select_point(cs.namespace(|| "selected E"), &a.E, &b.E, condition)?,
-    X0: conditionally_select_bignat(cs.namespace(|| "selected X0"), &a.X0, &b.X0, condition)?,
-    X1: conditionally_select_bignat(cs.namespace(|| "selected X1"), &a.X1, &b.X1, condition)?,
+    u: conditionally_select(
+      cs.namespace(|| "u = cond ? a.u : b.u"),
+      &a.u,
+      &b.u,
+      condition,
+    )?,
+    W: conditionally_select_point(
+      cs.namespace(|| "W = cond ? a.W : b.W"),
+      &a.W,
+      &b.W,
+      condition,
+    )?,
+    E: conditionally_select_point(
+      cs.namespace(|| "E = cond ? a.E : b.E"),
+      &a.E,
+      &b.E,
+      condition,
+    )?,
+    X0: conditionally_select_bignat(
+      cs.namespace(|| "X[0] = cond ? a.X[0] : b.X[0]"),
+      &a.X0,
+      &b.X0,
+      condition,
+    )?,
+    X1: conditionally_select_bignat(
+      cs.namespace(|| "X[1] = cond ? a.X[1] : b.X[1]"),
+      &a.X1,
+      &b.X1,
+      condition,
+    )?,
   };
   Ok(c)
 }
 
-/// If condition return a otherwise b
+/// c = cond ? a: b, where a, b: AllocatedPoint
 pub fn conditionally_select_point<G: Group, CS: ConstraintSystem<<G as Group>::Base>>(
   mut cs: CS,
   a: &AllocatedPoint<G>,
@@ -369,10 +394,20 @@ pub fn conditionally_select_point<G: Group, CS: ConstraintSystem<<G as Group>::B
   condition: &Boolean,
 ) -> Result<AllocatedPoint<G>, SynthesisError> {
   let c = AllocatedPoint {
-    x: conditionally_select(cs.namespace(|| "selected point x"), &a.x, &b.x, condition)?,
-    y: conditionally_select(cs.namespace(|| "selected point y"), &a.y, &b.y, condition)?,
+    x: conditionally_select(
+      cs.namespace(|| "x = cond ? a.x : b.x"),
+      &a.x,
+      &b.x,
+      condition,
+    )?,
+    y: conditionally_select(
+      cs.namespace(|| "y = cond ? a.y : b.y"),
+      &a.y,
+      &b.y,
+      condition,
+    )?,
     is_infinity: conditionally_select(
-      cs.namespace(|| "selected point is_infinity"),
+      cs.namespace(|| "is_infinity = cond ? a.is_infinity : b.is_infinity"),
       &a.is_infinity,
       &b.is_infinity,
       condition,
