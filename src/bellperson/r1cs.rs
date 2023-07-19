@@ -25,9 +25,14 @@ pub trait NovaWitness<G: Group> {
 /// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
 pub trait NovaShape<G: Group> {
   /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
-  fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
-  /// Return an appropriate `R1CSShape` without `CommitmentKey` structs.
-  fn r1cs_shape_without_commitmentkey(&self) -> R1CSShape<G>;
+  fn r1cs_shape_with_commitmentkey(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
+    let S = self.r1cs_shape();
+    let ck = R1CS::<G>::commitment_key(&S);
+
+    (S, ck)
+  }
+  /// Return an appropriate `R1CSShape`.
+  fn r1cs_shape(&self) -> R1CSShape<G>;
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
@@ -48,14 +53,7 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
 }
 
 impl<G: Group> NovaShape<G> for ShapeCS<G> {
-  fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
-    let S = self.r1cs_shape_without_commitmentkey();
-    let ck = R1CS::<G>::commitment_key(&S);
-
-    (S, ck)
-  }
-
-  fn r1cs_shape_without_commitmentkey(&self) -> R1CSShape<G> {
+  fn r1cs_shape(&self) -> R1CSShape<G> {
     let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
