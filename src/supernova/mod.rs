@@ -660,7 +660,6 @@ where
         "res_r_primary is_sat_relaxed relation failed at constraint path {:?}",
         pp.constraints_path_primary
           .get(i)
-          .clone()
           .unwrap_or(&"".to_string())
       )),
       e => e,
@@ -670,7 +669,6 @@ where
         "res_r_secondary is_sat_relaxed relation failed at constraint path {:?}",
         pp.constraints_path_primary
           .get(i)
-          .clone()
           .unwrap_or(&"".to_string())
       )),
       e => e,
@@ -680,7 +678,6 @@ where
         "res_l_secondary is_sat relation failed at constraint path {:?}",
         pp.constraints_path_primary
           .get(i)
-          .clone()
           .unwrap_or(&"".to_string())
       )),
       e => e,
@@ -1043,24 +1040,29 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     /*
-      Here demo a simple RAM machine memory commmitment via a public IO `rom` (like a program)
-      ROM is for constraints the sequence of execusion order for opcode
-      and program counter initially point to 0
-      Rom can be arbitrary length.
+      Here demo a simple RAM machine
+      - with 2 argumented circuit
+      - each argumented circuit contains primary and secondary circuit
+      - a memory commmitment via a public IO `rom` (like a program) to constraint the sequence execution
+
+      This test also ready to add more argumented circuit and ROM can be arbitrary length
+
+      ROM is for constraints the sequence of execution order for opcode
+      program counter initially point to 0
 
       TODO: replace with memory commitment along with suggestion from Supernova 4.4 optimisations
 
       This is mostly done with the existing Nova code. With additions of U_i[] and program_counter checks
       in the augmented circuit.
 
-      To save the test time, after each step of iteration, RecursiveSNARK just verfiy the latest U_i[argumented_circuit_index] needs to be a satisfying instance.
+      To save the test time, after each step of iteration, RecursiveSNARK just verfiy the latest U_i[augmented_circuit_index] needs to be a satisfying instance.
       TODO At the end of this test, RecursiveSNARK need to verify all U_i[] are satisfying instances
 
     */
 
     let rom = [
       OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1,
-    ]; // rom can be arbitary length
+    ]; // Rom can be arbitrary length.
     let circuit_secondary = SuperNovaTrivialTestCircuit::new(rom.len());
     let num_augmented_circuit = 2;
 

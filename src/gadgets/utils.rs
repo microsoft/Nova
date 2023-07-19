@@ -445,9 +445,9 @@ pub fn add_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   })?;
   cs.enforce(
     || "Check u_fold",
-    |lc| lc,
-    |lc| lc,
-    |lc| lc + c.get_variable() - a.get_variable() - b.get_variable(),
+    |lc| lc + a.get_variable() + b.get_variable(),
+    |lc| lc + CS::one(),
+    |lc| lc + c.get_variable(),
   );
   Ok(c)
 }

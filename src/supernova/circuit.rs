@@ -1,17 +1,16 @@
+//! Supernova implemetation support arbitrary argumented circuits and running instances.
+//! There are two Verification Circuits for each argumented circuit: The primary and the secondary.
+//! Each of them is over a Pasta curve but
+//! only the primary executes the next step of the computation.
+//! Each circuit takes as input 2 hashes.
+//! Each circuit folds the last invocation of the other into the respective running instance, specified by augmented_circuit_index
+//!
 //! The augmented circuit F' for SuperNova that includes everything from Nova
 //!   and additionally checks:
 //!    1. Ui[] are contained in X[0] hash pre-image.
-//!    2. R1CS Instance u is folded into Ui[argumented_circuit_index] correctly; just like Nova IVC.
+//!    2. R1CS Instance u is folded into Ui[augmented_circuit_index] correctly; just like Nova IVC.
 //!    3. (optional by F logic) F circuit might check program_counter_{i} invoked current F circuit is legal or not.
 //!    3. F circuit produce program_counter_{i+1} and sent to next round for optionally constraint the next F' argumented circuit.
-
-//! There are two Verification Circuits. The primary and the secondary.
-//! Each of them is over a Pasta curve but
-//! only the primary executes the next step of the computation.
-//! We have two running instances. Each circuit takes as input 2 hashes: one for each
-//! of the running instances. Each of these hashes is
-//! H(params = H(shape, ck), program_counter, i, z0, zi, U[]). Each circuit folds the last invocation of
-//! the other into the running instance
 
 use crate::{
   constants::NUM_HASH_BITS,
@@ -762,7 +761,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 11609, 12179,
+      params1, params2, ro_consts1, ro_consts2, 9919, 12179,
     );
   }
 }
