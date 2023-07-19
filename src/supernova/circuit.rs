@@ -26,7 +26,7 @@ use crate::{
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
-    circuit::SuperNovaStepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait,
+    circuit_supernova::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait,
     ROConstantsCircuit,
   },
   Commitment,
@@ -111,7 +111,7 @@ impl<G: Group> CircuitInputs<G> {
 /// The augmented circuit F' in SuperNova that includes a step circuit F
 /// and the circuit for the verifier in SuperNova's non-interactive folding scheme,
 /// SuperNova NIVS will fold strictly r1cs instance u with respective relaxed r1cs instance U[last_augmented_circuit_index]
-pub struct SuperNovaCircuit<G: Group, SC: SuperNovaStepCircuit<G::Base>> {
+pub struct SuperNovaCircuit<G: Group, SC: StepCircuit<G::Base>> {
   params: CircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<CircuitInputs<G>>,
@@ -119,7 +119,7 @@ pub struct SuperNovaCircuit<G: Group, SC: SuperNovaStepCircuit<G::Base>> {
   num_augmented_circuits: usize, // number of overall augmented circuits
 }
 
-impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
+impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub fn new(
     params: CircuitParams,
@@ -418,7 +418,7 @@ impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   }
 }
 
-impl<G: Group, SC: SuperNovaStepCircuit<G::Base>> Circuit<<G as Group>::Base>
+impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
   for SuperNovaCircuit<G, SC>
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -633,7 +633,7 @@ mod tests {
     bellperson::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
-    traits::{circuit::SuperNovaTrivialTestCircuit, ROConstantsTrait},
+    traits::{circuit_supernova::TrivialTestCircuit, ROConstantsTrait},
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
@@ -649,13 +649,13 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     /*
-    Both circuit1 and circuit2 are SuperNovaTrivialTestCircuit
+    Both circuit1 and circuit2 are TrivialTestCircuit
     */
 
     // Initialize the shape and ck for the primary
-    let step_circuit1 = SuperNovaTrivialTestCircuit::default();
+    let step_circuit1 = TrivialTestCircuit::default();
     let arity1 = step_circuit1.arity();
-    let circuit1: SuperNovaCircuit<G2, SuperNovaTrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
         primary_params.clone(),
         None,
@@ -672,9 +672,9 @@ mod tests {
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     // Initialize the shape and ck for the secondary
-    let step_circuit2 = SuperNovaTrivialTestCircuit::default();
+    let step_circuit2 = TrivialTestCircuit::default();
     let arity2 = step_circuit2.arity();
-    let circuit2: SuperNovaCircuit<G1, SuperNovaTrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
         secondary_params.clone(),
         None,
@@ -705,11 +705,11 @@ mod tests {
       zero1,
       zero1,
     );
-    let circuit1: SuperNovaCircuit<G2, SuperNovaTrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: SuperNovaCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(
         primary_params,
         Some(inputs1),
-        SuperNovaTrivialTestCircuit::default(),
+        TrivialTestCircuit::default(),
         ro_consts1,
         2,
       );
@@ -736,11 +736,11 @@ mod tests {
       zero2,
       zero2,
     );
-    let circuit2: SuperNovaCircuit<G1, SuperNovaTrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: SuperNovaCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       SuperNovaCircuit::new(
         secondary_params,
         Some(inputs2),
-        SuperNovaTrivialTestCircuit::default(),
+        TrivialTestCircuit::default(),
         ro_consts2,
         2,
       );

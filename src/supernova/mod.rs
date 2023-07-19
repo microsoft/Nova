@@ -6,7 +6,7 @@ use crate::{
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{
-    circuit::SuperNovaStepCircuit, circuit::SuperNovaTrivialTestCircuit,
+    circuit_supernova::StepCircuit, circuit_supernova::TrivialTestCircuit,
     commitment::CommitmentTrait, AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit,
     ROConstantsTrait, ROTrait,
   },
@@ -65,8 +65,8 @@ where
 {
   /// Create a new `PublicParams`
   pub fn setup_without_commitkey<
-    C1: SuperNovaStepCircuit<G1::Scalar>,
-    C2: SuperNovaStepCircuit<G2::Scalar>,
+    C1: StepCircuit<G1::Scalar>,
+    C2: StepCircuit<G2::Scalar>,
   >(
     c_primary: C1,
     c_secondary: C2,
@@ -170,8 +170,8 @@ pub struct RunningClaim<G1, G2, Ca, Cb>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  Ca: SuperNovaStepCircuit<G1::Scalar>,
-  Cb: SuperNovaStepCircuit<G2::Scalar>,
+  Ca: StepCircuit<G1::Scalar>,
+  Cb: StepCircuit<G2::Scalar>,
 {
   _phantom: PhantomData<G1>,
   claim: Ca,
@@ -183,8 +183,8 @@ impl<G1, G2, Ca, Cb> RunningClaim<G1, G2, Ca, Cb>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  Ca: SuperNovaStepCircuit<G1::Scalar>,
-  Cb: SuperNovaStepCircuit<G2::Scalar>,
+  Ca: StepCircuit<G1::Scalar>,
+  Cb: StepCircuit<G2::Scalar>,
 {
   pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuits: usize) -> Self {
     let claim = circuit_primary.clone();
@@ -233,7 +233,7 @@ where
 {
   /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
   /// by executing a step of the incremental computation
-  pub fn prove_step<C1: SuperNovaStepCircuit<G1::Scalar>, C2: SuperNovaStepCircuit<G2::Scalar>>(
+  pub fn prove_step<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     circuit_index: usize,
     num_augmented_circuits: usize,
     program_counter: G1::Scalar,
@@ -709,8 +709,8 @@ where
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    C1: SuperNovaStepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    C2: SuperNovaStepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
+    C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
   {
     // Produce a recursive SNARK
     let mut recursive_snark: Option<RecursiveSNARK<G1, G2>> = last_running_instance.clone();
@@ -858,7 +858,7 @@ mod tests {
     }
   }
 
-  impl<F> SuperNovaStepCircuit<F> for CubicCircuit<F>
+  impl<F> StepCircuit<F> for CubicCircuit<F>
   where
     F: PrimeField,
   {
@@ -956,7 +956,7 @@ mod tests {
     }
   }
 
-  impl<F> SuperNovaStepCircuit<F> for SquareCircuit<F>
+  impl<F> StepCircuit<F> for SquareCircuit<F>
   where
     F: PrimeField,
   {
@@ -1063,7 +1063,7 @@ mod tests {
     let rom = [
       OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1,
     ]; // Rom can be arbitrary length.
-    let circuit_secondary = SuperNovaTrivialTestCircuit::new(rom.len());
+    let circuit_secondary = TrivialTestCircuit::new(rom.len());
     let num_augmented_circuit = 2;
 
     // Structuring running claims
@@ -1072,7 +1072,7 @@ mod tests {
       G1,
       G2,
       CubicCircuit<<G1 as Group>::Scalar>,
-      SuperNovaTrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::new(
       test_circuit1,
       circuit_secondary.clone(),
@@ -1084,7 +1084,7 @@ mod tests {
       G1,
       G2,
       SquareCircuit<<G1 as Group>::Scalar>,
-      SuperNovaTrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::new(
       test_circuit2,
       circuit_secondary.clone(),
