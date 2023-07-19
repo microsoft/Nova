@@ -28,43 +28,11 @@ use crate::bellperson::{
   solver::SatisfyingAssignment,
 };
 use ::bellperson::{Circuit, ConstraintSystem};
-use flate2::{write::ZlibEncoder, Compression};
-use sha3::{Digest, Sha3_256};
 
 use crate::nifs::NIFS;
 
 mod circuit; // declare the module first
 use circuit::{CircuitInputs, CircuitParams, SuperNovaCircuit};
-
-fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
-  // obtain a vector of bytes representing public parameters
-  let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-  bincode::serialize_into(&mut encoder, o).unwrap();
-  let pp_bytes = encoder.finish().unwrap();
-
-  // convert pp_bytes into a short digest
-  let mut hasher = Sha3_256::new();
-  hasher.update(&pp_bytes);
-  let digest = hasher.finalize();
-
-  // truncate the digest to NUM_HASH_BITS bits
-  let bv = (0..NUM_HASH_BITS).map(|i| {
-    let (byte_pos, bit_pos) = (i / 8, i % 8);
-    let bit = (digest[byte_pos] >> bit_pos) & 1;
-    bit == 1
-  });
-
-  // turn the bit vector into a scalar
-  let mut digest = G::Scalar::ZERO;
-  let mut coeff = G::Scalar::ONE;
-  for bit in bv {
-    if bit {
-      digest += coeff;
-    }
-    coeff += coeff;
-  }
-  digest
-}
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize, Clone)]
@@ -764,6 +732,7 @@ where
 #[cfg(test)]
 mod tests {
   use crate::{
+    compute_digest,
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
     r1cs::R1CS,
   };
@@ -877,7 +846,7 @@ mod tests {
 
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
-        cs.namespace(|| "CubicCircuit argumented circuit constraint"),
+        cs.namespace(|| "CubicCircuit agumented circuit constraint"),
         z,
         self.circuit_index,
         2,
@@ -975,7 +944,7 @@ mod tests {
 
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
-        cs.namespace(|| "SquareCircuit argumented circuit constraint"),
+        cs.namespace(|| "SquareCircuit agumented circuit constraint"),
         z,
         self.circuit_index,
         2,
@@ -1039,7 +1008,7 @@ mod tests {
     */
     let rom = [0, 1, 1, 0, 1, 0, 0, 1]; // rom can be arbitary string
     let circuit_secondary = SuperNovaTrivialTestCircuit::new(rom.len());
-    let num_of_argumented_circuit = 2;
+    let num_of_agumented_circuit = 2;
 
     // Structuring running claims
     let test_circuit1 = CubicCircuit::new(0, rom.len());
@@ -1052,7 +1021,7 @@ mod tests {
       test_circuit1,
       circuit_secondary.clone(),
       true,
-      num_of_argumented_circuit,
+      num_of_agumented_circuit,
     );
 
     let test_circuit2 = SquareCircuit::new(1, rom.len());
@@ -1065,7 +1034,7 @@ mod tests {
       test_circuit2,
       circuit_secondary.clone(),
       false,
-      num_of_argumented_circuit,
+      num_of_agumented_circuit,
     );
 
     // generate the commitkey from largest F' size circuit and reused it for all circuits
@@ -1184,7 +1153,7 @@ mod tests {
       let (nivc_snark, result) = match curcuit_index_selector {
         0 => NivcSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
-          num_of_argumented_circuit,
+          num_of_agumented_circuit,
           running_claim1.clone(),
           &ck_primary,
           &ck_secondary,
@@ -1195,7 +1164,7 @@ mod tests {
         .unwrap(),
         1 => NivcSNARK::execute_and_verify_circuits(
           curcuit_index_selector,
-          num_of_argumented_circuit,
+          num_of_agumented_circuit,
           running_claim2.clone(),
           &ck_primary,
           &ck_secondary,
