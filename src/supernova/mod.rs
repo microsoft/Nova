@@ -328,8 +328,8 @@ where
     let r_U_secondary = RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
 
     // Outputs of the two circuits and next program counter thus far.
-    let (zi_primary_pc_next, zi_primary) = c_primary.output(&z0_primary);
-    let (_, zi_secondary) = c_secondary.output(&z0_secondary);
+    let (zi_primary_pc_next, zi_primary) = c_primary.output(initial_program_counter, &z0_primary);
+    let (_, zi_secondary) = c_secondary.output(G2::Scalar::ZERO, &z0_secondary);
 
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidStepOutputLength);
@@ -502,8 +502,8 @@ where
       .map_err(|_e| NovaError::UnSat)?;
 
     // update the running instances and witnesses
-    let (zi_primary_pc_next, zi_primary) = c_primary.output(&self.zi_primary);
-    let (_, zi_secondary) = c_secondary.output(&self.zi_secondary);
+    let (zi_primary_pc_next, zi_primary) = c_primary.output(self.program_counter, &self.zi_primary);
+    let (_, zi_secondary) = c_secondary.output(G2::Scalar::ZERO, &self.zi_secondary);
 
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidStepOutputLength);
@@ -596,9 +596,10 @@ where
       for e in &self.zi_secondary {
         hasher2.absorb(*e);
       }
+      let default_value = RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary);
       self.r_U_primary.iter().for_each(|U| {
-        U.clone()
-          .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary))
+        U.as_ref()
+          .unwrap_or_else(|| &default_value)
           .absorb_in_ro(&mut hasher2);
       });
 
@@ -624,16 +625,18 @@ where
     }
 
     // check the satisfiability of the provided `circuit_index` instance
+    let default_instance = RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary);
+    let default_witness = RelaxedR1CSWitness::default(&pp.r1cs_shape_primary);
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary.is_sat_relaxed(
           pp.ck_primary.as_ref().unwrap(),
           &self.r_U_primary[claim.get_augmented_circuit_index()]
-            .clone()
-            .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
+            .as_ref()
+            .unwrap_or_else(|| &default_instance),
           &self.r_W_primary[claim.get_augmented_circuit_index()]
-            .clone()
-            .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
+            .as_ref()
+            .unwrap_or_else(|| &default_witness),
         )
       },
       || {
@@ -714,17 +717,16 @@ mod tests {
 
   fn constraint_curcuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
+    pc_counter: &AllocatedNum<F>,
     z: &[AllocatedNum<F>],
     circuit_index: usize,
     rom_offset: usize,
-    pc_index: usize,
   ) -> Result<(), SynthesisError> {
-    let pc = &z[pc_index]; // pc on index 1
     let circuit_index = AllocatedNum::alloc(cs.namespace(|| "circuit_index"), || {
       Ok(F::from(circuit_index as u64))
     })?;
     let pc_offset_in_z = AllocatedNum::alloc(cs.namespace(|| "pc_offset_in_z"), || {
-      Ok(pc.get_value().unwrap() + F::from(rom_offset as u64))
+      Ok(pc_counter.get_value().unwrap() + F::from(rom_offset as u64))
     })?;
 
     // select target when index match or empty
@@ -798,7 +800,7 @@ mod tests {
     F: PrimeField,
   {
     fn arity(&self) -> usize {
-      1 + 1 + self.rom_size // value + pc + rom[].len()
+      1 + self.rom_size // value + rom[].len()
     }
 
     fn synthesize<CS: ConstraintSystem<F>>(
@@ -807,29 +809,20 @@ mod tests {
       pc_counter: &AllocatedNum<F>,
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
-      // constrain z_i == pc
-      cs.enforce(
-        || "z_i[1] == pc",
-        |lc| lc + z[1].get_variable(),
-        |lc| lc + CS::one(),
-        |lc| lc + pc_counter.get_variable(),
-      );
-
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
         cs.namespace(|| "CubicCircuit agumented circuit constraint"),
+        pc_counter,
         z,
         self.circuit_index,
-        2,
         1,
       )?;
 
-      let pc = &z[1];
       let one = alloc_one(cs.namespace(|| "alloc one"))?;
       let pc_next = add_allocated_num(
         // pc = pc + 1
         cs.namespace(|| format!("pc = pc + 1")),
-        pc,
+        pc_counter,
         &one,
       )?;
 
@@ -856,18 +849,17 @@ mod tests {
         |lc| lc + y.get_variable(),
       );
 
-      let mut z_next = vec![y, pc_next];
-      z_next.extend(z[2..].iter().cloned());
-      Ok((z_next[1].clone(), z_next))
+      let mut z_next = vec![y];
+      z_next.extend(z[1..].iter().cloned());
+      Ok((pc_next, z_next))
     }
 
-    fn output(&self, z: &[F]) -> (F, Vec<F>) {
+    fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
       let mut z_next = vec![
         z[0] * z[0] * z[0] + z[0] + F::from(5u64), // y
-        z[1] + F::from(1),                         // pc + 1
       ];
-      z_next.extend(z[2..].iter().cloned());
-      (z_next[1], z_next)
+      z_next.extend(z[1..].iter().cloned());
+      (pc + F::from(1), z_next)
     }
   }
 
@@ -896,7 +888,7 @@ mod tests {
     F: PrimeField,
   {
     fn arity(&self) -> usize {
-      1 + 1 + self.rom_size // value + pc + rom[].len()
+      1 + self.rom_size // value + rom[].len()
     }
 
     fn synthesize<CS: ConstraintSystem<F>>(
@@ -905,28 +897,19 @@ mod tests {
       pc_counter: &AllocatedNum<F>,
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
-      // constrain z_i == pc
-      cs.enforce(
-        || "z_i[1] == pc",
-        |lc| lc + z[1].get_variable(),
-        |lc| lc + CS::one(),
-        |lc| lc + pc_counter.get_variable(),
-      );
-
       // constrain rom[pc] equal to `self.circuit_index`
       constraint_curcuit_index(
         cs.namespace(|| "SquareCircuit agumented circuit constraint"),
+        pc_counter,
         z,
         self.circuit_index,
-        2,
         1,
       )?;
-      let pc = &z[1];
       let one = alloc_one(cs.namespace(|| "alloc one"))?;
       let pc_next = add_allocated_num(
         // pc = pc + 1
         cs.namespace(|| "pc = pc + 1"),
-        pc,
+        pc_counter,
         &one,
       )?;
 
@@ -952,18 +935,17 @@ mod tests {
         |lc| lc + y.get_variable(),
       );
 
-      let mut z_next = vec![y, pc_next];
-      z_next.extend(z[2..].iter().cloned());
-      Ok((z_next[1].clone(), z_next))
+      let mut z_next = vec![y];
+      z_next.extend(z[1..].iter().cloned());
+      Ok((pc_next, z_next))
     }
 
-    fn output(&self, z: &[F]) -> (F, Vec<F>) {
+    fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
       let mut z_next = vec![
         z[0] * z[0] + z[0] + F::from(5u64), // y
-        z[1] + F::from(1),                  // pc + 1
       ];
-      z_next.extend(z[2..].iter().cloned());
-      (z_next[1], z_next)
+      z_next.extend(z[1..].iter().cloned());
+      (pc + F::from(1), z_next)
     }
   }
 
@@ -1058,13 +1040,13 @@ mod tests {
     let initial_program_counter = <G1 as Group>::Scalar::from(0);
 
     // extend z0_primary/secondary with rom content
-    let mut z0_primary = vec![<G1 as Group>::Scalar::ONE, <G1 as Group>::Scalar::ZERO]; // var, program_counter
+    let mut z0_primary = vec![<G1 as Group>::Scalar::ONE]; // var, program_counter
     z0_primary.extend(
       rom
         .iter()
         .map(|opcode| <G1 as Group>::Scalar::from(*opcode as u64)),
     );
-    let mut z0_secondary = vec![<G2 as Group>::Scalar::ONE, <G2 as Group>::Scalar::ZERO]; // var, program_counter
+    let mut z0_secondary = vec![<G2 as Group>::Scalar::ONE]; // var, program_counter
     z0_secondary.extend(
       rom
         .iter()

@@ -22,7 +22,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
   ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError>;
 
   /// return the output and next program counter of the step when provided with the step's input
-  fn output(&self, z: &[F]) -> (F, Vec<F>);
+  fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>);
 }
 
 /// A trivial step circuit that simply returns the input
@@ -50,7 +50,7 @@ where
   F: PrimeField,
 {
   fn arity(&self) -> usize {
-    1 + 1 + self.rom_size // value + pc + rom[].len()
+    1 + self.rom_size // value + rom[].len()
   }
 
   fn synthesize<CS: ConstraintSystem<F>>(
@@ -59,10 +59,10 @@ where
     _pc_counter: &AllocatedNum<F>,
     z: &[AllocatedNum<F>],
   ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
-    Ok((z[1].clone(), z.to_vec()))
+    Ok((_pc_counter.clone(), z.to_vec()))
   }
 
-  fn output(&self, z: &[F]) -> (F, Vec<F>) {
-    (z[1], z.to_vec())
+  fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
+    (pc, z.to_vec())
   }
 }

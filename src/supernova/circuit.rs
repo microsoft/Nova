@@ -759,7 +759,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 9919, 12179,
+      params1, params2, ro_consts1, ro_consts2, 9918, 12178,
     );
   }
 }
