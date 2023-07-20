@@ -157,17 +157,14 @@ mod tests {
     vecs.iter().map(Vec::as_slice).collect()
   }
 
-  /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
-  /// hypercube, but to not-zero outside the hypercube.
-  #[test]
-  fn test_compute_q() {
+  fn test_compute_q_with<G: Group>() {
     let mut rng = OsRng;
 
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<G>::gen_test_ccs(&z);
 
     // generate ck
-    let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
+    let ck = CCSShape::<G>::commitment_key(&ccs_shape);
     // ensure CCS is satisfied
     ccs_shape.is_sat(&ck, &ccs_instance, &ccs_witness).unwrap();
 
@@ -178,30 +175,33 @@ mod tests {
 
     // Evaluate inside the hypercube
     BooleanHypercube::new(ccs_shape.s).for_each(|x| {
-      assert_eq!(Fq::zero(), q.evaluate(&x).unwrap());
+      assert_eq!(G::Scalar::ZERO, q.evaluate(&x).unwrap());
     });
 
     // Evaluate outside the hypercube
-    let beta: Vec<Fq> = (0..ccs_shape.s).map(|_| Fq::random(&mut rng)).collect();
-    assert_ne!(Fq::zero(), q.evaluate(&beta).unwrap());
+    let beta: Vec<G::Scalar> = (0..ccs_shape.s)
+      .map(|_| G::Scalar::random(&mut rng))
+      .collect();
+    assert_ne!(G::Scalar::ZERO, q.evaluate(&beta).unwrap());
   }
 
-  #[test]
-  fn test_compute_Q() {
+  fn test_compute_Q_with<G: Group>() {
     let mut rng = OsRng;
 
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<G>::gen_test_ccs(&z);
 
     // generate ck
-    let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
+    let ck = CCSShape::<G>::commitment_key(&ccs_shape);
     // ensure CCS is satisfied
     ccs_shape.is_sat(&ck, &ccs_instance, &ccs_witness).unwrap();
 
     // Generate CCCS artifacts
     let cccs_shape = ccs_shape.to_cccs_shape();
 
-    let beta: Vec<Fq> = (0..ccs_shape.s).map(|_| Fq::random(&mut rng)).collect();
+    let beta: Vec<G::Scalar> = (0..ccs_shape.s)
+      .map(|_| G::Scalar::random(&mut rng))
+      .collect();
 
     // Compute Q(x) = eq(beta, x) * q(x).
     let Q = cccs_shape
@@ -222,22 +222,18 @@ mod tests {
     // Now sum Q(x) evaluations in the hypercube and expect it to be 0
     let r = BooleanHypercube::new(ccs_shape.s)
       .map(|x| Q.evaluate(&x).unwrap())
-      .fold(Fq::zero(), |acc, result| acc + result);
-    assert_eq!(r, Fq::zero());
+      .fold(G::Scalar::ZERO, |acc, result| acc + result);
+    assert_eq!(r, G::Scalar::ZERO);
   }
 
-  /// The polynomial G(x) (see above) interpolates q(x) inside the hypercube.
-  /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
-  /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
-  #[test]
-  fn test_Q_against_q() {
+  fn test_Q_against_q_with<G: Group>() {
     let mut rng = OsRng;
 
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs_shape, ccs_witness, ccs_instance) = CCSShape::<G>::gen_test_ccs(&z);
 
     // generate ck
-    let ck = CCSShape::<Ep>::commitment_key(&ccs_shape);
+    let ck = CCSShape::<G>::commitment_key(&ccs_shape);
     // ensure CCS is satisfied
     ccs_shape.is_sat(&ck, &ccs_instance, &ccs_witness).unwrap();
 
@@ -257,12 +253,14 @@ mod tests {
       // Get G(d) by summing over Q_d(x) over the hypercube
       let G_at_d = BooleanHypercube::new(ccs_shape.s)
         .map(|x| Q_at_d.evaluate(&x).unwrap())
-        .fold(Fq::zero(), |acc, result| acc + result);
+        .fold(G::Scalar::ZERO, |acc, result| acc + result);
       assert_eq!(G_at_d, q.evaluate(&d).unwrap());
     }
 
     // Now test that they should disagree outside of the hypercube
-    let r: Vec<Fq> = (0..ccs_shape.s).map(|_| Fq::random(&mut rng)).collect();
+    let r: Vec<G::Scalar> = (0..ccs_shape.s)
+      .map(|_| G::Scalar::random(&mut rng))
+      .collect();
     let Q_at_r = cccs_shape
       .compute_Q(&z, &r)
       .expect("Computing Q_at_r shouldn't fail");
@@ -270,7 +268,27 @@ mod tests {
     // Get G(d) by summing over Q_d(x) over the hypercube
     let G_at_r = BooleanHypercube::new(ccs_shape.s)
       .map(|x| Q_at_r.evaluate(&x).unwrap())
-      .fold(Fq::zero(), |acc, result| acc + result);
+      .fold(G::Scalar::ZERO, |acc, result| acc + result);
     assert_ne!(G_at_r, q.evaluate(&r).unwrap());
+  }
+
+  /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
+  /// hypercube, but to not-zero outside the hypercube.
+  #[test]
+  fn test_compute_q() {
+    test_compute_q_with::<Ep>();
+  }
+
+  #[test]
+  fn test_compute_Q() {
+    test_compute_Q_with::<Ep>();
+  }
+
+  /// The polynomial G(x) (see above) interpolates q(x) inside the hypercube.
+  /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
+  /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
+  #[test]
+  fn test_Q_against_q() {
+    test_Q_against_q_with::<Ep>();
   }
 }

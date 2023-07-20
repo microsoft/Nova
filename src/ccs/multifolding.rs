@@ -205,48 +205,48 @@ pub fn eq_eval<F: PrimeField>(x: &[F], y: &[F]) -> F {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ccs::util::virtual_poly::build_eq_x_r;
+  use crate::ccs::{test, util::virtual_poly::build_eq_x_r};
   use pasta_curves::{Ep, Fq};
   use rand_core::OsRng;
   // NIMFS: Non Interactive Multifolding Scheme
-  type NIMFS = Multifolding<Ep>;
+  type NIMFS<G> = Multifolding<G>;
 
-  #[test]
-  fn test_compute_g() {
-    let z1 = CCSShape::<Ep>::get_test_z(3);
-    let z2 = CCSShape::<Ep>::get_test_z(4);
+  fn test_compute_g_with<G: Group>() {
+    let z1 = CCSShape::<G>::get_test_z(3);
+    let z2 = CCSShape::<G>::get_test_z(4);
 
-    let (_, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z2);
-    let (ccs, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z1);
+    let (_, ccs_witness_1, ccs_instance_1) = CCSShape::<G>::gen_test_ccs(&z2);
+    let (ccs, ccs_witness_2, ccs_instance_2) = CCSShape::<G>::gen_test_ccs(&z1);
     let ck = ccs.commitment_key();
 
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     let mut rng = OsRng;
-    let gamma: Fq = Fq::random(&mut rng);
-    let beta: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+    let gamma: G::Scalar = G::Scalar::random(&mut rng);
+    let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
 
     let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &ck, &z1);
     let cccs_instance = ccs.to_cccs_shape();
 
-    let mut sum_v_j_gamma = Fq::zero();
+    let mut sum_v_j_gamma = G::Scalar::ZERO;
     for j in 0..lcccs_instance.v.len() {
       let gamma_j = gamma.pow([j as u64]);
       sum_v_j_gamma += lcccs_instance.v[j] * gamma_j;
     }
 
     // Compute g(x) with that r_x
+
     let g = NIMFS::compute_g(&lcccs_instance, &cccs_instance, &z1, &z2, gamma, &beta);
 
     // evaluate g(x) over x \in {0,1}^s
-    let mut g_on_bhc = Fq::zero();
+    let mut g_on_bhc = G::Scalar::ZERO;
     for x in BooleanHypercube::new(ccs.s) {
       g_on_bhc += g.evaluate(&x).unwrap();
     }
 
     // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
-    let mut sum_Lj_on_bhc = Fq::zero();
+    let mut sum_Lj_on_bhc = G::Scalar::ZERO;
     let vec_L = lcccs_instance.compute_Ls(&z1);
     for x in BooleanHypercube::new(ccs.s) {
       for (j, coeff) in vec_L.iter().enumerate() {
@@ -256,7 +256,7 @@ mod tests {
     }
 
     // Q(x) over bhc is assumed to be zero, as checked in the test 'test_compute_Q'
-    assert_ne!(g_on_bhc, Fq::zero());
+    assert_ne!(g_on_bhc, G::Scalar::ZERO);
 
     // evaluating g(x) over the boolean hypercube should give the same result as evaluating the
     // sum of gamma^j * Lj(x) over the boolean hypercube
@@ -267,22 +267,21 @@ mod tests {
     assert_eq!(g_on_bhc, sum_v_j_gamma);
   }
 
-  #[test]
-  fn test_compute_sigmas_and_thetas() {
-    let z1 = CCSShape::<Ep>::get_test_z(3);
-    let z2 = CCSShape::<Ep>::get_test_z(4);
+  fn test_compute_sigmas_and_thetas_with<G: Group>() {
+    let z1 = CCSShape::<G>::get_test_z(3);
+    let z2 = CCSShape::<G>::get_test_z(4);
 
-    let (_, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z2);
-    let (ccs, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z1);
-    let ck = ccs.commitment_key();
+    let (_, ccs_witness_1, ccs_instance_1) = CCSShape::<G>::gen_test_ccs(&z2);
+    let (ccs, ccs_witness_2, ccs_instance_2) = CCSShape::<G>::gen_test_ccs(&z1);
+    let ck: CommitmentKey<G> = ccs.commitment_key();
 
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     let mut rng = OsRng;
-    let gamma: Fq = Fq::random(&mut rng);
-    let beta: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
-    let r_x_prime: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+    let gamma: G::Scalar = G::Scalar::random(&mut rng);
+    let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+    let r_x_prime: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
 
     // Initialize a multifolding object
     let (lcccs_instance, _) = ccs.to_lcccs(&mut rng, &ck, &z1);
@@ -298,12 +297,12 @@ mod tests {
     // Assert `g` is correctly computed here.
     {
       // evaluate g(x) over x \in {0,1}^s
-      let mut g_on_bhc = Fq::zero();
+      let mut g_on_bhc = G::Scalar::ZERO;
       for x in BooleanHypercube::new(ccs.s) {
         g_on_bhc += g.evaluate(&x).unwrap();
       }
       // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
-      let mut sum_Lj_on_bhc = Fq::zero();
+      let mut sum_Lj_on_bhc = G::Scalar::ZERO;
       let vec_L = lcccs_instance.compute_Ls(&z1);
       for x in BooleanHypercube::new(ccs.s) {
         for (j, coeff) in vec_L.iter().enumerate() {
@@ -339,20 +338,24 @@ mod tests {
   }
 
   #[test]
-  fn test_lcccs_fold() {
-    let z1 = CCSShape::<Ep>::get_test_z(3);
-    let z2 = CCSShape::<Ep>::get_test_z(4);
+  fn test_compute_g() {
+    test_compute_g_with::<Ep>();
+  }
+
+  fn test_lccs_fold_with<G: Group>() {
+    let z1 = CCSShape::<G>::get_test_z(3);
+    let z2 = CCSShape::<G>::get_test_z(4);
 
     // ccs stays the same regardless of z1 or z2
-    let (ccs, ccs_witness_1, ccs_instance_1) = CCSShape::gen_test_ccs(&z1);
-    let (_, ccs_witness_2, ccs_instance_2) = CCSShape::gen_test_ccs(&z2);
-    let ck = ccs.commitment_key();
+    let (ccs, ccs_witness_1, ccs_instance_1) = CCSShape::<G>::gen_test_ccs(&z1);
+    let (_, ccs_witness_2, ccs_instance_2) = CCSShape::<G>::gen_test_ccs(&z2);
+    let ck: CommitmentKey<G> = ccs.commitment_key();
 
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     let mut rng = OsRng;
-    let r_x_prime: Vec<Fq> = (0..ccs.s).map(|_| Fq::random(&mut rng)).collect();
+    let r_x_prime: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
 
     // Generate a new multifolding instance
     let mut nimfs = NIMFS::new(ccs.clone());
@@ -370,7 +373,7 @@ mod tests {
       .is_sat(&ck, &ccs_witness_2, &cccs_instance)
       .is_ok());
 
-    let rho = Fq::random(&mut rng);
+    let rho = G::Scalar::random(&mut rng);
 
     let folded = nimfs.fold(
       &lcccs_instance,
@@ -385,5 +388,15 @@ mod tests {
 
     // check lcccs relation
     assert!(folded.is_sat(&ck, &w_folded).is_ok());
+  }
+
+  #[test]
+  fn test_compute_sigmas_and_thetas() {
+    test_compute_sigmas_and_thetas_with::<Ep>()
+  }
+
+  #[test]
+  fn test_lcccs_fold() {
+    test_lccs_fold_with::<Ep>()
   }
 }

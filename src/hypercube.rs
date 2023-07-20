@@ -64,13 +64,16 @@ mod tests {
   use ff::Field;
   use pasta_curves::Fq;
 
-  #[test]
-  fn test_evaluate() {
-    // Declare the coefficients in the order 1, x, y, xy, z, xz, yz, xyz.
-    let poly = BooleanHypercube::<Fq>::new(3);
+  fn test_evaluate_with<F: PrimeField>() {
+    let poly = BooleanHypercube::<F>::new(3);
 
     let point = 7usize;
     // So, f(1, 1, 1) = 5.
-    assert_eq!(poly.evaluate_at(point), vec![Fq::ONE, Fq::ONE, Fq::ONE]);
+    assert_eq!(poly.evaluate_at(point), vec![F::ONE, F::ONE, F::ONE]);
+  }
+
+  #[test]
+  fn test_evaluate() {
+    test_evaluate_with::<Fq>();
   }
 }

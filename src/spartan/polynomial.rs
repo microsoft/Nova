@@ -253,101 +253,125 @@ mod tests {
   use super::*;
   use pasta_curves::Fp;
 
-  fn make_mlp(len: usize, value: Fp) -> MultilinearPolynomial<Fp> {
+  fn make_mlp<F: PrimeField>(len: usize, value: F) -> MultilinearPolynomial<F> {
     MultilinearPolynomial {
       num_vars: len.count_ones() as usize,
       Z: vec![value; len],
     }
   }
 
-  #[test]
-  fn test_eq_polynomial() {
-    let eq_poly = EqPolynomial::<Fp>::new(vec![Fp::one(), Fp::zero(), Fp::one()]);
-    let y = eq_poly.evaluate(vec![Fp::one(), Fp::one(), Fp::one()].as_slice());
-    assert_eq!(y, Fp::zero());
+  fn test_eq_polynomial_with<F: PrimeField>() {
+    let eq_poly = EqPolynomial::<F>::new(vec![F::ONE, F::ZERO, F::ONE]);
+    let y = eq_poly.evaluate(vec![F::ONE, F::ONE, F::ONE].as_slice());
+    assert_eq!(y, F::ZERO);
 
-    let y = eq_poly.evaluate(vec![Fp::one(), Fp::zero(), Fp::one()].as_slice());
-    assert_eq!(y, Fp::one());
+    let y = eq_poly.evaluate(vec![F::ONE, F::ZERO, F::ONE].as_slice());
+    assert_eq!(y, F::ONE);
 
     let eval_list = eq_poly.evals();
     for (i, &coeff) in eval_list.iter().enumerate().take((2_usize).pow(3)) {
       if i == 5 {
-        assert_eq!(coeff, Fp::one());
+        assert_eq!(coeff, F::ONE);
       } else {
-        assert_eq!(coeff, Fp::zero());
+        assert_eq!(coeff, F::ZERO);
       }
     }
   }
 
-  #[test]
-  fn test_multilinear_polynomial() {
+  fn test_multilinear_polynomial_with<F: PrimeField>() {
     // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
     // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
 
-    let TWO = Fp::from(2);
+    let TWO = F::from(2);
 
     let Z = vec![
-      Fp::zero(),
-      Fp::zero(),
-      Fp::zero(),
-      Fp::one(),
-      Fp::zero(),
-      Fp::one(),
-      Fp::zero(),
+      F::ZERO,
+      F::ZERO,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
       TWO,
     ];
-    let m_poly = MultilinearPolynomial::<Fp>::new(Z.clone());
+    let m_poly = MultilinearPolynomial::<F>::new(Z.clone());
     assert_eq!(m_poly.get_num_vars(), 3);
 
-    let x = vec![Fp::one(), Fp::one(), Fp::one()];
+    let x = vec![F::ONE, F::ONE, F::ONE];
     assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
 
-    let y = MultilinearPolynomial::<Fp>::evaluate_with(Z.as_slice(), x.as_slice());
+    let y = MultilinearPolynomial::<F>::evaluate_with(Z.as_slice(), x.as_slice());
     assert_eq!(y, TWO);
+  }
+
+  fn test_sparse_polynomial_with<F: PrimeField>() {
+    // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
+
+    let TWO = F::from(2);
+    let Z = vec![(3, F::ONE), (5, F::ONE), (7, TWO)];
+    let m_poly = SparsePolynomial::<F>::new(3, Z);
+
+    let x = vec![F::ONE, F::ONE, F::ONE];
+    assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
+
+    let x = vec![F::ONE, F::ZERO, F::ONE];
+    assert_eq!(m_poly.evaluate(x.as_slice()), F::ONE);
+  }
+
+  #[test]
+  fn test_eq_polynomial() {
+    test_eq_polynomial_with::<Fp>();
+  }
+
+  #[test]
+  fn test_multilinear_polynomial() {
+    test_multilinear_polynomial_with::<Fp>();
   }
 
   #[test]
   fn test_sparse_polynomial() {
-    // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
-    // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
+    test_sparse_polynomial_with::<Fp>();
+  }
 
-    let TWO = Fp::from(2);
-    let Z = vec![(3, Fp::one()), (5, Fp::one()), (7, TWO)];
-    let m_poly = SparsePolynomial::<Fp>::new(3, Z);
+  fn test_mlp_add_with<F: PrimeField>() {
+    let mlp1 = make_mlp(4, F::from(3));
+    let mlp2 = make_mlp(4, F::from(7));
 
-    let x = vec![Fp::one(), Fp::one(), Fp::one()];
-    assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
+    let mlp3 = mlp1.add(mlp2).unwrap();
 
-    let x = vec![Fp::one(), Fp::zero(), Fp::one()];
-    assert_eq!(m_poly.evaluate(x.as_slice()), Fp::one());
+    assert_eq!(mlp3.Z, vec![F::from(10); 4]);
+  }
+
+  fn test_mlp_scalar_mul_with<F: PrimeField>() {
+    let mlp = make_mlp(4, F::from(3));
+
+    let mlp2 = mlp.scalar_mul(&F::from(2));
+
+    assert_eq!(mlp2.Z, vec![F::from(6); 4]);
+  }
+
+  fn test_mlp_mul_with<F: PrimeField>() {
+    let mlp1 = make_mlp(4, F::from(3));
+    let mlp2 = make_mlp(4, F::from(7));
+
+    let mlp3 = mlp1.mul(mlp2).unwrap();
+
+    assert_eq!(mlp3.Z, vec![F::from(21); 4]);
   }
 
   #[test]
   fn test_mlp_add() {
-    let mlp1 = make_mlp(4, Fp::from(3));
-    let mlp2 = make_mlp(4, Fp::from(7));
-
-    let mlp3 = mlp1.add(mlp2).unwrap();
-
-    assert_eq!(mlp3.Z, vec![Fp::from(10); 4]);
+    test_mlp_add_with::<Fp>();
   }
 
   #[test]
   fn test_mlp_scalar_mul() {
-    let mlp = make_mlp(4, Fp::from(3));
-
-    let mlp2 = mlp.scalar_mul(&Fp::from(2));
-
-    assert_eq!(mlp2.Z, vec![Fp::from(6); 4]);
+    test_mlp_scalar_mul_with::<Fp>();
   }
 
   #[test]
   fn test_mlp_mul() {
-    let mlp1 = make_mlp(4, Fp::from(3));
-    let mlp2 = make_mlp(4, Fp::from(7));
-
-    let mlp3 = mlp1.mul(mlp2).unwrap();
-
-    assert_eq!(mlp3.Z, vec![Fp::from(21); 4]);
+    test_mlp_mul_with::<Fp>();
   }
 }

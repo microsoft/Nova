@@ -399,16 +399,14 @@ pub mod test {
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 
-  type S = pasta_curves::pallas::Scalar;
-  type G = pasta_curves::pallas::Point;
+  use pasta_curves::Ep;
 
-  #[test]
-  fn test_tiny_ccs() {
+  fn test_tiny_ccs_with<G: Group>() {
     // 1. Generate valid R1CS Shape
     // 2. Convert to CCS
     // 3. Test that it is satisfiable
 
-    let one = S::one();
+    let one = G::Scalar::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
       let num_vars = 4;
@@ -425,9 +423,9 @@ pub mod test {
       // constraint and a column for every entry in z = (vars, u, inputs)
       // An R1CS instance is satisfiable iff:
       // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
-      let mut A: Vec<(usize, usize, S)> = Vec::new();
-      let mut B: Vec<(usize, usize, S)> = Vec::new();
-      let mut C: Vec<(usize, usize, S)> = Vec::new();
+      let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
@@ -470,12 +468,11 @@ pub mod test {
 
     // generate generators and ro constants
     let _ck = S.commitment_key();
-    let _ro_consts =
-      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
+    let _ro_consts = <G::RO as ROTrait<G::Base, G::Scalar>>::Constants::new();
 
     // 3. Test that CCS is satisfiable
     let _rand_inst_witness_generator =
-      |ck: &CommitmentKey<G>, I: &S| -> (S, CCSInstance<G>, CCSWitness<G>) {
+      |ck: &CommitmentKey<G>, I: &G::Scalar| -> (G::Scalar, CCSInstance<G>, CCSWitness<G>) {
         let i0 = *I;
 
         // compute a satisfying (vars, X) tuple
@@ -486,7 +483,7 @@ pub mod test {
           let i1 = z2 + one + one + one + one + one; // constraint 3
 
           // store the witness and IO for the instance
-          let W = vec![z0, z1, z2, S::zero()];
+          let W = vec![z0, z1, z2, G::Scalar::ZERO];
           let X = vec![i0, i1];
           (i1, W, X)
         };
@@ -505,5 +502,10 @@ pub mod test {
 
         (O, U, ccs_w)
       };
+  }
+
+  #[test]
+  fn test_tiny_ccs() {
+    test_tiny_ccs_with::<Ep>();
   }
 }

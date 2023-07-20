@@ -102,21 +102,20 @@ mod tests {
 
   use super::*;
 
-  #[test]
-  fn satisfied_ccs_is_satisfied_lcccs() {
+  fn satisfied_ccs_is_satisfied_lcccs_with<G: Group>() {
     // Gen test vectors & artifacts
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, witness, instance) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs, witness, instance) = CCSShape::<G>::gen_test_ccs(&z);
     let ck = ccs.commitment_key();
     assert!(ccs.is_sat(&ck, &instance, &witness).is_ok());
-
-    // Wrong z so that the relation does not hold
-    let mut bad_z = z.clone();
-    bad_z[3] = Fq::ZERO;
 
     // LCCCS with the correct z should pass
     let (lcccs, _) = ccs.to_lcccs(&mut OsRng, &ck, &z);
     assert!(lcccs.is_sat(&ck, &witness).is_ok());
+
+    // Wrong z so that the relation does not hold
+    let mut bad_z = z;
+    bad_z[3] = G::Scalar::ZERO;
 
     // LCCCS with the wrong z should not pass `is_sat`.
     // LCCCS with the correct z should pass
@@ -124,14 +123,12 @@ mod tests {
     assert!(lcccs.is_sat(&ck, &witness).is_err());
   }
 
-  #[test]
-  /// Test linearized CCCS v_j against the L_j(x)
-  fn test_lcccs_v_j() {
+  fn test_lcccs_v_j_with<G: Group>() {
     let mut rng = OsRng;
 
     // Gen test vectors & artifacts
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs, _, _) = CCSShape::<G>::gen_test_ccs(&z);
     let ck = ccs.commitment_key();
 
     // Get LCCCS
@@ -143,29 +140,25 @@ mod tests {
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
         .map(|y| L_j_x.evaluate(&y).unwrap())
-        .fold(Fq::ZERO, |acc, result| acc + result);
+        .fold(G::Scalar::ZERO, |acc, result| acc + result);
       assert_eq!(v_i, sum_L_j_x);
     }
   }
 
-  /// Given a bad z, check that the v_j should not match with the L_j(x)
-  #[test]
-  fn test_bad_v_j() {
+  fn test_bad_v_j_with<G: Group>() {
     let mut rng = OsRng;
 
     // Gen test vectors & artifacts
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, witness, instance) = CCSShape::<Ep>::gen_test_ccs(&z);
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs, _, _) = CCSShape::<G>::gen_test_ccs(&z);
     let ck = ccs.commitment_key();
 
     // Mutate z so that the relation does not hold
     let mut bad_z = z.clone();
-    bad_z[3] = Fq::ZERO;
+    bad_z[3] = G::Scalar::ZERO;
 
-    // Compute v_j with the right z
+    // Get LCCCS
     let (lcccs, _) = ccs.to_lcccs(&mut rng, &ck, &z);
-    // Assert LCCCS is satisfied with the original Z
-    assert!(lcccs.is_sat(&ck, &witness).is_ok());
 
     // Bad compute L_j(x) with the bad z
     let vec_L_j_x = lcccs.compute_Ls(&bad_z);
@@ -179,12 +172,29 @@ mod tests {
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
         .map(|y| L_j_x.evaluate(&y).unwrap())
-        .fold(Fq::ZERO, |acc, result| acc + result);
+        .fold(G::Scalar::ZERO, |acc, result| acc + result);
       if v_i != sum_L_j_x {
         satisfied = false;
       }
     }
 
     assert!(!satisfied);
+  }
+
+  #[test]
+  fn satisfied_ccs_is_satisfied_lcccs() {
+    satisfied_ccs_is_satisfied_lcccs_with::<Ep>();
+  }
+
+  #[test]
+  /// Test linearized CCCS v_j against the L_j(x)
+  fn test_lcccs_v_j() {
+    test_lcccs_v_j_with::<Ep>();
+  }
+
+  /// Given a bad z, check that the v_j should not match with the L_j(x)
+  #[test]
+  fn test_bad_v_j() {
+    test_bad_v_j_with::<Ep>();
   }
 }

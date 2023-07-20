@@ -117,40 +117,39 @@ mod tests {
   use pasta_curves::{Ep, Fq};
   use rand_core::OsRng;
 
-  #[test]
-  fn test_fix_variables() {
-    let A = SparseMatrix::<Fq>::with_coeffs(
+  fn test_fix_variables_with<F: PrimeField>() {
+    let A = SparseMatrix::<F>::with_coeffs(
       4,
       4,
       vec![
-        (0, 0, Fq::from(2u64)),
-        (0, 1, Fq::from(3u64)),
-        (0, 2, Fq::from(4u64)),
-        (0, 3, Fq::from(4u64)),
-        (1, 0, Fq::from(4u64)),
-        (1, 1, Fq::from(11u64)),
-        (1, 2, Fq::from(14u64)),
-        (1, 3, Fq::from(14u64)),
-        (2, 0, Fq::from(2u64)),
-        (2, 1, Fq::from(8u64)),
-        (2, 2, Fq::from(17u64)),
-        (2, 3, Fq::from(17u64)),
-        (3, 0, Fq::from(420u64)),
-        (3, 1, Fq::from(4u64)),
-        (3, 2, Fq::from(2u64)),
-        (3, 3, Fq::ZERO),
+        (0, 0, F::from(2u64)),
+        (0, 1, F::from(3u64)),
+        (0, 2, F::from(4u64)),
+        (0, 3, F::from(4u64)),
+        (1, 0, F::from(4u64)),
+        (1, 1, F::from(11u64)),
+        (1, 2, F::from(14u64)),
+        (1, 3, F::from(14u64)),
+        (2, 0, F::from(2u64)),
+        (2, 1, F::from(8u64)),
+        (2, 2, F::from(17u64)),
+        (2, 3, F::from(17u64)),
+        (3, 0, F::from(420u64)),
+        (3, 1, F::from(4u64)),
+        (3, 2, F::from(2u64)),
+        (3, 3, F::ZERO),
       ],
     );
 
     let A_mle = A.to_mle();
-    let bhc = BooleanHypercube::<Fq>::new(2);
+    let bhc = BooleanHypercube::<F>::new(2);
     for (i, y) in bhc.enumerate() {
       let A_mle_op = fix_variables(&A_mle, &y);
 
       // Check that fixing first variables pins down a column
       // i.e. fixing x to 0 will return the first column
       //      fixing x to 1 will return the second column etc.
-      let column_i: Vec<Fq> = A
+      let column_i: Vec<F> = A
         .clone()
         .coeffs()
         .iter()
@@ -163,7 +162,7 @@ mod tests {
       // // Now check that fixing last variables pins down a row
       // // i.e. fixing y to 0 will return the first row
       // //      fixing y to 1 will return the second row etc.
-      let row_i: Vec<Fq> = A
+      let row_i: Vec<F> = A
         .clone()
         .coeffs()
         .iter()
@@ -181,50 +180,78 @@ mod tests {
     }
   }
 
-  #[test]
-  fn test_compute_sum_Mz_over_boolean_hypercube() {
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
+  fn test_compute_sum_Mz_over_boolean_hypercube_with<G: Group>() {
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs, _, _) = CCSShape::<G>::gen_test_ccs(&z);
 
     // Generate other artifacts
-    let ck = CCSShape::<Ep>::commitment_key(&ccs);
+    let ck = CCSShape::<G>::commitment_key(&ccs);
     let (_, _, cccs) = ccs.to_cccs(&mut OsRng, &ck, &z);
 
     let z_mle = dense_vec_to_mle(ccs.s_prime, &z);
 
     // check that evaluating over all the values x over the boolean hypercube, the result of
     // the next for loop is equal to 0
-    let mut r = Fq::zero();
+    let mut r = G::Scalar::ZERO;
     let bch = BooleanHypercube::new(ccs.s);
     for x in bch.into_iter() {
       for i in 0..ccs.q {
-        let mut Sj_prod = Fq::one();
+        let mut Sj_prod = G::Scalar::ONE;
         for j in ccs.S[i].clone() {
-          let sum_Mz: MultilinearPolynomial<Fq> = compute_sum_Mz::<Ep>(&cccs.M_MLE[j], &z_mle);
+          let sum_Mz: MultilinearPolynomial<G::Scalar> =
+            compute_sum_Mz::<G>(&cccs.M_MLE[j], &z_mle);
           let sum_Mz_x = sum_Mz.evaluate(&x);
           Sj_prod *= sum_Mz_x;
         }
         r += Sj_prod * ccs.c[i];
       }
-      assert_eq!(r, Fq::ZERO);
+      assert_eq!(r, G::Scalar::ZERO);
     }
+  }
+
+  fn test_compute_all_sum_Mz_evals_with<G: Group>() {
+    let z = CCSShape::<G>::get_test_z(3);
+    let (ccs, _, _) = CCSShape::<G>::gen_test_ccs(&z);
+
+    // Generate other artifacts
+    let ck = CCSShape::<G>::commitment_key(&ccs);
+    let (_, _, cccs) = ccs.to_cccs(&mut OsRng, &ck, &z);
+
+    let mut r = vec![G::Scalar::ONE, G::Scalar::ZERO];
+    let res = compute_all_sum_Mz_evals::<G>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
+    assert_eq!(
+      res,
+      vec![
+        G::Scalar::from(9u64),
+        G::Scalar::from(3u64),
+        G::Scalar::from(27u64)
+      ]
+    );
+
+    r.reverse();
+    let res = compute_all_sum_Mz_evals::<G>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
+    assert_eq!(
+      res,
+      vec![
+        G::Scalar::from(30u64),
+        G::Scalar::from(1u64),
+        G::Scalar::from(30u64)
+      ]
+    )
+  }
+
+  #[test]
+  fn test_fix_variables() {
+    test_fix_variables_with::<Fq>();
+  }
+
+  #[test]
+  fn test_compute_sum_Mz_over_boolean_hypercube() {
+    test_compute_sum_Mz_over_boolean_hypercube_with::<Ep>();
   }
 
   #[test]
   fn test_compute_all_sum_Mz_evals() {
-    let z = CCSShape::<Ep>::get_test_z(3);
-    let (ccs, _, _) = CCSShape::<Ep>::gen_test_ccs(&z);
-
-    // Generate other artifacts
-    let ck = CCSShape::<Ep>::commitment_key(&ccs);
-    let (_, _, cccs) = ccs.to_cccs(&mut OsRng, &ck, &z);
-
-    let mut r = vec![Fq::ONE, Fq::ZERO];
-    let res = compute_all_sum_Mz_evals::<Ep>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
-    assert_eq!(res, vec![Fq::from(9u64), Fq::from(3u64), Fq::from(27u64)]);
-
-    r.reverse();
-    let res = compute_all_sum_Mz_evals::<Ep>(cccs.M_MLE.as_slice(), &z, &r, ccs.s_prime);
-    assert_eq!(res, vec![Fq::from(30u64), Fq::from(1u64), Fq::from(30u64)])
+    test_compute_all_sum_Mz_evals_with::<Ep>();
   }
 }
