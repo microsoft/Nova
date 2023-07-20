@@ -1,24 +1,20 @@
 //! This library implements SuperNova, a Non-Uniform IVC based on Nova.
 
+use std::marker::PhantomData;
+
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{
-    circuit_supernova::StepCircuit, circuit_supernova::TrivialTestCircuit,
-    commitment::CommitmentTrait, AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit,
-    ROConstantsTrait, ROTrait,
+    circuit_supernova::StepCircuit, commitment::CommitmentTrait, AbsorbInROTrait, Group,
+    ROConstants, ROConstantsCircuit, ROConstantsTrait, ROTrait,
   },
   Commitment, CommitmentKey,
 };
 
-use crate::gadgets::utils::alloc_num_equals;
-use crate::gadgets::utils::conditionally_select;
-use bellperson::gadgets::boolean::Boolean;
-use core::marker::PhantomData;
 use ff::Field;
-use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 
 use crate::bellperson::{
@@ -169,8 +165,9 @@ where
   Cb: StepCircuit<G2::Scalar>,
 {
   _phantom: PhantomData<G1>,
-  claim: Ca,
-  circuit_secondary: Cb,
+  augmented_circuit_index: usize,
+  c_primary: Ca,
+  c_secondary: Cb,
   params: PublicParams<G1, G2>,
 }
 
@@ -182,7 +179,12 @@ where
   Cb: StepCircuit<G2::Scalar>,
 {
   /// new a running claim
-  pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuits: usize) -> Self {
+  pub fn new(
+    augmented_circuit_index: usize,
+    circuit_primary: Ca,
+    circuit_secondary: Cb,
+    num_augmented_circuits: usize,
+  ) -> Self {
     let claim = circuit_primary.clone();
 
     let pp = PublicParams::<G1, G2>::setup_without_commitkey(
@@ -192,11 +194,17 @@ where
     );
 
     Self {
+      augmented_circuit_index,
       _phantom: PhantomData,
-      claim,
-      circuit_secondary: circuit_secondary.clone(),
+      c_primary: claim,
+      c_secondary: circuit_secondary.clone(),
       params: pp,
     }
+  }
+
+  /// get augmented_circuit_index
+  pub fn get_augmented_circuit_index(&self) -> usize {
+    self.augmented_circuit_index
   }
 }
 
@@ -210,8 +218,8 @@ where
 {
   r_W_primary: Vec<Option<RelaxedR1CSWitness<G1>>>,
   r_U_primary: Vec<Option<RelaxedR1CSInstance<G1>>>,
-  r_W_secondary: Option<RelaxedR1CSWitness<G2>>,
-  r_U_secondary: Option<RelaxedR1CSInstance<G2>>,
+  r_W_secondary: RelaxedR1CSWitness<G2>,
+  r_U_secondary: RelaxedR1CSInstance<G2>,
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
   pp_digest: G1::Scalar,
@@ -220,6 +228,7 @@ where
   zi_secondary: Vec<G2::Scalar>,
   program_counter: G1::Scalar,
   augmented_circuit_index: usize,
+  num_augmented_circuits: usize,
 }
 
 impl<G1, G2> RecursiveSNARK<G1, G2>
@@ -227,294 +236,302 @@ where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
 {
+  /// iterate base step to get new instance of recursive SNARK
+  pub fn iter_base_step<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
+    claim: &RunningClaim<G1, G2, C1, C2>,
+    initial_program_counter: G1::Scalar,
+    first_augmented_circuit_index: usize,
+    num_augmented_circuits: usize,
+    z0_primary: &Vec<G1::Scalar>,
+    z0_secondary: &Vec<G2::Scalar>,
+  ) -> Result<Self, NovaError> {
+    let pp = &claim.params;
+    let c_primary = &claim.c_primary;
+    let c_secondary = &claim.c_secondary;
+    // commitment key for primary & secondary circuit
+    let ck_primary = pp.ck_primary.as_ref().ok_or_else(|| NovaError::MissingCK)?;
+    let ck_secondary = pp
+      .ck_secondary
+      .as_ref()
+      .ok_or_else(|| NovaError::MissingCK)?;
+
+    // base case for the primary
+    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
+      scalar_as_base::<G1>(pp.digest),
+      G2::Scalar::ZERO,
+      G1::Scalar::ZERO,
+      z0_primary.clone(),
+      None,
+      None,
+      None,
+      None,
+      initial_program_counter,
+      G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
+    );
+
+    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
+      pp.augmented_circuit_params_primary.clone(),
+      Some(inputs_primary),
+      c_primary.clone(),
+      pp.ro_consts_circuit_primary.clone(),
+      num_augmented_circuits,
+    );
+
+    let _ = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
+    let (u_primary, w_primary) = cs_primary
+      .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &ck_primary)
+      .map_err(|_e| NovaError::UnSat)?;
+
+    // base case for the secondary
+    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
+      pp.digest,
+      G1::Scalar::ZERO,
+      G2::Scalar::ZERO,
+      z0_secondary.clone(),
+      None,
+      None,
+      Some(u_primary.clone()),
+      None,
+      G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
+      G2::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
+    );
+    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
+      pp.augmented_circuit_params_secondary.clone(),
+      Some(inputs_secondary),
+      c_secondary.clone(),
+      pp.ro_consts_circuit_secondary.clone(),
+      num_augmented_circuits,
+    );
+    let _ = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
+    let (u_secondary, w_secondary) = cs_secondary
+      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &ck_secondary)
+      .map_err(|_e| NovaError::UnSat)?;
+
+    // IVC proof for the primary circuit
+    let l_w_primary = w_primary;
+    let l_u_primary = u_primary;
+    let r_W_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+
+    let r_U_primary =
+      RelaxedR1CSInstance::from_r1cs_instance(ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+
+    // IVC proof of the secondary circuit
+    let l_w_secondary = w_secondary;
+    let l_u_secondary = u_secondary;
+    let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
+    let r_U_secondary = RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
+
+    // Outputs of the two circuits and next program counter thus far.
+    let (zi_primary_pc_next, zi_primary) = c_primary.output(&z0_primary);
+    let (_, zi_secondary) = c_secondary.output(&z0_secondary);
+
+    if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
+
+    // handle the base case by initialize U_next in next round
+    let r_W_primary_initial_list = (0..num_augmented_circuits)
+      .map(|i| {
+        if i == first_augmented_circuit_index {
+          Some(r_W_primary.clone())
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
+
+    let r_U_primary_initial_list = (0..num_augmented_circuits)
+      .map(|i| {
+        if i == first_augmented_circuit_index {
+          Some(r_U_primary.clone())
+        } else {
+          None
+        }
+      })
+      .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
+
+    Ok(Self {
+      r_W_primary: r_W_primary_initial_list,
+      r_U_primary: r_U_primary_initial_list,
+      r_W_secondary: r_W_secondary,
+      r_U_secondary: r_U_secondary,
+      l_w_secondary,
+      l_u_secondary,
+      pp_digest: pp.digest,
+      i: 0_usize, // after base case, next iteration start from 1
+      zi_primary,
+      zi_secondary,
+      program_counter: zi_primary_pc_next,
+      augmented_circuit_index: first_augmented_circuit_index,
+      num_augmented_circuits,
+    })
+  }
   /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
   /// by executing a step of the incremental computation
   pub fn prove_step<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
-    circuit_index: usize,
-    num_augmented_circuits: usize,
-    program_counter: G1::Scalar,
-    pp: &PublicParams<G1, G2>,
-    recursive_snark: Option<Self>,
-    c_primary: C1,
-    c_secondary: C2,
+    &mut self,
+    claim: &RunningClaim<G1, G2, C1, C2>,
     z0_primary: &Vec<G1::Scalar>,
     z0_secondary: &Vec<G2::Scalar>,
-    ck_primary: &CommitmentKey<G1>,
-    ck_secondary: &CommitmentKey<G2>,
-  ) -> Result<Self, NovaError> {
+  ) -> Result<(), NovaError> {
+    // Frist step was already done in the constructor
+    if self.i == 0 {
+      self.i = 1;
+      return Ok(());
+    }
+
+    let pp = &claim.params;
+    let c_primary = &claim.c_primary;
+    let c_secondary = &claim.c_secondary;
+    // commitment key for primary & secondary circuit
+    let ck_primary = pp.ck_primary.as_ref().ok_or_else(|| NovaError::MissingCK)?;
+    let ck_secondary = pp
+      .ck_secondary
+      .as_ref()
+      .ok_or_else(|| NovaError::MissingCK)?;
+
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidInitialInputLength);
     }
 
-    match recursive_snark {
-      None => {
-        // base case for the primary
-        let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
-          scalar_as_base::<G1>(pp.digest),
-          G2::Scalar::ZERO,
-          G1::Scalar::ZERO,
-          z0_primary.clone(),
-          None,
-          None,
-          None,
-          None,
-          program_counter,
-          G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
-        );
+    // fold the secondary circuit's instance
+    let (nifs_secondary, (r_U_secondary_folded, r_W_secondary_folded)) = NIFS::prove(
+      ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<G1>(self.pp_digest),
+      &pp.r1cs_shape_secondary,
+      &self.r_U_secondary,
+      &self.r_W_secondary,
+      &self.l_u_secondary,
+      &self.l_w_secondary,
+    )?;
 
-        let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
-          pp.augmented_circuit_params_primary.clone(),
-          Some(inputs_primary),
-          c_primary.clone(),
-          pp.ro_consts_circuit_primary.clone(),
-          num_augmented_circuits,
-        );
+    // clone and updated running instance on respective circuit_index
+    let r_U_secondary_next = r_U_secondary_folded;
+    let r_W_secondary_next = r_W_secondary_folded;
 
-        let _ = circuit_primary
-          .synthesize(&mut cs_primary)
-          .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
-        let (u_primary, w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-          .map_err(|_e| NovaError::UnSat)?;
+    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
+      scalar_as_base::<G1>(pp.digest),
+      scalar_as_base::<G1>(self.pp_digest),
+      G1::Scalar::from(self.i as u64),
+      z0_primary.clone(),
+      Some(self.zi_primary.clone()),
+      Some(vec![self.r_U_secondary.clone()]),
+      Some(self.l_u_secondary.clone()),
+      Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
+      self.program_counter,
+      G1::Scalar::ZERO,
+    );
 
-        // base case for the secondary
-        let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
-          pp.digest,
-          G1::Scalar::ZERO,
-          G2::Scalar::ZERO,
-          z0_secondary.clone(),
-          None,
-          None,
-          Some(u_primary.clone()),
-          None,
-          G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-          G2::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
-        );
-        let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
-          pp.augmented_circuit_params_secondary.clone(),
-          Some(inputs_secondary),
-          c_secondary.clone(),
-          pp.ro_consts_circuit_secondary.clone(),
-          num_augmented_circuits,
-        );
-        let _ = circuit_secondary
-          .synthesize(&mut cs_secondary)
-          .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
-        let (u_secondary, w_secondary) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-          .map_err(|_e| NovaError::UnSat)?;
+    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
+      pp.augmented_circuit_params_primary.clone(),
+      Some(inputs_primary),
+      c_primary.clone(),
+      pp.ro_consts_circuit_primary.clone(),
+      self.num_augmented_circuits,
+    );
 
-        // IVC proof for the primary circuit
-        let l_w_primary = w_primary;
-        let l_u_primary = u_primary;
-        let r_W_primary =
-          RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+    let _ = circuit_primary.synthesize(&mut cs_primary);
 
-        let r_U_primary =
-          RelaxedR1CSInstance::from_r1cs_instance(ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+    let (l_u_primary, l_w_primary) = cs_primary
+      .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &ck_primary)
+      .map_err(|_e| NovaError::UnSat)?;
 
-        // IVC proof of the secondary circuit
-        let l_w_secondary = w_secondary;
-        let l_u_secondary = u_secondary;
-        let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
-        let r_U_secondary = RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
+    let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
+      ck_primary,
+      &pp.ro_consts_primary,
+      &self.pp_digest,
+      &pp.r1cs_shape_primary,
+      &self
+        .r_U_primary
+        .get(claim.get_augmented_circuit_index())
+        .unwrap_or(&None)
+        .clone()
+        .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
+      &self
+        .r_W_primary
+        .get(claim.get_augmented_circuit_index())
+        .unwrap_or(&None)
+        .clone()
+        .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
+      &l_u_primary,
+      &l_w_primary,
+    )?;
 
-        // Outputs of the two circuits and next program counter thus far.
-        let (zi_primary_pc_next, zi_primary) = c_primary.output(&z0_primary);
-        let (_, zi_secondary) = c_secondary.output(&z0_secondary);
-
-        if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
-          return Err(NovaError::InvalidStepOutputLength);
-        }
-
-        // handle the base case by initialize U_next in next round
-        let r_W_primary_initial_list = (0..num_augmented_circuits)
-          .map(|i| {
-            if i == circuit_index {
-              Some(r_W_primary.clone())
-            } else {
-              None
-            }
+    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
+      pp.digest,
+      self.pp_digest,
+      G2::Scalar::from(self.i as u64),
+      z0_secondary.clone(),
+      Some(self.zi_secondary.clone()),
+      Some(
+        self
+          .r_U_primary
+          .iter()
+          .map(|U| {
+            U.clone()
+              .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary))
           })
-          .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
+          .collect(),
+      ),
+      Some(l_u_primary),
+      Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
+      G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
+      G2::Scalar::from(claim.get_augmented_circuit_index() as u64),
+    );
 
-        let r_U_primary_initial_list = (0..num_augmented_circuits)
-          .map(|i| {
-            if i == circuit_index {
-              Some(r_U_primary.clone())
-            } else {
-              None
-            }
-          })
-          .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
+    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
+      pp.augmented_circuit_params_secondary.clone(),
+      Some(inputs_secondary),
+      c_secondary.clone(),
+      pp.ro_consts_circuit_secondary.clone(),
+      self.num_augmented_circuits,
+    );
+    let _ = circuit_secondary.synthesize(&mut cs_secondary);
 
-        Ok(Self {
-          r_W_primary: r_W_primary_initial_list,
-          r_U_primary: r_U_primary_initial_list,
-          r_W_secondary: Some(r_W_secondary),
-          r_U_secondary: Some(r_U_secondary),
-          l_w_secondary,
-          l_u_secondary,
-          pp_digest: pp.digest,
-          i: 1_usize, // after base case, next iteration start from 1
-          zi_primary,
-          zi_secondary,
-          program_counter: zi_primary_pc_next,
-          augmented_circuit_index: circuit_index,
-        })
-      }
-      Some(mut r_snark) => {
-        // snark program_counter iteration is equal to program_counter
-        assert!(r_snark.program_counter == program_counter);
-        // fold the secondary circuit's instance
-        let (nifs_secondary, (r_U_secondary_folded, r_W_secondary_folded)) = NIFS::prove(
-          ck_secondary,
-          &pp.ro_consts_secondary,
-          &scalar_as_base::<G1>(r_snark.pp_digest),
-          &pp.r1cs_shape_secondary,
-          &r_snark.r_U_secondary.clone().unwrap_or_else(|| {
-            RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary)
-          }),
-          &r_snark
-            .r_W_secondary
-            .clone()
-            .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary)),
-          &r_snark.l_u_secondary,
-          &r_snark.l_w_secondary,
-        )?;
+    let (l_u_secondary_next, l_w_secondary_next) = cs_secondary
+      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &ck_secondary)
+      .map_err(|_e| NovaError::UnSat)?;
 
-        // clone and updated running instance on respective circuit_index
-        let r_U_secondary_next = Some(r_U_secondary_folded);
-        let r_W_secondary_next = Some(r_W_secondary_folded);
+    // update the running instances and witnesses
+    let (zi_primary_pc_next, zi_primary) = c_primary.output(&self.zi_primary);
+    let (_, zi_secondary) = c_secondary.output(&self.zi_secondary);
 
-        let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-        let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
-          scalar_as_base::<G1>(pp.digest),
-          scalar_as_base::<G1>(r_snark.pp_digest),
-          G1::Scalar::from(r_snark.i as u64),
-          z0_primary.clone(),
-          Some(r_snark.zi_primary.clone()),
-          r_snark.r_U_secondary.map(|U| vec![U]),
-          Some(r_snark.l_u_secondary.clone()),
-          Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
-          r_snark.program_counter,
-          G1::Scalar::from(0 as u64),
-        );
-
-        let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
-          pp.augmented_circuit_params_primary.clone(),
-          Some(inputs_primary),
-          c_primary.clone(),
-          pp.ro_consts_circuit_primary.clone(),
-          num_augmented_circuits,
-        );
-
-        let _ = circuit_primary.synthesize(&mut cs_primary);
-
-        let (l_u_primary, l_w_primary) = cs_primary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-          .map_err(|_e| NovaError::UnSat)?;
-
-        let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
-          ck_primary,
-          &pp.ro_consts_primary,
-          &r_snark.pp_digest,
-          &pp.r1cs_shape_primary,
-          &r_snark
-            .r_U_primary
-            .get(circuit_index)
-            .unwrap_or(&None)
-            .clone()
-            .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
-          &r_snark
-            .r_W_primary
-            .get(circuit_index)
-            .unwrap_or(&None)
-            .clone()
-            .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
-          &l_u_primary,
-          &l_w_primary,
-        )?;
-
-        let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-        let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
-          pp.digest,
-          r_snark.pp_digest,
-          G2::Scalar::from(r_snark.i as u64),
-          z0_secondary.clone(),
-          Some(r_snark.zi_secondary.clone()),
-          Some(
-            r_snark
-              .r_U_primary
-              .iter()
-              .map(|U| {
-                U.clone().unwrap_or_else(|| {
-                  RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)
-                })
-              })
-              .collect(),
-          ),
-          Some(l_u_primary),
-          Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
-          G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-          G2::Scalar::from(circuit_index as u64),
-        );
-
-        let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
-          pp.augmented_circuit_params_secondary.clone(),
-          Some(inputs_secondary),
-          c_secondary.clone(),
-          pp.ro_consts_circuit_secondary.clone(),
-          num_augmented_circuits,
-        );
-        let _ = circuit_secondary.synthesize(&mut cs_secondary);
-
-        let (l_u_secondary_next, l_w_secondary_next) = cs_secondary
-          .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-          .map_err(|_e| NovaError::UnSat)?;
-
-        // update the running instances and witnesses
-        let (zi_primary_pc_next, zi_primary) = c_primary.output(&r_snark.zi_primary);
-        let (_, zi_secondary) = c_secondary.output(&r_snark.zi_secondary);
-
-        if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
-          return Err(NovaError::InvalidStepOutputLength);
-        }
-
-        // clone and updated running instance on respective circuit_index
-        r_snark.r_U_primary[circuit_index] = Some(r_U_primary_folded);
-        r_snark.r_W_primary[circuit_index] = Some(r_W_primary_folded);
-
-        Ok(Self {
-          r_W_primary: r_snark.r_W_primary,
-          r_U_primary: r_snark.r_U_primary,
-          r_W_secondary: r_W_secondary_next,
-          r_U_secondary: r_U_secondary_next,
-          l_w_secondary: l_w_secondary_next,
-          l_u_secondary: l_u_secondary_next,
-          pp_digest: pp.digest,
-          i: r_snark.i + 1,
-          zi_primary,
-          zi_secondary,
-          program_counter: zi_primary_pc_next,
-          augmented_circuit_index: circuit_index,
-        })
-      }
+    if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidStepOutputLength);
     }
+
+    // clone and updated running instance on respective circuit_index
+    self.r_U_primary[claim.get_augmented_circuit_index()] = Some(r_U_primary_folded);
+    self.r_W_primary[claim.get_augmented_circuit_index()] = Some(r_W_primary_folded);
+    self.r_W_secondary = r_W_secondary_next;
+    self.r_U_secondary = r_U_secondary_next;
+    self.l_w_secondary = l_w_secondary_next;
+    self.l_u_secondary = l_u_secondary_next;
+    self.pp_digest = pp.digest;
+    self.i += 1;
+    self.zi_primary = zi_primary;
+    self.zi_secondary = zi_secondary;
+    self.program_counter = zi_primary_pc_next;
+    self.augmented_circuit_index = claim.get_augmented_circuit_index();
+    Ok(())
   }
+
   /// verify recursive snark
-  pub fn verify(
+  pub fn verify<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     &mut self,
-    pp: &PublicParams<G1, G2>,
-    circuit_index: usize,
-    num_augmented_circuits: usize,
+    claim: &RunningClaim<G1, G2, C1, C2>,
     z0_primary: &Vec<G1::Scalar>,
     z0_secondary: &Vec<G2::Scalar>,
-    ck_primary: &CommitmentKey<G1>,
-    ck_secondary: &CommitmentKey<G2>,
-  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError> {
+  ) -> Result<(), NovaError> {
     // number of steps cannot be zero
     if self.i == 0 {
       println!("must verify on valid RecursiveSNARK where i > 0");
@@ -526,6 +543,9 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
+    let pp = &claim.params;
+    let ck_primary = pp.ck_primary.as_ref().ok_or_else(|| NovaError::MissingCK)?;
+
     self.r_U_primary.iter().try_for_each(|U| match U.clone() {
       Some(U) if U.X.len() != 2 => {
         println!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
@@ -534,18 +554,14 @@ where
       _ => Ok(()),
     })?;
 
-    self.r_U_secondary.clone().map_or(Ok(()), |U| {
-      if U.X.len() != 2 {
-        println!(
-          "r_U_secondary got instance length {:?} != {:?}",
-          U.X.len(),
-          2
-        );
-        Err(NovaError::ProofVerifyError)
-      } else {
-        Ok(())
-      }
-    })?;
+    if self.r_U_secondary.X.len() != 2 {
+      println!(
+        "r_U_secondary got instance length {:?} != {:?}",
+        self.r_U_secondary.X.len(),
+        2
+      );
+      return Err(NovaError::ProofVerifyError);
+    };
 
     // check if the output hashes in R1CS instances point to the right running instances
     let num_field_primary_ro = 3 // params_next, i_new, program_counter_new
@@ -553,7 +569,7 @@ where
     + 1 * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     let num_field_secondary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
-    + num_augmented_circuits * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
+    + self.num_augmented_circuits * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
 
     let (hash_primary, hash_secondary) = {
       let mut hasher = <G2 as Group>::RO::new(pp.ro_consts_secondary.clone(), num_field_primary_ro);
@@ -567,9 +583,7 @@ where
       for e in &self.zi_primary {
         hasher.absorb(*e);
       }
-      self.r_U_secondary.iter().for_each(|U| {
-        U.absorb_in_ro(&mut hasher);
-      });
+      self.r_U_secondary.absorb_in_ro(&mut hasher);
 
       let mut hasher2 =
         <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_secondary_ro);
@@ -610,17 +624,14 @@ where
     }
 
     // check the satisfiability of the provided `circuit_index` instance
-    let default_r_U_secondary =
-      RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
-    let default_r_W_secondary = RelaxedR1CSWitness::default(&pp.r1cs_shape_secondary);
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary.is_sat_relaxed(
           pp.ck_primary.as_ref().unwrap(),
-          &self.r_U_primary[circuit_index]
+          &self.r_U_primary[claim.get_augmented_circuit_index()]
             .clone()
             .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
-          &self.r_W_primary[circuit_index]
+          &self.r_W_primary[claim.get_augmented_circuit_index()]
             .clone()
             .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
         )
@@ -630,14 +641,8 @@ where
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
               pp.ck_secondary.as_ref().unwrap(),
-              self
-                .r_U_secondary
-                .as_ref()
-                .unwrap_or_else(|| &default_r_U_secondary),
-              &self
-                .r_W_secondary
-                .as_ref()
-                .unwrap_or_else(|| &default_r_W_secondary),
+              &self.r_U_secondary,
+              &self.r_W_secondary,
             )
           },
           || {
@@ -679,86 +684,7 @@ where
       e => e,
     })?;
 
-    Ok((
-      self.zi_primary.clone(),
-      self.zi_secondary.clone(),
-      self.program_counter,
-    ))
-  }
-
-  /// make single iteration and return new RecursiveSNARK
-  pub fn execute_and_verify_circuits<C1, C2>(
-    circuit_index: usize,
-    num_augmented_circuits: usize, // total number of F' circuit
-    running_claim: &RunningClaim<G1, G2, C1, C2>,
-    ck_primary: &CommitmentKey<G1>,
-    ck_secondary: &CommitmentKey<G2>,
-    last_running_instance: Option<RecursiveSNARK<G1, G2>>,
-    z0_primary: &Vec<G1::Scalar>,
-    z0_secondary: &Vec<G2::Scalar>,
-  ) -> Result<
-    (
-      RecursiveSNARK<G1, G2>,
-      Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError>,
-    ),
-    Box<dyn std::error::Error>,
-  >
-  where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-    C1: StepCircuit<<G1 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-    C2: StepCircuit<<G2 as Group>::Scalar> + Clone + Default + std::fmt::Debug,
-  {
-    // Produce a recursive SNARK
-    let mut recursive_snark: Option<RecursiveSNARK<G1, G2>> = last_running_instance.clone();
-    let program_counter = last_running_instance
-      .as_ref()
-      .map(|last_nivcsnark| last_nivcsnark.program_counter)
-      .unwrap_or_default();
-
-    let res = RecursiveSNARK::prove_step(
-      circuit_index,
-      num_augmented_circuits,
-      program_counter,
-      &running_claim.params,
-      recursive_snark,
-      running_claim.claim.clone(),
-      running_claim.circuit_secondary.clone(),
-      z0_primary,
-      z0_secondary,
-      ck_primary,
-      ck_secondary,
-    );
-
-    let mut recursive_snark_unwrapped = res.unwrap();
-
-    // Verify the recursive Nova snark at each step of recursion
-    let res = recursive_snark_unwrapped.verify(
-      &running_claim.params,
-      circuit_index,
-      num_augmented_circuits,
-      z0_primary,
-      z0_secondary,
-      ck_primary,
-      ck_secondary,
-    );
-    if let Err(x) = res.clone() {
-      println!("res failed {:?}", x);
-    }
-    assert!(res.is_ok());
-    let (zi_primary, zi_secondary, program_counter) = res.unwrap();
-    let final_result = Ok((zi_primary, zi_secondary, program_counter));
-    // Set the running variable for the next iteration
-    recursive_snark = Some(recursive_snark_unwrapped);
-
-    recursive_snark
-      .ok_or_else(|| {
-        Box::new(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "an error occured in recursive_snark",
-        )) as Box<dyn std::error::Error>
-      })
-      .map(|snark| (snark, final_result))
+    Ok(())
   }
 
   /// get program counter
@@ -769,11 +695,18 @@ where
 
 #[cfg(test)]
 mod tests {
+  use crate::gadgets::utils::alloc_num_equals;
+  use crate::gadgets::utils::conditionally_select;
+  use crate::traits::circuit_supernova::TrivialTestCircuit;
   use crate::{
     compute_digest,
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
     r1cs::R1CS,
   };
+  use bellperson::gadgets::boolean::Boolean;
+  use core::marker::PhantomData;
+  use ff::Field;
+  use ff::PrimeField;
 
   use super::*;
 
@@ -1063,7 +996,8 @@ mod tests {
     */
 
     let rom = [
-      OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1,
+      OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1,
+      OPCODE_1,
     ]; // Rom can be arbitrary length.
     let circuit_secondary = TrivialTestCircuit::new(rom.len());
     let num_augmented_circuit = 2;
@@ -1076,6 +1010,7 @@ mod tests {
       CubicCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::new(
+      OPCODE_0,
       test_circuit1,
       circuit_secondary.clone(),
       num_augmented_circuit,
@@ -1088,6 +1023,7 @@ mod tests {
       SquareCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
     >::new(
+      OPCODE_1,
       test_circuit2,
       circuit_secondary.clone(),
       num_augmented_circuit,
@@ -1119,11 +1055,9 @@ mod tests {
       compute_digest::<G1, PublicParams<G1, G2>>(&running_claim2.params);
 
     let num_steps = rom.len();
-    let mut program_counter = <G1 as Group>::Scalar::from(0);
-    let mut recursive_snark: Option<RecursiveSNARK<G1, G2>> = None;
-    let mut final_result: Result<(Vec<G1::Scalar>, Vec<G2::Scalar>, G1::Scalar), NovaError> =
-      Err(NovaError::InvalidInitialInputLength);
+    let initial_program_counter = <G1 as Group>::Scalar::from(0);
 
+    // extend z0_primary/secondary with rom content
     let mut z0_primary = vec![<G1 as Group>::Scalar::ONE, <G1 as Group>::Scalar::ZERO]; // var, program_counter
     z0_primary.extend(
       rom
@@ -1136,53 +1070,86 @@ mod tests {
         .iter()
         .map(|opcode| <G2 as Group>::Scalar::from(*opcode as u64)),
     );
+
+    let mut recursive_snark_option: Option<RecursiveSNARK<G1, G2>> = None;
+
     for _ in 0..num_steps {
-      if let Some(nivc_snark) = recursive_snark.clone() {
-        program_counter = nivc_snark.program_counter;
-      }
-      let curcuit_index_selector = rom[u32::from_le_bytes(
+      let program_counter = recursive_snark_option
+        .as_ref()
+        .map(|recursive_snark| recursive_snark.program_counter)
+        .unwrap_or_else(|| initial_program_counter);
+      let augmented_circuit_index = rom[u32::from_le_bytes(
+        // convert program counter from field to usize (only took le 4 bytes)
         program_counter.to_repr().as_ref().clone()[0..4]
           .try_into()
           .unwrap(),
-      ) as usize]; // convert program counter from field to usize (only took le 4 bytes)
-      let (nivc_snark, result) = match curcuit_index_selector {
-        OPCODE_0 => RecursiveSNARK::execute_and_verify_circuits(
-          curcuit_index_selector,
-          num_augmented_circuit,
-          &running_claim1,
-          &ck_primary,
-          &ck_secondary,
-          recursive_snark, // last running instance.
-          &z0_primary,
-          &z0_secondary,
-        )
-        .unwrap(),
-        OPCODE_1 => RecursiveSNARK::execute_and_verify_circuits(
-          curcuit_index_selector,
-          num_augmented_circuit,
-          &running_claim2,
-          &ck_primary,
-          &ck_secondary,
-          recursive_snark, // last running instance.
-          &z0_primary,
-          &z0_secondary,
-        )
-        .unwrap(),
-        _ => unimplemented!(),
-      };
-      recursive_snark = Some(nivc_snark);
-      final_result = result;
+      ) as usize];
+
+      let mut recursive_snark = recursive_snark_option.unwrap_or_else(|| {
+        if augmented_circuit_index == OPCODE_0 {
+          RecursiveSNARK::iter_base_step(
+            &running_claim1,
+            program_counter,
+            augmented_circuit_index,
+            num_augmented_circuit,
+            &z0_primary,
+            &z0_secondary,
+          )
+          .unwrap()
+        } else if augmented_circuit_index == OPCODE_1 {
+          RecursiveSNARK::iter_base_step(
+            &running_claim2,
+            program_counter,
+            augmented_circuit_index,
+            num_augmented_circuit,
+            &z0_primary,
+            &z0_secondary,
+          )
+          .unwrap()
+        } else {
+          unimplemented!()
+        }
+      });
+
+      if augmented_circuit_index == OPCODE_0 {
+        let res = recursive_snark.prove_step(&running_claim1, &z0_primary, &z0_secondary);
+        if let Err(e) = res.clone() {
+          println!("res failed {:?}", e);
+        }
+        assert!(res.is_ok());
+        let res = recursive_snark.verify(&running_claim1, &z0_primary, &z0_secondary);
+        if let Err(e) = res.clone() {
+          println!("res failed {:?}", e);
+        }
+        assert!(res.is_ok());
+      } else if augmented_circuit_index == OPCODE_1 {
+        let res = recursive_snark.prove_step(&running_claim2, &z0_primary, &z0_secondary);
+        if let Err(e) = res.clone() {
+          println!("res failed {:?}", e);
+        }
+        assert!(res.is_ok());
+        let res = recursive_snark.verify(&running_claim2, &z0_primary, &z0_secondary);
+        if let Err(e) = res.clone() {
+          println!("res failed {:?}", e);
+        }
+        assert!(res.is_ok());
+      }
+      recursive_snark_option = Some(recursive_snark)
     }
 
-    // println!("final Nivc SNARK {:?}", recursive_snark);
-    assert!(recursive_snark.is_some());
+    assert!(recursive_snark_option.is_some());
 
     // Now you can handle the Result using if let
-    if let Ok((zi_primary, zi_secondary, program_counter)) = final_result {
-      println!("zi_primary: {:?}", zi_primary);
-      println!("zi_secondary: {:?}", zi_secondary);
-      println!("final program_counter: {:?}", program_counter);
-    }
+    let RecursiveSNARK {
+      zi_primary,
+      zi_secondary,
+      program_counter,
+      ..
+    } = &recursive_snark_option.unwrap();
+
+    println!("zi_primary: {:?}", zi_primary);
+    println!("zi_secondary: {:?}", zi_secondary);
+    println!("final program_counter: {:?}", program_counter);
   }
 
   #[test]

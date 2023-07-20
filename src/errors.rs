@@ -62,4 +62,7 @@ pub enum NovaError {
   /// returned when the consistency with public IO and assignment used fails
   #[error("IncorrectWitness")]
   IncorrectWitness,
+  /// missig commitment key
+  #[error("MissingCK")]
+  MissingCK,
 }
