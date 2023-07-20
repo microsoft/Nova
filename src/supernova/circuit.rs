@@ -569,21 +569,19 @@ impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNo
       ));
     }
 
-    /*
-      To check correct folding sequencing we are just going to make a hash.
-      The next RunningInstance folding can take the pre-image of this hash as witness and check.
+    // To check correct folding sequencing we are just going to make a hash.
+    // The next RunningInstance folding can take the pre-image of this hash as witness and check.
 
-      "Finally, there is a subtle sizing issue in the above description: in each step,
-      because Ui+1 is produced as the public IO of F0 program_counter+1, it must be contained in
-      the public IO of instance ui+1. In the next iteration, because ui+1 is folded
-      into Ui+1[program_counter+1], this means that Ui+1[program_counter+1] is at least as large as Ui by the
-      properties of the folding scheme. This means that the list of running instances
-      grows in each step. To alleviate this issue, we have each F0j only produce a hash
-      of its outputs as public output. In the subsequent step, the next augmented
-      function takes as non-deterministic input a preimage to this hash." pg.16
+    // "Finally, there is a subtle sizing issue in the above description: in each step,
+    // because Ui+1 is produced as the public IO of F0 program_counter+1, it must be contained in
+    // the public IO of instance ui+1. In the next iteration, because ui+1 is folded
+    // into Ui+1[program_counter+1], this means that Ui+1[program_counter+1] is at least as large as Ui by the
+    // properties of the folding scheme. This means that the list of running instances
+    // grows in each step. To alleviate this issue, we have each F0j only produce a hash
+    // of its outputs as public output. In the subsequent step, the next augmented
+    // function takes as non-deterministic input a preimage to this hash." pg.16
 
-      https://eprint.iacr.org/2022/1758.pdf
-    */
+    // https://eprint.iacr.org/2022/1758.pdf
 
     // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_next)
     let mut ro = G::ROCircuit::new(
@@ -646,9 +644,7 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    /*
-    Both circuit1 and circuit2 are TrivialTestCircuit
-    */
+    // Both circuit1 and circuit2 are TrivialTestCircuit
 
     // Initialize the shape and ck for the primary
     let step_circuit1 = TrivialTestCircuit::default();

@@ -956,26 +956,23 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    /*
-      Here demo a simple RAM machine
-      - with 2 argumented circuit
-      - each argumented circuit contains primary and secondary circuit
-      - a memory commmitment via a public IO `rom` (like a program) to constraint the sequence execution
+    // Here demo a simple RAM machine
+    // - with 2 argumented circuit
+    // - each argumented circuit contains primary and secondary circuit
+    // - a memory commmitment via a public IO `rom` (like a program) to constraint the sequence execution
 
-      This test also ready to add more argumented circuit and ROM can be arbitrary length
+    // This test also ready to add more argumented circuit and ROM can be arbitrary length
 
-      ROM is for constraints the sequence of execution order for opcode
-      program counter initially point to 0
+    // ROM is for constraints the sequence of execution order for opcode
+    // program counter initially point to 0
 
-      TODO: replace with memory commitment along with suggestion from Supernova 4.4 optimisations
+    // TODO: replace with memory commitment along with suggestion from Supernova 4.4 optimisations
 
-      This is mostly done with the existing Nova code. With additions of U_i[] and program_counter checks
-      in the augmented circuit.
+    // This is mostly done with the existing Nova code. With additions of U_i[] and program_counter checks
+    // in the augmented circuit.
 
-      To save the test time, after each step of iteration, RecursiveSNARK just verfiy the latest U_i[augmented_circuit_index] needs to be a satisfying instance.
-      TODO At the end of this test, RecursiveSNARK need to verify all U_i[] are satisfying instances
-
-    */
+    // To save the test time, after each step of iteration, RecursiveSNARK just verfiy the latest U_i[augmented_circuit_index] needs to be a satisfying instance.
+    // TODO At the end of this test, RecursiveSNARK need to verify all U_i[] are satisfying instances
 
     let rom = [
       OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1,
