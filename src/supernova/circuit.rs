@@ -418,9 +418,7 @@ impl<G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<G, SC> {
   }
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for SuperNovaCircuit<G, SC>
-{
+impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base> for SuperNovaCircuit<G, SC> {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,

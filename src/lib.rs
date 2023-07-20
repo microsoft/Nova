@@ -26,7 +26,7 @@ pub mod spartan;
 pub mod traits;
 
 #[cfg(feature = "supernova")]
-mod supernova;
+pub mod supernova;
 
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
@@ -767,7 +767,8 @@ type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
 type CompressedCommitment<G> = <<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment;
 type CE<G> = <G as Group>::CE;
 
-fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
+/// compute digest giving a Serialize object
+pub fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
   let bytes = bincode::serialize(o).unwrap();
   // convert pp_bytes into a short digest

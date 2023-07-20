@@ -64,10 +64,7 @@ where
   G2: Group<Base = <G1 as Group>::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup_without_commitkey<
-    C1: StepCircuit<G1::Scalar>,
-    C2: StepCircuit<G2::Scalar>,
-  >(
+  pub fn setup_without_commitkey<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     c_primary: C1,
     c_secondary: C2,
     num_augmented_circuits: usize,
@@ -162,10 +159,8 @@ where
   }
 }
 
-/*
- SuperNova takes Ui a list of running instances.
- One instance of Ui is a struct called RunningClaim.
-*/
+/// SuperNova takes Ui a list of running instances.
+/// One instance of Ui is a struct called RunningClaim.
 pub struct RunningClaim<G1, G2, Ca, Cb>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
@@ -186,6 +181,7 @@ where
   Ca: StepCircuit<G1::Scalar>,
   Cb: StepCircuit<G2::Scalar>,
 {
+  /// new a running claim
   pub fn new(circuit_primary: Ca, circuit_secondary: Cb, num_augmented_circuits: usize) -> Self {
     let claim = circuit_primary.clone();
 
@@ -508,7 +504,7 @@ where
       }
     }
   }
-
+  /// verify recursive snark
   pub fn verify(
     &mut self,
     pp: &PublicParams<G1, G2>,
@@ -690,7 +686,8 @@ where
     ))
   }
 
-  fn execute_and_verify_circuits<C1, C2>(
+  /// make single iteration and return new RecursiveSNARK
+  pub fn execute_and_verify_circuits<C1, C2>(
     circuit_index: usize,
     num_augmented_circuits: usize, // total number of F' circuit
     running_claim: &RunningClaim<G1, G2, C1, C2>,
@@ -762,6 +759,11 @@ where
         )) as Box<dyn std::error::Error>
       })
       .map(|snark| (snark, final_result))
+  }
+
+  /// get program counter
+  pub fn get_program_counter(&self) -> G1::Scalar {
+    self.program_counter
   }
 }
 
