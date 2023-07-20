@@ -116,7 +116,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
       aux_info: VPAuxInfo {
         max_degree: 0,
         num_variables,
-        phantom: PhantomData::default(),
+        phantom: PhantomData,
       },
       products: Vec::new(),
       flattened_ml_extensions: Vec::new(),
@@ -135,7 +135,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         // The max degree is the max degree of any individual variable
         max_degree: 1,
         num_variables: mle.get_num_vars(),
-        phantom: PhantomData::default(),
+        phantom: PhantomData,
       },
       // here `0` points to the first polynomial of `flattened_ml_extensions`
       products: vec![(coefficient, vec![0])],
