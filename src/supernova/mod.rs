@@ -1037,13 +1037,13 @@ mod tests {
     let initial_program_counter = <G1 as Group>::Scalar::from(0);
 
     // extend z0_primary/secondary with rom content
-    let mut z0_primary = vec![<G1 as Group>::Scalar::ONE]; // var, program_counter
+    let mut z0_primary = vec![<G1 as Group>::Scalar::ONE];
     z0_primary.extend(
       rom
         .iter()
         .map(|opcode| <G1 as Group>::Scalar::from(*opcode as u64)),
     );
-    let mut z0_secondary = vec![<G2 as Group>::Scalar::ONE]; // var, program_counter
+    let mut z0_secondary = vec![<G2 as Group>::Scalar::ONE];
     z0_secondary.extend(
       rom
         .iter()
