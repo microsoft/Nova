@@ -852,7 +852,7 @@ mod tests {
       }
     }
 
-    pub fn scalar_mul(&self, scalar: &G::Scalar) -> Self {
+    pub fn scalar_mul(&self, scalar: &<G as Group>::Scalar) -> Self {
       let mut res = Self {
         x: G::Base::ZERO,
         y: G::Base::ZERO,
@@ -903,7 +903,7 @@ mod tests {
 
   fn test_ecc_ops_with<C, G>()
   where
-    C: CurveAffine<Base = G::Base, ScalarExt = G::Scalar>,
+    C: CurveAffine<Base = G::Base, ScalarExt = <G as Group>::Scalar>,
     G: Group,
   {
     // perform some curve arithmetic
@@ -954,7 +954,9 @@ mod tests {
     assert_eq!(e_curve, e_curve_2);
   }
 
-  fn synthesize_smul<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>, G::Scalar)
+  fn synthesize_smul<G, CS>(
+    mut cs: CS,
+  ) -> (AllocatedPoint<G>, AllocatedPoint<G>, <G as Group>::Scalar)
   where
     G: Group,
     CS: ConstraintSystem<G::Base>,
@@ -962,7 +964,7 @@ mod tests {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
     inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
 
-    let s = G::Scalar::random(&mut OsRng);
+    let s = <G as Group>::Scalar::random(&mut OsRng);
     // Allocate bits for s
     let bits: Vec<AllocatedBit> = s
       .to_le_bits()

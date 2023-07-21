@@ -21,13 +21,13 @@ impl<G: Group> SumcheckProof<G> {
 
   pub fn verify(
     &self,
-    claim: G::Scalar,
+    claim: <G as Group>::Scalar,
     num_rounds: usize,
     degree_bound: usize,
     transcript: &mut G::TE,
-  ) -> Result<(G::Scalar, Vec<G::Scalar>), NovaError> {
+  ) -> Result<(<G as Group>::Scalar, Vec<<G as Group>::Scalar>), NovaError> {
     let mut e = claim;
-    let mut r: Vec<G::Scalar> = Vec::new();
+    let mut r: Vec<<G as Group>::Scalar> = Vec::new();
 
     // verify that there is a univariate polynomial for each round
     if self.compressed_polys.len() != num_rounds {
@@ -63,12 +63,12 @@ impl<G: Group> SumcheckProof<G> {
 
   #[inline]
   fn compute_eval_points<F>(
-    poly_A: &MultilinearPolynomial<G::Scalar>,
-    poly_B: &MultilinearPolynomial<G::Scalar>,
+    poly_A: &MultilinearPolynomial<<G as Group>::Scalar>,
+    poly_B: &MultilinearPolynomial<<G as Group>::Scalar>,
     comb_func: &F,
-  ) -> (G::Scalar, G::Scalar)
+  ) -> (<G as Group>::Scalar, <G as Group>::Scalar)
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&<G as Group>::Scalar, &<G as Group>::Scalar) -> <G as Group>::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
     (0..len)
@@ -84,23 +84,23 @@ impl<G: Group> SumcheckProof<G> {
         (eval_point_0, eval_point_2)
       })
       .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO),
+        || (<G as Group>::Scalar::ZERO, <G as Group>::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1),
       )
   }
 
   pub fn prove_quad<F>(
-    claim: &G::Scalar,
+    claim: &<G as Group>::Scalar,
     num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<G::Scalar>,
-    poly_B: &mut MultilinearPolynomial<G::Scalar>,
+    poly_A: &mut MultilinearPolynomial<<G as Group>::Scalar>,
+    poly_B: &mut MultilinearPolynomial<<G as Group>::Scalar>,
     comb_func: F,
     transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
+  ) -> Result<(Self, Vec<<G as Group>::Scalar>, Vec<<G as Group>::Scalar>), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&<G as Group>::Scalar, &<G as Group>::Scalar) -> <G as Group>::Scalar + Sync,
   {
-    let mut r: Vec<G::Scalar> = Vec::new();
+    let mut r: Vec<<G as Group>::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
@@ -137,23 +137,30 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   pub fn prove_quad_batch<F>(
-    claim: &G::Scalar,
+    claim: &<G as Group>::Scalar,
     num_rounds: usize,
-    poly_A_vec: &mut Vec<MultilinearPolynomial<G::Scalar>>,
-    poly_B_vec: &mut Vec<MultilinearPolynomial<G::Scalar>>,
-    coeffs: &[G::Scalar],
+    poly_A_vec: &mut Vec<MultilinearPolynomial<<G as Group>::Scalar>>,
+    poly_B_vec: &mut Vec<MultilinearPolynomial<<G as Group>::Scalar>>,
+    coeffs: &[<G as Group>::Scalar],
     comb_func: F,
     transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, (Vec<G::Scalar>, Vec<G::Scalar>)), NovaError>
+  ) -> Result<
+    (
+      Self,
+      Vec<<G as Group>::Scalar>,
+      (Vec<<G as Group>::Scalar>, Vec<<G as Group>::Scalar>),
+    ),
+    NovaError,
+  >
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&<G as Group>::Scalar, &<G as Group>::Scalar) -> <G as Group>::Scalar + Sync,
   {
     let mut e = *claim;
-    let mut r: Vec<G::Scalar> = Vec::new();
+    let mut r: Vec<<G as Group>::Scalar> = Vec::new();
     let mut quad_polys: Vec<CompressedUniPoly<G>> = Vec::new();
 
     for _j in 0..num_rounds {
-      let mut evals: Vec<(G::Scalar, G::Scalar)> = Vec::new();
+      let mut evals: Vec<(<G as Group>::Scalar, <G as Group>::Scalar)> = Vec::new();
 
       for (poly_A, poly_B) in poly_A_vec.iter().zip(poly_B_vec.iter()) {
         let (eval_point_0, eval_point_2) = Self::compute_eval_points(poly_A, poly_B, &comb_func);
@@ -191,19 +198,25 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   pub fn prove_cubic_with_additive_term<F>(
-    claim: &G::Scalar,
+    claim: &<G as Group>::Scalar,
     num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<G::Scalar>,
-    poly_B: &mut MultilinearPolynomial<G::Scalar>,
-    poly_C: &mut MultilinearPolynomial<G::Scalar>,
-    poly_D: &mut MultilinearPolynomial<G::Scalar>,
+    poly_A: &mut MultilinearPolynomial<<G as Group>::Scalar>,
+    poly_B: &mut MultilinearPolynomial<<G as Group>::Scalar>,
+    poly_C: &mut MultilinearPolynomial<<G as Group>::Scalar>,
+    poly_D: &mut MultilinearPolynomial<<G as Group>::Scalar>,
     comb_func: F,
     transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
+  ) -> Result<(Self, Vec<<G as Group>::Scalar>, Vec<<G as Group>::Scalar>), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(
+        &<G as Group>::Scalar,
+        &<G as Group>::Scalar,
+        &<G as Group>::Scalar,
+        &<G as Group>::Scalar,
+      ) -> <G as Group>::Scalar
+      + Sync,
   {
-    let mut r: Vec<G::Scalar> = Vec::new();
+    let mut r: Vec<<G as Group>::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
     let mut claim_per_round = *claim;
 
@@ -244,7 +257,13 @@ impl<G: Group> SumcheckProof<G> {
             (eval_point_0, eval_point_2, eval_point_3)
           })
           .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+            || {
+              (
+                <G as Group>::Scalar::ZERO,
+                <G as Group>::Scalar::ZERO,
+                <G as Group>::Scalar::ZERO,
+              )
+            },
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
           );
 
@@ -289,24 +308,25 @@ impl<G: Group> SumcheckProof<G> {
 // ax^3 + bx^2 + cx + d stored as vec![a,b,c,d]
 #[derive(Debug)]
 pub struct UniPoly<G: Group> {
-  coeffs: Vec<G::Scalar>,
+  coeffs: Vec<<G as Group>::Scalar>,
 }
 
 // ax^2 + bx + c stored as vec![a,c]
 // ax^3 + bx^2 + cx + d stored as vec![a,c,d]
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct CompressedUniPoly<G: Group> {
-  coeffs_except_linear_term: Vec<G::Scalar>,
+  coeffs_except_linear_term: Vec<<G as Group>::Scalar>,
   _p: PhantomData<G>,
 }
 
 impl<G: Group> UniPoly<G> {
-  pub fn from_evals(evals: &[G::Scalar]) -> Self {
+  pub fn from_evals(evals: &[<G as Group>::Scalar]) -> Self {
     // we only support degree-2 or degree-3 univariate polynomials
     assert!(evals.len() == 3 || evals.len() == 4);
     let coeffs = if evals.len() == 3 {
       // ax^2 + bx + c
-      let two_inv = G::Scalar::from(2).invert().unwrap();
+      let two_inv = <G as Group>::Scalar::from(2).invert().unwrap();
 
       let c = evals[0];
       let a = two_inv * (evals[2] - evals[1] - evals[1] + c);
@@ -314,8 +334,8 @@ impl<G: Group> UniPoly<G> {
       vec![c, b, a]
     } else {
       // ax^3 + bx^2 + cx + d
-      let two_inv = G::Scalar::from(2).invert().unwrap();
-      let six_inv = G::Scalar::from(6).invert().unwrap();
+      let two_inv = <G as Group>::Scalar::from(2).invert().unwrap();
+      let six_inv = <G as Group>::Scalar::from(6).invert().unwrap();
 
       let d = evals[0];
       let a = six_inv
@@ -338,18 +358,18 @@ impl<G: Group> UniPoly<G> {
     self.coeffs.len() - 1
   }
 
-  pub fn eval_at_zero(&self) -> G::Scalar {
+  pub fn eval_at_zero(&self) -> <G as Group>::Scalar {
     self.coeffs[0]
   }
 
-  pub fn eval_at_one(&self) -> G::Scalar {
+  pub fn eval_at_one(&self) -> <G as Group>::Scalar {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
-      .reduce(|| G::Scalar::ZERO, |a, b| a + b)
+      .reduce(|| <G as Group>::Scalar::ZERO, |a, b| a + b)
   }
 
-  pub fn evaluate(&self, r: &G::Scalar) -> G::Scalar {
+  pub fn evaluate(&self, r: &<G as Group>::Scalar) -> <G as Group>::Scalar {
     let mut eval = self.coeffs[0];
     let mut power = *r;
     for coeff in self.coeffs.iter().skip(1) {
@@ -372,14 +392,14 @@ impl<G: Group> UniPoly<G> {
 impl<G: Group> CompressedUniPoly<G> {
   // we require eval(0) + eval(1) = hint, so we can solve for the linear term as:
   // linear_term = hint - 2 * constant_term - deg2 term - deg3 term
-  pub fn decompress(&self, hint: &G::Scalar) -> UniPoly<G> {
+  pub fn decompress(&self, hint: &<G as Group>::Scalar) -> UniPoly<G> {
     let mut linear_term =
       *hint - self.coeffs_except_linear_term[0] - self.coeffs_except_linear_term[0];
     for i in 1..self.coeffs_except_linear_term.len() {
       linear_term -= self.coeffs_except_linear_term[i];
     }
 
-    let mut coeffs: Vec<G::Scalar> = Vec::new();
+    let mut coeffs: Vec<<G as Group>::Scalar> = Vec::new();
     coeffs.push(self.coeffs_except_linear_term[0]);
     coeffs.push(linear_term);
     coeffs.extend(&self.coeffs_except_linear_term[1..]);

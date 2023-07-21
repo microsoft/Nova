@@ -58,13 +58,13 @@ macro_rules! impl_traits {
       type Scalar = $name::Scalar;
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
-      type RO = PoseidonRO<Self::Base, Self::Scalar>;
+      type RO = PoseidonRO<Self::Base, <Self as Group>::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
+        scalars: &[<Self as Group>::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
         cpu_best_multiexp(scalars, bases)

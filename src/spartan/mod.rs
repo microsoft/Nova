@@ -14,10 +14,10 @@ use crate::{traits::Group, Commitment};
 use ff::Field;
 use polynomial::SparsePolynomial;
 
-fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
+fn powers<G: Group>(s: &<G as Group>::Scalar, n: usize) -> Vec<<G as Group>::Scalar> {
   assert!(n >= 1);
   let mut powers = Vec::new();
-  powers.push(G::Scalar::ONE);
+  powers.push(<G as Group>::Scalar::ONE);
   for i in 1..n {
     powers.push(powers[i - 1] * s);
   }
@@ -26,7 +26,7 @@ fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
 
 /// A type that holds a witness to a polynomial evaluation instance
 pub struct PolyEvalWitness<G: Group> {
-  p: Vec<G::Scalar>, // polynomial
+  p: Vec<<G as Group>::Scalar>, // polynomial
 }
 
 impl<G: Group> PolyEvalWitness<G> {
@@ -36,7 +36,7 @@ impl<G: Group> PolyEvalWitness<G> {
       W.iter()
         .map(|w| {
           let mut p = w.p.clone();
-          p.resize(n, G::Scalar::ZERO);
+          p.resize(n, <G as Group>::Scalar::ZERO);
           PolyEvalWitness { p }
         })
         .collect()
@@ -45,9 +45,9 @@ impl<G: Group> PolyEvalWitness<G> {
     }
   }
 
-  fn weighted_sum(W: &[PolyEvalWitness<G>], s: &[G::Scalar]) -> PolyEvalWitness<G> {
+  fn weighted_sum(W: &[PolyEvalWitness<G>], s: &[<G as Group>::Scalar]) -> PolyEvalWitness<G> {
     assert_eq!(W.len(), s.len());
-    let mut p = vec![G::Scalar::ZERO; W[0].p.len()];
+    let mut p = vec![<G as Group>::Scalar::ZERO; W[0].p.len()];
     for i in 0..W.len() {
       for j in 0..W[i].p.len() {
         p[j] += W[i].p[j] * s[i]
@@ -56,9 +56,9 @@ impl<G: Group> PolyEvalWitness<G> {
     PolyEvalWitness { p }
   }
 
-  fn batch(p_vec: &[&Vec<G::Scalar>], s: &G::Scalar) -> PolyEvalWitness<G> {
+  fn batch(p_vec: &[&Vec<<G as Group>::Scalar>], s: &<G as Group>::Scalar) -> PolyEvalWitness<G> {
     let powers_of_s = powers::<G>(s, p_vec.len());
-    let mut p = vec![G::Scalar::ZERO; p_vec[0].len()];
+    let mut p = vec![<G as Group>::Scalar::ZERO; p_vec[0].len()];
     for i in 0..p_vec.len() {
       for (j, item) in p.iter_mut().enumerate().take(p_vec[i].len()) {
         *item += p_vec[i][j] * powers_of_s[i]
@@ -70,9 +70,9 @@ impl<G: Group> PolyEvalWitness<G> {
 
 /// A type that holds a polynomial evaluation instance
 pub struct PolyEvalInstance<G: Group> {
-  c: Commitment<G>,  // commitment to the polynomial
-  x: Vec<G::Scalar>, // evaluation point
-  e: G::Scalar,      // claimed evaluation
+  c: Commitment<G>,             // commitment to the polynomial
+  x: Vec<<G as Group>::Scalar>, // evaluation point
+  e: <G as Group>::Scalar,      // claimed evaluation
 }
 
 impl<G: Group> PolyEvalInstance<G> {
@@ -81,7 +81,7 @@ impl<G: Group> PolyEvalInstance<G> {
     if let Some(ell) = U.iter().map(|u| u.x.len()).max() {
       U.iter()
         .map(|u| {
-          let mut x = vec![G::Scalar::ZERO; ell - u.x.len()];
+          let mut x = vec![<G as Group>::Scalar::ZERO; ell - u.x.len()];
           x.extend(u.x.clone());
           PolyEvalInstance { c: u.c, x, e: u.e }
         })
@@ -93,9 +93,9 @@ impl<G: Group> PolyEvalInstance<G> {
 
   fn batch(
     c_vec: &[Commitment<G>],
-    x: &[G::Scalar],
-    e_vec: &[G::Scalar],
-    s: &G::Scalar,
+    x: &[<G as Group>::Scalar],
+    e_vec: &[<G as Group>::Scalar],
+    s: &<G as Group>::Scalar,
   ) -> PolyEvalInstance<G> {
     let powers_of_s = powers::<G>(s, c_vec.len());
     let e = e_vec

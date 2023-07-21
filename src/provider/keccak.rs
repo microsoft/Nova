@@ -59,7 +59,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     }
   }
 
-  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<<G as Group>::Scalar, NovaError> {
     // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
       DOM_SEP_TAG,
@@ -82,7 +82,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     self.transcript = Keccak256::new();
 
     // squeeze out a challenge
-    Ok(G::Scalar::from_uniform(&output))
+    Ok(<G as Group>::Scalar::from_uniform(&output))
   }
 
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T) {
@@ -231,8 +231,11 @@ mod tests {
     let c1: <G as Group>::Scalar = transcript.squeeze(b"c1").unwrap();
 
     let c1_bytes = squeeze_for_testing(&manual_transcript[..], 0u16, initial_state, b"c1");
-    let to_hex = |g: G::Scalar| hex::encode(g.to_repr().as_ref());
-    assert_eq!(to_hex(c1), to_hex(G::Scalar::from_uniform(&c1_bytes)));
+    let to_hex = |g: <G as Group>::Scalar| hex::encode(g.to_repr().as_ref());
+    assert_eq!(
+      to_hex(c1),
+      to_hex(<G as Group>::Scalar::from_uniform(&c1_bytes))
+    );
   }
 
   #[test]

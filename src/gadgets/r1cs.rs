@@ -104,14 +104,22 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[0]"),
-      || Ok(f_to_nat(&inst.map_or(G::Scalar::ZERO, |inst| inst.X[0]))),
+      || {
+        Ok(f_to_nat(
+          &inst.map_or(<G as Group>::Scalar::ZERO, |inst| inst.X[0]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[1]"),
-      || Ok(f_to_nat(&inst.map_or(G::Scalar::ZERO, |inst| inst.X[1]))),
+      || {
+        Ok(f_to_nat(
+          &inst.map_or(<G as Group>::Scalar::ZERO, |inst| inst.X[1]),
+        ))
+      },
       limb_width,
       n_limbs,
     )?;
@@ -133,14 +141,14 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
-      || Ok(f_to_nat(&G::Scalar::ZERO)),
+      || Ok(f_to_nat(&<G as Group>::Scalar::ZERO)),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[1]"),
-      || Ok(f_to_nat(&G::Scalar::ZERO)),
+      || Ok(f_to_nat(&<G as Group>::Scalar::ZERO)),
       limb_width,
       n_limbs,
     )?;

@@ -219,14 +219,15 @@ mod tests {
   {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = PoseidonConstantsCircuit::<G::Scalar>::new();
+    let constants = PoseidonConstantsCircuit::<<G as Group>::Scalar>::new();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
+    let mut ro: PoseidonRO<<G as Group>::Scalar, G::Base> =
+      PoseidonRO::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<<G as Group>::Scalar> =
       PoseidonROCircuit::new(constants, num_absorbs);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..num_absorbs {
-      let num = G::Scalar::random(&mut csprng);
+      let num = <G as Group>::Scalar::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
         AllocatedNum::alloc(cs.namespace(|| format!("data {i}")), || Ok(num)).unwrap();

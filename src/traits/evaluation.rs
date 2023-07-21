@@ -34,9 +34,9 @@ pub trait EvaluationEngineTrait<G: Group>:
     pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
-    poly: &[G::Scalar],
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    poly: &[<G as Group>::Scalar],
+    point: &[<G as Group>::Scalar],
+    eval: &<G as Group>::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError>;
 
   /// A method to verify the purported evaluation of a multilinear polynomials
@@ -44,8 +44,8 @@ pub trait EvaluationEngineTrait<G: Group>:
     vk: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    point: &[<G as Group>::Scalar],
+    eval: &<G as Group>::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError>;
 }

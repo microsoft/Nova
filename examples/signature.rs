@@ -17,14 +17,14 @@ use rand::{rngs::OsRng, RngCore};
 use sha3::{Digest, Sha3_512};
 
 #[derive(Debug, Clone, Copy)]
-pub struct SecretKey<G: Group>(G::Scalar);
+pub struct SecretKey<G: Group>(<G as Group>::Scalar);
 
 impl<G> SecretKey<G>
 where
   G: Group,
 {
   pub fn random(mut rng: impl RngCore) -> Self {
-    let secret = G::Scalar::random(&mut rng);
+    let secret = <G as Group>::Scalar::random(&mut rng);
     Self(secret)
   }
 }
@@ -45,14 +45,14 @@ where
 #[derive(Clone)]
 pub struct Signature<G: Group> {
   pub r: G,
-  pub s: G::Scalar,
+  pub s: <G as Group>::Scalar,
 }
 
 impl<G> SecretKey<G>
 where
   G: Group,
 {
-  pub fn sign(self, c: G::Scalar, mut rng: impl RngCore) -> Signature<G> {
+  pub fn sign(self, c: <G as Group>::Scalar, mut rng: impl RngCore) -> Signature<G> {
     // T
     let mut t = [0u8; 80];
     rng.fill_bytes(&mut t[..]);
@@ -72,8 +72,11 @@ where
     Signature { r, s }
   }
 
-  fn mul_bits<B: AsRef<[u64]>>(s: &G::Scalar, bits: BitIterator<B>) -> G::Scalar {
-    let mut x = G::Scalar::ZERO;
+  fn mul_bits<B: AsRef<[u64]>>(
+    s: &<G as Group>::Scalar,
+    bits: BitIterator<B>,
+  ) -> <G as Group>::Scalar {
+    let mut x = <G as Group>::Scalar::ZERO;
     for bit in bits {
       x = x.double();
 
@@ -84,21 +87,21 @@ where
     x
   }
 
-  fn to_uniform(digest: &[u8]) -> G::Scalar {
+  fn to_uniform(digest: &[u8]) -> <G as Group>::Scalar {
     assert_eq!(digest.len(), 64);
     let mut bits: [u64; 8] = [0; 8];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
+    Self::mul_bits(&<G as Group>::Scalar::ONE, BitIterator::new(bits))
   }
 
-  pub fn to_uniform_32(digest: &[u8]) -> G::Scalar {
+  pub fn to_uniform_32(digest: &[u8]) -> <G as Group>::Scalar {
     assert_eq!(digest.len(), 32);
     let mut bits: [u64; 4] = [0; 4];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
+    Self::mul_bits(&<G as Group>::Scalar::ONE, BitIterator::new(bits))
   }
 
-  pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> G::Scalar {
+  pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> <G as Group>::Scalar {
     let mut hasher = Sha3_512::new();
     hasher.update(persona);
     hasher.update(a);
@@ -111,9 +114,9 @@ where
 impl<G> PublicKey<G>
 where
   G: Group,
-  G::Scalar: PrimeFieldBits,
+  <G as Group>::Scalar: PrimeFieldBits,
 {
-  pub fn verify(&self, c: G::Scalar, signature: &Signature<G>) -> bool {
+  pub fn verify(&self, c: <G as Group>::Scalar, signature: &Signature<G>) -> bool {
     let modulus = Self::modulus_as_scalar();
     let order_check_pk = self.0.mul(modulus);
     if !order_check_pk.eq(&G::identity()) {
@@ -134,15 +137,15 @@ where
       .eq(&G::identity())
   }
 
-  fn modulus_as_scalar() -> G::Scalar {
-    let mut bits = G::Scalar::char_le_bits().to_bitvec();
+  fn modulus_as_scalar() -> <G as Group>::Scalar {
+    let mut bits = <G as Group>::Scalar::char_le_bits().to_bitvec();
     let mut acc = BigUint::new(Vec::<u32>::new());
     while let Some(b) = bits.pop() {
       acc <<= 1_i32;
       acc += b as u8;
     }
     let modulus = acc.to_str_radix(10);
-    G::Scalar::from_str_vartime(&modulus).unwrap()
+    <G as Group>::Scalar::from_str_vartime(&modulus).unwrap()
   }
 }
 

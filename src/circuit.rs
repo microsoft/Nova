@@ -52,7 +52,7 @@ impl NovaAugmentedCircuitParams {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NovaAugmentedCircuitInputs<G: Group> {
-  params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+  params: <G as Group>::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
   i: G::Base,
   z0: Vec<G::Base>,
   zi: Option<Vec<G::Base>>,
@@ -65,7 +65,7 @@ impl<G: Group> NovaAugmentedCircuitInputs<G> {
   /// Create new inputs/witness for the verification circuit
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    params: G::Scalar,
+    params: <G as Group>::Scalar,
     i: G::Base,
     z0: Vec<G::Base>,
     zi: Option<Vec<G::Base>>,

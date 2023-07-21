@@ -49,7 +49,7 @@ pub trait CommitmentTrait<G: Group>:
   + AbsorbInROTrait<G>
   + CommitmentOps
   + CommitmentOpsOwned
-  + ScalarMul<G::Scalar>
+  + ScalarMul<<G as Group>::Scalar>
 {
   /// Holds the type of the compressed commitment
   type CompressedCommitment: Clone
@@ -86,5 +86,5 @@ pub trait CommitmentEngineTrait<G: Group>:
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
 
   /// Commits to the provided vector using the provided generators
-  fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment;
+  fn commit(ck: &Self::CommitmentKey, v: &[<G as Group>::Scalar]) -> Self::Commitment;
 }

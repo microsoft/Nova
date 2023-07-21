@@ -16,13 +16,13 @@ pub struct SatisfyingAssignment<G: Group> {
   b_aux_density: DensityTracker,
 
   // Evaluations of A, B, C polynomials
-  a: Vec<G::Scalar>,
-  b: Vec<G::Scalar>,
-  c: Vec<G::Scalar>,
+  a: Vec<<G as Group>::Scalar>,
+  b: Vec<<G as Group>::Scalar>,
+  c: Vec<<G as Group>::Scalar>,
 
   // Assignments of variables
-  pub(crate) input_assignment: Vec<G::Scalar>,
-  pub(crate) aux_assignment: Vec<G::Scalar>,
+  pub(crate) input_assignment: Vec<<G as Group>::Scalar>,
+  pub(crate) aux_assignment: Vec<<G as Group>::Scalar>,
 }
 use std::fmt;
 
@@ -63,11 +63,11 @@ impl<G: Group> fmt::Debug for SatisfyingAssignment<G> {
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
+impl<G: Group> ConstraintSystem<<G as Group>::Scalar> for SatisfyingAssignment<G> {
   type Root = Self;
 
   fn new() -> Self {
-    let input_assignment = vec![G::Scalar::ONE];
+    let input_assignment = vec![<G as Group>::Scalar::ONE];
     let mut d = DensityTracker::new();
     d.add_element();
 
@@ -85,7 +85,7 @@ impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
 
   fn alloc<F, A, AR>(&mut self, _: A, f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<<G as Group>::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -98,7 +98,7 @@ impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
 
   fn alloc_input<F, A, AR>(&mut self, _: A, f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<<G as Group>::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -112,9 +112,9 @@ impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
-    LA: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
+    LA: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
+    LB: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
+    LC: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
   {
     // Do nothing: we don't care about linear-combination evaluations in this context.
   }
