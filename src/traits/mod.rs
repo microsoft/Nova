@@ -41,8 +41,7 @@ pub trait Group:
     + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField
-    + PrimeFieldBits
+  type Scalar: PrimeFieldBits
     + PrimeFieldExt
     + Send
     + Sync

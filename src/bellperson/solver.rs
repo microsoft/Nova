@@ -1,7 +1,7 @@
 //! Support for generating R1CS witness using bellperson.
 
 use crate::traits::Group;
-use ff::{Field, PrimeField};
+use ff::Field;
 
 use bellperson::{
   multiexp::DensityTracker, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
@@ -9,10 +9,7 @@ use bellperson::{
 
 /// A `ConstraintSystem` which calculates witness values for a concrete instance of an R1CS circuit.
 #[derive(PartialEq)]
-pub struct SatisfyingAssignment<G: Group>
-where
-  G::Scalar: PrimeField,
-{
+pub struct SatisfyingAssignment<G: Group> {
   // Density of queries
   a_aux_density: DensityTracker,
   b_input_density: DensityTracker,
@@ -29,10 +26,7 @@ where
 }
 use std::fmt;
 
-impl<G: Group> fmt::Debug for SatisfyingAssignment<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> fmt::Debug for SatisfyingAssignment<G> {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt
       .debug_struct("SatisfyingAssignment")
@@ -69,10 +63,7 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
   type Root = Self;
 
   fn new() -> Self {
