@@ -98,12 +98,12 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
       });
 
       let res = recursive_snark.prove_step(&running_claim1, &z0_primary, &z0_secondary);
-      if let Err(e) = res.clone() {
+      if let Err(e) = &res {
         println!("res failed {:?}", e);
       }
       assert!(res.is_ok());
       let res = recursive_snark.verify(&running_claim1, &z0_primary, &z0_secondary);
-      if let Err(e) = res.clone() {
+      if let Err(e) = &res {
         println!("res failed {:?}", e);
       }
       assert!(res.is_ok());
@@ -111,12 +111,13 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
     }
 
     assert!(recursive_snark_option.is_some());
+    let recursive_snark = recursive_snark_option.unwrap();
 
     // Benchmark the prove time
     group.bench_function("Prove", |b| {
       b.iter(|| {
         // produce a recursive SNARK for a step of the recursion
-        assert!(black_box(&mut recursive_snark_option.clone().unwrap())
+        assert!(black_box(&mut recursive_snark.clone())
           .prove_step(
             black_box(&running_claim1),
             black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
@@ -129,7 +130,7 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // Benchmark the verification time
     group.bench_function("Verify", |b| {
       b.iter(|| {
-        assert!(black_box(&mut recursive_snark_option.clone().unwrap())
+        assert!(black_box(&mut recursive_snark.clone())
           .verify(
             black_box(&running_claim1),
             black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
@@ -212,23 +213,23 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
 
       if selected_augmented_circuit == 0 {
         let res = recursive_snark.prove_step(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
         let res = recursive_snark.verify(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
       } else if selected_augmented_circuit == 1 {
         let res = recursive_snark.prove_step(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
         let res = recursive_snark.verify(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
@@ -240,12 +241,13 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
     }
 
     assert!(recursive_snark_option.is_some());
+    let recursive_snark = recursive_snark_option.unwrap();
 
     // Benchmark the prove time
     group.bench_function("Prove", |b| {
       b.iter(|| {
         // produce a recursive SNARK for a step of the recursion
-        assert!(black_box(&mut recursive_snark_option.clone().unwrap())
+        assert!(black_box(&mut recursive_snark.clone())
           .prove_step(
             black_box(&running_claim1),
             black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
@@ -258,7 +260,7 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // Benchmark the verification time
     group.bench_function("Verify", |b| {
       b.iter(|| {
-        assert!(black_box(&mut recursive_snark_option.clone().unwrap())
+        assert!(black_box(&mut recursive_snark.clone())
           .verify(
             black_box(&running_claim1),
             black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),

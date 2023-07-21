@@ -62,8 +62,8 @@ where
 {
   /// Create a new `PublicParams`
   pub fn setup_without_commitkey<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
-    c_primary: C1,
-    c_secondary: C2,
+    c_primary: &C1,
+    c_secondary: &C2,
     num_augmented_circuits: usize,
   ) -> Self where {
     let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
@@ -80,10 +80,10 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
-      augmented_circuit_params_primary.clone(),
+    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+      &augmented_circuit_params_primary,
       None,
-      c_primary,
+      &c_primary,
       ro_consts_circuit_primary.clone(),
       num_augmented_circuits,
     );
@@ -99,10 +99,10 @@ where
       .collect();
 
     // Initialize ck for the secondary
-    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
-      augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+      &augmented_circuit_params_secondary,
       None,
-      c_secondary,
+      &c_secondary,
       ro_consts_circuit_secondary.clone(),
       num_augmented_circuits,
     );
@@ -189,8 +189,8 @@ where
     let claim = circuit_primary.clone();
 
     let pp = PublicParams::<G1, G2>::setup_without_commitkey(
-      claim.clone(),
-      circuit_secondary.clone(),
+      &claim,
+      &circuit_secondary,
       num_augmented_circuits,
     );
 
@@ -198,7 +198,7 @@ where
       augmented_circuit_index,
       _phantom: PhantomData,
       c_primary: claim,
-      c_secondary: circuit_secondary.clone(),
+      c_secondary: circuit_secondary,
       params: pp,
     }
   }
@@ -238,8 +238,8 @@ where
 {
   r_W_primary: Vec<Option<RelaxedR1CSWitness<G1>>>,
   r_U_primary: Vec<Option<RelaxedR1CSInstance<G1>>>,
-  r_W_secondary: RelaxedR1CSWitness<G2>,
-  r_U_secondary: RelaxedR1CSInstance<G2>,
+  r_W_secondary: Vec<Option<RelaxedR1CSWitness<G2>>>, // usually r_W_secondary.len() == 1
+  r_U_secondary: Vec<Option<RelaxedR1CSInstance<G2>>>, // usually r_U_secondary.len() == 1
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
   pp_digest: G1::Scalar,
@@ -277,11 +277,11 @@ where
 
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
+    let inputs_primary: CircuitInputs<'_, G2> = CircuitInputs::new(
       scalar_as_base::<G1>(pp.digest),
       G2::Scalar::ZERO,
       G1::Scalar::ZERO,
-      z0_primary.clone(),
+      z0_primary,
       None,
       None,
       None,
@@ -290,10 +290,10 @@ where
       G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
     );
 
-    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
-      c_primary.clone(),
+      &c_primary,
       pp.ro_consts_circuit_primary.clone(),
       num_augmented_circuits,
     );
@@ -307,22 +307,22 @@ where
 
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
+    let inputs_secondary: CircuitInputs<'_, G1> = CircuitInputs::new(
       pp.digest,
       G1::Scalar::ZERO,
       G2::Scalar::ZERO,
-      z0_secondary.clone(),
+      &z0_secondary,
       None,
       None,
-      Some(u_primary.clone()),
+      Some(&u_primary),
       None,
       G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
       G2::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
     );
-    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
-      c_secondary.clone(),
+      c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
       num_augmented_circuits,
     );
@@ -344,8 +344,13 @@ where
     // IVC proof of the secondary circuit
     let l_w_secondary = w_secondary;
     let l_u_secondary = u_secondary;
-    let r_W_secondary = RelaxedR1CSWitness::<G2>::default(&pp.r1cs_shape_secondary);
-    let r_U_secondary = RelaxedR1CSInstance::default(ck_secondary, &pp.r1cs_shape_secondary);
+    let r_W_secondary = vec![Some(RelaxedR1CSWitness::<G2>::default(
+      &pp.r1cs_shape_secondary,
+    ))];
+    let r_U_secondary = vec![Some(RelaxedR1CSInstance::default(
+      ck_secondary,
+      &pp.r1cs_shape_secondary,
+    ))];
 
     // Outputs of the two circuits and next program counter thus far.
     let (zi_primary_pc_next, zi_primary) = c_primary.output(initial_program_counter, &z0_primary);
@@ -405,6 +410,10 @@ where
       return Ok(());
     }
 
+    if self.r_U_secondary.len() != 1 || self.r_W_secondary.len() != 1 {
+      return Err(NovaError::ProofVerifyError);
+    }
+
     let pp = &claim.params;
     let c_primary = &claim.c_primary;
     let c_secondary = &claim.c_secondary;
@@ -425,8 +434,8 @@ where
       &pp.ro_consts_secondary,
       &scalar_as_base::<G1>(self.pp_digest),
       &pp.r1cs_shape_secondary,
-      &self.r_U_secondary,
-      &self.r_W_secondary,
+      self.r_U_secondary[0].as_ref().unwrap(),
+      self.r_W_secondary[0].as_ref().unwrap(),
       &self.l_u_secondary,
       &self.l_w_secondary,
     )?;
@@ -436,23 +445,24 @@ where
     let r_W_secondary_next = r_W_secondary_folded;
 
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: CircuitInputs<G2> = CircuitInputs::new(
+    let T = Commitment::<G2>::decompress(&nifs_secondary.comm_T)?;
+    let inputs_primary: CircuitInputs<'_, G2> = CircuitInputs::new(
       scalar_as_base::<G1>(pp.digest),
       scalar_as_base::<G1>(self.pp_digest),
       G1::Scalar::from(self.i as u64),
-      z0_primary.clone(),
-      Some(self.zi_primary.clone()),
-      Some(vec![self.r_U_secondary.clone()]),
-      Some(self.l_u_secondary.clone()),
-      Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
+      z0_primary,
+      Some(&self.zi_primary),
+      Some(&self.r_U_secondary),
+      Some(&self.l_u_secondary),
+      Some(&T),
       self.program_counter,
       G1::Scalar::ZERO,
     );
 
-    let circuit_primary: SuperNovaCircuit<G2, C1> = SuperNovaCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
-      c_primary.clone(),
+      c_primary,
       pp.ro_consts_circuit_primary.clone(),
       self.num_augmented_circuits,
     );
@@ -463,7 +473,7 @@ where
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &ck_primary)
       .map_err(|_e| NovaError::UnSat)?;
 
-    // Performance Note: U1, W1 clone() at most happened #num_augmented_circuit times (Each clone only on specific index)
+    // Performance Note: U1, W1 clone() at most happened #num_augmented_circuit, when create first running instance of augmented_circuit_index
     let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
       ck_primary,
       &pp.ro_consts_primary,
@@ -486,32 +496,24 @@ where
     )?;
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs_secondary: CircuitInputs<G1> = CircuitInputs::new(
+    let binding = Commitment::<G1>::decompress(&nifs_primary.comm_T)?;
+    let inputs_secondary: CircuitInputs<'_, G1> = CircuitInputs::new(
       pp.digest,
       self.pp_digest,
       G2::Scalar::from(self.i as u64),
-      z0_secondary.clone(),
-      Some(self.zi_secondary.clone()),
-      Some(
-        self
-          .r_U_primary
-          .iter()
-          .map(|U| {
-            U.clone()
-              .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary))
-          })
-          .collect(),
-      ),
-      Some(l_u_primary),
-      Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
+      z0_secondary,
+      Some(&self.zi_secondary),
+      Some(&self.r_U_primary),
+      Some(&l_u_primary),
+      Some(&binding),
       G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
       G2::Scalar::from(claim.get_augmented_circuit_index() as u64),
     );
 
-    let circuit_secondary: SuperNovaCircuit<G1, C2> = SuperNovaCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
-      c_secondary.clone(),
+      &c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
       self.num_augmented_circuits,
     );
@@ -532,8 +534,8 @@ where
     // clone and updated running instance on respective circuit_index
     self.r_U_primary[claim.get_augmented_circuit_index()] = Some(r_U_primary_folded);
     self.r_W_primary[claim.get_augmented_circuit_index()] = Some(r_W_primary_folded);
-    self.r_W_secondary = r_W_secondary_next;
-    self.r_U_secondary = r_U_secondary_next;
+    self.r_W_secondary = vec![Some(r_W_secondary_next)];
+    self.r_U_secondary = vec![Some(r_U_secondary_next)];
     self.l_w_secondary = l_w_secondary_next;
     self.l_u_secondary = l_u_secondary_next;
     self.pp_digest = pp.digest;
@@ -563,25 +565,36 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
+    if self.r_U_secondary.len() != 1 || self.r_W_secondary.len() != 1 {
+      return Err(NovaError::ProofVerifyError);
+    }
+
     let pp = &claim.params;
     let ck_primary = pp.ck_primary.as_ref().ok_or_else(|| NovaError::MissingCK)?;
 
-    self.r_U_primary.iter().try_for_each(|U| match U.clone() {
-      Some(U) if U.X.len() != 2 => {
-        println!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
-        Err(NovaError::ProofVerifyError)
-      }
-      _ => Ok(()),
-    })?;
+    self.r_U_primary[claim.get_augmented_circuit_index()]
+      .as_ref()
+      .map_or(Ok(()), |U| {
+        if U.X.len() != 2 {
+          println!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
+          Err(NovaError::ProofVerifyError)
+        } else {
+          Ok(())
+        }
+      })?;
 
-    if self.r_U_secondary.X.len() != 2 {
-      println!(
-        "r_U_secondary got instance length {:?} != {:?}",
-        self.r_U_secondary.X.len(),
-        2
-      );
-      return Err(NovaError::ProofVerifyError);
-    };
+    self.r_U_secondary[0].as_ref().map_or(Ok(()), |U| {
+      if U.X.len() != 2 {
+        println!(
+          "r_U_secondary got instance length {:?} != {:?}",
+          U.X.len(),
+          2
+        );
+        return Err(NovaError::ProofVerifyError);
+      } else {
+        Ok(())
+      }
+    })?;
 
     // check if the output hashes in R1CS instances point to the right running instances
     let num_field_primary_ro = 3 // params_next, i_new, program_counter_new
@@ -603,7 +616,9 @@ where
       for e in &self.zi_primary {
         hasher.absorb(*e);
       }
-      self.r_U_secondary.absorb_in_ro(&mut hasher);
+      self.r_U_secondary[0]
+        .as_ref()
+        .map(|U| U.absorb_in_ro(&mut hasher));
 
       let mut hasher2 =
         <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_secondary_ro);
@@ -664,8 +679,8 @@ where
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
               pp.ck_secondary.as_ref().unwrap(),
-              &self.r_U_secondary,
-              &self.r_W_secondary,
+              self.r_U_secondary[0].as_ref().unwrap(),
+              self.r_W_secondary[0].as_ref().unwrap(),
             )
           },
           || {
@@ -1116,23 +1131,23 @@ mod tests {
 
       if augmented_circuit_index == OPCODE_0 {
         let res = recursive_snark.prove_step(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
         let res = recursive_snark.verify(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
       } else if augmented_circuit_index == OPCODE_1 {
         let res = recursive_snark.prove_step(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
         let res = recursive_snark.verify(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = res.clone() {
+        if let Err(e) = &res {
           println!("res failed {:?}", e);
         }
         assert!(res.is_ok());
