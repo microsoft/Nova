@@ -3,9 +3,10 @@
 use std::marker::PhantomData;
 
 use crate::{
+  compute_digest,
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness, R1CS},
   scalar_as_base,
   traits::{
     circuit_supernova::StepCircuit, commitment::CommitmentTrait, AbsorbInROTrait, Group,
@@ -206,6 +207,25 @@ where
   pub fn get_augmented_circuit_index(&self) -> usize {
     self.augmented_circuit_index
   }
+
+  /// set primary/secondary commitment key
+  pub fn set_commitmentkey(
+    &mut self,
+    ck_primary: CommitmentKey<G1>,
+    ck_secondary: CommitmentKey<G2>,
+  ) {
+    self.params.ck_primary = Some(ck_primary);
+    self.params.ck_secondary = Some(ck_secondary);
+    self.params.digest = compute_digest::<G1, PublicParams<G1, G2>>(&self.params);
+  }
+
+  /// get primary/secondary circuit r1cs shape
+  pub fn get_r1cs_shape(&self) -> (&R1CSShape<G1>, &R1CSShape<G2>) {
+    (
+      &self.params.r1cs_shape_primary,
+      &self.params.r1cs_shape_secondary,
+    )
+  }
 }
 
 /// A SNARK that proves the correct execution of an non-uniform incremental computation
@@ -372,8 +392,7 @@ where
       num_augmented_circuits,
     })
   }
-  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
-  /// by executing a step of the incremental computation
+  /// executing a step of the incremental computation
   pub fn prove_step<C1: StepCircuit<G1::Scalar>, C2: StepCircuit<G2::Scalar>>(
     &mut self,
     claim: &RunningClaim<G1, G2, C1, C2>,
@@ -444,6 +463,7 @@ where
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &ck_primary)
       .map_err(|_e| NovaError::UnSat)?;
 
+    // Performance Note: U1, W1 clone() at most happened #num_augmented_circuit times (Each clone only on specific index)
     let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
       ck_primary,
       &pp.ro_consts_primary,
@@ -696,6 +716,11 @@ where
   }
 }
 
+/// genenate commitmentkey by r1cs shape
+pub fn gen_commitmentkey_by_r1cs<G: Group>(shape: &R1CSShape<G>) -> CommitmentKey<G> {
+  R1CS::<G>::commitment_key(shape)
+}
+
 #[cfg(test)]
 mod tests {
   use crate::gadgets::utils::alloc_num_equals;
@@ -704,7 +729,6 @@ mod tests {
   use crate::{
     compute_digest,
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
-    r1cs::R1CS,
   };
   use bellperson::gadgets::boolean::Boolean;
   use core::marker::PhantomData;
@@ -1018,9 +1042,9 @@ mod tests {
       .unwrap();
 
     let ck_primary =
-      R1CS::<G1>::commitment_key(&circuit_public_params[max_index_circuit].r1cs_shape_primary);
+      gen_commitmentkey_by_r1cs(&circuit_public_params[max_index_circuit].r1cs_shape_primary);
     let ck_secondary =
-      R1CS::<G2>::commitment_key(&circuit_public_params[max_index_circuit].r1cs_shape_secondary);
+      gen_commitmentkey_by_r1cs(&circuit_public_params[max_index_circuit].r1cs_shape_secondary);
 
     // set unified ck_primary, ck_secondary and update digest
     running_claim1.params.ck_primary = Some(ck_primary.clone());

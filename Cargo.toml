@@ -66,8 +66,12 @@ harness = false
 name = "sha256"
 harness = false
 
+[[bench]]
+name = "recursive-snark-supernova"
+harness = false
+
 [features]
-default = ["supernova"]
+default = []
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
 portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
