@@ -269,9 +269,9 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     })?;
     cs.enforce(
       || "Check u_fold",
-      |lc| lc + self.u.get_variable() + r.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + u_fold.get_variable(),
+      |lc| lc,
+      |lc| lc,
+      |lc| lc + u_fold.get_variable() - self.u.get_variable() - r.get_variable(),
     );
 
     // Fold the IO:
@@ -352,12 +352,6 @@ pub fn conditionally_select_alloc_relaxed_r1cs<
   condition: &Boolean,
 ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
   let c = AllocatedRelaxedR1CSInstance {
-    u: conditionally_select(
-      cs.namespace(|| "u = cond ? a.u : b.u"),
-      &a.u,
-      &b.u,
-      condition,
-    )?,
     W: conditionally_select_point(
       cs.namespace(|| "W = cond ? a.W : b.W"),
       &a.W,
@@ -368,6 +362,12 @@ pub fn conditionally_select_alloc_relaxed_r1cs<
       cs.namespace(|| "E = cond ? a.E : b.E"),
       &a.E,
       &b.E,
+      condition,
+    )?,
+    u: conditionally_select(
+      cs.namespace(|| "u = cond ? a.u : b.u"),
+      &a.u,
+      &b.u,
       condition,
     )?,
     X0: conditionally_select_bignat(
