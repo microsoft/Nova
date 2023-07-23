@@ -5,8 +5,9 @@ use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
+  compute_digest,
   supernova::RecursiveSNARK,
-  supernova::{gen_commitmentkey_by_r1cs, RunningClaim},
+  supernova::{gen_commitmentkey_by_r1cs, PublicParams, RunningClaim},
   traits::{
     circuit_supernova::{StepCircuit, TrivialTestCircuit},
     Group,
@@ -68,6 +69,7 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
 
     // set unified ck_primary, ck_secondary and update digest
     running_claim1.set_commitmentkey(ck_primary.clone(), ck_secondary.clone());
+    let digest = compute_digest::<G1, PublicParams<G1, G2>>(&[running_claim1.get_publicparams()]);
 
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing
@@ -88,6 +90,7 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
       let mut recursive_snark = recursive_snark_option.unwrap_or_else(|| {
         RecursiveSNARK::iter_base_step(
           &running_claim1,
+          digest,
           program_counter,
           0,
           1,
@@ -120,8 +123,8 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
         assert!(black_box(&mut recursive_snark.clone())
           .prove_step(
             black_box(&running_claim1),
-            black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
@@ -133,8 +136,8 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
         assert!(black_box(&mut recursive_snark.clone())
           .verify(
             black_box(&running_claim1),
-            black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       });
@@ -182,6 +185,11 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
     running_claim1.set_commitmentkey(ck_primary.clone(), ck_secondary.clone());
     running_claim2.set_commitmentkey(ck_primary.clone(), ck_secondary.clone());
 
+    let digest = compute_digest::<G1, PublicParams<G1, G2>>(&[
+      running_claim1.get_publicparams(),
+      running_claim2.get_publicparams(),
+    ]);
+
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing
     // the first step is cheaper than other steps owing to the presence of
@@ -202,6 +210,7 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
       let mut recursive_snark = recursive_snark_option.unwrap_or_else(|| {
         RecursiveSNARK::iter_base_step(
           &running_claim1,
+          digest,
           program_counter,
           0,
           2,
@@ -250,8 +259,8 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
         assert!(black_box(&mut recursive_snark.clone())
           .prove_step(
             black_box(&running_claim1),
-            black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
@@ -263,8 +272,8 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
         assert!(black_box(&mut recursive_snark.clone())
           .verify(
             black_box(&running_claim1),
-            black_box(&vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       });

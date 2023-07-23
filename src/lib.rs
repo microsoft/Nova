@@ -143,7 +143,7 @@ where
     };
 
     // set the digest in pp
-    pp.digest = compute_digest::<G1, PublicParams<G1, G2, C1, C2>>(&pp);
+    pp.digest = compute_digest::<G1, PublicParams<G1, G2, C1, C2>>(&[&pp]);
 
     pp
   }
@@ -767,10 +767,12 @@ type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
 type CompressedCommitment<G> = <<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment;
 type CE<G> = <G as Group>::CE;
 
-/// compute digest giving a Serialize object
-pub fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
+/// compute digest giving a collection of Serialize object
+pub fn compute_digest<G: Group, T: Serialize>(o: &[&T]) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
-  let bytes = bincode::serialize(o).unwrap();
+  let mut bytes = vec![];
+  o.iter()
+    .for_each(|o| bytes.extend(bincode::serialize(*o).unwrap()));
   // convert pp_bytes into a short digest
   let mut hasher = Sha3_256::new();
   hasher.update(&bytes);

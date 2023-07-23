@@ -65,12 +65,11 @@ impl CircuitParams {
 
 #[derive(Debug)]
 pub struct CircuitInputs<'a, G: Group> {
-  params_next: G::Scalar,
-  params: G::Scalar,
+  pp_digest: G::Scalar,
   i: G::Base,
-  z0: &'a Vec<G::Base>,
-  zi: Option<&'a Vec<G::Base>>,
-  U: Option<&'a Vec<Option<RelaxedR1CSInstance<G>>>>,
+  z0: &'a [G::Base],
+  zi: Option<&'a [G::Base]>,
+  U: Option<&'a [Option<RelaxedR1CSInstance<G>>]>,
   u: Option<&'a R1CSInstance<G>>,
   T: Option<&'a Commitment<G>>,
   program_counter: G::Base,
@@ -81,20 +80,18 @@ impl<'a, G: Group> CircuitInputs<'a, G> {
   /// Create new inputs/witness for the verification circuit
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    params_next: G::Scalar, // params_next can not being calculated inside, therefore pass as witness
-    params: G::Scalar,
+    pp_digest: G::Scalar,
     i: G::Base,
-    z0: &'a Vec<G::Base>,
-    zi: Option<&'a Vec<G::Base>>,
-    U: Option<&'a Vec<Option<RelaxedR1CSInstance<G>>>>,
+    z0: &'a [G::Base],
+    zi: Option<&'a [G::Base]>,
+    U: Option<&'a [Option<RelaxedR1CSInstance<G>>]>,
     u: Option<&'a R1CSInstance<G>>,
     T: Option<&'a Commitment<G>>,
     program_counter: G::Base,
     last_augmented_circuit_index: G::Base,
   ) -> Self {
     Self {
-      params_next,
-      params,
+      pp_digest,
       i,
       z0,
       zi,
@@ -146,7 +143,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
     (
       AllocatedNum<G::Base>,
       AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
       Vec<AllocatedNum<G::Base>>,
       Vec<AllocatedNum<G::Base>>,
       Vec<AllocatedRelaxedR1CSInstance<G>>,
@@ -160,16 +156,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
     // Allocate the params
     let params = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "params"),
-      self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
-    )?;
-
-    // Allocate the params_next
-    let params_next = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "params_next"),
       self
         .inputs
         .get()
-        .map_or(None, |inputs| Some(inputs.params_next)),
+        .map_or(None, |inputs| Some(inputs.pp_digest)),
     )?;
 
     // Allocate i
@@ -213,7 +203,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
           self
             .inputs
             .get()
-            .map_or(None, |inputs| inputs.U.map_or(None, |U| U[i].as_ref())),
+            .map_or(None, |inputs| inputs.U.and_then(|U| U[i].as_ref())),
           self.params.limb_width,
           self.params.n_limbs,
         )
@@ -239,7 +229,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
 
     Ok((
       params,
-      params_next,
       i,
       z_0,
       z_i,
@@ -264,7 +253,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
     // The primary circuit just initialize single AllocatedRelaxedR1CSInstance
     let U_default = if self.params.is_primary_circuit {
       vec![AllocatedRelaxedR1CSInstance::default(
-        cs.namespace(|| format!("Allocate primary U_default")),
+        cs.namespace(|| "Allocate primary U_default".to_string()),
         self.params.limb_width,
         self.params.n_limbs,
       )?]
@@ -285,7 +274,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
           let equal_bit = Boolean::from(alloc_num_equals(
             cs.namespace(|| format!("check equal bit {:?}", i)),
             &i_alloc,
-            &last_augmented_circuit_index,
+            last_augmented_circuit_index,
           )?);
           let default = &AllocatedRelaxedR1CSInstance::default(
             cs.namespace(|| format!("Allocate U_default {:?}", i)),
@@ -314,7 +303,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
     i: AllocatedNum<G::Base>,
     z_0: Vec<AllocatedNum<G::Base>>,
     z_i: Vec<AllocatedNum<G::Base>>,
-    U: &Vec<AllocatedRelaxedR1CSInstance<G>>,
+    U: &[AllocatedRelaxedR1CSInstance<G>],
     u: AllocatedR1CSInstance<G>,
     T: AllocatedPoint<G>,
     arity: usize,
@@ -331,7 +320,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
     );
     ro.absorb(params.clone());
     ro.absorb(i);
-    ro.absorb(program_counter.clone());
+    ro.absorb(program_counter);
 
     // NOTE only witness and DO NOT need to constrain last_augmented_circuit_index.
     // Because prover can only make valid IVC proof by folding u into correct U_i[last_augmented_circuit_index]
@@ -375,11 +364,11 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| format!("check U {:?} equal bit", i)),
           &i_alloc,
-          &last_augmented_circuit_index,
+          last_augmented_circuit_index,
         )?);
         conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| format!("select on index namespace {:?}", i)),
-          &U,
+          U,
           &empty_U,
           &equal_bit,
         )
@@ -454,8 +443,8 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
     }
 
     // Allocate witnesses
-    let (params, params_next, i, z_0, z_i, U, u, T, program_counter, last_augmented_circuit_index) =
-      self.alloc_witness(
+    let (params, i, z_0, z_i, U, u, T, program_counter, last_augmented_circuit_index) = self
+      .alloc_witness(
         cs.namespace(|| "allocate the circuit witness"),
         arity,
         num_augmented_circuits,
@@ -507,7 +496,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
         conditionally_select_alloc_relaxed_r1cs(
           cs.namespace(|| "select on index namespace"),
           &Unew_non_base_folded,
-          &U,
+          U,
           &equal_bit,
         )
       })
@@ -591,9 +580,9 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
-    ro.absorb(params_next.clone());
+    ro.absorb(params);
     ro.absorb(i_next.clone());
-    ro.absorb(program_counter_new.clone());
+    ro.absorb(program_counter_new);
     for e in &z_0 {
       ro.absorb(e.clone());
     }
@@ -653,10 +642,9 @@ mod tests {
     let circuit1: SuperNovaCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(&primary_params, None, &step_circuit1, ro_consts1.clone(), 2);
     let mut cs: ShapeCS<G1> = ShapeCS::new();
-    let _ = match circuit1.synthesize(&mut cs) {
-      Err(e) => panic!("{}", e),
-      _ => (),
-    };
+    if let Err(e) = circuit1.synthesize(&mut cs) {
+      panic!("{}", e)
+    }
     let (shape1, ck1) = cs.r1cs_shape_with_commitmentkey();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
@@ -672,10 +660,9 @@ mod tests {
         2,
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
-    let _ = match circuit2.synthesize(&mut cs) {
-      Err(e) => panic!("{}", e),
-      _ => (),
-    };
+    if let Err(e) = circuit2.synthesize(&mut cs) {
+      panic!("{}", e)
+    }
     let (shape2, ck2) = cs.r1cs_shape_with_commitmentkey();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
@@ -684,7 +671,6 @@ mod tests {
     let z0 = vec![zero1; arity1];
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: CircuitInputs<'_, G2> = CircuitInputs::new(
-      scalar_as_base::<G1>(zero1), // pass zero for testing
       scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
       &z0,
@@ -698,10 +684,9 @@ mod tests {
     let step_circuit = TrivialTestCircuit::default();
     let circuit1: SuperNovaCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       SuperNovaCircuit::new(&primary_params, Some(inputs1), &step_circuit, ro_consts1, 2);
-    let _ = match circuit1.synthesize(&mut cs1) {
-      Err(e) => panic!("{}", e),
-      _ => (),
-    };
+    if let Err(e) = circuit1.synthesize(&mut cs1) {
+      panic!("{}", e)
+    }
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
@@ -711,7 +696,6 @@ mod tests {
     let z0 = vec![zero2; arity2];
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: CircuitInputs<'_, G1> = CircuitInputs::new(
-      scalar_as_base::<G2>(zero2), // pass zero for testing
       scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,
       &z0,
@@ -731,10 +715,9 @@ mod tests {
         ro_consts2,
         2,
       );
-    let _ = match circuit2.synthesize(&mut cs2) {
-      Err(e) => panic!("{}", e),
-      _ => (),
-    };
+    if let Err(e) = circuit2.synthesize(&mut cs2) {
+      panic!("{}", e)
+    }
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
     assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());

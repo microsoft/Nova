@@ -3,7 +3,6 @@ use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
 
-#[cfg(feature = "supernova")]
 /// A helper trait for a step of the incremental computation for SuperNova (i.e., circuit for F)
 pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
   /// Return the the number of inputs or outputs of each step
