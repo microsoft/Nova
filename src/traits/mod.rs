@@ -9,7 +9,6 @@ use core::{
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
 };
 use ff::{PrimeField, PrimeFieldBits};
-use group::Group as BaseGroupTrait;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +19,19 @@ use commitment::CommitmentEngineTrait;
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
 pub trait Group:
-  BaseGroupTrait<Scalar = <Self as Group>::Scalar> + Serialize + for<'de> Deserialize<'de>
+  Clone
+  + Copy
+  + Debug
+  + Eq
+  + Sized
+  + GroupOps
+  + GroupOpsOwned
+  + ScalarMul<<Self as Group>::Scalar>
+  + ScalarMulOwned<<Self as Group>::Scalar>
+  + Send
+  + Sync
+  + Serialize
+  + for<'de> Deserialize<'de>
 {
   /// A type representing an element of the base field of the group
   type Base: PrimeField
@@ -48,7 +59,7 @@ pub trait Group:
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
-  type RO: ROTrait<Self::Base, <Self as Group>::Scalar> + Serialize + for<'de> Deserialize<'de>;
+  type RO: ROTrait<Self::Base, Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
 
   /// An alternate implementation of Self::RO in the circuit model
   type ROCircuit: ROCircuitTrait<Self::Base> + Serialize + for<'de> Deserialize<'de>;
@@ -61,7 +72,7 @@ pub trait Group:
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
-    scalars: &[<Self as Group>::Scalar],
+    scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self;
 
@@ -207,7 +218,7 @@ pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
   fn new(label: &'static [u8]) -> Self;
 
   /// returns a scalar element of the group as a challenge
-  fn squeeze(&mut self, label: &'static [u8]) -> Result<<G as Group>::Scalar, NovaError>;
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
 
   /// absorbs any type that implements TranscriptReprTrait under a label
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T);

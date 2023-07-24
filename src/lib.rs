@@ -55,8 +55,8 @@ pub struct PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   F_arity_primary: usize,
   F_arity_secondary: usize,
@@ -70,7 +70,7 @@ where
   r1cs_shape_secondary: R1CSShape<G2>,
   augmented_circuit_params_primary: NovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
-  digest: <G1 as Group>::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
+  digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -79,8 +79,8 @@ impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
   pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
@@ -134,7 +134,7 @@ where
       r1cs_shape_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
-      digest: <G1 as Group>::Scalar::ZERO,
+      digest: G1::Scalar::ZERO,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
     };
@@ -169,8 +169,8 @@ pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
@@ -179,8 +179,8 @@ where
   l_w_secondary: R1CSWitness<G2>,
   l_u_secondary: R1CSInstance<G2>,
   i: usize,
-  zi_primary: Vec<<G1 as Group>::Scalar>,
-  zi_secondary: Vec<<G2 as Group>::Scalar>,
+  zi_primary: Vec<G1::Scalar>,
+  zi_secondary: Vec<G2::Scalar>,
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
 }
@@ -189,16 +189,16 @@ impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
 {
   /// Create new instance of recursive SNARK
   pub fn new(
     pp: &PublicParams<G1, G2, C1, C2>,
     c_primary: &C1,
     c_secondary: &C2,
-    z0_primary: Vec<<G1 as Group>::Scalar>,
-    z0_secondary: Vec<<G2 as Group>::Scalar>,
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
   ) -> Self {
     // Expected outputs of the two circuits
     let zi_primary = c_primary.output(&z0_primary);
@@ -208,7 +208,7 @@ where
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest),
-      <G1 as Group>::Scalar::ZERO,
+      G1::Scalar::ZERO,
       z0_primary,
       None,
       None,
@@ -232,7 +232,7 @@ where
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest,
-      <G2 as Group>::Scalar::ZERO,
+      G2::Scalar::ZERO,
       z0_secondary,
       None,
       None,
@@ -291,8 +291,8 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     c_primary: &C1,
     c_secondary: &C2,
-    z0_primary: Vec<<G1 as Group>::Scalar>,
-    z0_secondary: Vec<<G2 as Group>::Scalar>,
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(), NovaError> {
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidInitialInputLength);
@@ -320,7 +320,7 @@ where
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest),
-      <G1 as Group>::Scalar::from(self.i as u64),
+      G1::Scalar::from(self.i as u64),
       z0_primary,
       Some(self.zi_primary.clone()),
       Some(self.r_U_secondary.clone()),
@@ -357,7 +357,7 @@ where
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest,
-      <G2 as Group>::Scalar::from(self.i as u64),
+      G2::Scalar::from(self.i as u64),
       z0_secondary,
       Some(self.zi_secondary.clone()),
       Some(self.r_U_primary.clone()),
@@ -400,9 +400,9 @@ where
     &self,
     pp: &PublicParams<G1, G2, C1, C2>,
     num_steps: usize,
-    z0_primary: &[<G1 as Group>::Scalar],
-    z0_secondary: &[<G2 as Group>::Scalar],
-  ) -> Result<(Vec<<G1 as Group>::Scalar>, Vec<<G2 as Group>::Scalar>), NovaError> {
+    z0_primary: &[G1::Scalar],
+    z0_secondary: &[G2::Scalar],
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -428,7 +428,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
       );
       hasher.absorb(pp.digest);
-      hasher.absorb(<G1 as Group>::Scalar::from(num_steps as u64));
+      hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
         hasher.absorb(*e);
       }
@@ -442,7 +442,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(pp.digest));
-      hasher2.absorb(<G2 as Group>::Scalar::from(num_steps as u64));
+      hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(*e);
       }
@@ -505,8 +505,8 @@ pub struct ProverKey<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
@@ -523,8 +523,8 @@ pub struct VerifierKey<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
@@ -532,7 +532,7 @@ where
   F_arity_secondary: usize,
   ro_consts_primary: ROConstants<G1>,
   ro_consts_secondary: ROConstants<G2>,
-  digest: <G1 as Group>::Scalar,
+  digest: G1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
   _p_c1: PhantomData<C1>,
@@ -546,8 +546,8 @@ pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
@@ -559,8 +559,8 @@ where
   nifs_secondary: NIFS<G2>,
   f_W_snark_secondary: S2,
 
-  zn_primary: Vec<<G1 as Group>::Scalar>,
-  zn_secondary: Vec<<G2 as Group>::Scalar>,
+  zn_primary: Vec<G1::Scalar>,
+  zn_secondary: Vec<G2::Scalar>,
 
   _p_c1: PhantomData<C1>,
   _p_c2: PhantomData<C2>,
@@ -570,8 +570,8 @@ impl<G1, G2, C1, C2, S1, S2> CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
-  C1: StepCircuit<<G1 as Group>::Scalar>,
-  C2: StepCircuit<<G2 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
   S2: RelaxedR1CSSNARKTrait<G2>,
 {
@@ -672,9 +672,9 @@ where
     &self,
     vk: &VerifierKey<G1, G2, C1, C2, S1, S2>,
     num_steps: usize,
-    z0_primary: Vec<<G1 as Group>::Scalar>,
-    z0_secondary: Vec<<G2 as Group>::Scalar>,
-  ) -> Result<(Vec<<G1 as Group>::Scalar>, Vec<<G2 as Group>::Scalar>), NovaError> {
+    z0_primary: Vec<G1::Scalar>,
+    z0_secondary: Vec<G2::Scalar>,
+  ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -695,7 +695,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
       );
       hasher.absorb(vk.digest);
-      hasher.absorb(<G1 as Group>::Scalar::from(num_steps as u64));
+      hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
         hasher.absorb(e);
       }
@@ -709,7 +709,7 @@ where
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_secondary,
       );
       hasher2.absorb(scalar_as_base::<G1>(vk.digest));
-      hasher2.absorb(<G2 as Group>::Scalar::from(num_steps as u64));
+      hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
       }
@@ -764,7 +764,7 @@ type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
 type CompressedCommitment<G> = <<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment;
 type CE<G> = <G as Group>::CE;
 
-fn compute_digest<G: Group, T: Serialize>(o: &T) -> <G as Group>::Scalar {
+fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   // obtain a vector of bytes representing public parameters
   let bytes = bincode::serialize(o).unwrap();
   // convert pp_bytes into a short digest
@@ -780,8 +780,8 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> <G as Group>::Scalar {
   });
 
   // turn the bit vector into a scalar
-  let mut digest = <G as Group>::Scalar::ZERO;
-  let mut coeff = <G as Group>::Scalar::ONE;
+  let mut digest = G::Scalar::ZERO;
+  let mut coeff = G::Scalar::ONE;
   for bit in bv {
     if bit {
       digest += coeff;
@@ -862,8 +862,8 @@ mod tests {
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    T1: StepCircuit<<G1 as Group>::Scalar>,
-    T2: StepCircuit<<G2 as Group>::Scalar>,
+    T1: StepCircuit<G1::Scalar>,
+    T2: StepCircuit<G2::Scalar>,
   {
     let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
 

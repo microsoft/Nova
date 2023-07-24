@@ -75,9 +75,9 @@ where
     pk: &Self::ProverKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
-    poly: &[<G as Group>::Scalar],
-    point: &[<G as Group>::Scalar],
-    eval: &<G as Group>::Scalar,
+    poly: &[G::Scalar],
+    point: &[G::Scalar],
+    eval: &G::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
     let w = InnerProductWitness::new(poly);
@@ -92,8 +92,8 @@ where
     vk: &Self::VerifierKey,
     transcript: &mut G::TE,
     comm: &Commitment<G>,
-    point: &[<G as Group>::Scalar],
-    eval: &<G as Group>::Scalar,
+    point: &[G::Scalar],
+    eval: &G::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
@@ -125,16 +125,12 @@ where
 /// and the claim that c = <a, b>.
 pub struct InnerProductInstance<G: Group> {
   comm_a_vec: Commitment<G>,
-  b_vec: Vec<<G as Group>::Scalar>,
-  c: <G as Group>::Scalar,
+  b_vec: Vec<G::Scalar>,
+  c: G::Scalar,
 }
 
 impl<G: Group> InnerProductInstance<G> {
-  fn new(
-    comm_a_vec: &Commitment<G>,
-    b_vec: &[<G as Group>::Scalar],
-    c: &<G as Group>::Scalar,
-  ) -> Self {
+  fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
     InnerProductInstance {
       comm_a_vec: *comm_a_vec,
       b_vec: b_vec.to_vec(),
@@ -155,11 +151,11 @@ impl<G: Group> TranscriptReprTrait<G> for InnerProductInstance<G> {
 }
 
 struct InnerProductWitness<G: Group> {
-  a_vec: Vec<<G as Group>::Scalar>,
+  a_vec: Vec<G::Scalar>,
 }
 
 impl<G: Group> InnerProductWitness<G> {
-  fn new(a_vec: &[<G as Group>::Scalar]) -> Self {
+  fn new(a_vec: &[G::Scalar]) -> Self {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
     }
@@ -172,7 +168,7 @@ impl<G: Group> InnerProductWitness<G> {
 struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G>>,
   R_vec: Vec<CompressedCommitment<G>>,
-  a_hat: <G as Group>::Scalar,
+  a_hat: G::Scalar,
   _p: PhantomData<G>,
 }
 
@@ -208,16 +204,16 @@ where
     let ck_c = ck_c.scale(&r);
 
     // a closure that executes a step of the recursive inner product argument
-    let prove_inner = |a_vec: &[<G as Group>::Scalar],
-                       b_vec: &[<G as Group>::Scalar],
+    let prove_inner = |a_vec: &[G::Scalar],
+                       b_vec: &[G::Scalar],
                        ck: &CommitmentKey<G>,
                        transcript: &mut G::TE|
      -> Result<
       (
         CompressedCommitment<G>,
         CompressedCommitment<G>,
-        Vec<<G as Group>::Scalar>,
-        Vec<<G as Group>::Scalar>,
+        Vec<G::Scalar>,
+        Vec<G::Scalar>,
         CommitmentKey<G>,
       ),
       NovaError,
@@ -234,7 +230,7 @@ where
           .iter()
           .chain(iter::once(&c_L))
           .copied()
-          .collect::<Vec<<G as Group>::Scalar>>(),
+          .collect::<Vec<G::Scalar>>(),
       )
       .compress();
       let R = CE::<G>::commit(
@@ -243,7 +239,7 @@ where
           .iter()
           .chain(iter::once(&c_R))
           .copied()
-          .collect::<Vec<<G as Group>::Scalar>>(),
+          .collect::<Vec<G::Scalar>>(),
       )
       .compress();
 
@@ -258,13 +254,13 @@ where
         .par_iter()
         .zip(a_vec[n / 2..n].par_iter())
         .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
-        .collect::<Vec<<G as Group>::Scalar>>();
+        .collect::<Vec<G::Scalar>>();
 
       let b_vec_folded = b_vec[0..n / 2]
         .par_iter()
         .zip(b_vec[n / 2..n].par_iter())
         .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
-        .collect::<Vec<<G as Group>::Scalar>>();
+        .collect::<Vec<G::Scalar>>();
 
       let ck_folded = ck.fold(&r_inverse, &r);
 
@@ -326,33 +322,32 @@ where
 
     let P = U.comm_a_vec + CE::<G>::commit(&ck_c, &[U.c]);
 
-    let batch_invert =
-      |v: &[<G as Group>::Scalar]| -> Result<Vec<<G as Group>::Scalar>, NovaError> {
-        let mut products = vec![<G as Group>::Scalar::ZERO; v.len()];
-        let mut acc = <G as Group>::Scalar::ONE;
+    let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
+      let mut products = vec![G::Scalar::ZERO; v.len()];
+      let mut acc = G::Scalar::ONE;
 
-        for i in 0..v.len() {
-          products[i] = acc;
-          acc *= v[i];
-        }
+      for i in 0..v.len() {
+        products[i] = acc;
+        acc *= v[i];
+      }
 
-        // we can compute an inversion only if acc is non-zero
-        if acc == <G as Group>::Scalar::ZERO {
-          return Err(NovaError::InvalidInputLength);
-        }
+      // we can compute an inversion only if acc is non-zero
+      if acc == G::Scalar::ZERO {
+        return Err(NovaError::InvalidInputLength);
+      }
 
-        // compute the inverse once for all entries
-        acc = acc.invert().unwrap();
+      // compute the inverse once for all entries
+      acc = acc.invert().unwrap();
 
-        let mut inv = vec![<G as Group>::Scalar::ZERO; v.len()];
-        for i in 0..v.len() {
-          let tmp = acc * v[v.len() - 1 - i];
-          inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
-          acc = tmp;
-        }
+      let mut inv = vec![G::Scalar::ZERO; v.len()];
+      for i in 0..v.len() {
+        let tmp = acc * v[v.len() - 1 - i];
+        inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+        acc = tmp;
+      }
 
-        Ok(inv)
-      };
+      Ok(inv)
+    };
 
     // compute a vector of public coins using self.L_vec and self.R_vec
     let r = (0..self.L_vec.len())
@@ -361,24 +356,24 @@ where
         transcript.absorb(b"R", &self.R_vec[i]);
         transcript.squeeze(b"r")
       })
-      .collect::<Result<Vec<<G as Group>::Scalar>, NovaError>>()?;
+      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
 
     // precompute scalars necessary for verification
-    let r_square: Vec<<G as Group>::Scalar> = (0..self.L_vec.len())
+    let r_square: Vec<G::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
       .map(|i| r[i] * r[i])
       .collect();
     let r_inverse = batch_invert(&r)?;
-    let r_inverse_square: Vec<<G as Group>::Scalar> = (0..self.L_vec.len())
+    let r_inverse_square: Vec<G::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
       .map(|i| r_inverse[i] * r_inverse[i])
       .collect();
 
     // compute the vector with the tensor structure
     let s = {
-      let mut s = vec![<G as Group>::Scalar::ZERO; n];
+      let mut s = vec![G::Scalar::ZERO; n];
       s[0] = {
-        let mut v = <G as Group>::Scalar::ONE;
+        let mut v = G::Scalar::ONE;
         for r_inverse_i in &r_inverse {
           v *= r_inverse_i;
         }
@@ -411,9 +406,9 @@ where
         &r_square
           .iter()
           .chain(r_inverse_square.iter())
-          .chain(iter::once(&<G as Group>::Scalar::ONE))
+          .chain(iter::once(&G::Scalar::ONE))
           .copied()
-          .collect::<Vec<<G as Group>::Scalar>>(),
+          .collect::<Vec<G::Scalar>>(),
       )
     };
 

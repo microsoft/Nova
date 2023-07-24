@@ -54,9 +54,9 @@ pub struct ShapeCS<G: Group> {
   #[allow(clippy::type_complexity)]
   /// All constraints added to the `ShapeCS`.
   pub constraints: Vec<(
-    LinearCombination<<G as Group>::Scalar>,
-    LinearCombination<<G as Group>::Scalar>,
-    LinearCombination<<G as Group>::Scalar>,
+    LinearCombination<G::Scalar>,
+    LinearCombination<G::Scalar>,
+    LinearCombination<G::Scalar>,
     String,
   )>,
   inputs: Vec<String>,
@@ -138,16 +138,16 @@ impl<G: Group> ShapeCS<G> {
       writeln!(s, "INPUT {}", &input).unwrap()
     }
 
-    let negone = -<<G as Group>::Scalar>::ONE;
+    let negone = -<G::Scalar>::ONE;
 
-    let powers_of_two = (0..<G as Group>::Scalar::NUM_BITS)
-      .map(|i| <G as Group>::Scalar::from(2u64).pow_vartime([u64::from(i)]))
+    let powers_of_two = (0..G::Scalar::NUM_BITS)
+      .map(|i| G::Scalar::from(2u64).pow_vartime([u64::from(i)]))
       .collect::<Vec<_>>();
 
-    let pp = |s: &mut String, lc: &LinearCombination<<G as Group>::Scalar>| {
+    let pp = |s: &mut String, lc: &LinearCombination<G::Scalar>| {
       s.push('(');
       let mut is_first = true;
-      for (var, coeff) in proc_lc::<<G as Group>::Scalar>(lc) {
+      for (var, coeff) in proc_lc::<G::Scalar>(lc) {
         if coeff == negone {
           s.push_str(" - ")
         } else if !is_first {
@@ -155,7 +155,7 @@ impl<G: Group> ShapeCS<G> {
         }
         is_first = false;
 
-        if coeff != <<G as Group>::Scalar>::ONE && coeff != negone {
+        if coeff != <G::Scalar>::ONE && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
               write!(s, "2^{i} . ").unwrap();
@@ -224,12 +224,12 @@ impl<G: Group> Default for ShapeCS<G> {
   }
 }
 
-impl<G: Group> ConstraintSystem<<G as Group>::Scalar> for ShapeCS<G> {
+impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   type Root = Self;
 
   fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<<G as Group>::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -241,7 +241,7 @@ impl<G: Group> ConstraintSystem<<G as Group>::Scalar> for ShapeCS<G> {
 
   fn alloc_input<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<<G as Group>::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -255,9 +255,9 @@ impl<G: Group> ConstraintSystem<<G as Group>::Scalar> for ShapeCS<G> {
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
-    LA: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
-    LB: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
-    LC: FnOnce(LinearCombination<<G as Group>::Scalar>) -> LinearCombination<<G as Group>::Scalar>,
+    LA: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
+    LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
+    LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
   {
     let path = compute_path(&self.current_namespace, &annotation().into());
     let index = self.constraints.len();

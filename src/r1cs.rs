@@ -27,21 +27,19 @@ pub struct R1CS<G: Group> {
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
 pub struct R1CSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
-  pub(crate) A: Vec<(usize, usize, <G as Group>::Scalar)>,
-  pub(crate) B: Vec<(usize, usize, <G as Group>::Scalar)>,
-  pub(crate) C: Vec<(usize, usize, <G as Group>::Scalar)>,
+  pub(crate) A: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) B: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) C: Vec<(usize, usize, G::Scalar)>,
 }
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
 pub struct R1CSWitness<G: Group> {
-  W: Vec<<G as Group>::Scalar>,
+  W: Vec<G::Scalar>,
 }
 
 /// A type that holds an R1CS instance
@@ -49,15 +47,14 @@ pub struct R1CSWitness<G: Group> {
 #[serde(bound = "")]
 pub struct R1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
-  pub(crate) X: Vec<<G as Group>::Scalar>,
+  pub(crate) X: Vec<G::Scalar>,
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
 pub struct RelaxedR1CSWitness<G: Group> {
-  pub(crate) W: Vec<<G as Group>::Scalar>,
-  pub(crate) E: Vec<<G as Group>::Scalar>,
+  pub(crate) W: Vec<G::Scalar>,
+  pub(crate) E: Vec<G::Scalar>,
 }
 
 /// A type that holds a Relaxed R1CS instance
@@ -66,8 +63,8 @@ pub struct RelaxedR1CSWitness<G: Group> {
 pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) comm_E: Commitment<G>,
-  pub(crate) X: Vec<<G as Group>::Scalar>,
-  pub(crate) u: <G as Group>::Scalar,
+  pub(crate) X: Vec<G::Scalar>,
+  pub(crate) u: G::Scalar,
 }
 
 impl<G: Group> R1CS<G> {
@@ -86,14 +83,14 @@ impl<G: Group> R1CSShape<G> {
     num_cons: usize,
     num_vars: usize,
     num_io: usize,
-    A: &[(usize, usize, <G as Group>::Scalar)],
-    B: &[(usize, usize, <G as Group>::Scalar)],
-    C: &[(usize, usize, <G as Group>::Scalar)],
+    A: &[(usize, usize, G::Scalar)],
+    B: &[(usize, usize, G::Scalar)],
+    C: &[(usize, usize, G::Scalar)],
   ) -> Result<R1CSShape<G>, NovaError> {
     let is_valid = |num_cons: usize,
                     num_vars: usize,
                     num_io: usize,
-                    M: &[(usize, usize, <G as Group>::Scalar)]|
+                    M: &[(usize, usize, G::Scalar)]|
      -> Result<(), NovaError> {
       let res = (0..M.len())
         .map(|i| {
@@ -148,15 +145,8 @@ impl<G: Group> R1CSShape<G> {
 
   pub fn multiply_vec(
     &self,
-    z: &[<G as Group>::Scalar],
-  ) -> Result<
-    (
-      Vec<<G as Group>::Scalar>,
-      Vec<<G as Group>::Scalar>,
-      Vec<<G as Group>::Scalar>,
-    ),
-    NovaError,
-  > {
+    z: &[G::Scalar],
+  ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
     if z.len() != self.num_io + self.num_vars + 1 {
       return Err(NovaError::InvalidWitnessLength);
     }
@@ -164,23 +154,18 @@ impl<G: Group> R1CSShape<G> {
     // computes a product between a sparse matrix `M` and a vector `z`
     // This does not perform any validation of entries in M (e.g., if entries in `M` reference indexes outside the range of `z`)
     // This is safe since we know that `M` is valid
-    let sparse_matrix_vec_product = |M: &Vec<(usize, usize, <G as Group>::Scalar)>,
-                                     num_rows: usize,
-                                     z: &[<G as Group>::Scalar]|
-     -> Vec<<G as Group>::Scalar> {
-      (0..M.len())
-        .map(|i| {
-          let (row, col, val) = M[i];
-          (row, val * z[col])
-        })
-        .fold(
-          vec![<G as Group>::Scalar::ZERO; num_rows],
-          |mut Mz, (r, v)| {
+    let sparse_matrix_vec_product =
+      |M: &Vec<(usize, usize, G::Scalar)>, num_rows: usize, z: &[G::Scalar]| -> Vec<G::Scalar> {
+        (0..M.len())
+          .map(|i| {
+            let (row, col, val) = M[i];
+            (row, val * z[col])
+          })
+          .fold(vec![G::Scalar::ZERO; num_rows], |mut Mz, (r, v)| {
             Mz[r] += v;
             Mz
-          },
-        )
-    };
+          })
+      };
 
     let (Az, (Bz, Cz)) = rayon::join(
       || sparse_matrix_vec_product(&self.A, self.num_cons, z),
@@ -247,11 +232,7 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if Az * Bz = u*Cz
     let res_eq: bool = {
-      let z = concat(vec![
-        W.W.clone(),
-        vec![<G as Group>::Scalar::ONE],
-        U.X.clone(),
-      ]);
+      let z = concat(vec![W.W.clone(), vec![G::Scalar::ONE], U.X.clone()]);
       let (Az, Bz, Cz) = self.multiply_vec(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
@@ -283,37 +264,33 @@ impl<G: Group> R1CSShape<G> {
     W1: &RelaxedR1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-  ) -> Result<(Vec<<G as Group>::Scalar>, Commitment<G>), NovaError> {
+  ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
     let (AZ_1, BZ_1, CZ_1) = {
       let Z1 = concat(vec![W1.W.clone(), vec![U1.u], U1.X.clone()]);
       self.multiply_vec(&Z1)?
     };
 
     let (AZ_2, BZ_2, CZ_2) = {
-      let Z2 = concat(vec![
-        W2.W.clone(),
-        vec![<G as Group>::Scalar::ONE],
-        U2.X.clone(),
-      ]);
+      let Z2 = concat(vec![W2.W.clone(), vec![G::Scalar::ONE], U2.X.clone()]);
       self.multiply_vec(&Z2)?
     };
 
     let AZ_1_circ_BZ_2 = (0..AZ_1.len())
       .into_par_iter()
       .map(|i| AZ_1[i] * BZ_2[i])
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     let AZ_2_circ_BZ_1 = (0..AZ_2.len())
       .into_par_iter()
       .map(|i| AZ_2[i] * BZ_1[i])
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     let u_1_cdot_CZ_2 = (0..CZ_2.len())
       .into_par_iter()
       .map(|i| U1.u * CZ_2[i])
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     let u_2_cdot_CZ_1 = (0..CZ_1.len())
       .into_par_iter()
       .map(|i| CZ_1[i])
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
 
     let T = AZ_1_circ_BZ_2
       .par_iter()
@@ -321,7 +298,7 @@ impl<G: Group> R1CSShape<G> {
       .zip(&u_1_cdot_CZ_2)
       .zip(&u_2_cdot_CZ_1)
       .map(|(((a, b), c), d)| *a + *b - *c - *d)
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
 
     let comm_T = CE::<G>::commit(ck, &T);
 
@@ -355,22 +332,21 @@ impl<G: Group> R1CSShape<G> {
     // otherwise, we need to pad the number of variables and renumber variable accesses
     let num_vars_padded = m;
     let num_cons_padded = m;
-    let apply_pad =
-      |M: &[(usize, usize, <G as Group>::Scalar)]| -> Vec<(usize, usize, <G as Group>::Scalar)> {
-        M.par_iter()
-          .map(|(r, c, v)| {
-            (
-              *r,
-              if c >= &self.num_vars {
-                c + num_vars_padded - self.num_vars
-              } else {
-                *c
-              },
-              *v,
-            )
-          })
-          .collect::<Vec<_>>()
-      };
+    let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
+      M.par_iter()
+        .map(|(r, c, v)| {
+          (
+            *r,
+            if c >= &self.num_vars {
+              c + num_vars_padded - self.num_vars
+            } else {
+              *c
+            },
+            *v,
+          )
+        })
+        .collect::<Vec<_>>()
+    };
 
     let A_padded = apply_pad(&self.A);
     let B_padded = apply_pad(&self.B);
@@ -389,7 +365,7 @@ impl<G: Group> R1CSShape<G> {
 
 impl<G: Group> R1CSWitness<G> {
   /// A method to create a witness object using a vector of scalars
-  pub fn new(S: &R1CSShape<G>, W: &[<G as Group>::Scalar]) -> Result<R1CSWitness<G>, NovaError> {
+  pub fn new(S: &R1CSShape<G>, W: &[G::Scalar]) -> Result<R1CSWitness<G>, NovaError> {
     if S.num_vars != W.len() {
       Err(NovaError::InvalidWitnessLength)
     } else {
@@ -408,7 +384,7 @@ impl<G: Group> R1CSInstance<G> {
   pub fn new(
     S: &R1CSShape<G>,
     comm_W: &Commitment<G>,
-    X: &[<G as Group>::Scalar],
+    X: &[G::Scalar],
   ) -> Result<R1CSInstance<G>, NovaError> {
     if S.num_io != X.len() {
       Err(NovaError::InvalidInputLength)
@@ -434,8 +410,8 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   /// Produces a default RelaxedR1CSWitness given an R1CSShape
   pub fn default(S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
     RelaxedR1CSWitness {
-      W: vec![<G as Group>::Scalar::ZERO; S.num_vars],
-      E: vec![<G as Group>::Scalar::ZERO; S.num_cons],
+      W: vec![G::Scalar::ZERO; S.num_vars],
+      E: vec![G::Scalar::ZERO; S.num_cons],
     }
   }
 
@@ -443,7 +419,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   pub fn from_r1cs_witness(S: &R1CSShape<G>, witness: &R1CSWitness<G>) -> RelaxedR1CSWitness<G> {
     RelaxedR1CSWitness {
       W: witness.W.clone(),
-      E: vec![<G as Group>::Scalar::ZERO; S.num_cons],
+      E: vec![G::Scalar::ZERO; S.num_cons],
     }
   }
 
@@ -456,8 +432,8 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   pub fn fold(
     &self,
     W2: &R1CSWitness<G>,
-    T: &[<G as Group>::Scalar],
-    r: &<G as Group>::Scalar,
+    T: &[G::Scalar],
+    r: &G::Scalar,
   ) -> Result<RelaxedR1CSWitness<G>, NovaError> {
     let (W1, E1) = (&self.W, &self.E);
     let W2 = &W2.W;
@@ -470,12 +446,12 @@ impl<G: Group> RelaxedR1CSWitness<G> {
       .par_iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     let E = E1
       .par_iter()
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     Ok(RelaxedR1CSWitness { W, E })
   }
 
@@ -483,13 +459,13 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   pub fn pad(&self, S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
     let W = {
       let mut W = self.W.clone();
-      W.extend(vec![<G as Group>::Scalar::ZERO; S.num_vars - W.len()]);
+      W.extend(vec![G::Scalar::ZERO; S.num_vars - W.len()]);
       W
     };
 
     let E = {
       let mut E = self.E.clone();
-      E.extend(vec![<G as Group>::Scalar::ZERO; S.num_cons - E.len()]);
+      E.extend(vec![G::Scalar::ZERO; S.num_cons - E.len()]);
       E
     };
 
@@ -504,8 +480,8 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     RelaxedR1CSInstance {
       comm_W,
       comm_E,
-      u: <G as Group>::Scalar::ZERO,
-      X: vec![<G as Group>::Scalar::ZERO; S.num_io],
+      u: G::Scalar::ZERO,
+      X: vec![G::Scalar::ZERO; S.num_io],
     }
   }
 
@@ -517,7 +493,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   ) -> RelaxedR1CSInstance<G> {
     let mut r_instance = RelaxedR1CSInstance::default(ck, S);
     r_instance.comm_W = instance.comm_W;
-    r_instance.u = <G as Group>::Scalar::ONE;
+    r_instance.u = G::Scalar::ONE;
     r_instance.X = instance.X.clone();
     r_instance
   }
@@ -525,12 +501,12 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   /// Initializes a new RelaxedR1CSInstance from an R1CSInstance
   pub fn from_r1cs_instance_unchecked(
     comm_W: &Commitment<G>,
-    X: &[<G as Group>::Scalar],
+    X: &[G::Scalar],
   ) -> RelaxedR1CSInstance<G> {
     RelaxedR1CSInstance {
       comm_W: *comm_W,
       comm_E: Commitment::<G>::default(),
-      u: <G as Group>::Scalar::ONE,
+      u: G::Scalar::ONE,
       X: X.to_vec(),
     }
   }
@@ -540,7 +516,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     &self,
     U2: &R1CSInstance<G>,
     comm_T: &Commitment<G>,
-    r: &<G as Group>::Scalar,
+    r: &G::Scalar,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
@@ -551,7 +527,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       .par_iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<<G as Group>::Scalar>>();
+      .collect::<Vec<G::Scalar>>();
     let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
@@ -585,8 +561,7 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
 
     // absorb each element of self.X in bignum format
     for x in &self.X {
-      let limbs: Vec<<G as Group>::Scalar> =
-        nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      let limbs: Vec<G::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
       for limb in limbs {
         ro.absorb(scalar_as_base::<G>(limb));
       }

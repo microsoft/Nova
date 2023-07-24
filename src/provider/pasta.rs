@@ -62,14 +62,14 @@ macro_rules! impl_traits {
       type Scalar = $name::Scalar;
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
-      type RO = PoseidonRO<Self::Base, <Self as Group>::Scalar>;
+      type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
       fn vartime_multiscalar_mul(
-        scalars: &[<Self as Group>::Scalar],
+        scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
         if scalars.len() >= 128 {
@@ -81,7 +81,7 @@ macro_rules! impl_traits {
 
       #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
       fn vartime_multiscalar_mul(
-        scalars: &[<Self as Group>::Scalar],
+        scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
         cpu_best_multiexp(scalars, bases)

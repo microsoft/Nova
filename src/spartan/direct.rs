@@ -17,30 +17,25 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-struct DirectCircuit<G: Group, SC: StepCircuit<<G as Group>::Scalar>> {
-  z_i: Option<Vec<<G as Group>::Scalar>>, // inputs to the circuit
-  sc: SC,                                 // step circuit to be executed
+struct DirectCircuit<G: Group, SC: StepCircuit<G::Scalar>> {
+  z_i: Option<Vec<G::Scalar>>, // inputs to the circuit
+  sc: SC,                      // step circuit to be executed
 }
 
-impl<G: Group, SC: StepCircuit<<G as Group>::Scalar>> Circuit<<G as Group>::Scalar>
-  for DirectCircuit<G, SC>
-{
-  fn synthesize<CS: ConstraintSystem<<G as Group>::Scalar>>(
-    self,
-    cs: &mut CS,
-  ) -> Result<(), SynthesisError> {
+impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<G, SC> {
+  fn synthesize<CS: ConstraintSystem<G::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
     // obtain the arity information
     let arity = self.sc.arity();
 
     // Allocate zi. If inputs.zi is not provided, allocate default value 0
-    let zero = vec![<G as Group>::Scalar::ZERO; arity];
+    let zero = vec![G::Scalar::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
           Ok(self.z_i.as_ref().unwrap_or(&zero)[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<<G as Group>::Scalar>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<G::Scalar>>, _>>()?;
 
     let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| "F"), &z_i)?;
 
@@ -87,16 +82,14 @@ pub struct DirectSNARK<G, S, C>
 where
   G: Group,
   S: RelaxedR1CSSNARKTrait<G>,
-  C: StepCircuit<<G as Group>::Scalar>,
+  C: StepCircuit<G::Scalar>,
 {
   comm_W: Commitment<G>, // commitment to the witness
   snark: S,              // snark proving the witness is satisfying
   _p: PhantomData<C>,
 }
 
-impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<<G as Group>::Scalar>>
-  DirectSNARK<G, S, C>
-{
+impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNARK<G, S, C> {
   /// Produces prover and verifier keys for the direct SNARK
   pub fn setup(sc: C) -> Result<(ProverKey<G, S>, VerifierKey<G, S>), NovaError> {
     // construct a circuit that can be synthesized
@@ -116,11 +109,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<<G as Group>::Scalar>
   }
 
   /// Produces a proof of satisfiability of the provided circuit
-  pub fn prove(
-    pk: &ProverKey<G, S>,
-    sc: C,
-    z_i: &[<G as Group>::Scalar],
-  ) -> Result<Self, NovaError> {
+  pub fn prove(pk: &ProverKey<G, S>, sc: C, z_i: &[G::Scalar]) -> Result<Self, NovaError> {
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
 
     let circuit: DirectCircuit<G, C> = DirectCircuit {
@@ -150,11 +139,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<<G as Group>::Scalar>
   }
 
   /// Verifies a proof of satisfiability
-  pub fn verify(
-    &self,
-    vk: &VerifierKey<G, S>,
-    io: &[<G as Group>::Scalar],
-  ) -> Result<(), NovaError> {
+  pub fn verify(&self, vk: &VerifierKey<G, S>, io: &[G::Scalar]) -> Result<(), NovaError> {
     // construct an instance using the provided commitment to the witness and z_i and z_{i+1}
     let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(&self.comm_W, io);
 

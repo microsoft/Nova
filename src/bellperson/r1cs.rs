@@ -47,9 +47,9 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
 
 impl<G: Group> NovaShape<G> for ShapeCS<G> {
   fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
-    let mut A: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
-    let mut B: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
-    let mut C: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
+    let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
+    let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
+    let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
 
     let mut num_cons_added = 0;
     let mut X = (&mut A, &mut B, &mut C, &mut num_cons_added);

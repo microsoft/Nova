@@ -36,7 +36,7 @@ impl<G: Group> NIFS<G> {
   pub fn prove(
     ck: &CommitmentKey<G>,
     ro_consts: &ROConstants<G>,
-    pp_digest: &<G as Group>::Scalar,
+    pp_digest: &G::Scalar,
     S: &R1CSShape<G>,
     U1: &RelaxedR1CSInstance<G>,
     W1: &RelaxedR1CSWitness<G>,
@@ -86,7 +86,7 @@ impl<G: Group> NIFS<G> {
   pub fn verify(
     &self,
     ro_consts: &ROConstants<G>,
-    pp_digest: &<G as Group>::Scalar,
+    pp_digest: &G::Scalar,
     U1: &RelaxedR1CSInstance<G>,
     U2: &R1CSInstance<G>,
   ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
@@ -180,7 +180,7 @@ mod tests {
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(<G as Group>::Scalar::from(5)));
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(5)));
     let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the first instance is satisfiable
@@ -188,7 +188,7 @@ mod tests {
 
     // Now get the instance and assignment for second instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(<G as Group>::Scalar::from(135)));
+    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(135)));
     let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
@@ -268,7 +268,7 @@ mod tests {
   }
 
   fn test_tiny_r1cs_with<G: Group>() {
-    let one = <<G as Group>::Scalar as Field>::ONE;
+    let one = <G::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
       let num_vars = 3;
@@ -285,9 +285,9 @@ mod tests {
       // constraint and a column for every entry in z = (vars, u, inputs)
       // An R1CS instance is satisfiable iff:
       // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
-      let mut A: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
-      let mut B: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
-      let mut C: Vec<(usize, usize, <G as Group>::Scalar)> = Vec::new();
+      let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
@@ -331,9 +331,7 @@ mod tests {
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     let rand_inst_witness_generator =
-      |ck: &CommitmentKey<G>,
-       I: &<G as Group>::Scalar|
-       -> (<G as Group>::Scalar, R1CSInstance<G>, R1CSWitness<G>) {
+      |ck: &CommitmentKey<G>, I: &G::Scalar| -> (G::Scalar, R1CSInstance<G>, R1CSWitness<G>) {
         let i0 = *I;
 
         // compute a satisfying (vars, X) tuple
@@ -368,7 +366,7 @@ mod tests {
       };
 
     let mut csprng: OsRng = OsRng;
-    let I = <G as Group>::Scalar::random(&mut csprng); // the first input is picked randomly for the first instance
+    let I = G::Scalar::random(&mut csprng); // the first input is picked randomly for the first instance
     let (O, U1, W1) = rand_inst_witness_generator(&ck, &I);
     let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
 

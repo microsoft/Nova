@@ -98,26 +98,26 @@ impl<G: Group> TranscriptReprTrait<G> for CompressedCommitment<G> {
   }
 }
 
-impl<G: Group> MulAssign<<G as Group>::Scalar> for Commitment<G> {
-  fn mul_assign(&mut self, scalar: <G as Group>::Scalar) {
+impl<G: Group> MulAssign<G::Scalar> for Commitment<G> {
+  fn mul_assign(&mut self, scalar: G::Scalar) {
     let result = (self as &Commitment<G>).comm * scalar;
     *self = Commitment { comm: result };
   }
 }
 
-impl<'a, 'b, G: Group> Mul<&'b <G as Group>::Scalar> for &'a Commitment<G> {
+impl<'a, 'b, G: Group> Mul<&'b G::Scalar> for &'a Commitment<G> {
   type Output = Commitment<G>;
-  fn mul(self, scalar: &'b <G as Group>::Scalar) -> Commitment<G> {
+  fn mul(self, scalar: &'b G::Scalar) -> Commitment<G> {
     Commitment {
       comm: self.comm * scalar,
     }
   }
 }
 
-impl<G: Group> Mul<<G as Group>::Scalar> for Commitment<G> {
+impl<G: Group> Mul<G::Scalar> for Commitment<G> {
   type Output = Commitment<G>;
 
-  fn mul(self, scalar: <G as Group>::Scalar) -> Commitment<G> {
+  fn mul(self, scalar: G::Scalar) -> Commitment<G> {
     Commitment {
       comm: self.comm * scalar,
     }
@@ -195,7 +195,7 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
     }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[<G as Group>::Scalar]) -> Self::Commitment {
+  fn commit(ck: &Self::CommitmentKey, v: &[G::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
       comm: G::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
@@ -217,10 +217,10 @@ pub trait CommitmentKeyExtTrait<G: Group> {
   fn combine(&self, other: &Self) -> Self;
 
   /// Folds the two commitment keys into one using the provided weights
-  fn fold(&self, w1: &<G as Group>::Scalar, w2: &<G as Group>::Scalar) -> Self;
+  fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> Self;
 
   /// Scales the commitment key using the provided scalar
-  fn scale(&self, r: &<G as Group>::Scalar) -> Self;
+  fn scale(&self, r: &G::Scalar) -> Self;
 
   /// Reinterprets commitments as commitment keys
   fn reinterpret_commitments_as_ck(
@@ -259,7 +259,7 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
-  fn fold(&self, w1: &<G as Group>::Scalar, w2: &<G as Group>::Scalar) -> CommitmentKey<G> {
+  fn fold(&self, w1: &G::Scalar, w2: &G::Scalar) -> CommitmentKey<G> {
     let w = vec![*w1, *w2];
     let (L, R) = self.split_at(self.ck.len() / 2);
 
@@ -278,7 +278,7 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   }
 
   /// Scales each element in `self` by `r`
-  fn scale(&self, r: &<G as Group>::Scalar) -> Self {
+  fn scale(&self, r: &G::Scalar) -> Self {
     let ck_scaled = self
       .ck
       .clone()
