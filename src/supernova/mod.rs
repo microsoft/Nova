@@ -464,27 +464,44 @@ where
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
       .map_err(|_e| NovaError::UnSat)?;
 
-    // Performance Note: U1, W1 clone() at most happened #num_augmented_circuit, when create first running instance of augmented_circuit_index
-    let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = NIFS::prove(
-      ck_primary,
-      &pp.ro_consts_primary,
-      &self.pp_digest,
-      &pp.r1cs_shape_primary,
-      &self
+    // Split into `if let`/`else` statement
+    // to avoid `returns a value referencing data owned by closure` error on `&RelaxedR1CSInstance::default` and `RelaxedR1CSWitness::default`
+    let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) =
+      if let Some((r_U_primary, r_W_primary)) = self
         .r_U_primary
         .get(claim.get_augmented_circuit_index())
         .unwrap_or(&None)
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary)),
-      &self
-        .r_W_primary
-        .get(claim.get_augmented_circuit_index())
-        .unwrap_or(&None)
-        .clone()
-        .unwrap_or_else(|| RelaxedR1CSWitness::default(&pp.r1cs_shape_primary)),
-      &l_u_primary,
-      &l_w_primary,
-    )?;
+        .as_ref()
+        .zip(
+          self
+            .r_W_primary
+            .get(claim.get_augmented_circuit_index())
+            .unwrap_or(&None)
+            .as_ref(),
+        )
+      {
+        NIFS::prove(
+          ck_primary,
+          &pp.ro_consts_primary,
+          &self.pp_digest,
+          &pp.r1cs_shape_primary,
+          r_U_primary,
+          r_W_primary,
+          &l_u_primary,
+          &l_w_primary,
+        )?
+      } else {
+        NIFS::prove(
+          ck_primary,
+          &pp.ro_consts_primary,
+          &self.pp_digest,
+          &pp.r1cs_shape_primary,
+          &RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary),
+          &RelaxedR1CSWitness::default(&pp.r1cs_shape_primary),
+          &l_u_primary,
+          &l_w_primary,
+        )?
+      };
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let binding = Commitment::<G1>::decompress(&nifs_primary.comm_T)?;
