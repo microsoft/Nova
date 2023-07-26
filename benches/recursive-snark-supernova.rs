@@ -49,7 +49,9 @@ fn bench_one_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
 
-    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
+    let mut group = c.benchmark_group(format!(
+      "RecursiveSNARKSuperNova-1circuit-StepCircuitSize-{num_cons}"
+    ));
     group.sample_size(10);
 
     let c_primary = NonTrivialTestCircuit::new(num_cons);
@@ -155,7 +157,9 @@ fn bench_two_augmented_circuit_recursive_snark(c: &mut Criterion) {
     // number of constraints in the step circuit
     let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
 
-    let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
+    let mut group = c.benchmark_group(format!(
+      "RecursiveSNARKSuperNova-2circuit-StepCircuitSize-{num_cons}"
+    ));
     group.sample_size(10);
 
     let c_primary = NonTrivialTestCircuit::new(num_cons);
