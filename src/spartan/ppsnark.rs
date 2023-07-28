@@ -119,39 +119,34 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
       max(total_nz, max(2 * S.num_vars, S.num_cons)).next_power_of_two()
     };
 
-    let (mut row, mut col): (Vec<usize>, Vec<usize>) = S
-      .A
-      .iter()
-      .chain(S.B.iter())
-      .chain(S.C.iter())
-      .map(|(r, c, _)| (*r, *c))
-      .unzip();
+    let (mut row, mut col) = (vec![0usize; N], vec![0usize; N]);
 
-    row.resize(N, 0usize);
-    col.resize(N, 0usize);
+    for (i, (r, c, _)) in S.A.iter().chain(S.B.iter()).chain(S.C.iter()).enumerate() {
+      row[i] = *r;
+      col[i] = *c;
+    }
 
     let val_A = {
-      let mut val = S.A.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>();
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.A.iter().enumerate() {
+        val[i] = *v;
+      }
       val
     };
 
     let val_B = {
-      let mut val = std::iter::repeat(G::Scalar::ZERO).take(S.A.len()) // prepend zeros
-        .chain(S.B.iter().map(|(_, _, v)| *v))
-        .collect::<Vec<G::Scalar>>();
-
-      // append zeros
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.B.iter().enumerate() {
+        val[S.A.len() + i] = *v;
+      }
       val
     };
 
     let val_C = {
-      // prepend zeros
-      let mut val = std::iter::repeat(G::Scalar::ZERO).take(S.A.len() + S.B.len()) // prepend zeros
-        .chain(S.C.iter().map(|(_, _, v)| *v)).collect::<Vec<G::Scalar>>();
-      // append zeros
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.C.iter().enumerate() {
+        val[S.A.len() + S.B.len() + i] = *v;
+      }
       val
     };
 
@@ -253,21 +248,30 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 
     let mem_row = EqPolynomial::new(r_x_padded).evals();
     let mem_col = {
-      let mut z = z.to_vec();
-      z.resize(self.N, G::Scalar::ZERO);
-      z
+      let mut val = vec![G::Scalar::ZERO; self.N];
+      for (i, v) in z.iter().enumerate() {
+        val[i] = *v;
+      }
+      val
     };
 
-    let (mut E_row, mut E_col): (Vec<G::Scalar>, Vec<G::Scalar>) = S
-      .A
-      .iter()
-      .chain(S.B.iter())
-      .chain(S.C.iter())
-      .map(|(r, c, _)| (mem_row[*r], mem_col[*c]))
-      .unzip();
+    let (E_row, E_col) = {
+      let mut E_row = vec![mem_row[0]; self.N]; // we place mem_row[0] since resized row is appended with 0s
+      let mut E_col = vec![mem_col[0]; self.N];
 
-    E_row.resize(self.N, mem_row[0]); // we place mem_row[0] since resized row is appended with 0s
-    E_col.resize(self.N, mem_col[0]);
+      for (i, (val_r, val_c)) in S
+        .A
+        .iter()
+        .chain(S.B.iter())
+        .chain(S.C.iter())
+        .map(|(r, c, _)| (mem_row[*r], mem_col[*c]))
+        .enumerate()
+      {
+        E_row[i] = val_r;
+        E_col[i] = val_c;
+      }
+      (E_row, E_col)
+    };
 
     (mem_row, mem_col, E_row, E_col)
   }
@@ -979,8 +983,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       Bz.resize(pk.S_repr.N, G::Scalar::ZERO);
       Cz.resize(pk.S_repr.N, G::Scalar::ZERO);
 
-      let mut E = W.E.clone();
-      E.resize(pk.S_repr.N, G::Scalar::ZERO);
+      let E = {
+        let mut val = vec![G::Scalar::ZERO; pk.S_repr.N];
+        for (i, w_e) in W.E.iter().enumerate() {
+          val[i] = *w_e;
+        }
+        val
+      };
 
       (Az, Bz, Cz, E)
     };
