@@ -119,29 +119,16 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
       max(total_nz, max(2 * S.num_vars, S.num_cons)).next_power_of_two()
     };
 
-    let row = {
-      let mut r = S
-        .A
-        .iter()
-        .chain(S.B.iter())
-        .chain(S.C.iter())
-        .map(|(r, _, _)| *r)
-        .collect::<Vec<usize>>();
-      r.resize(N, 0usize);
-      r
-    };
+    let (mut row, mut col): (Vec<usize>, Vec<usize>) = S
+      .A
+      .iter()
+      .chain(S.B.iter())
+      .chain(S.C.iter())
+      .map(|(r, c, _)| (*r, *c))
+      .unzip();
 
-    let col = {
-      let mut c = S
-        .A
-        .iter()
-        .chain(S.B.iter())
-        .chain(S.C.iter())
-        .map(|(_, c, _)| *c)
-        .collect::<Vec<usize>>();
-      c.resize(N, 0usize);
-      c
-    };
+    row.resize(N, 0usize);
+    col.resize(N, 0usize);
 
     let val_A = {
       let mut val = S.A.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>();
@@ -270,21 +257,13 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
       z
     };
 
-    let mut E_row = S
+    let (mut E_row, mut E_col): (Vec<G::Scalar>, Vec<G::Scalar>) = S
       .A
       .iter()
       .chain(S.B.iter())
       .chain(S.C.iter())
-      .map(|(r, _, _)| mem_row[*r])
-      .collect::<Vec<G::Scalar>>();
-
-    let mut E_col = S
-      .A
-      .iter()
-      .chain(S.B.iter())
-      .chain(S.C.iter())
-      .map(|(_, c, _)| mem_col[*c])
-      .collect::<Vec<G::Scalar>>();
+      .map(|(r, c, _)| (mem_row[*r], mem_col[*c]))
+      .unzip();
 
     E_row.resize(self.N, mem_row[0]); // we place mem_row[0] since resized row is appended with 0s
     E_col.resize(self.N, mem_col[0]);
