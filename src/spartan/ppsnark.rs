@@ -137,9 +137,10 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     };
 
     let val_B = {
-      // prepend zeros
-      let mut val = vec![G::Scalar::ZERO; S.A.len()];
-      val.extend(S.B.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
+      let mut val = std::iter::repeat(G::Scalar::ZERO).take(S.A.len()) // prepend zeros
+        .chain(S.B.iter().map(|(_, _, v)| *v))
+        .collect::<Vec<G::Scalar>>();
+
       // append zeros
       val.resize(N, G::Scalar::ZERO);
       val
@@ -147,8 +148,8 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 
     let val_C = {
       // prepend zeros
-      let mut val = vec![G::Scalar::ZERO; S.A.len() + S.B.len()];
-      val.extend(S.C.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
+      let mut val = std::iter::repeat(G::Scalar::ZERO).take(S.A.len() + S.B.len()) // prepend zeros
+        .chain(S.C.iter().map(|(_, _, v)| *v)).collect::<Vec<G::Scalar>>();
       // append zeros
       val.resize(N, G::Scalar::ZERO);
       val
