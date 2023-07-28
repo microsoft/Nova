@@ -842,7 +842,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARK<G, EE>
 
     let mut e = claim;
     let mut r: Vec<G::Scalar> = Vec::new();
-    let mut cubic_polys: Vec<CompressedUniPoly<G>> = Vec::new();
+    let mut cubic_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _i in 0..num_rounds {
       let mut evals: Vec<Vec<G::Scalar>> = Vec::new();
