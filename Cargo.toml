@@ -11,7 +11,11 @@ license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 
 [dependencies]
-bellperson = { version = "0.25", default-features = false }
+# TODO: replace with the next version of bellperson
+# See : https://github.com/filecoin-project/bellperson/pull/314
+bellperson = { git="https://github.com/huitseeker/bellperson", branch="use_bellpepper", default-features = false }
+bellpepper-core = { version="0.2.0", default-features = false }
+bellpepper = { version="0.2.0", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
 digest = "0.10"
 sha3 = "0.10"
@@ -21,7 +25,8 @@ rand_chacha = "0.3"
 itertools = "0.11"
 subtle = "2.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
-neptune = { version = "10.0.0", default-features = false }
+# TODO: replace with the next version of neptune
+neptune = { git="https://github.com/lurk-lab/neptune", rev="cfeaa9ab7c4c39e170fe00631caf6e48c1cb52ec", default-features = false }
 generic-array = "0.14"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"

@@ -1,10 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
 use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
-use bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
-  },
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 use core::marker::PhantomData;

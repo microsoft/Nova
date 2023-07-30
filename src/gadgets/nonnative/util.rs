@@ -1,6 +1,6 @@
 use super::{BitAccess, OptionExt};
-use bellperson::{
-  gadgets::num::AllocatedNum,
+use bellpepper_core::{
+  num::AllocatedNum,
   {ConstraintSystem, LinearCombination, SynthesisError, Variable},
 };
 use byteorder::WriteBytesExt;

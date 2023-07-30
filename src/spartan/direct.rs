@@ -12,7 +12,7 @@ use crate::{
   traits::{circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, Group},
   Commitment, CommitmentKey,
 };
-use bellperson::{gadgets::num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -154,7 +154,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
 mod tests {
   use super::*;
   use crate::provider::bn256_grumpkin::bn256;
-  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
 

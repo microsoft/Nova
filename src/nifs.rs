@@ -122,7 +122,7 @@ mod tests {
     r1cs::R1CS,
     traits::{Group, ROConstantsTrait},
   };
-  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 

@@ -1,6 +1,5 @@
-use bellperson::{
-  gadgets::{boolean::AllocatedBit, test::TestConstraintSystem},
-  ConstraintSystem, SynthesisError,
+use bellpepper_core::{
+  boolean::AllocatedBit, test_cs::TestConstraintSystem, ConstraintSystem, SynthesisError,
 };
 use core::ops::{AddAssign, MulAssign};
 use ff::{
