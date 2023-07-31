@@ -6,6 +6,7 @@ use crate::errors::NovaError;
 use crate::spartan::polynomial::MultilinearPolynomial;
 use crate::traits::Group;
 use ff::{Field, PrimeField};
+use itertools::Itertools;
 use rand_core::RngCore;
 use rayon::prelude::{IntoParallelRefMutIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -119,13 +120,14 @@ pub fn sparse_vec_to_mle<F: PrimeField>(
   dense_vec_to_mle(n_vars, &padded_vec)
 }
 
-pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &Vec<F>) -> MultilinearPolynomial<F> {
+pub fn dense_vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> MultilinearPolynomial<F> {
   // Pad to 2^n_vars
   let v_padded: Vec<F> = [
-    v.clone(),
+    v,
     std::iter::repeat(F::ZERO)
       .take((1 << n_vars) - v.len())
-      .collect(),
+      .collect_vec()
+      .as_slice(),
   ]
   .concat();
   MultilinearPolynomial::new(v_padded)

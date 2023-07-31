@@ -32,9 +32,10 @@ use serde::{Deserialize, Serialize};
 use sha3::{Digest, Sha3_256};
 use std::ops::{Add, Mul};
 
-use self::cccs::{CCCSInstance, CCCSShape};
-use self::lcccs::LCCCS;
-use self::util::compute_all_sum_Mz_evals;
+pub use cccs::CCCS;
+pub use lcccs::LCCCS;
+pub use multifolding::NIMFS;
+use util::compute_all_sum_Mz_evals;
 
 mod cccs;
 mod lcccs;
@@ -47,7 +48,7 @@ mod util;
 /// As well as m, n, s, s_prime
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct CCSShape<G: Group> {
+pub struct CCS<G: Group> {
   pub(crate) M: Vec<SparseMatrix<G::Scalar>>,
   // Num vars
   pub(crate) t: usize,
@@ -70,8 +71,8 @@ pub struct CCSShape<G: Group> {
   pub(crate) s_prime: usize,
 }
 
-impl<G: Group> CCSShape<G> {
-  /// Create an object of type `CCSShape` from the explicitly specified CCS matrices
+impl<G: Group> CCS<G> {
+  /// Create an object of type `CCS` from the explicitly specified CCS matrices
   pub fn new(
     M: &[SparseMatrix<G::Scalar>],
     t: usize,
@@ -80,7 +81,7 @@ impl<G: Group> CCSShape<G> {
     d: usize,
     S: Vec<Vec<usize>>,
     c: Vec<G::Scalar>,
-  ) -> CCSShape<G> {
+  ) -> CCS<G> {
     // Can probably be made more efficient by keeping track fo n_rows/n_cols at creation/insert time
     let m = M
       .iter()
@@ -102,7 +103,7 @@ impl<G: Group> CCSShape<G> {
     let s = m.log_2();
     let s_prime = n.log_2();
 
-    CCSShape {
+    CCS {
       M: M.to_vec(),
       t,
       l,
@@ -117,77 +118,15 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
-  pub(crate) fn to_cccs_shape(&self) -> CCCSShape<G> {
-    let M_mle = self.M.iter().map(|matrix| matrix.to_mle()).collect();
-    CCCSShape {
-      M_MLE: M_mle,
-      ccs: self.clone(),
-    }
-  }
-
-  // Transform the CCS instance into a CCCS instance by providing a commitment key.
-  pub fn to_cccs<R: RngCore>(
-    &self,
-    rng: &mut R,
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
-    z: &[G::Scalar],
-  ) -> (CCCSInstance<G>, CCSWitness<G>, CCCSShape<G>) {
-    let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
-    // XXX: API doesn't offer a way to handle this apparently?
-    // Need to investigate
-    let _r_w = G::Scalar::random(rng);
-    let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
-
-    (
-      CCCSInstance {
-        C,
-        x: z[1..(1 + self.l)].to_vec(),
-      },
-      CCSWitness { w },
-      self.to_cccs_shape(),
-    )
-  }
-
-  /// Transform the CCS instance into an LCCCS instance by providing a commitment key.
-  pub fn to_lcccs<R: RngCore>(
-    &self,
-    mut rng: &mut R,
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
-    z: &[G::Scalar],
-  ) -> (LCCCS<G>, CCSWitness<G>) {
-    let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
-    let r_w = G::Scalar::random(&mut rng);
-    let C = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &w);
-
-    // XXX: API doesn't offer a way to handle this??
-    let _r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(&mut rng)).collect();
-
-    let v = self.compute_v_j(z, &_r_x);
-    // XXX: Is absurd to compute these again here. We should take care of this.
-    let matrix_mles: Vec<MultilinearPolynomial<G::Scalar>> =
-      self.M.iter().map(|matrix| matrix.to_mle()).collect();
-
-    (
-      LCCCS::<G> {
-        ccs: self.clone(),
-        C,
-        u: G::Scalar::ONE,
-        x: z[1..(1 + self.l)].to_vec(),
-        r_x: _r_x,
-        v,
-        matrix_mles,
-      },
-      CCSWitness::<G> { w },
-    )
-  }
-
   /// Compute v_j values of the linearized committed CCS form
   /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-  fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
-    // XXX: Should these be MLE already?
-    let M_mle: Vec<MultilinearPolynomial<G::Scalar>> =
-      self.M.iter().map(|matrix| matrix.to_mle()).collect();
-    compute_all_sum_Mz_evals::<G>(&M_mle, &z.to_vec(), r, self.s_prime)
+  fn compute_v_j(
+    &self,
+    z: &[G::Scalar],
+    r: &[G::Scalar],
+    ccs_matrix_mles: &[MultilinearPolynomial<G::Scalar>],
+  ) -> Vec<G::Scalar> {
+    compute_all_sum_Mz_evals::<G>(ccs_matrix_mles, z, r, self.s_prime)
   }
 
   // XXX: Update commitment_key variables here? This is currently based on R1CS with M length
@@ -249,6 +188,7 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
+  /// Generate a CCS instance from an [`R1CSShape`] instance.
   pub fn from_r1cs(r1cs: R1CSShape<G>) -> Self {
     // These contants are used for R1CS-to-CCS, see the paper for more details
     const T: usize = 3;
@@ -283,7 +223,7 @@ impl<G: Group> CCSShape<G> {
     }
   }
 
-  /// Pads the CCSShape so that the number of variables is a power of two
+  /// Pads the CCS so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&mut self) {
     let padded_n = self.n.next_power_of_two();
@@ -301,7 +241,14 @@ impl<G: Group> CCSShape<G> {
   }
 
   #[cfg(test)]
-  pub(crate) fn gen_test_ccs(z: &[G::Scalar]) -> (CCSShape<G>, CCSWitness<G>, CCSInstance<G>) {
+  pub(crate) fn gen_test_ccs(
+    z: &[G::Scalar],
+  ) -> (
+    CCS<G>,
+    CCSWitness<G>,
+    CCSInstance<G>,
+    Vec<MultilinearPolynomial<G::Scalar>>,
+  ) {
     let one = G::Scalar::ONE;
     let A = vec![
       (0, 1, one),
@@ -318,16 +265,17 @@ impl<G: Group> CCSShape<G> {
     // 2. Take R1CS and convert to CCS
     // TODO: The third argument should be 2 or similar, need to adjust test case
     // See https://github.com/privacy-scaling-explorations/Nova/issues/30
-    let ccs = CCSShape::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
+    let ccs = CCS::from_r1cs(R1CSShape::new(4, 6, 1, &A, &B, &C).unwrap());
     // Generate other artifacts
-    let ck = CCSShape::<G>::commitment_key(&ccs);
+    let ck = CCS::<G>::commitment_key(&ccs);
     let ccs_w = CCSWitness::new(z[2..].to_vec());
     let ccs_instance = CCSInstance::new(&ccs, &ccs_w.commit(&ck), vec![z[1]]).unwrap();
+    let ccs_mles = ccs.M.iter().map(|m| m.to_mle()).collect();
 
     ccs
       .is_sat(&ck, &ccs_instance, &ccs_w)
       .expect("This does not fail");
-    (ccs, ccs_w, ccs_instance)
+    (ccs, ccs_w, ccs_instance, ccs_mles)
   }
 
   #[cfg(test)]
@@ -378,7 +326,7 @@ pub struct CCSInstance<G: Group> {
 impl<G: Group> CCSInstance<G> {
   /// A method to create an instance object using consitituent elements
   pub fn new(
-    s: &CCSShape<G>,
+    s: &CCS<G>,
     w_comm: &Commitment<G>,
     x: Vec<G::Scalar>,
   ) -> Result<CCSInstance<G>, NovaError> {
@@ -464,7 +412,7 @@ pub mod test {
     };
 
     // 2. Take R1CS and convert to CCS
-    let S = CCSShape::from_r1cs(S);
+    let S = CCS::from_r1cs(S);
 
     // generate generators and ro constants
     let _ck = S.commitment_key();
