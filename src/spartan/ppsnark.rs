@@ -395,12 +395,10 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
     let poly_A = MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals());
     let poly_B_vec = left_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();
     let poly_C_vec = right_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();

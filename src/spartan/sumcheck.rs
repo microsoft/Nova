@@ -344,7 +344,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
-      .reduce(|| Scalar::ZERO, |a, b| a + b)
+      .sum()
   }
 
   pub fn evaluate(&self, r: &Scalar) -> Scalar {
