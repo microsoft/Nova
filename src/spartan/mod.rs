@@ -5,7 +5,7 @@
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
 pub mod direct;
 pub(crate) mod math;
-pub(crate) mod polynomial;
+pub mod polynomial;
 pub mod ppsnark;
 pub mod snark;
 mod sumcheck;

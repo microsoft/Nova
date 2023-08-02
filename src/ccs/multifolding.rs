@@ -5,7 +5,7 @@ use super::{CCSWitness, CCS};
 use crate::ccs::util::compute_all_sum_Mz_evals;
 use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
-use crate::spartan::polynomial::MultilinearPolynomial;
+use crate::spartan::polynomial::{EqPolynomial, MultilinearPolynomial};
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -124,8 +124,8 @@ impl<G: Group> NIMFS<G> {
   ) -> G::Scalar {
     let mut c = G::Scalar::ZERO;
 
-    let e1 = eq_eval(&self.lcccs.r_x, r_x_prime);
-    let e2 = eq_eval(beta, r_x_prime);
+    let e1 = EqPolynomial::new(self.lcccs.r_x.to_vec()).evaluate(r_x_prime);
+    let e2 = EqPolynomial::new(beta.to_vec()).evaluate(r_x_prime);
 
     // (sum gamma^j * e1 * sigma_j)
     for (j, sigma_j) in sigmas.iter().enumerate() {
@@ -216,22 +216,10 @@ impl<G: Group> NIMFS<G> {
   }
 }
 
-/// Evaluate eq polynomial.
-pub fn eq_eval<F: PrimeField>(x: &[F], y: &[F]) -> F {
-  assert_eq!(x.len(), y.len());
-
-  let mut res = F::ONE;
-  for (&xi, &yi) in x.iter().zip(y.iter()) {
-    let xi_yi = xi * yi;
-    res *= xi_yi + xi_yi - xi - yi + F::ONE;
-  }
-  res
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::ccs::{test, util::virtual_poly::build_eq_x_r};
+  use crate::ccs::test;
   use pasta_curves::{Ep, Fq};
   use rand_core::OsRng;
 

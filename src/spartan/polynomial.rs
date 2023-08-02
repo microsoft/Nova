@@ -1,4 +1,9 @@
-//! This module defines basic types related to polynomials
+//! This module provides foundational types and functions for manipulating multilinear polynomials in the context of cryptographic computations.
+//!
+//! Main components:
+//! - `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
+//! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
+//! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 use core::ops::Index;
 use ff::PrimeField;
 use rayon::prelude::*;
@@ -7,28 +12,35 @@ use std::ops::{Add, Mul};
 
 use crate::spartan::math::Math;
 
-/// The multilinear extension polynomial, denoted as $\tilde{eq}$, is defined as follows:
+/// Represents the multilinear extension polynomial (MLE) of the equality polynomial $eq(x,e)$, denoted as $\tilde{eq}(x, e)$.
 ///
+/// The polynomial is defined by the formula:
 /// $$
 /// \tilde{eq}(x, e) = \prod_{i=0}^m(e_i * x_i + (1 - e_i) * (1 - x_i))
 /// $$
 ///
-/// This polynomial evaluates to 1 only when each component $x_i$ is equal to its corresponding component $e_i$.
-/// Otherwise, it evaluates to 0.
+/// Each element in the vector `r` corresponds to a component $e_i$, representing a bit from the binary representation of an input value $e$.
+/// This polynomial evaluates to 1 if every component $x_i$ equals its corresponding $e_i$, and 0 otherwise.
 ///
-/// The vector r contains all the values of e_i, where e_i represents the individual bits of a binary representation of e.
-/// For example, let's consider e = 6, which in binary is 0b110. In this case, the vector r would be [1, 1, 0].
-pub(crate) struct EqPolynomial<Scalar: PrimeField> {
+/// For instance, for e = 6 (with a binary representation of 0b110), the vector r would be [1, 1, 0].
+pub struct EqPolynomial<Scalar: PrimeField> {
   r: Vec<Scalar>,
 }
 
 impl<Scalar: PrimeField> EqPolynomial<Scalar> {
-  /// Creates a new polynomial from its succinct specification
+  /// Creates a new `EqPolynomial` from a vector of Scalars `r`.
+  ///
+  /// Each Scalar in `r` corresponds to a bit from the binary representation of an input value `e`.
   pub fn new(r: Vec<Scalar>) -> Self {
     EqPolynomial { r }
   }
 
-  /// Evaluates the polynomial at the specified point
+  /// Evaluates the `EqPolynomial` at a given point `rx`.
+  ///
+  /// This function computes the value of the polynomial at the point specified by `rx`.
+  /// It expects `rx` to have the same length as the internal vector `r`.
+  ///
+  /// Panics if `rx` and `r` have different lengths.
   pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
     assert_eq!(self.r.len(), rx.len());
     (0..rx.len())
@@ -36,7 +48,9 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
       .fold(Scalar::ONE, |acc, item| acc * item)
   }
 
-  /// Evaluates the polynomial at all the `2^|r|` points, ranging from 0 to `2^|r| - 1`.
+  /// Evaluates the `EqPolynomial` at all the `2^|r|` points in its domain.
+  ///
+  /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
   pub fn evals(&self) -> Vec<Scalar> {
     let ell = self.r.len();
     let mut evals: Vec<Scalar> = vec![Scalar::ZERO; (2_usize).pow(ell as u32)];
@@ -57,11 +71,12 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 
       size *= 2;
     }
+
     evals
   }
 }
 
-/// A multilinear extension of a polynomial $Z(\cdot)$, donate it as $\tilde{Z}(x_1, ..., x_m)$
+/// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
 ///
 /// This is the dense representation of a multilinear poynomial.
@@ -84,6 +99,9 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
+  /// Creates a new MultilinearPolynomial from the given evaluations.
+  ///
+  /// The number of evaluations must be a power of two.
   pub fn new(Z: Vec<Scalar>) -> Self {
     assert_eq!(Z.len(), (2_usize).pow((Z.len() as f64).log2() as u32));
     MultilinearPolynomial {
@@ -92,15 +110,26 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     }
   }
 
+  /// Returns the number of variables in the multilinear polynomial
   pub fn get_num_vars(&self) -> usize {
     self.num_vars
   }
 
+  /// Returns the total number of evaluations.
   pub fn len(&self) -> usize {
     self.Z.len()
   }
 
-  // NOTE: this is equivalent to Espresso/hyperplonk's 'fix_last_variables' mehthod
+  /// Checks if the multilinear polynomial is empty.
+  ///
+  /// This method returns true if the polynomial has no evaluations, and false otherwise.
+  pub fn is_empty(&self) -> bool {
+    self.Z.is_empty()
+  }
+
+  /// Bounds the polynomial's top variable using the given scalar.
+  ///
+  /// This operation modifies the polynomial in-place.
   pub fn bound_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 
@@ -118,7 +147,10 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.num_vars -= 1;
   }
 
-  // returns Z(r) in O(n) time
+  /// Evaluates the polynomial at the given point.
+  /// Returns Z(r) in O(n) time.
+  ///
+  /// The point must have a value for each variable.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     // r must have a value for each variable
     assert_eq!(r.len(), self.get_num_vars());
@@ -131,6 +163,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .reduce(|| Scalar::ZERO, |x, y| x + y)
   }
 
+  /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
     EqPolynomial::new(r.to_vec())
       .evals()
@@ -140,7 +173,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .reduce(|| Scalar::ZERO, |x, y| x + y)
   }
 
-  // Multiplies `self` by a scalar.
+  /// Multiplies the polynomial by a scalar.
   #[allow(unused)]
   pub fn scalar_mul(&self, scalar: &Scalar) -> Self {
     let mut new_poly = self.clone();
@@ -304,7 +337,7 @@ mod tests {
   }
 
   fn test_sparse_polynomial_with<F: PrimeField>() {
-    // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Let the polynomial have 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
     // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
 
     let TWO = F::from(2);

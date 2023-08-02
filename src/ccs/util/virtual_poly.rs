@@ -1,6 +1,6 @@
 use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
-use crate::spartan::polynomial::MultilinearPolynomial;
+use crate::spartan::polynomial::{EqPolynomial, MultilinearPolynomial};
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -29,12 +29,11 @@ use std::collections::HashMap;
 use std::ops::{Add, Mul};
 use std::sync::Arc;
 
-// A bit of collage-programming here.
-// As a tmp way to have multilinear polynomial product+addition.
+// NOTE: This is a temporary solution to have multilinear polynomial product+addition.
 // The idea is to re-evaluate once everything works and decide if we replace this code
 // by something else.
 //
-// THIS CODE HAS BEEN TAKEN FpOM THE ESPRESSO SYSTEMS LIB:
+// THIS CODE HAS BEEN TAKEN FROM THE ESPRESSO SYSTEMS LIB AND ADAPTED TO OUR NEEDS.:
 // <https://github.com/EspressoSystems/hyperplonk/blob/main/arithmetic/src/virtual_polynomial.rs#L22-L332>
 //
 #[rustfmt::skip]
@@ -305,6 +304,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
     }
 
     let eq_x_r = build_eq_x_r(r)?;
+
     let mut res = self.clone();
     res.mul_by_mle(eq_x_r, F::ONE)?;
 
@@ -319,76 +319,43 @@ impl<F: PrimeField> VirtualPolynomial<F> {
 /// over r, which is
 ///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
 pub fn build_eq_x_r<F: PrimeField>(r: &[F]) -> Result<Arc<MultilinearPolynomial<F>>, NovaError> {
-  let evals = build_eq_x_r_vec(r)?;
-  let mle = MultilinearPolynomial::new(evals);
+  let eq_polynomial = EqPolynomial::new(r.to_vec());
+  let mut evaluations = eq_polynomial.evals();
+
+  // Re-orders the evaluations to match endianness of VirtualPoly
+  //
+  // NOTE: We probably want to benchmark this,
+  // but given that numbers of evaluations is small it might not be that bad
+  let permutation = generate_permutation(evaluations.len());
+  reorder_vector(&mut evaluations, &permutation);
+
+  let mle = MultilinearPolynomial::new(evaluations);
 
   Ok(Arc::new(mle))
 }
 
-/// This function build the eq(x, r) polynomial for any given r, and output the
-/// evaluation of eq(x, r) in its vector form.
-///
-/// Evaluate
-///      eq(x,y) = \prod_i=1^num_var (x_i * y_i + (1-x_i)*(1-y_i))
-/// over r, which is
-///      eq(x,y) = \prod_i=1^num_var (x_i * r_i + (1-x_i)*(1-r_i))
-pub fn build_eq_x_r_vec<F: PrimeField>(r: &[F]) -> Result<Vec<F>, NovaError> {
-  // we build eq(x,r) Fpom its evaluations
-  // we want to evaluate eq(x,r) over x \in {0, 1}^num_vars
-  // for example, with num_vars = 4, x is a binary vector of 4, then
-  //  0 0 0 0 -> (1-r0)   * (1-r1)    * (1-r2)    * (1-r3)
-  //  1 0 0 0 -> r0       * (1-r1)    * (1-r2)    * (1-r3)
-  //  0 1 0 0 -> (1-r0)   * r1        * (1-r2)    * (1-r3)
-  //  1 1 0 0 -> r0       * r1        * (1-r2)    * (1-r3)
-  //  ....
-  //  1 1 1 1 -> r0       * r1        * r2        * r3
-  // we will need 2^num_var evaluations
-
-  let mut eval = Vec::new();
-  build_eq_x_r_helper(r, &mut eval)?;
-
-  Ok(eval)
+/// Generates a permutation vector for a size `n` by reversing binary indices.
+fn generate_permutation(n: usize) -> Vec<usize> {
+  (0..n)
+    .map(|i| {
+      let log_n = (n as f64).log2() as usize; // number of bits needed for the index
+      let mut res = 0;
+      for j in 0..log_n {
+        let bit = (i >> j) & 1;
+        res |= bit << (log_n - 1 - j);
+      }
+      res
+    })
+    .collect()
 }
 
-/// A helper function to build eq(x, r) recursively.
-/// This function takes `r.len()` steps, and for each step it requires a maximum
-/// `r.len()-1` multiplications.
-fn build_eq_x_r_helper<F: PrimeField>(r: &[F], buf: &mut Vec<F>) -> Result<(), NovaError> {
-  if r.is_empty() {
-    return Err(NovaError::VpArith);
-  } else if r.len() == 1 {
-    // initializing the buffer with [1-r_0, r_0]
-    buf.push(F::ONE - r[0]);
-    buf.push(r[0]);
-  } else {
-    build_eq_x_r_helper(&r[1..], buf)?;
-
-    // suppose at the previous step we received [b_1, ..., b_k]
-    // for the current step we will need
-    // if x_0 = 0:   (1-r0) * [b_1, ..., b_k]
-    // if x_0 = 1:   r0 * [b_1, ..., b_k]
-    // let mut res = vec![];
-    // for &b_i in buf.iter() {
-    //     let tmp = r[0] * b_i;
-    //     res.push(b_i - tmp);
-    //     res.push(tmp);
-    // }
-    // *buf = res;
-
-    let mut res = vec![F::ZERO; buf.len() << 1];
-    res.par_iter_mut().enumerate().for_each(|(i, val)| {
-      let bi = buf[i >> 1];
-      let tmp = r[0] * bi;
-      if i & 1 == 0 {
-        *val = bi - tmp;
-      } else {
-        *val = tmp;
-      }
-    });
-    *buf = res;
+/// Reorders a vector based on a given permutation vector.
+fn reorder_vector<F: Clone>(vec: &mut Vec<F>, permutation: &[usize]) {
+  let mut temp = vec.clone();
+  for (i, &index) in permutation.iter().enumerate() {
+    temp[i] = vec[index].clone();
   }
-
-  Ok(())
+  *vec = temp;
 }
 
 #[cfg(test)]
@@ -494,5 +461,49 @@ mod test {
     let mle = MultilinearPolynomial::new(eval);
 
     Arc::new(mle)
+  }
+
+  #[cfg(test)]
+  mod tests {
+    use super::*;
+    use pasta_curves::Fq;
+    use rand_core::OsRng;
+
+    #[test]
+    fn test_generate_permutation() {
+      assert_eq!(generate_permutation(2), vec![0, 1]);
+      assert_eq!(generate_permutation(4), vec![0, 2, 1, 3]);
+      assert_eq!(generate_permutation(8), vec![0, 4, 2, 6, 1, 5, 3, 7]);
+    }
+
+    #[test]
+    fn test_reorder_vector() {
+      let mut vec = vec![10, 20, 30, 40, 50, 60, 70, 80];
+      let permutation = vec![0, 4, 2, 6, 1, 5, 3, 7];
+      reorder_vector(&mut vec, &permutation);
+      assert_eq!(vec, vec![10, 50, 30, 70, 20, 60, 40, 80]);
+    }
+
+    #[test]
+    fn test_build_f_hat() {
+      let mut rng = OsRng;
+      let num_vars = 3; // You can change this value according to your requirement
+
+      // Create a VirtualPolynomial
+      let poly = VirtualPolynomial::<Fq>::new(num_vars);
+      let r: Vec<Fq> = (0..num_vars).map(|_| Fq::random(&mut rng)).collect();
+
+      // Test with correct input length
+      let result = poly.build_f_hat(&r);
+      assert!(result.is_ok(), "Failed with correct input length");
+
+      // Test with incorrect input length
+      let bad_r: Vec<Fq> = (0..num_vars + 1).map(|_| Fq::random(&mut rng)).collect();
+      let result = poly.build_f_hat(&bad_r);
+      assert!(
+        matches!(result, Err(NovaError::VpArith)),
+        "Did not fail with incorrect input length"
+      );
+    }
   }
 }
