@@ -207,6 +207,15 @@ impl<G: Group> TranscriptReprTrait<G> for pallas::Scalar {
   }
 }
 
+impl<G: Group> TranscriptReprTrait<G> for Vec<G::Scalar> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    self
+      .iter()
+      .flat_map(|scalar| scalar.to_transcript_bytes())
+      .collect()
+  }
+}
+
 impl_traits!(
   pallas,
   PallasCompressedElementWrapper,

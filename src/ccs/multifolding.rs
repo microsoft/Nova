@@ -6,6 +6,7 @@ use crate::ccs::util::compute_all_sum_Mz_evals;
 use crate::hypercube::BooleanHypercube;
 use crate::spartan::math::Math;
 use crate::spartan::polynomial::{EqPolynomial, MultilinearPolynomial};
+use crate::traits::{TranscriptEngineTrait, TranscriptReprTrait};
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_FOR_RO, NUM_HASH_BITS},
   errors::NovaError,
@@ -41,6 +42,7 @@ pub struct NIMFS<G: Group> {
   ccs_mle: Vec<MultilinearPolynomial<G::Scalar>>,
   ck: CommitmentKey<G>,
   lcccs: LCCCS<G>,
+  transcript: G::TE,
 }
 
 impl<G: Group> NIMFS<G> {
@@ -56,35 +58,55 @@ impl<G: Group> NIMFS<G> {
       ccs_mle,
       ck,
       lcccs,
+      transcript: TranscriptEngineTrait::new(b"NIMFS"),
     }
   }
 
   /// Initializes a NIMFS instance given the CCS of it and a first witness vector that satifies it.
   // XXX: This should probably return an error as we should check whether is satisfied or not.
-  pub fn init<R: RngCore>(mut rng: &mut R, ccs: CCS<G>, z: Vec<G::Scalar>) -> Self {
+  pub fn init(ccs: CCS<G>, z: Vec<G::Scalar>, label: &'static [u8]) -> Self {
+    let mut transcript: G::TE = TranscriptEngineTrait::new(label);
     let ccs_mle: Vec<MultilinearPolynomial<G::Scalar>> =
       ccs.M.iter().map(|matrix| matrix.to_mle()).collect();
+
+    // Add the first round of witness to the transcript.
     let w: Vec<G::Scalar> = z[(1 + ccs.l)..].to_vec();
+    TranscriptEngineTrait::<G>::absorb(&mut transcript, b"og_w", &w);
+
     let ck = ccs.commitment_key();
-    let r_w = G::Scalar::random(&mut rng);
     let w_comm = <G as Group>::CE::commit(&ck, &w);
 
-    let r_x: Vec<G::Scalar> = vec![G::Scalar::random(&mut rng); ccs.s];
-    let v = ccs.compute_v_j(&z, &r_x, &ccs_mle);
+    // Query challenge to get initial `r_x`.
+    let r_x: Vec<G::Scalar> = vec![
+      TranscriptEngineTrait::<G>::squeeze(&mut transcript, b"r_x")
+        .expect("This should never fail");
+      ccs.s
+    ];
 
-    let lcccs: LCCCS<G> = LCCCS::new(&ccs, &ccs_mle, &ck, z, &mut rng);
+    // Gen LCCCS initial instance.
+    let lcccs: LCCCS<G> = LCCCS::new(&ccs, &ccs_mle, &ck, z, r_x);
 
     Self {
       ccs,
       ccs_mle,
       lcccs,
       ck,
+      transcript,
     }
   }
 
   /// Generates a new [`CCCS`] instance ready to be folded.
   pub fn new_cccs(&self, z: Vec<G::Scalar>) -> CCCS<G> {
     CCCS::new(&self.ccs, &self.ccs_mle, z, &self.ck)
+  }
+
+  /// Generates a new `r_x` vector using the NIMFS challenge query method.
+  pub(crate) fn gen_r_x(&mut self) -> Vec<G::Scalar> {
+    vec![
+      TranscriptEngineTrait::<G>::squeeze(&mut self.transcript, b"r_x")
+        .expect("This should never fail");
+      self.ccs.s
+    ]
   }
 
   /// This function checks whether the current IVC after the last fold performed is satisfied and returns an error if it isn't.
@@ -175,10 +197,12 @@ impl<G: Group> NIMFS<G> {
   }
 
   /// This folds an upcoming CCCS instance into the running LCCCS instance contained within the NIMFS object.
-  pub fn fold<R: RngCore>(&mut self, mut rng: &mut R, cccs: CCCS<G>) {
-    // Compute r_x_prime and rho from a given randomnes.
-    let r_x_prime = vec![G::Scalar::random(&mut rng); self.ccs.s];
-    let rho = G::Scalar::random(&mut rng);
+  pub fn fold(&mut self, cccs: CCCS<G>) {
+    // Compute r_x_prime and rho from challenging the transcript.
+    let r_x_prime = self.gen_r_x();
+    // Challenge the transcript once more to obtain `rho`
+    let rho = TranscriptEngineTrait::<G>::squeeze(&mut self.transcript, b"rho")
+      .expect("This should not fail");
 
     // Compute sigmas an thetas to fold `v`s.
     let (sigmas, thetas) = self.compute_sigmas_and_thetas(&cccs.z, &r_x_prime);
@@ -237,8 +261,9 @@ mod tests {
     let mut rng = OsRng;
     let gamma: G::Scalar = G::Scalar::random(&mut rng);
     let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut OsRng)).collect();
 
-    let lcccs = LCCCS::new(&ccs, &mles, &ck, z1, &mut OsRng);
+    let lcccs = LCCCS::new(&ccs, &mles, &ck, z1, r_x);
     let cccs = CCCS::new(&ccs, &mles, z2, &ck);
 
     let mut sum_v_j_gamma = G::Scalar::ZERO;
@@ -294,15 +319,15 @@ mod tests {
     let mut rng = OsRng;
     let gamma: G::Scalar = G::Scalar::random(&mut rng);
     let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
-    let r_x_prime: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut OsRng)).collect();
 
-    let lcccs = LCCCS::new(&ccs, &mles, &ck, z1, &mut OsRng);
+    let lcccs = LCCCS::new(&ccs, &mles, &ck, z1, r_x.clone());
     let cccs = CCCS::new(&ccs, &mles, z2, &ck);
 
     // Generate a new NIMFS instance
     let nimfs = NIMFS::<G>::new(ccs.clone(), mles.clone(), lcccs, ck.clone());
 
-    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&cccs.z, &r_x_prime);
+    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&cccs.z, r_x.as_slice());
 
     let g = nimfs.compute_g(&cccs, gamma, &beta);
     // Assert `g` is correctly computed here.
@@ -329,15 +354,15 @@ mod tests {
 
     // XXX: We need a better way to do this. Sum_Mz has also the same issue.
     // reverse the `r` given to evaluate to match Spartan/Nova endianness.
-    let mut revsersed = r_x_prime.clone();
-    revsersed.reverse();
+    let mut reversed = r_x.clone();
+    reversed.reverse();
 
     // we expect g(r_x_prime) to be equal to:
     // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
     // from `compute_c_from_sigmas_and_thetas`
-    let expected_c = g.evaluate(&revsersed).unwrap();
+    let expected_c = g.evaluate(&reversed).unwrap();
 
-    let c = nimfs.compute_c_from_sigmas_and_thetas(&sigmas, &thetas, gamma, &beta, &r_x_prime);
+    let c = nimfs.compute_c_from_sigmas_and_thetas(&sigmas, &thetas, gamma, &beta, &r_x);
     assert_eq!(c, expected_c);
   }
 
@@ -346,8 +371,6 @@ mod tests {
   }
 
   fn test_lccs_fold_with<G: Group>() {
-    let mut rng = OsRng;
-
     let z1 = CCS::<G>::get_test_z(3);
     let z2 = CCS::<G>::get_test_z(4);
 
@@ -360,13 +383,13 @@ mod tests {
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     // Generate a new NIMFS instance
-    let mut nimfs = NIMFS::init(&mut rng, ccs.clone(), z1);
+    let mut nimfs = NIMFS::init(ccs.clone(), z1, b"test_NIMFS");
     assert!(nimfs.is_sat().is_ok());
 
     // check folding correct stuff still alows the NIMFS to be satisfied correctly.
     let cccs = nimfs.new_cccs(z2);
     assert!(cccs.is_sat(&ccs, &mles, &ck).is_ok());
-    nimfs.fold(&mut rng, cccs);
+    nimfs.fold(cccs);
     assert!(nimfs.is_sat().is_ok());
 
     // // Folding garbage should cause a failure

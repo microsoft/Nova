@@ -44,19 +44,16 @@ pub struct LCCCS<G: Group> {
 impl<G: Group> LCCCS<G> {
   /// Generates a new LCCCS instance from a given randomness, CommitmentKey & witness input vector.
   /// This should only be used to probably test or setup the initial NIMFS instance.
-  pub(crate) fn new<R: RngCore>(
+  pub(crate) fn new(
     ccs: &CCS<G>,
     ccs_m_mle: &[MultilinearPolynomial<G::Scalar>],
     ck: &CommitmentKey<G>,
     z: Vec<G::Scalar>,
-    mut rng: &mut R,
+    r_x: Vec<G::Scalar>,
   ) -> Self {
-    // XXX: API doesn't offer a way to handle this??
-    let _r_w = G::Scalar::random(&mut rng);
     let w_comm = <<G as Group>::CE as CommitmentEngineTrait<G>>::commit(ck, &z[(1 + ccs.l)..]);
 
     // Evaluation points for `v`
-    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
     let v = ccs.compute_v_j(&z, &r_x, ccs_m_mle);
 
     Self { w_comm, v, r_x, z }
@@ -125,7 +122,8 @@ mod tests {
     assert!(ccs.is_sat(&ck, &instance, &witness).is_ok());
 
     // LCCCS with the correct z should pass
-    let mut lcccs = LCCCS::new(&ccs, &mles, &ck, z.clone(), &mut OsRng);
+    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut OsRng)).collect();
+    let mut lcccs = LCCCS::new(&ccs, &mles, &ck, z.clone(), r_x);
     assert!(lcccs.is_sat(&ccs, &mles, &ck).is_ok());
 
     // Wrong z so that the relation does not hold
@@ -145,8 +143,10 @@ mod tests {
     let (ccs, _, _, mles) = CCS::<G>::gen_test_ccs(&z);
     let ck = ccs.commitment_key();
 
+    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+
     // Get LCCCS
-    let lcccs = LCCCS::new(&ccs, &mles, &ck, z, &mut OsRng);
+    let lcccs = LCCCS::new(&ccs, &mles, &ck, z, r_x);
 
     let vec_L_j_x = lcccs.compute_Ls(&ccs, &mles);
     assert_eq!(vec_L_j_x.len(), lcccs.v.len());
@@ -172,7 +172,8 @@ mod tests {
     bad_z[3] = G::Scalar::ZERO;
 
     // Compute v_j with the right z
-    let mut lcccs = LCCCS::new(&ccs, &mles, &ck, z, &mut OsRng);
+    let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+    let mut lcccs = LCCCS::new(&ccs, &mles, &ck, z, r_x);
     // Assert LCCCS is satisfied with the original Z
     assert!(lcccs.is_sat(&ccs, &mles, &ck).is_ok());
 
