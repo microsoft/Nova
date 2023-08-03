@@ -37,7 +37,7 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  Circuit, ConstraintSystem, SynthesisError,
+  ConstraintSystem, SynthesisError,
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -406,13 +406,11 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
   }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for SuperNovaCircuit<'a, G, SC>
-{
-  fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
+impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
+  pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
-  ) -> Result<(), SynthesisError> {
+  ) -> Result<(AllocatedNum<G::Base>, Vec<AllocatedNum<G::Base>>), SynthesisError> {
     let arity = self.step_circuit.arity();
     let num_augmented_circuits = if self.params.is_primary_circuit {
       // primary circuit only fold single running instance with secondary output strict r1cs instance
@@ -603,7 +601,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       .inputize(cs.namespace(|| "bypass unmodified hash of the other circuit"))?;
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
 
-    Ok(())
+    Ok((program_counter_new, z_next))
   }
 }
 

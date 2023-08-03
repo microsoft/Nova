@@ -22,7 +22,7 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::{Circuit, ConstraintSystem};
+use ::bellperson::ConstraintSystem;
 
 use crate::nifs::NIFS;
 
@@ -294,12 +294,12 @@ where
       num_augmented_circuits,
     );
 
-    circuit_primary
+    let (zi_primary_pc_next, zi_primary) = circuit_primary
       .synthesize(&mut cs_primary)
-      .map_err(|_e| NovaError::SynthesisErrorMsg(_e.to_string()))?;
+      .map_err(|_| NovaError::SynthesisError)?;
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_| NovaError::UnSat)?;
 
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -321,12 +321,12 @@ where
       pp.ro_consts_circuit_secondary.clone(),
       num_augmented_circuits,
     );
-    circuit_secondary
+    let (_, zi_secondary) = circuit_secondary
       .synthesize(&mut cs_secondary)
-      .map_err(|_e| NovaError::SynthesisErrorMsg(_e.to_string()))?;
+      .map_err(|_| NovaError::SynthesisError)?;
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_| NovaError::UnSat)?;
 
     // IVC proof for the primary circuit
     let l_w_primary = w_primary;
@@ -348,8 +348,17 @@ where
     ))];
 
     // Outputs of the two circuits and next program counter thus far.
-    let (zi_primary_pc_next, zi_primary) = c_primary.output(initial_program_counter, z0_primary);
-    let (_, zi_secondary) = c_secondary.output(G2::Scalar::ZERO, z0_secondary);
+    let zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+    let zi_primary_pc_next = zi_primary_pc_next
+      .get_value()
+      .ok_or(NovaError::SynthesisError)?;
+    let zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidStepOutputLength);
@@ -458,11 +467,13 @@ where
       self.num_augmented_circuits,
     );
 
-    let _ = circuit_primary.synthesize(&mut cs_primary);
+    let (zi_primary_pc_next, zi_primary) = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_primary, l_w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_| NovaError::UnSat)?;
 
     // Split into `if let`/`else` statement
     // to avoid `returns a value referencing data owned by closure` error on `&RelaxedR1CSInstance::default` and `RelaxedR1CSWitness::default`
@@ -524,15 +535,26 @@ where
       pp.ro_consts_circuit_secondary.clone(),
       self.num_augmented_circuits,
     );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+    let (_, zi_secondary) = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_secondary_next, l_w_secondary_next) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_| NovaError::UnSat)?;
 
     // update the running instances and witnesses
-    let (zi_primary_pc_next, zi_primary) = c_primary.output(self.program_counter, &self.zi_primary);
-    let (_, zi_secondary) = c_secondary.output(G2::Scalar::ZERO, &self.zi_secondary);
+    let zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+    let zi_primary_pc_next = zi_primary_pc_next
+      .get_value()
+      .ok_or(NovaError::SynthesisError)?;
+    let zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       return Err(NovaError::InvalidStepOutputLength);
@@ -898,14 +920,6 @@ mod tests {
       z_next.extend(z[1..].iter().cloned());
       Ok((pc_next, z_next))
     }
-
-    fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
-      let mut z_next = vec![
-        z[0] * z[0] * z[0] + z[0] + F::from(5u64), // y
-      ];
-      z_next.extend(z[1..].iter().cloned());
-      (pc + F::from(1), z_next)
-    }
   }
 
   #[derive(Clone, Debug, Default)]
@@ -983,14 +997,6 @@ mod tests {
       let mut z_next = vec![y];
       z_next.extend(z[1..].iter().cloned());
       Ok((pc_next, z_next))
-    }
-
-    fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
-      let mut z_next = vec![
-        z[0] * z[0] + z[0] + F::from(5u64), // y
-      ];
-      z_next.extend(z[1..].iter().cloned());
-      (pc + F::from(1), z_next)
     }
   }
 

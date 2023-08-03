@@ -65,7 +65,4 @@ pub enum NovaError {
   /// return when error during synthesis
   #[error("SynthesisError")]
   SynthesisError,
-  /// return when error during synthesis with error msg
-  #[error("SynthesisErrorMsg")]
-  SynthesisErrorMsg(String),
 }
