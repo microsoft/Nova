@@ -101,7 +101,7 @@ where
 
     // Initialize ck for the primary
     let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
-      augmented_circuit_params_primary.clone(),
+      &augmented_circuit_params_primary,
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
@@ -112,7 +112,7 @@ where
 
     // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
-      augmented_circuit_params_secondary.clone(),
+      &augmented_circuit_params_secondary,
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
@@ -217,7 +217,7 @@ where
     );
 
     let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
@@ -240,7 +240,7 @@ where
       None,
     );
     let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
@@ -329,7 +329,7 @@ where
     );
 
     let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
@@ -366,7 +366,7 @@ where
     );
 
     let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),

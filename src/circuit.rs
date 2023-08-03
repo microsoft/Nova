@@ -88,7 +88,7 @@ impl<G: Group> NovaAugmentedCircuitInputs<G> {
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
 pub struct NovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
-  params: NovaAugmentedCircuitParams,
+  params: &'a NovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NovaAugmentedCircuitInputs<G>>,
   step_circuit: &'a SC, // The function that is applied for each step
@@ -97,7 +97,7 @@ pub struct NovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
 impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
-    params: NovaAugmentedCircuitParams,
+    params: &'a NovaAugmentedCircuitParams,
     inputs: Option<NovaAugmentedCircuitInputs<G>>,
     step_circuit: &'a SC,
     ro_consts: ROConstantsCircuit<G>,
@@ -400,7 +400,7 @@ mod tests {
     // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        primary_params.clone(),
+        &primary_params,
         None,
         &ttc1,
         ro_consts1.clone(),
@@ -414,7 +414,7 @@ mod tests {
     // Initialize the shape and ck for the secondary
     let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        secondary_params.clone(),
+        &secondary_params,
         None,
         &ttc2,
         ro_consts2.clone(),
@@ -438,7 +438,7 @@ mod tests {
     );
     let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        primary_params,
+        &primary_params,
         Some(inputs1),
         &ttc1,
         ro_consts1,
@@ -462,7 +462,7 @@ mod tests {
     );
     let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
-        secondary_params,
+        &secondary_params,
         Some(inputs2),
         &ttc2,
         ro_consts2,
