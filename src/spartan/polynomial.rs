@@ -10,7 +10,7 @@ pub(crate) struct EqPolynomial<Scalar: PrimeField> {
 
 impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   /// Creates a new polynomial from its succinct specification
-  pub fn new(r: Vec<Scalar>) -> Self {
+  pub const fn new(r: Vec<Scalar>) -> Self {
     EqPolynomial { r }
   }
 
@@ -61,7 +61,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     }
   }
 
-  pub fn get_num_vars(&self) -> usize {
+  pub const fn get_num_vars(&self) -> usize {
     self.num_vars
   }
 

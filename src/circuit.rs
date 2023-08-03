@@ -40,7 +40,7 @@ pub struct NovaAugmentedCircuitParams {
 }
 
 impl NovaAugmentedCircuitParams {
-  pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
+  pub const fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
       n_limbs,
@@ -96,7 +96,7 @@ pub struct NovaAugmentedCircuit<G: Group, SC: StepCircuit<G::Base>> {
 
 impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
-  pub fn new(
+  pub const fn new(
     params: NovaAugmentedCircuitParams,
     inputs: Option<NovaAugmentedCircuitInputs<G>>,
     step_circuit: SC,

@@ -146,7 +146,7 @@ where
   }
 
   /// Returns the number of constraints in the primary and secondary circuits
-  pub fn num_constraints(&self) -> (usize, usize) {
+  pub const fn num_constraints(&self) -> (usize, usize) {
     (
       self.r1cs_shape_primary.num_cons,
       self.r1cs_shape_secondary.num_cons,
@@ -154,7 +154,7 @@ where
   }
 
   /// Returns the number of variables in the primary and secondary circuits
-  pub fn num_variables(&self) -> (usize, usize) {
+  pub const fn num_variables(&self) -> (usize, usize) {
     (
       self.r1cs_shape_primary.num_vars,
       self.r1cs_shape_secondary.num_vars,
