@@ -83,7 +83,7 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
+  pub fn setup(c_primary: &C1, c_secondary: &C2) -> Self {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -100,7 +100,7 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
       augmented_circuit_params_primary.clone(),
       None,
       c_primary,
@@ -111,7 +111,7 @@ where
     let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
 
     // Initialize ck for the secondary
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
       augmented_circuit_params_secondary.clone(),
       None,
       c_secondary,
@@ -216,10 +216,10 @@ where
       None,
     );
 
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
       pp.augmented_circuit_params_primary.clone(),
       Some(inputs_primary),
-      c_primary.clone(),
+      c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -239,10 +239,10 @@ where
       Some(u_primary.clone()),
       None,
     );
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
       pp.augmented_circuit_params_secondary.clone(),
       Some(inputs_secondary),
-      c_secondary.clone(),
+      c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -328,10 +328,10 @@ where
       Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
     );
 
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
       pp.augmented_circuit_params_primary.clone(),
       Some(inputs_primary),
-      c_primary.clone(),
+      c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
     let _ = circuit_primary.synthesize(&mut cs_primary);
@@ -365,10 +365,10 @@ where
       Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
     );
 
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
       pp.augmented_circuit_params_secondary.clone(),
       Some(inputs_secondary),
-      c_secondary.clone(),
+      c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary);
@@ -865,7 +865,7 @@ mod tests {
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
   {
-    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(&circuit1, &circuit2);
 
     let digest_str = pp
       .digest
@@ -929,7 +929,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(test_circuit1.clone(), test_circuit2.clone());
+    >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
 
@@ -985,7 +985,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1072,7 +1072,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1167,7 +1167,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1339,7 +1339,7 @@ mod tests {
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary, circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1417,7 +1417,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(test_circuit1.clone(), test_circuit2.clone());
+    >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
 

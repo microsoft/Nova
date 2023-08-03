@@ -87,19 +87,19 @@ impl<G: Group> NovaAugmentedCircuitInputs<G> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaAugmentedCircuit<G: Group, SC: StepCircuit<G::Base>> {
+pub struct NovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
   params: NovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NovaAugmentedCircuitInputs<G>>,
-  step_circuit: SC, // The function that is applied for each step
+  step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
+impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
     params: NovaAugmentedCircuitParams,
     inputs: Option<NovaAugmentedCircuitInputs<G>>,
-    step_circuit: SC,
+    step_circuit: &'a SC,
     ro_consts: ROConstantsCircuit<G>,
   ) -> Self {
     Self {
@@ -262,8 +262,8 @@ impl<G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<G, SC> {
   }
 }
 
-impl<G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for NovaAugmentedCircuit<G, SC>
+impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
+  for NovaAugmentedCircuit<'a, G, SC>
 {
   fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
@@ -396,12 +396,13 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
+    let ttc1 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the primary
-    let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         primary_params.clone(),
         None,
-        TrivialTestCircuit::default(),
+        &ttc1,
         ro_consts1.clone(),
       );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
@@ -409,12 +410,13 @@ mod tests {
     let (shape1, ck1) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
+    let ttc2 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         secondary_params.clone(),
         None,
-        TrivialTestCircuit::default(),
+        &ttc2,
         ro_consts2.clone(),
       );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
@@ -434,11 +436,11 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NovaAugmentedCircuit<G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         primary_params,
         Some(inputs1),
-        TrivialTestCircuit::default(),
+        &ttc1,
         ro_consts1,
       );
     let _ = circuit1.synthesize(&mut cs1);
@@ -458,11 +460,11 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit2: NovaAugmentedCircuit<G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
       NovaAugmentedCircuit::new(
         secondary_params,
         Some(inputs2),
-        TrivialTestCircuit::default(),
+        &ttc2,
         ro_consts2,
       );
     let _ = circuit2.synthesize(&mut cs2);
