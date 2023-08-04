@@ -312,7 +312,7 @@ where
       Some(&u_primary),
       None,
       G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-      G2::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
+      G2::Scalar::from(claim.augmented_circuit_index as u64),
     );
     let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
       &pp.augmented_circuit_params_secondary,
@@ -1020,7 +1020,7 @@ mod tests {
     // TODO At the end of this test, RecursiveSNARK need to verify all U_i[] are satisfying instances
 
     let rom = [
-      OPCODE_0, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1,
+      OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1, OPCODE_1, OPCODE_0, OPCODE_0, OPCODE_1,
       OPCODE_1,
     ]; // Rom can be arbitrary length.
     let circuit_secondary = TrivialTestCircuit::new(rom.len());
