@@ -81,7 +81,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(
+  pub const fn get_coordinates(
     &self,
   ) -> (
     &AllocatedNum<G::Base>,
@@ -570,7 +570,7 @@ where
   G: Group,
 {
   /// Creates a new AllocatedPointNonInfinity from the specified coordinates
-  pub fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
+  pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
     Self { x, y }
   }
 
@@ -610,7 +610,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
+  pub const fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
     (&self.x, &self.y)
   }
 
