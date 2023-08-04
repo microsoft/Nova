@@ -110,28 +110,35 @@ impl<G: Group> NIMFS<G> {
   }
 
   /// This function checks whether the current IVC after the last fold performed is satisfied and returns an error if it isn't.
-  pub fn is_sat(&self) -> Result<(), NovaError> {
-    self.lcccs.is_sat(&self.ccs, &self.ccs_mle, &self.ck)
+  pub fn is_sat(&self, witness: &[G::Scalar]) -> Result<(), NovaError> {
+    self
+      .lcccs
+      .is_sat(&self.ccs, &self.ccs_mle, &self.ck, witness)
   }
 
   /// Compute sigma_i and theta_i from step 4.
   pub fn compute_sigmas_and_thetas(
     &self,
-    // Note `z2` represents the input of the incoming CCCS instance.
-    // As the current IVC accumulated input is holded inside of the NIMFS(`self`).
-    z: &[G::Scalar],
+    cccs_witness: &[G::Scalar],
+    cccs: &CCCS<G>,
+    lcccs_witness: &[G::Scalar],
     r_x_prime: &[G::Scalar],
   ) -> (Vec<G::Scalar>, Vec<G::Scalar>) {
     (
       // sigmas
       compute_all_sum_Mz_evals::<G>(
         &self.ccs_mle,
-        self.lcccs.z.as_slice(),
+        self.lcccs.construct_z(lcccs_witness).as_slice(),
         r_x_prime,
         self.ccs.s_prime,
       ),
       // thetas
-      compute_all_sum_Mz_evals::<G>(&self.ccs_mle, z, r_x_prime, self.ccs.s_prime),
+      compute_all_sum_Mz_evals::<G>(
+        &self.ccs_mle,
+        cccs.construct_z(cccs_witness).as_slice(),
+        r_x_prime,
+        self.ccs.s_prime,
+      ),
     )
   }
 
@@ -170,16 +177,20 @@ impl<G: Group> NIMFS<G> {
   }
 
   /// Compute g(x) polynomial for the given inputs.
-  pub fn compute_g(
+  pub(crate) fn compute_g(
     &self,
+    lcccs_witness: &[G::Scalar],
     cccs: &CCCS<G>,
+    cccs_witness: &[G::Scalar],
     gamma: G::Scalar,
     beta: &[G::Scalar],
   ) -> VirtualPolynomial<G::Scalar> {
-    let mut vec_L = self.lcccs.compute_Ls(&self.ccs, &self.ccs_mle);
+    let mut vec_L = self
+      .lcccs
+      .compute_Ls(&self.ccs, &self.ccs_mle, lcccs_witness);
 
     let mut Q = cccs
-      .compute_Q(&self.ccs, &self.ccs_mle, beta)
+      .compute_Q(&self.ccs, &self.ccs_mle, beta, cccs_witness)
       .expect("Q comp should not fail");
 
     let mut g = vec_L[0].clone();
@@ -196,17 +207,25 @@ impl<G: Group> NIMFS<G> {
     g
   }
 
-  /// This folds an upcoming CCCS instance into the running LCCCS instance contained within the NIMFS object.
-  pub fn fold(&mut self, cccs: CCCS<G>) {
+  /// Generates the required elements to be able to fold.
+  pub fn prepare_folding(&mut self) -> (Vec<G::Scalar>, G::Scalar) {
     // Compute r_x_prime and rho from challenging the transcript.
     let r_x_prime = self.gen_r_x();
     // Challenge the transcript once more to obtain `rho`
     let rho = TranscriptEngineTrait::<G>::squeeze(&mut self.transcript, b"rho")
       .expect("This should not fail");
+    (r_x_prime, rho)
+  }
 
-    // Compute sigmas an thetas to fold `v`s.
-    let (sigmas, thetas) = self.compute_sigmas_and_thetas(&cccs.z, &r_x_prime);
-
+  /// This folds an upcoming CCCS instance into the running LCCCS instance contained within the NIMFS object.
+  pub fn fold(
+    &mut self,
+    cccs: &CCCS<G>,
+    sigmas: Vec<G::Scalar>,
+    thetas: Vec<G::Scalar>,
+    r_x_prime: Vec<G::Scalar>,
+    rho: G::Scalar,
+  ) {
     // Compute new v from sigmas and thetas.
     let folded_v: Vec<G::Scalar> = sigmas
       .iter()
@@ -219,20 +238,38 @@ impl<G: Group> NIMFS<G> {
       .map(|(a_i, b_i)| *a_i + b_i)
       .collect();
 
+    // Fold x's
+
+    if self.lcccs.x.is_some() && cccs.x.is_some() {
+      // Use unsafe and unwrap_unchecked??
+      self
+        .lcccs
+        .x
+        .as_mut()
+        .unwrap()
+        .iter_mut()
+        .zip(cccs.x.as_ref().unwrap().iter().map(|x| *x * rho))
+        .for_each(|(x_lcccs, x_cccs)| *x_lcccs += x_cccs);
+    };
+
     // Here we perform steps 7 & 8 of the section 5 of the paper. Were we actually fold LCCCS & CCCS instances.
     self.lcccs.w_comm += cccs.w_comm.mul(rho);
     self.lcccs.v = folded_v;
     self.lcccs.r_x = r_x_prime;
-    self.fold_z(cccs, rho);
+    self.lcccs.u += rho;
   }
 
   /// Folds the current `z` vector of the upcomming CCCS instance together with the LCCCS instance that is contained inside of the NIMFS object.
-  fn fold_z(&mut self, cccs: CCCS<G>, rho: G::Scalar) {
-    // Update u first.
-    self.lcccs.z[0] += rho;
-    self.lcccs.z[1..]
+  pub fn fold_witness(
+    &mut self,
+    cccs: &CCCS<G>,
+    cccs_witness: &[G::Scalar],
+    lcccs_witness: &mut [G::Scalar],
+    rho: G::Scalar,
+  ) {
+    lcccs_witness
       .iter_mut()
-      .zip(cccs.z[1..].iter().map(|x_i| *x_i * rho))
+      .zip(cccs_witness.iter().map(|cccs_w| *cccs_w * rho))
       .for_each(|(a_i, b_i)| *a_i += b_i);
 
     // XXX: There's no handling of r_w atm. So we will ingore until all folding is implemented,
@@ -251,20 +288,23 @@ mod tests {
     let z1 = CCS::<G>::get_test_z(3);
     let z2 = CCS::<G>::get_test_z(4);
 
-    let (_, ccs_witness_1, ccs_instance_1, mles) = CCS::<G>::gen_test_ccs(&z2);
-    let (ccs, ccs_witness_2, ccs_instance_2, _) = CCS::<G>::gen_test_ccs(&z1);
+    let (_, ccs_witness_1, ccs_instance_1, mles) = CCS::<G>::gen_test_ccs(&z1);
+    let (ccs, ccs_witness_2, ccs_instance_2, _) = CCS::<G>::gen_test_ccs(&z2);
+
     let ck = ccs.commitment_key();
 
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     let mut rng = OsRng;
-    let gamma: G::Scalar = G::Scalar::random(&mut rng);
-    let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut rng)).collect();
+    let gamma: G::Scalar = G::Scalar::random(&mut OsRng);
+    let beta: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut OsRng)).collect();
     let r_x: Vec<G::Scalar> = (0..ccs.s).map(|_| G::Scalar::random(&mut OsRng)).collect();
 
     let lcccs = LCCCS::new(&ccs, &mles, &ck, z1, r_x);
+    assert!(lcccs.is_sat(&ccs, &mles, &ck, &ccs_witness_1.w).is_ok());
     let cccs = CCCS::new(&ccs, &mles, z2, &ck);
+    assert!(cccs.is_sat(&ccs, &mles, &ck, &ccs_witness_2.w).is_ok());
 
     let mut sum_v_j_gamma = G::Scalar::ZERO;
     for j in 0..lcccs.v.len() {
@@ -275,7 +315,7 @@ mod tests {
     let nimfs = NIMFS::<G>::new(ccs.clone(), mles.clone(), lcccs.clone(), ck.clone());
 
     // Compute g(x) with that r_x
-    let g = nimfs.compute_g(&cccs, gamma, &beta);
+    let g = nimfs.compute_g(&ccs_witness_1.w, &cccs, &ccs_witness_2.w, gamma, &beta);
 
     // evaluate g(x) over x \in {0,1}^s
     let mut g_on_bhc = G::Scalar::ZERO;
@@ -285,7 +325,7 @@ mod tests {
 
     // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
     let mut sum_Lj_on_bhc = G::Scalar::ZERO;
-    let vec_L = lcccs.compute_Ls(&ccs, &mles);
+    let vec_L = lcccs.compute_Ls(&ccs, &mles, &ccs_witness_1.w);
     for x in BooleanHypercube::new(ccs.s) {
       for (j, coeff) in vec_L.iter().enumerate() {
         let gamma_j = gamma.pow([j as u64]);
@@ -309,8 +349,8 @@ mod tests {
     let z1 = CCS::<G>::get_test_z(3);
     let z2 = CCS::<G>::get_test_z(4);
 
-    let (_, ccs_witness_1, ccs_instance_1, mles) = CCS::<G>::gen_test_ccs(&z2);
-    let (ccs, ccs_witness_2, ccs_instance_2, _) = CCS::<G>::gen_test_ccs(&z1);
+    let (_, ccs_witness_1, ccs_instance_1, mles) = CCS::<G>::gen_test_ccs(&z1);
+    let (ccs, ccs_witness_2, ccs_instance_2, _) = CCS::<G>::gen_test_ccs(&z2);
     let ck: CommitmentKey<G> = ccs.commitment_key();
 
     assert!(ccs.is_sat(&ck, &ccs_instance_1, &ccs_witness_1).is_ok());
@@ -326,10 +366,12 @@ mod tests {
 
     // Generate a new NIMFS instance
     let nimfs = NIMFS::<G>::new(ccs.clone(), mles.clone(), lcccs, ck.clone());
+    let nimfs_witness = ccs_witness_1.w.clone();
 
-    let (sigmas, thetas) = nimfs.compute_sigmas_and_thetas(&cccs.z, r_x.as_slice());
+    let (sigmas, thetas) =
+      nimfs.compute_sigmas_and_thetas(&ccs_witness_2.w, &cccs, &nimfs_witness, &r_x);
 
-    let g = nimfs.compute_g(&cccs, gamma, &beta);
+    let g = nimfs.compute_g(&nimfs_witness, &cccs, &ccs_witness_2.w, gamma, &beta);
     // Assert `g` is correctly computed here.
     {
       // evaluate g(x) over x \in {0,1}^s
@@ -339,7 +381,7 @@ mod tests {
       }
       // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
       let mut sum_Lj_on_bhc = G::Scalar::ZERO;
-      let vec_L = nimfs.lcccs.compute_Ls(&ccs, &mles);
+      let vec_L = nimfs.lcccs.compute_Ls(&ccs, &mles, &nimfs_witness);
       for x in BooleanHypercube::new(ccs.s) {
         for (j, coeff) in vec_L.iter().enumerate() {
           let gamma_j = gamma.pow([j as u64]);
@@ -366,10 +408,6 @@ mod tests {
     assert_eq!(c, expected_c);
   }
 
-  fn test_compute_g() {
-    test_compute_g_with::<Ep>();
-  }
-
   fn test_lccs_fold_with<G: Group>() {
     let z1 = CCS::<G>::get_test_z(3);
     let z2 = CCS::<G>::get_test_z(4);
@@ -383,20 +421,31 @@ mod tests {
     assert!(ccs.is_sat(&ck, &ccs_instance_2, &ccs_witness_2).is_ok());
 
     // Generate a new NIMFS instance
-    let mut nimfs = NIMFS::init(ccs.clone(), z1, b"test_NIMFS");
-    assert!(nimfs.is_sat().is_ok());
+    let mut nimfs = NIMFS::init(ccs.clone(), z1, b"Test NIMFS");
+    let mut nimfs_witness = ccs_witness_1.w.clone();
+    assert!(nimfs.is_sat(&nimfs_witness).is_ok());
 
     // check folding correct stuff still alows the NIMFS to be satisfied correctly.
     let cccs = nimfs.new_cccs(z2);
-    assert!(cccs.is_sat(&ccs, &mles, &ck).is_ok());
-    nimfs.fold(cccs);
-    assert!(nimfs.is_sat().is_ok());
+    assert!(cccs.is_sat(&ccs, &mles, &ck, &ccs_witness_2.w).is_ok());
+
+    let (r_x_prime, rho) = nimfs.prepare_folding();
+    let (sigmas, thetas) =
+      nimfs.compute_sigmas_and_thetas(&ccs_witness_2.w, &cccs, &nimfs_witness, &r_x_prime);
+    nimfs.fold(&cccs, sigmas, thetas, r_x_prime, rho);
+    nimfs.fold_witness(&cccs, &ccs_witness_2.w, &mut nimfs_witness, rho);
+    assert!(nimfs.is_sat(&nimfs_witness).is_ok());
 
     // // Folding garbage should cause a failure
     // let cccs = nimfs.new_cccs(vec![Fq::ONE, Fq::ONE, Fq::ONE]);
     // nimfs.fold(&mut rng, cccs);
     // assert!(nimfs.is_sat().is_err());
     // XXX: Should this indeed pass as it does now?
+  }
+
+  #[test]
+  fn test_compute_g() {
+    test_compute_g_with::<Ep>();
   }
 
   #[test]

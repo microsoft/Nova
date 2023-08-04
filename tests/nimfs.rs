@@ -86,8 +86,10 @@ fn integration_folding_test<G: Group>() {
     b"test_nimfs",
   );
 
+  let mut nimfs_witness = vec![G::Scalar::from(3u64), G::Scalar::from(35u64)];
+
   // Now, the NIMFS should satisfy correctly as we have inputed valid starting inpuits for the first LCCCS contained instance:
-  assert!(nimfs.is_sat().is_ok());
+  assert!(nimfs.is_sat(&nimfs_witness).is_ok());
 
   // Now let's create a valid CCCS instance and fold it:
   let valid_cccs = nimfs.new_cccs(vec![
@@ -95,8 +97,14 @@ fn integration_folding_test<G: Group>() {
     G::Scalar::from(2u64),
     G::Scalar::from(15u64),
   ]);
-  nimfs.fold(valid_cccs);
+  let cccs_witness = vec![G::Scalar::from(2u64), G::Scalar::from(15u64)];
+
+  let (r_x_prime, rho) = nimfs.prepare_folding();
+  let (sigmas, thetas) =
+    nimfs.compute_sigmas_and_thetas(&cccs_witness, &valid_cccs, &nimfs_witness, &r_x_prime);
+  nimfs.fold(&valid_cccs, sigmas, thetas, r_x_prime, rho);
+  nimfs.fold_witness(&valid_cccs, &cccs_witness, &mut nimfs_witness, rho);
 
   // Since the instance was correct, the NIMFS should still be satisfied.
-  assert!(nimfs.is_sat().is_ok());
+  assert!(nimfs.is_sat(&nimfs_witness).is_ok());
 }
