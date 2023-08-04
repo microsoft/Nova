@@ -4,7 +4,7 @@
 //! and another in ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS scheme provides a succinct verifier)
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
 pub mod direct;
-mod math;
+pub(crate) mod math;
 pub(crate) mod polynomial;
 pub mod ppsnark;
 pub mod snark;

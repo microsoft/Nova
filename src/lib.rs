@@ -9,6 +9,7 @@
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::upper_case_acronyms)]
 #![forbid(unsafe_code)]
 
 // private modules
@@ -17,13 +18,20 @@ mod circuit;
 mod constants;
 mod nifs;
 mod r1cs;
-
 // public modules
 pub mod errors;
 pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+
+// experimental modules
+#[cfg(feature = "hypernova")]
+mod ccs;
+#[cfg(feature = "hypernova")]
+mod hypercube;
+#[cfg(feature = "hypernova")]
+mod utils;
 
 use crate::bellperson::{
   r1cs::{NovaShape, NovaWitness},
