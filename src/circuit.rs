@@ -399,12 +399,7 @@ mod tests {
     let ttc1 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the primary
     let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaAugmentedCircuit::new(
-        &primary_params,
-        None,
-        &ttc1,
-        ro_consts1.clone(),
-      );
+      NovaAugmentedCircuit::new(&primary_params, None, &ttc1, ro_consts1.clone());
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape();
@@ -413,12 +408,7 @@ mod tests {
     let ttc2 = TrivialTestCircuit::default();
     // Initialize the shape and ck for the secondary
     let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaAugmentedCircuit::new(
-        &secondary_params,
-        None,
-        &ttc2,
-        ro_consts2.clone(),
-      );
+      NovaAugmentedCircuit::new(&secondary_params, None, &ttc2, ro_consts2.clone());
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape();
@@ -437,12 +427,7 @@ mod tests {
       None,
     );
     let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaAugmentedCircuit::new(
-        &primary_params,
-        Some(inputs1),
-        &ttc1,
-        ro_consts1,
-      );
+      NovaAugmentedCircuit::new(&primary_params, Some(inputs1), &ttc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
@@ -461,12 +446,7 @@ mod tests {
       None,
     );
     let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaAugmentedCircuit::new(
-        &secondary_params,
-        Some(inputs2),
-        &ttc2,
-        ro_consts2,
-      );
+      NovaAugmentedCircuit::new(&secondary_params, Some(inputs2), &ttc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
