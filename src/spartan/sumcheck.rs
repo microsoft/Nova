@@ -61,7 +61,7 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   #[inline]
-  fn compute_eval_points<F>(
+  pub(in crate::spartan) fn compute_eval_points_quadratic<F>(
     poly_A: &MultilinearPolynomial<G::Scalar>,
     poly_B: &MultilinearPolynomial<G::Scalar>,
     comb_func: &F,
@@ -104,7 +104,8 @@ impl<G: Group> SumcheckProof<G> {
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
-        let (eval_point_0, eval_point_2) = Self::compute_eval_points(poly_A, poly_B, &comb_func);
+        let (eval_point_0, eval_point_2) =
+          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
 
         let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
         UniPoly::from_evals(&evals)
@@ -155,7 +156,8 @@ impl<G: Group> SumcheckProof<G> {
       let mut evals: Vec<(G::Scalar, G::Scalar)> = Vec::new();
 
       for (poly_A, poly_B) in poly_A_vec.iter().zip(poly_B_vec.iter()) {
-        let (eval_point_0, eval_point_2) = Self::compute_eval_points(poly_A, poly_B, &comb_func);
+        let (eval_point_0, eval_point_2) =
+          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
         evals.push((eval_point_0, eval_point_2));
       }
 
@@ -189,6 +191,55 @@ impl<G: Group> SumcheckProof<G> {
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))
   }
 
+  #[inline]
+  pub(in crate::spartan) fn compute_eval_points_cubic<F>(
+    poly_A: &MultilinearPolynomial<G::Scalar>,
+    poly_B: &MultilinearPolynomial<G::Scalar>,
+    poly_C: &MultilinearPolynomial<G::Scalar>,
+    poly_D: &MultilinearPolynomial<G::Scalar>,
+    comb_func: &F,
+  ) -> (G::Scalar, G::Scalar, G::Scalar)
+  where
+    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+  {
+    let len = poly_A.len() / 2;
+    (0..len)
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: bound_func is A(low)
+        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
+
+        // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
+        let eval_point_2 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+          &poly_D_bound_point,
+        );
+
+        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
+        let eval_point_3 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+          &poly_D_bound_point,
+        );
+        (eval_point_0, eval_point_2, eval_point_3)
+      })
+      .reduce(
+        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+      )
+  }
+
   pub fn prove_cubic_with_additive_term<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -208,44 +259,9 @@ impl<G: Group> SumcheckProof<G> {
 
     for _ in 0..num_rounds {
       let poly = {
-        let len = poly_A.len() / 2;
-
         // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-          .into_par_iter()
-          .map(|i| {
-            // eval 0: bound_func is A(low)
-            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
-
-            // eval 2: bound_func is -A(low) + 2*A(high)
-            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-            let eval_point_2 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-
-            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-            let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-            let eval_point_3 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-            (eval_point_0, eval_point_2, eval_point_3)
-          })
-          .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          );
+        let (eval_point_0, eval_point_2, eval_point_3) =
+          Self::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
         let evals = vec![
           eval_point_0,
@@ -344,7 +360,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
-      .reduce(|| Scalar::ZERO, |a, b| a + b)
+      .sum()
   }
 
   pub fn evaluate(&self, r: &Scalar) -> Scalar {

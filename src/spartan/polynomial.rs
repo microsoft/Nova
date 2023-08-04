@@ -96,7 +96,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     (0..chis.len())
       .into_par_iter()
       .map(|i| chis[i] * self.Z[i])
-      .reduce(|| Scalar::ZERO, |x, y| x + y)
+      .sum()
   }
 
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
@@ -105,7 +105,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .into_par_iter()
       .zip(Z.into_par_iter())
       .map(|(a, b)| a * b)
-      .reduce(|| Scalar::ZERO, |x, y| x + y)
+      .sum()
   }
 }
 
@@ -158,6 +158,6 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
         let bits = get_bits(self.Z[i].0, r.len());
         SparsePolynomial::compute_chi(&bits, r) * self.Z[i].1
       })
-      .reduce(|| Scalar::ZERO, |x, y| x + y)
+      .sum()
   }
 }

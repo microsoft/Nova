@@ -395,12 +395,10 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
     let poly_A = MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals());
     let poly_B_vec = left_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();
     let poly_C_vec = right_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();
@@ -461,43 +459,10 @@ impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
       .zip(self.poly_C_vec.iter())
       .zip(self.poly_D_vec.iter())
       .map(|((poly_B, poly_C), poly_D)| {
-        let len = poly_B.len() / 2;
         // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-          .into_par_iter()
-          .map(|i| {
-            // eval 0: bound_func is A(low)
-            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
+        let (eval_point_0, eval_point_2, eval_point_3) =
+          SumcheckProof::<G>::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
-            // eval 2: bound_func is -A(low) + 2*A(high)
-            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-            let eval_point_2 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-
-            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-            let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-            let eval_point_3 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-            (eval_point_0, eval_point_2, eval_point_3)
-          })
-          .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          );
         vec![eval_point_0, eval_point_2, eval_point_3]
       })
       .collect::<Vec<Vec<G::Scalar>>>()
@@ -568,44 +533,10 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
        poly_C_comp: &G::Scalar,
        poly_D_comp: &G::Scalar|
        -> G::Scalar { *poly_A_comp * (*poly_B_comp * *poly_C_comp - *poly_D_comp) };
-    let len = poly_A.len() / 2;
 
     // Make an iterator returning the contributions to the evaluations
-    let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
-
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
-      })
-      .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      );
+    let (eval_point_0, eval_point_2, eval_point_3) =
+      SumcheckProof::<G>::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -657,6 +588,8 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
      -> G::Scalar { *poly_A_comp * *poly_B_comp * *poly_C_comp };
     let len = poly_A.len() / 2;
 
+    // TODO: make this call a function in sumcheck.rs by writing an n-ary variant of crate::spartan::sumcheck::SumcheckProof::<G>::compute_eval_points_cubic
+    // once #[feature(array_methods)] stabilizes (this n-ary variant would need array::each_ref)
     // Make an iterator returning the contributions to the evaluations
     let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
       .into_par_iter()

@@ -418,13 +418,12 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       let evaluate_with_table =
         |M: &[(usize, usize, G::Scalar)], T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
           (0..M.len())
-            .collect::<Vec<usize>>()
-            .par_iter()
-            .map(|&i| {
+            .into_par_iter()
+            .map(|i| {
               let (row, col, val) = M[i];
               T_x[row] * T_y[col] * val
             })
-            .reduce(|| G::Scalar::ZERO, |acc, x| acc + x)
+            .sum()
         };
 
       let (T_x, T_y) = rayon::join(
@@ -433,9 +432,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       );
 
       (0..M_vec.len())
-        .collect::<Vec<usize>>()
-        .par_iter()
-        .map(|&i| evaluate_with_table(M_vec[i], &T_x, &T_y))
+        .into_par_iter()
+        .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
         .collect()
     };
 
