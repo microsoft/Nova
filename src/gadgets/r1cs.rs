@@ -55,11 +55,11 @@ impl<G: Group> AllocatedR1CSInstance<G> {
 
   /// Absorb the provided instance in the RO
   pub fn absorb_in_ro(&self, ro: &mut G::ROCircuit) {
-    ro.absorb(self.W.x.clone());
-    ro.absorb(self.W.y.clone());
-    ro.absorb(self.W.is_infinity.clone());
-    ro.absorb(self.X0.clone());
-    ro.absorb(self.X1.clone());
+    ro.absorb(&self.W.x);
+    ro.absorb(&self.W.y);
+    ro.absorb(&self.W.is_infinity);
+    ro.absorb(&self.X0);
+    ro.absorb(&self.X1);
   }
 }
 
@@ -189,13 +189,13 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     mut cs: CS,
     ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    ro.absorb(self.W.x.clone());
-    ro.absorb(self.W.y.clone());
-    ro.absorb(self.W.is_infinity.clone());
-    ro.absorb(self.E.x.clone());
-    ro.absorb(self.E.y.clone());
-    ro.absorb(self.E.is_infinity.clone());
-    ro.absorb(self.u.clone());
+    ro.absorb(&self.W.x);
+    ro.absorb(&self.W.y);
+    ro.absorb(&self.W.is_infinity);
+    ro.absorb(&self.E.x);
+    ro.absorb(&self.E.y);
+    ro.absorb(&self.E.is_infinity);
+    ro.absorb(&self.u);
 
     // Analyze X0 as limbs
     let X0_bn = self
@@ -210,7 +210,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     // absorb each of the limbs of X[0]
     for limb in X0_bn.into_iter() {
-      ro.absorb(limb);
+      ro.absorb(&limb);
     }
 
     // Analyze X1 as limbs
@@ -226,7 +226,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     // absorb each of the limbs of X[1]
     for limb in X1_bn.into_iter() {
-      ro.absorb(limb);
+      ro.absorb(&limb);
     }
 
     Ok(())
@@ -246,12 +246,12 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
     let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
-    ro.absorb(params);
+    ro.absorb(&params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
-    ro.absorb(T.x.clone());
-    ro.absorb(T.y.clone());
-    ro.absorb(T.is_infinity.clone());
+    ro.absorb(&T.x);
+    ro.absorb(&T.y);
+    ro.absorb(&T.is_infinity);
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 

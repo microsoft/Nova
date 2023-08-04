@@ -27,7 +27,7 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  Circuit, ConstraintSystem, SynthesisError,
+  ConstraintSystem, SynthesisError,
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -229,12 +229,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
       self.ro_consts.clone(),
       NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
     );
-    ro.absorb(params.clone());
-    ro.absorb(i);
-    for e in z_0 {
+    ro.absorb(&params);
+    ro.absorb(&i);
+    for e in &z_0 {
       ro.absorb(e);
     }
-    for e in z_i {
+    for e in &z_i {
       ro.absorb(e);
     }
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
@@ -262,13 +262,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
-  for NovaAugmentedCircuit<'a, G, SC>
-{
-  fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
+impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
+  /// synthesize circuit giving constraint system
+  pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
-  ) -> Result<(), SynthesisError> {
+  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
@@ -347,12 +346,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
     let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
-    ro.absorb(params);
-    ro.absorb(i_new.clone());
-    for e in z_0 {
+    ro.absorb(&params);
+    ro.absorb(&i_new);
+    for e in &z_0 {
       ro.absorb(e);
     }
-    for e in z_next {
+    for e in &z_next {
       ro.absorb(e);
     }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
@@ -364,7 +363,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
       .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
 
-    Ok(())
+    Ok(z_next)
   }
 }
 

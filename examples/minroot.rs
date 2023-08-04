@@ -127,18 +127,6 @@ where
 
     z_out
   }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    // sanity check
-    debug_assert_eq!(z[0], self.seq[0].x_i);
-    debug_assert_eq!(z[1], self.seq[0].y_i);
-
-    // compute output using advice
-    vec![
-      self.seq[self.seq.len() - 1].x_i_plus_1,
-      self.seq[self.seq.len() - 1].y_i_plus_1,
-    ]
-  }
 }
 
 fn main() {

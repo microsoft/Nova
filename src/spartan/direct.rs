@@ -201,7 +201,9 @@ mod tests {
 
       Ok(vec![y])
     }
+  }
 
+  impl<F: PrimeField> CubicCircuit<F> {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
