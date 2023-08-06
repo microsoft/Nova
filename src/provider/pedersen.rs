@@ -203,7 +203,9 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
   }
 }
 
-pub(crate) trait CommitmentKeyExtTrait<G: Group> {
+/// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
+pub trait CommitmentKeyExtTrait<G: Group> {
+  /// Holds the type of the commitment engine
   type CE: CommitmentEngineTrait<G>;
 
   /// Splits the commitment key into two pieces at a specified point

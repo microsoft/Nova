@@ -119,51 +119,34 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
       max(total_nz, max(2 * S.num_vars, S.num_cons)).next_power_of_two()
     };
 
-    let row = {
-      let mut r = S
-        .A
-        .iter()
-        .chain(S.B.iter())
-        .chain(S.C.iter())
-        .map(|(r, _, _)| *r)
-        .collect::<Vec<usize>>();
-      r.resize(N, 0usize);
-      r
-    };
+    let (mut row, mut col) = (vec![0usize; N], vec![0usize; N]);
 
-    let col = {
-      let mut c = S
-        .A
-        .iter()
-        .chain(S.B.iter())
-        .chain(S.C.iter())
-        .map(|(_, c, _)| *c)
-        .collect::<Vec<usize>>();
-      c.resize(N, 0usize);
-      c
-    };
+    for (i, (r, c, _)) in S.A.iter().chain(S.B.iter()).chain(S.C.iter()).enumerate() {
+      row[i] = *r;
+      col[i] = *c;
+    }
 
     let val_A = {
-      let mut val = S.A.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>();
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.A.iter().enumerate() {
+        val[i] = *v;
+      }
       val
     };
 
     let val_B = {
-      // prepend zeros
-      let mut val = vec![G::Scalar::ZERO; S.A.len()];
-      val.extend(S.B.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
-      // append zeros
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.B.iter().enumerate() {
+        val[S.A.len() + i] = *v;
+      }
       val
     };
 
     let val_C = {
-      // prepend zeros
-      let mut val = vec![G::Scalar::ZERO; S.A.len() + S.B.len()];
-      val.extend(S.C.iter().map(|(_, _, v)| *v).collect::<Vec<G::Scalar>>());
-      // append zeros
-      val.resize(N, G::Scalar::ZERO);
+      let mut val = vec![G::Scalar::ZERO; N];
+      for (i, (_, _, v)) in S.C.iter().enumerate() {
+        val[S.A.len() + S.B.len() + i] = *v;
+      }
       val
     };
 
@@ -265,29 +248,30 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 
     let mem_row = EqPolynomial::new(r_x_padded).evals();
     let mem_col = {
-      let mut z = z.to_vec();
-      z.resize(self.N, G::Scalar::ZERO);
-      z
+      let mut val = vec![G::Scalar::ZERO; self.N];
+      for (i, v) in z.iter().enumerate() {
+        val[i] = *v;
+      }
+      val
     };
 
-    let mut E_row = S
-      .A
-      .iter()
-      .chain(S.B.iter())
-      .chain(S.C.iter())
-      .map(|(r, _, _)| mem_row[*r])
-      .collect::<Vec<G::Scalar>>();
+    let (E_row, E_col) = {
+      let mut E_row = vec![mem_row[0]; self.N]; // we place mem_row[0] since resized row is appended with 0s
+      let mut E_col = vec![mem_col[0]; self.N];
 
-    let mut E_col = S
-      .A
-      .iter()
-      .chain(S.B.iter())
-      .chain(S.C.iter())
-      .map(|(_, c, _)| mem_col[*c])
-      .collect::<Vec<G::Scalar>>();
-
-    E_row.resize(self.N, mem_row[0]); // we place mem_row[0] since resized row is appended with 0s
-    E_col.resize(self.N, mem_col[0]);
+      for (i, (val_r, val_c)) in S
+        .A
+        .iter()
+        .chain(S.B.iter())
+        .chain(S.C.iter())
+        .map(|(r, c, _)| (mem_row[*r], mem_col[*c]))
+        .enumerate()
+      {
+        E_row[i] = val_r;
+        E_col[i] = val_c;
+      }
+      (E_row, E_col)
+    };
 
     (mem_row, mem_col, E_row, E_col)
   }
@@ -411,12 +395,10 @@ impl<G: Group> ProductSumcheckInstance<G> {
 
     let poly_A = MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals());
     let poly_B_vec = left_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();
     let poly_C_vec = right_vec
-      .clone()
       .into_par_iter()
       .map(MultilinearPolynomial::new)
       .collect::<Vec<_>>();
@@ -477,43 +459,10 @@ impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
       .zip(self.poly_C_vec.iter())
       .zip(self.poly_D_vec.iter())
       .map(|((poly_B, poly_C), poly_D)| {
-        let len = poly_B.len() / 2;
         // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-          .into_par_iter()
-          .map(|i| {
-            // eval 0: bound_func is A(low)
-            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
+        let (eval_point_0, eval_point_2, eval_point_3) =
+          SumcheckProof::<G>::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
-            // eval 2: bound_func is -A(low) + 2*A(high)
-            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-            let eval_point_2 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-
-            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-            let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-            let eval_point_3 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-            (eval_point_0, eval_point_2, eval_point_3)
-          })
-          .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          );
         vec![eval_point_0, eval_point_2, eval_point_3]
       })
       .collect::<Vec<Vec<G::Scalar>>>()
@@ -584,44 +533,10 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
        poly_C_comp: &G::Scalar,
        poly_D_comp: &G::Scalar|
        -> G::Scalar { *poly_A_comp * (*poly_B_comp * *poly_C_comp - *poly_D_comp) };
-    let len = poly_A.len() / 2;
 
     // Make an iterator returning the contributions to the evaluations
-    let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
-
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
-      })
-      .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      );
+    let (eval_point_0, eval_point_2, eval_point_3) =
+      SumcheckProof::<G>::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -673,6 +588,8 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
      -> G::Scalar { *poly_A_comp * *poly_B_comp * *poly_C_comp };
     let len = poly_A.len() / 2;
 
+    // TODO: make this call a function in sumcheck.rs by writing an n-ary variant of crate::spartan::sumcheck::SumcheckProof::<G>::compute_eval_points_cubic
+    // once #[feature(array_methods)] stabilizes (this n-ary variant would need array::each_ref)
     // Make an iterator returning the contributions to the evaluations
     let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
       .into_par_iter()
@@ -862,7 +779,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARK<G, EE>
 
     let mut e = claim;
     let mut r: Vec<G::Scalar> = Vec::new();
-    let mut cubic_polys: Vec<CompressedUniPoly<G>> = Vec::new();
+    let mut cubic_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _i in 0..num_rounds {
       let mut evals: Vec<Vec<G::Scalar>> = Vec::new();
@@ -967,10 +884,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let mut w_u_vec = Vec::new();
 
     // sanity check that R1CSShape has certain size characteristics
-    assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
-    assert_eq!(pk.S.num_vars.next_power_of_two(), pk.S.num_vars);
-    assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
-    assert!(pk.S.num_io < pk.S.num_vars);
+    pk.S.check_regular_shape();
 
     // append the verifier key (which includes commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
@@ -1002,8 +916,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       Bz.resize(pk.S_repr.N, G::Scalar::ZERO);
       Cz.resize(pk.S_repr.N, G::Scalar::ZERO);
 
-      let mut E = W.E.clone();
-      E.resize(pk.S_repr.N, G::Scalar::ZERO);
+      let E = {
+        let mut val = vec![G::Scalar::ZERO; pk.S_repr.N];
+        for (i, w_e) in W.E.iter().enumerate() {
+          val[i] = *w_e;
+        }
+        val
+      };
 
       (Az, Bz, Cz, E)
     };

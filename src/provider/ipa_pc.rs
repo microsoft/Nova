@@ -177,7 +177,7 @@ where
   G: Group,
   CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
 {
-  fn protocol_name() -> &'static [u8] {
+  const fn protocol_name() -> &'static [u8] {
     b"IPA"
   }
 

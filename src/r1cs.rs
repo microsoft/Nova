@@ -139,6 +139,16 @@ impl<G: Group> R1CSShape<G> {
     })
   }
 
+  // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
+  // Panics if num_cons, num_vars, or num_io are not powers of two, or if num_io > num_vars
+  #[inline]
+  pub(crate) fn check_regular_shape(&self) {
+    assert_eq!(self.num_cons.next_power_of_two(), self.num_cons);
+    assert_eq!(self.num_vars.next_power_of_two(), self.num_vars);
+    assert_eq!(self.num_io.next_power_of_two(), self.num_io);
+    assert!(self.num_io < self.num_vars);
+  }
+
   pub fn multiply_vec(
     &self,
     z: &[G::Scalar],

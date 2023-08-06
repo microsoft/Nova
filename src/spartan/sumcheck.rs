@@ -3,19 +3,18 @@
 use super::polynomial::MultilinearPolynomial;
 use crate::errors::NovaError;
 use crate::traits::{Group, TranscriptEngineTrait, TranscriptReprTrait};
-use core::marker::PhantomData;
-use ff::Field;
+use ff::{Field, PrimeField};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub(crate) struct SumcheckProof<G: Group> {
-  compressed_polys: Vec<CompressedUniPoly<G>>,
+  compressed_polys: Vec<CompressedUniPoly<G::Scalar>>,
 }
 
 impl<G: Group> SumcheckProof<G> {
-  pub fn new(compressed_polys: Vec<CompressedUniPoly<G>>) -> Self {
+  pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
     Self { compressed_polys }
   }
 
@@ -61,6 +60,34 @@ impl<G: Group> SumcheckProof<G> {
     Ok((e, r))
   }
 
+  #[inline]
+  pub(in crate::spartan) fn compute_eval_points_quadratic<F>(
+    poly_A: &MultilinearPolynomial<G::Scalar>,
+    poly_B: &MultilinearPolynomial<G::Scalar>,
+    comb_func: &F,
+  ) -> (G::Scalar, G::Scalar)
+  where
+    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+  {
+    let len = poly_A.len() / 2;
+    (0..len)
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: bound_func is A(low)
+        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
+
+        // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+        let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
+        (eval_point_0, eval_point_2)
+      })
+      .reduce(
+        || (G::Scalar::ZERO, G::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1),
+      )
+  }
+
   pub fn prove_quad<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -73,29 +100,12 @@ impl<G: Group> SumcheckProof<G> {
     F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
     let mut r: Vec<G::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
-        let len = poly_A.len() / 2;
-
-        // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2) = (0..len)
-          .into_par_iter()
-          .map(|i| {
-            // eval 0: bound_func is A(low)
-            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
-
-            // eval 2: bound_func is -A(low) + 2*A(high)
-            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-            let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
-            (eval_point_0, eval_point_2)
-          })
-          .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO),
-            |a, b| (a.0 + b.0, a.1 + b.1),
-          );
+        let (eval_point_0, eval_point_2) =
+          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
 
         let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
         UniPoly::from_evals(&evals)
@@ -136,30 +146,18 @@ impl<G: Group> SumcheckProof<G> {
     transcript: &mut G::TE,
   ) -> Result<(Self, Vec<G::Scalar>, (Vec<G::Scalar>, Vec<G::Scalar>)), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar,
+    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
     let mut e = *claim;
     let mut r: Vec<G::Scalar> = Vec::new();
-    let mut quad_polys: Vec<CompressedUniPoly<G>> = Vec::new();
+    let mut quad_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
 
     for _j in 0..num_rounds {
       let mut evals: Vec<(G::Scalar, G::Scalar)> = Vec::new();
 
       for (poly_A, poly_B) in poly_A_vec.iter().zip(poly_B_vec.iter()) {
-        let mut eval_point_0 = G::Scalar::ZERO;
-        let mut eval_point_2 = G::Scalar::ZERO;
-
-        let len = poly_A.len() / 2;
-        for i in 0..len {
-          // eval 0: bound_func is A(low)
-          eval_point_0 += comb_func(&poly_A[i], &poly_B[i]);
-
-          // eval 2: bound_func is -A(low) + 2*A(high)
-          let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-          let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-          eval_point_2 += comb_func(&poly_A_bound_point, &poly_B_bound_point);
-        }
-
+        let (eval_point_0, eval_point_2) =
+          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
         evals.push((eval_point_0, eval_point_2));
       }
 
@@ -193,6 +191,55 @@ impl<G: Group> SumcheckProof<G> {
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))
   }
 
+  #[inline]
+  pub(in crate::spartan) fn compute_eval_points_cubic<F>(
+    poly_A: &MultilinearPolynomial<G::Scalar>,
+    poly_B: &MultilinearPolynomial<G::Scalar>,
+    poly_C: &MultilinearPolynomial<G::Scalar>,
+    poly_D: &MultilinearPolynomial<G::Scalar>,
+    comb_func: &F,
+  ) -> (G::Scalar, G::Scalar, G::Scalar)
+  where
+    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+  {
+    let len = poly_A.len() / 2;
+    (0..len)
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: bound_func is A(low)
+        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
+
+        // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
+        let eval_point_2 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+          &poly_D_bound_point,
+        );
+
+        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
+        let eval_point_3 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+          &poly_D_bound_point,
+        );
+        (eval_point_0, eval_point_2, eval_point_3)
+      })
+      .reduce(
+        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+      )
+  }
+
   pub fn prove_cubic_with_additive_term<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -207,49 +254,14 @@ impl<G: Group> SumcheckProof<G> {
     F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
   {
     let mut r: Vec<G::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<G>> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
 
     for _ in 0..num_rounds {
       let poly = {
-        let len = poly_A.len() / 2;
-
         // Make an iterator returning the contributions to the evaluations
-        let (eval_point_0, eval_point_2, eval_point_3) = (0..len)
-          .into_par_iter()
-          .map(|i| {
-            // eval 0: bound_func is A(low)
-            let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
-
-            // eval 2: bound_func is -A(low) + 2*A(high)
-            let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-            let eval_point_2 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-
-            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-            let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-            let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-            let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-            let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-            let eval_point_3 = comb_func(
-              &poly_A_bound_point,
-              &poly_B_bound_point,
-              &poly_C_bound_point,
-              &poly_D_bound_point,
-            );
-            (eval_point_0, eval_point_2, eval_point_3)
-          })
-          .reduce(
-            || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
-            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          );
+        let (eval_point_0, eval_point_2, eval_point_3) =
+          Self::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
 
         let evals = vec![
           eval_point_0,
@@ -291,25 +303,24 @@ impl<G: Group> SumcheckProof<G> {
 // ax^2 + bx + c stored as vec![a,b,c]
 // ax^3 + bx^2 + cx + d stored as vec![a,b,c,d]
 #[derive(Debug)]
-pub struct UniPoly<G: Group> {
-  coeffs: Vec<G::Scalar>,
+pub struct UniPoly<Scalar: PrimeField> {
+  coeffs: Vec<Scalar>,
 }
 
 // ax^2 + bx + c stored as vec![a,c]
 // ax^3 + bx^2 + cx + d stored as vec![a,c,d]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CompressedUniPoly<G: Group> {
-  coeffs_except_linear_term: Vec<G::Scalar>,
-  _p: PhantomData<G>,
+pub struct CompressedUniPoly<Scalar: PrimeField> {
+  coeffs_except_linear_term: Vec<Scalar>,
 }
 
-impl<G: Group> UniPoly<G> {
-  pub fn from_evals(evals: &[G::Scalar]) -> Self {
+impl<Scalar: PrimeField> UniPoly<Scalar> {
+  pub fn from_evals(evals: &[Scalar]) -> Self {
     // we only support degree-2 or degree-3 univariate polynomials
     assert!(evals.len() == 3 || evals.len() == 4);
     let coeffs = if evals.len() == 3 {
       // ax^2 + bx + c
-      let two_inv = G::Scalar::from(2).invert().unwrap();
+      let two_inv = Scalar::from(2).invert().unwrap();
 
       let c = evals[0];
       let a = two_inv * (evals[2] - evals[1] - evals[1] + c);
@@ -317,8 +328,8 @@ impl<G: Group> UniPoly<G> {
       vec![c, b, a]
     } else {
       // ax^3 + bx^2 + cx + d
-      let two_inv = G::Scalar::from(2).invert().unwrap();
-      let six_inv = G::Scalar::from(6).invert().unwrap();
+      let two_inv = Scalar::from(2).invert().unwrap();
+      let six_inv = Scalar::from(6).invert().unwrap();
 
       let d = evals[0];
       let a = six_inv
@@ -341,18 +352,18 @@ impl<G: Group> UniPoly<G> {
     self.coeffs.len() - 1
   }
 
-  pub fn eval_at_zero(&self) -> G::Scalar {
+  pub fn eval_at_zero(&self) -> Scalar {
     self.coeffs[0]
   }
 
-  pub fn eval_at_one(&self) -> G::Scalar {
+  pub fn eval_at_one(&self) -> Scalar {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
-      .reduce(|| G::Scalar::ZERO, |a, b| a + b)
+      .sum()
   }
 
-  pub fn evaluate(&self, r: &G::Scalar) -> G::Scalar {
+  pub fn evaluate(&self, r: &Scalar) -> Scalar {
     let mut eval = self.coeffs[0];
     let mut power = *r;
     for coeff in self.coeffs.iter().skip(1) {
@@ -362,27 +373,26 @@ impl<G: Group> UniPoly<G> {
     eval
   }
 
-  pub fn compress(&self) -> CompressedUniPoly<G> {
+  pub fn compress(&self) -> CompressedUniPoly<Scalar> {
     let coeffs_except_linear_term = [&self.coeffs[0..1], &self.coeffs[2..]].concat();
     assert_eq!(coeffs_except_linear_term.len() + 1, self.coeffs.len());
     CompressedUniPoly {
       coeffs_except_linear_term,
-      _p: Default::default(),
     }
   }
 }
 
-impl<G: Group> CompressedUniPoly<G> {
+impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
   // we require eval(0) + eval(1) = hint, so we can solve for the linear term as:
   // linear_term = hint - 2 * constant_term - deg2 term - deg3 term
-  pub fn decompress(&self, hint: &G::Scalar) -> UniPoly<G> {
+  pub fn decompress(&self, hint: &Scalar) -> UniPoly<Scalar> {
     let mut linear_term =
       *hint - self.coeffs_except_linear_term[0] - self.coeffs_except_linear_term[0];
     for i in 1..self.coeffs_except_linear_term.len() {
       linear_term -= self.coeffs_except_linear_term[i];
     }
 
-    let mut coeffs: Vec<G::Scalar> = Vec::new();
+    let mut coeffs: Vec<Scalar> = Vec::new();
     coeffs.push(self.coeffs_except_linear_term[0]);
     coeffs.push(linear_term);
     coeffs.extend(&self.coeffs_except_linear_term[1..]);
@@ -391,7 +401,7 @@ impl<G: Group> CompressedUniPoly<G> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for UniPoly<G> {
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs.as_slice().to_transcript_bytes()
