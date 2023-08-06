@@ -18,7 +18,6 @@ use crate::{
 use bitvec::vec;
 use core::{cmp::max, marker::PhantomData};
 use ff::{Field, PrimeField};
-use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
