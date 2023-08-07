@@ -8,7 +8,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
   /// Return the the number of inputs or outputs of each step
   /// (this method is called only at circuit synthesis time)
   /// `synthesize` and `output` methods are expected to take as
-  /// input a vector of size equal to arity and output a vector of size equal to arity  
+  /// input a vector of size equal to arity and output a vector of size equal to arity
   fn arity(&self) -> usize;
 
   /// Sythesize the circuit for a computation step and return variable
@@ -18,9 +18,6 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
     cs: &mut CS,
     z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>;
-
-  /// return the output of the step when provided with the step's input
-  fn output(&self, z: &[F]) -> Vec<F>;
 }
 
 /// A trivial step circuit that simply returns the input
@@ -43,9 +40,5 @@ where
     z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
     Ok(z.to_vec())
-  }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    z.to_vec()
   }
 }

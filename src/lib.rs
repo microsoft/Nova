@@ -30,7 +30,7 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::{Circuit, ConstraintSystem};
+use ::bellperson::ConstraintSystem;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -200,10 +200,6 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Self {
-    // Expected outputs of the two circuits
-    let zi_primary = c_primary.output(&z0_primary);
-    let zi_secondary = c_secondary.output(&z0_secondary);
-
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
@@ -222,7 +218,10 @@ where
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let _ = circuit_primary.synthesize(&mut cs_primary);
+    let zi_primary = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_| NovaError::SynthesisError)
+      .expect("Nova error synthesis");
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
       .map_err(|_e| NovaError::UnSat)
@@ -245,7 +244,10 @@ where
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+    let zi_secondary = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_| NovaError::SynthesisError)
+      .expect("Nova error synthesis");
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat)
@@ -268,6 +270,18 @@ where
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       panic!("Invalid step length");
     }
+
+    let zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()
+      .expect("Nova error synthesis");
+
+    let zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()
+      .expect("Nova error synthesis");
 
     Self {
       r_W_primary,
@@ -334,7 +348,9 @@ where
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let _ = circuit_primary.synthesize(&mut cs_primary);
+    let zi_primary = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_primary, l_w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
@@ -371,15 +387,23 @@ where
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+    let zi_secondary = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat)?;
 
     // update the running instances and witnesses
-    self.zi_primary = c_primary.output(&self.zi_primary);
-    self.zi_secondary = c_secondary.output(&self.zi_secondary);
+    self.zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+    self.zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
     self.l_u_secondary = l_u_secondary;
     self.l_w_secondary = l_w_secondary;
@@ -852,7 +876,12 @@ mod tests {
 
       Ok(vec![y])
     }
+  }
 
+  impl<F> CubicCircuit<F>
+  where
+    F: PrimeField,
+  {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
@@ -1313,17 +1342,6 @@ mod tests {
         );
 
         Ok(vec![y])
-      }
-
-      fn output(&self, z: &[F]) -> Vec<F> {
-        // sanity check
-        let x = z[0];
-        let y_pow_5 = self.y * self.y.clone().square().square();
-        assert_eq!(x, y_pow_5);
-
-        // return non-deterministic advice
-        // as the output of the step
-        vec![self.y]
       }
     }
 
