@@ -31,7 +31,7 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
   /// Creates a new `EqPolynomial` from a vector of Scalars `r`.
   ///
   /// Each Scalar in `r` corresponds to a bit from the binary representation of an input value `e`.
-  pub fn new(r: Vec<Scalar>) -> Self {
+  pub const fn new(r: Vec<Scalar>) -> Self {
     EqPolynomial { r }
   }
 
@@ -111,7 +111,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   /// Returns the number of variables in the multilinear polynomial
-  pub fn get_num_vars(&self) -> usize {
+  pub const fn get_num_vars(&self) -> usize {
     self.num_vars
   }
 
@@ -160,7 +160,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     (0..chis.len())
       .into_par_iter()
       .map(|i| chis[i] * self.Z[i])
-      .reduce(|| Scalar::ZERO, |x, y| x + y)
+      .sum()
   }
 
   /// Evaluates the polynomial with the given evaluations and point.

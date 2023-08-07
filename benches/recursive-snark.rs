@@ -56,7 +56,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let c_secondary = TrivialTestCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
 
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing

@@ -48,10 +48,7 @@ impl Ord for OrderedVariable {
 
 #[allow(clippy::upper_case_acronyms)]
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct ShapeCS<G: Group>
-where
-  G::Scalar: PrimeField + Field,
-{
+pub struct ShapeCS<G: Group> {
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
   #[allow(clippy::type_complexity)]
@@ -92,10 +89,7 @@ fn proc_lc<Scalar: PrimeField>(
   map
 }
 
-impl<G: Group> ShapeCS<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> ShapeCS<G> {
   /// Create a new, default `ShapeCS`,
   pub fn new() -> Self {
     ShapeCS::default()
@@ -216,10 +210,7 @@ where
   }
 }
 
-impl<G: Group> Default for ShapeCS<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> Default for ShapeCS<G> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var(ShapeCS::<G>::one()));
@@ -233,10 +224,7 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   type Root = Self;
 
   fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>

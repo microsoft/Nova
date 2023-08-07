@@ -28,10 +28,7 @@ pub trait NovaShape<G: Group> {
   fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
 }
 
-impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<G>,
@@ -48,10 +45,7 @@ where
   }
 }
 
-impl<G: Group> NovaShape<G> for ShapeCS<G>
-where
-  G::Scalar: PrimeField,
-{
+impl<G: Group> NovaShape<G> for ShapeCS<G> {
   fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
     let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
     let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();

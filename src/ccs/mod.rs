@@ -24,7 +24,6 @@ use crate::{
 use bitvec::vec;
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use itertools::concat;
 use rand_core::RngCore;
 use rayon::prelude::*;
