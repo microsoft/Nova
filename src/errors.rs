@@ -26,9 +26,6 @@ pub enum NovaError {
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance, with error message
   #[error("UnSatMsg")]
   UnSatMsg(String),
-  /// returned if synthesis error with error msg
-  #[error("SynthesisError")]
-  SynthesisError(String),
   /// returned when the supplied compressed commitment cannot be decompressed
   #[error("DecompressionError")]
   DecompressionError,
@@ -65,4 +62,10 @@ pub enum NovaError {
   /// missig commitment key
   #[error("MissingCK")]
   MissingCK,
+  /// return when error during synthesis
+  #[error("SynthesisError")]
+  SynthesisError,
+  /// return when error during synthesis with error msg
+  #[error("SynthesisErrorMsg")]
+  SynthesisErrorMsg(String),
 }

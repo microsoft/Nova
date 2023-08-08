@@ -159,7 +159,7 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
 
   /// Adds a scalar to the internal state
-  fn absorb(&mut self, e: AllocatedNum<Base>);
+  fn absorb(&mut self, e: &AllocatedNum<Base>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
   fn squeeze<CS>(&mut self, cs: CS, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>

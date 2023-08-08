@@ -33,7 +33,7 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::{Circuit, ConstraintSystem};
+use ::bellperson::ConstraintSystem;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -86,7 +86,7 @@ where
   C2: StepCircuit<G2::Scalar>,
 {
   /// Create a new `PublicParams`
-  pub fn setup(c_primary: C1, c_secondary: C2) -> Self {
+  pub fn setup(c_primary: &C1, c_secondary: &C2) -> Self {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -103,8 +103,8 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
-      augmented_circuit_params_primary.clone(),
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
+      &augmented_circuit_params_primary,
       None,
       c_primary,
       ro_consts_circuit_primary.clone(),
@@ -114,8 +114,8 @@ where
     let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape_with_commitmentkey();
 
     // Initialize ck for the secondary
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
-      augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
+      &augmented_circuit_params_secondary,
       None,
       c_secondary,
       ro_consts_circuit_secondary.clone(),
@@ -149,7 +149,7 @@ where
   }
 
   /// Returns the number of constraints in the primary and secondary circuits
-  pub fn num_constraints(&self) -> (usize, usize) {
+  pub const fn num_constraints(&self) -> (usize, usize) {
     (
       self.r1cs_shape_primary.num_cons,
       self.r1cs_shape_secondary.num_cons,
@@ -157,7 +157,7 @@ where
   }
 
   /// Returns the number of variables in the primary and secondary circuits
-  pub fn num_variables(&self) -> (usize, usize) {
+  pub const fn num_variables(&self) -> (usize, usize) {
     (
       self.r1cs_shape_primary.num_vars,
       self.r1cs_shape_secondary.num_vars,
@@ -203,10 +203,6 @@ where
     z0_primary: Vec<G1::Scalar>,
     z0_secondary: Vec<G2::Scalar>,
   ) -> Self {
-    // Expected outputs of the two circuits
-    let zi_primary = c_primary.output(&z0_primary);
-    let zi_secondary = c_secondary.output(&z0_secondary);
-
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
@@ -219,13 +215,16 @@ where
       None,
     );
 
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
-      c_primary.clone(),
+      c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let _ = circuit_primary.synthesize(&mut cs_primary);
+    let zi_primary = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_| NovaError::SynthesisError)
+      .expect("Nova error synthesis");
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
       .map_err(|_e| NovaError::UnSat)
@@ -242,13 +241,16 @@ where
       Some(u_primary.clone()),
       None,
     );
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
-      c_secondary.clone(),
+      c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+    let zi_secondary = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_| NovaError::SynthesisError)
+      .expect("Nova error synthesis");
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat)
@@ -271,6 +273,18 @@ where
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
       panic!("Invalid step length");
     }
+
+    let zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()
+      .expect("Nova error synthesis");
+
+    let zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()
+      .expect("Nova error synthesis");
 
     Self {
       r_W_primary,
@@ -331,13 +345,15 @@ where
       Some(Commitment::<G2>::decompress(&nifs_secondary.comm_T)?),
     );
 
-    let circuit_primary: NovaAugmentedCircuit<G2, C1> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_primary.clone(),
+    let circuit_primary: NovaAugmentedCircuit<'_, G2, C1> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
-      c_primary.clone(),
+      c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let _ = circuit_primary.synthesize(&mut cs_primary);
+    let zi_primary = circuit_primary
+      .synthesize(&mut cs_primary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_primary, l_w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
@@ -368,21 +384,29 @@ where
       Some(Commitment::<G1>::decompress(&nifs_primary.comm_T)?),
     );
 
-    let circuit_secondary: NovaAugmentedCircuit<G1, C2> = NovaAugmentedCircuit::new(
-      pp.augmented_circuit_params_secondary.clone(),
+    let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
-      c_secondary.clone(),
+      c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let _ = circuit_secondary.synthesize(&mut cs_secondary);
+    let zi_secondary = circuit_secondary
+      .synthesize(&mut cs_secondary)
+      .map_err(|_| NovaError::SynthesisError)?;
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat)?;
 
     // update the running instances and witnesses
-    self.zi_primary = c_primary.output(&self.zi_primary);
-    self.zi_secondary = c_secondary.output(&self.zi_secondary);
+    self.zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+    self.zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
     self.l_u_secondary = l_u_secondary;
     self.l_w_secondary = l_w_secondary;
@@ -858,7 +882,12 @@ mod tests {
 
       Ok(vec![y])
     }
+  }
 
+  impl<F> CubicCircuit<F>
+  where
+    F: PrimeField,
+  {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
@@ -871,7 +900,7 @@ mod tests {
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
   {
-    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(&circuit1, &circuit2);
 
     let digest_str = pp
       .digest
@@ -935,7 +964,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(test_circuit1.clone(), test_circuit2.clone());
+    >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
 
@@ -991,7 +1020,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1078,7 +1107,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1173,7 +1202,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1320,17 +1349,6 @@ mod tests {
 
         Ok(vec![y])
       }
-
-      fn output(&self, z: &[F]) -> Vec<F> {
-        // sanity check
-        let x = z[0];
-        let y_pow_5 = self.y * self.y.clone().square().square();
-        assert_eq!(x, y_pow_5);
-
-        // return non-deterministic advice
-        // as the output of the step
-        vec![self.y]
-      }
     }
 
     let circuit_primary = FifthRootCheckingCircuit {
@@ -1345,7 +1363,7 @@ mod tests {
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary, circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
@@ -1423,7 +1441,7 @@ mod tests {
       G2,
       TrivialTestCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(test_circuit1.clone(), test_circuit2.clone());
+    >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
 

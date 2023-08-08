@@ -81,7 +81,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(
+  pub const fn get_coordinates(
     &self,
   ) -> (
     &AllocatedNum<G::Base>,
@@ -424,7 +424,7 @@ where
   }
 
   /// A gadget for scalar multiplication, optimized to use incomplete addition law.
-  /// The optimization here is analogous to https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295,
+  /// The optimization here is analogous to <https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295>,
   /// except we use complete addition law over affine coordinates instead of projective coordinates for the tail bits
   pub fn scalar_mul<CS: ConstraintSystem<G::Base>>(
     &self,
@@ -570,7 +570,7 @@ where
   G: Group,
 {
   /// Creates a new AllocatedPointNonInfinity from the specified coordinates
-  pub fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
+  pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
     Self { x, y }
   }
 
@@ -610,7 +610,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
+  pub const fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
     (&self.x, &self.y)
   }
 

@@ -3,9 +3,11 @@
 //! We provide two implementations, one in snark.rs (which does not use any preprocessing)
 //! and another in ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS scheme provides a succinct verifier)
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
+//!
+//! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
 pub mod direct;
-mod math;
-pub(crate) mod polynomial;
+pub(crate) mod math;
+pub mod polynomial;
 pub mod ppsnark;
 pub mod snark;
 mod sumcheck;

@@ -65,7 +65,7 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let c_secondary = TrivialTestCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
 
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
@@ -152,7 +152,7 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     let c_secondary = TrivialTestCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
 
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, SS1, SS2>::setup(&pp).unwrap();
@@ -258,15 +258,5 @@ where
       x = y.clone();
     }
     Ok(vec![y])
-  }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    let mut x = z[0];
-    let mut y = x;
-    for _i in 0..self.num_cons {
-      y = x * x;
-      x = y;
-    }
-    vec![y]
   }
 }

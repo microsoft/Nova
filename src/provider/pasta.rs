@@ -31,7 +31,7 @@ pub struct PallasCompressedElementWrapper {
 
 impl PallasCompressedElementWrapper {
   /// Wraps repr into the wrapper
-  pub fn new(repr: [u8; 32]) -> Self {
+  pub const fn new(repr: [u8; 32]) -> Self {
     Self { repr }
   }
 }
@@ -44,7 +44,7 @@ pub struct VestaCompressedElementWrapper {
 
 impl VestaCompressedElementWrapper {
   /// Wraps repr into the wrapper
-  pub fn new(repr: [u8; 32]) -> Self {
+  pub const fn new(repr: [u8; 32]) -> Self {
     Self { repr }
   }
 }

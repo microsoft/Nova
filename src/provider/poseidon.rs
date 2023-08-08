@@ -138,9 +138,9 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb(&mut self, e: AllocatedNum<Scalar>) {
+  fn absorb(&mut self, e: &AllocatedNum<Scalar>) {
     assert!(!self.squeezed, "Cannot absorb after squeezing");
-    self.state.push(e);
+    self.state.push(e.clone());
   }
 
   /// Compute a challenge by hashing the current state
@@ -233,7 +233,7 @@ mod tests {
       num_gadget
         .inputize(&mut cs.namespace(|| format!("input {i}")))
         .unwrap();
-      ro_gadget.absorb(num_gadget);
+      ro_gadget.absorb(&num_gadget);
     }
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();

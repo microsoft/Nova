@@ -296,7 +296,7 @@ where
 
     circuit_primary
       .synthesize(&mut cs_primary)
-      .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
+      .map_err(|_e| NovaError::SynthesisErrorMsg(_e.to_string()))?;
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
       .map_err(|_e| NovaError::UnSat)?;
@@ -323,7 +323,7 @@ where
     );
     circuit_secondary
       .synthesize(&mut cs_secondary)
-      .map_err(|_e| NovaError::SynthesisError(_e.to_string()))?;
+      .map_err(|_e| NovaError::SynthesisErrorMsg(_e.to_string()))?;
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
       .map_err(|_e| NovaError::UnSat)?;

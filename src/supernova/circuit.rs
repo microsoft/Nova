@@ -318,19 +318,19 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
-    ro.absorb(params.clone());
-    ro.absorb(i);
-    ro.absorb(program_counter);
+    ro.absorb(&params);
+    ro.absorb(&i);
+    ro.absorb(&program_counter);
 
     // NOTE only witness and DO NOT need to constrain last_augmented_circuit_index.
     // Because prover can only make valid IVC proof by folding u into correct U_i[last_augmented_circuit_index]
     // therefore last_augmented_circuit_index can be just aux
 
     for e in &z_0 {
-      ro.absorb(e.clone());
+      ro.absorb(e);
     }
     for e in &z_i {
-      ro.absorb(e.clone());
+      ro.absorb(e);
     }
 
     U.iter().enumerate().try_for_each(|(i, U)| {
@@ -580,14 +580,14 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> Circuit<<G as Group>::Base>
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
-    ro.absorb(params);
-    ro.absorb(i_next.clone());
-    ro.absorb(program_counter_new);
+    ro.absorb(&params);
+    ro.absorb(&i_next);
+    ro.absorb(&program_counter_new);
     for e in &z_0 {
-      ro.absorb(e.clone());
+      ro.absorb(e);
     }
     for e in &z_next {
-      ro.absorb(e.clone());
+      ro.absorb(e);
     }
     U_next.iter().enumerate().try_for_each(|(i, U)| {
       U.absorb_in_ro(cs.namespace(|| format!("absorb U_new {:?}", i)), &mut ro)
