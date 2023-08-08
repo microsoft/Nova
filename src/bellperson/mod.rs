@@ -5,6 +5,7 @@
 pub mod r1cs;
 pub mod shape_cs;
 pub mod solver;
+pub mod test_shape_cs;
 
 #[cfg(test)]
 mod tests {

@@ -750,7 +750,7 @@ mod tests {
   use super::*;
   use crate::bellperson::{
     r1cs::{NovaShape, NovaWitness},
-    {shape_cs::ShapeCS, solver::SatisfyingAssignment},
+    {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
   };
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use ff::{Field, PrimeFieldBits};
@@ -989,7 +989,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();
@@ -1042,7 +1042,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();
@@ -1099,7 +1099,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();

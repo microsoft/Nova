@@ -167,12 +167,12 @@ mod tests {
   {
     use crate::bellperson::{
       r1cs::{NovaShape, NovaWitness},
-      shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
+      test_shape_cs::TestShapeCS,
     };
 
     // First create the shape
-    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let mut cs: TestShapeCS<G> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape();
     let ro_consts =
