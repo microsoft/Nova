@@ -27,7 +27,9 @@ use ::bellperson::ConstraintSystem;
 use crate::nifs::NIFS;
 
 mod circuit; // declare the module first
-use circuit::{CircuitInputs, CircuitParams, SuperNovaCircuit};
+use circuit::{
+  SuperNovaAugmentedCircuit, SuperNovaAugmentedCircuitInputs, SuperNovaAugmentedCircuitParams,
+};
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize)]
@@ -49,8 +51,8 @@ where
   ck_secondary: Option<CommitmentKey<G2>>,
   r1cs_shape_secondary: R1CSShape<G2>,
   constraints_path_secondary: Vec<String>,
-  augmented_circuit_params_primary: CircuitParams,
-  augmented_circuit_params_secondary: CircuitParams,
+  augmented_circuit_params_primary: SuperNovaAugmentedCircuitParams,
+  augmented_circuit_params_secondary: SuperNovaAugmentedCircuitParams,
 }
 
 impl<G1, G2> PublicParams<G1, G2>
@@ -64,8 +66,10 @@ where
     c_secondary: &C2,
     num_augmented_circuits: usize,
   ) -> Self where {
-    let augmented_circuit_params_primary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let augmented_circuit_params_secondary = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let augmented_circuit_params_primary =
+      SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let augmented_circuit_params_secondary =
+      SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
 
     let ro_consts_primary: ROConstants<G1> = ROConstants::<G1>::new();
     let ro_consts_secondary: ROConstants<G2> = ROConstants::<G2>::new();
@@ -78,7 +82,7 @@ where
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = ROConstantsCircuit::<G1>::new();
 
     // Initialize ck for the primary
-    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+    let circuit_primary: SuperNovaAugmentedCircuit<'_, G2, C1> = SuperNovaAugmentedCircuit::new(
       &augmented_circuit_params_primary,
       None,
       c_primary,
@@ -97,7 +101,7 @@ where
       .collect();
 
     // Initialize ck for the secondary
-    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+    let circuit_secondary: SuperNovaAugmentedCircuit<'_, G1, C2> = SuperNovaAugmentedCircuit::new(
       &augmented_circuit_params_secondary,
       None,
       c_secondary,
@@ -274,19 +278,20 @@ where
 
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs_primary: CircuitInputs<'_, G2> = CircuitInputs::new(
-      scalar_as_base::<G1>(pp_digest),
-      G1::Scalar::ZERO,
-      z0_primary,
-      None,
-      None,
-      None,
-      None,
-      initial_program_counter,
-      G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
-    );
+    let inputs_primary: SuperNovaAugmentedCircuitInputs<'_, G2> =
+      SuperNovaAugmentedCircuitInputs::new(
+        scalar_as_base::<G1>(pp_digest),
+        G1::Scalar::ZERO,
+        z0_primary,
+        None,
+        None,
+        None,
+        None,
+        initial_program_counter,
+        G1::Scalar::ZERO, // set augmented circuit index selector to 0 in base case
+      );
 
-    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+    let circuit_primary: SuperNovaAugmentedCircuit<'_, G2, C1> = SuperNovaAugmentedCircuit::new(
       &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
       c_primary,
@@ -303,18 +308,19 @@ where
 
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs_secondary: CircuitInputs<'_, G1> = CircuitInputs::new(
-      pp_digest,
-      G2::Scalar::ZERO,
-      z0_secondary,
-      None,
-      None,
-      Some(&u_primary),
-      None,
-      G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-      G2::Scalar::from(claim.augmented_circuit_index as u64),
-    );
-    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+    let inputs_secondary: SuperNovaAugmentedCircuitInputs<'_, G1> =
+      SuperNovaAugmentedCircuitInputs::new(
+        pp_digest,
+        G2::Scalar::ZERO,
+        z0_secondary,
+        None,
+        None,
+        Some(&u_primary),
+        None,
+        G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
+        G2::Scalar::from(claim.augmented_circuit_index as u64),
+      );
+    let circuit_secondary: SuperNovaAugmentedCircuit<'_, G1, C2> = SuperNovaAugmentedCircuit::new(
       &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
       c_secondary,
@@ -447,19 +453,20 @@ where
 
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let T = Commitment::<G2>::decompress(&nifs_secondary.comm_T)?;
-    let inputs_primary: CircuitInputs<'_, G2> = CircuitInputs::new(
-      scalar_as_base::<G1>(self.pp_digest),
-      G1::Scalar::from(self.i as u64),
-      z0_primary,
-      Some(&self.zi_primary),
-      Some(&self.r_U_secondary),
-      Some(&self.l_u_secondary),
-      Some(&T),
-      self.program_counter,
-      G1::Scalar::ZERO,
-    );
+    let inputs_primary: SuperNovaAugmentedCircuitInputs<'_, G2> =
+      SuperNovaAugmentedCircuitInputs::new(
+        scalar_as_base::<G1>(self.pp_digest),
+        G1::Scalar::from(self.i as u64),
+        z0_primary,
+        Some(&self.zi_primary),
+        Some(&self.r_U_secondary),
+        Some(&self.l_u_secondary),
+        Some(&T),
+        self.program_counter,
+        G1::Scalar::ZERO,
+      );
 
-    let circuit_primary: SuperNovaCircuit<'_, G2, C1> = SuperNovaCircuit::new(
+    let circuit_primary: SuperNovaAugmentedCircuit<'_, G2, C1> = SuperNovaAugmentedCircuit::new(
       &pp.augmented_circuit_params_primary,
       Some(inputs_primary),
       c_primary,
@@ -516,19 +523,20 @@ where
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let binding = Commitment::<G1>::decompress(&nifs_primary.comm_T)?;
-    let inputs_secondary: CircuitInputs<'_, G1> = CircuitInputs::new(
-      self.pp_digest,
-      G2::Scalar::from(self.i as u64),
-      z0_secondary,
-      Some(&self.zi_secondary),
-      Some(&self.r_U_primary),
-      Some(&l_u_primary),
-      Some(&binding),
-      G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
-      G2::Scalar::from(claim.get_augmented_circuit_index() as u64),
-    );
+    let inputs_secondary: SuperNovaAugmentedCircuitInputs<'_, G1> =
+      SuperNovaAugmentedCircuitInputs::new(
+        self.pp_digest,
+        G2::Scalar::from(self.i as u64),
+        z0_secondary,
+        Some(&self.zi_secondary),
+        Some(&self.r_U_primary),
+        Some(&l_u_primary),
+        Some(&binding),
+        G2::Scalar::ZERO, // secondary circuit never constrain/bump program counter
+        G2::Scalar::from(claim.get_augmented_circuit_index() as u64),
+      );
 
-    let circuit_secondary: SuperNovaCircuit<'_, G1, C2> = SuperNovaCircuit::new(
+    let circuit_secondary: SuperNovaAugmentedCircuit<'_, G1, C2> = SuperNovaAugmentedCircuit::new(
       &pp.augmented_circuit_params_secondary,
       Some(inputs_secondary),
       c_secondary,

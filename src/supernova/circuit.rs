@@ -43,14 +43,14 @@ use ff::Field;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CircuitParams {
+pub struct SuperNovaAugmentedCircuitParams {
   limb_width: usize,
   n_limbs: usize,
   is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
-impl CircuitParams {
-  pub fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
+impl SuperNovaAugmentedCircuitParams {
+  pub const fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
       n_limbs,
@@ -64,7 +64,7 @@ impl CircuitParams {
 }
 
 #[derive(Debug)]
-pub struct CircuitInputs<'a, G: Group> {
+pub struct SuperNovaAugmentedCircuitInputs<'a, G: Group> {
   pp_digest: G::Scalar,
   i: G::Base,
   z0: &'a [G::Base],
@@ -76,7 +76,7 @@ pub struct CircuitInputs<'a, G: Group> {
   last_augmented_circuit_index: G::Base,
 }
 
-impl<'a, G: Group> CircuitInputs<'a, G> {
+impl<'a, G: Group> SuperNovaAugmentedCircuitInputs<'a, G> {
   /// Create new inputs/witness for the verification circuit
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -107,19 +107,19 @@ impl<'a, G: Group> CircuitInputs<'a, G> {
 /// The augmented circuit F' in SuperNova that includes a step circuit F
 /// and the circuit for the verifier in SuperNova's non-interactive folding scheme,
 /// SuperNova NIVS will fold strictly r1cs instance u with respective relaxed r1cs instance U[last_augmented_circuit_index]
-pub struct SuperNovaCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
-  params: &'a CircuitParams,
+pub struct SuperNovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
+  params: &'a SuperNovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
-  inputs: Option<CircuitInputs<'a, G>>,
+  inputs: Option<SuperNovaAugmentedCircuitInputs<'a, G>>,
   step_circuit: &'a SC,          // The function that is applied for each step
   num_augmented_circuits: usize, // number of overall augmented circuits
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
+impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
-  pub fn new(
-    params: &'a CircuitParams,
-    inputs: Option<CircuitInputs<'a, G>>,
+  pub const fn new(
+    params: &'a SuperNovaAugmentedCircuitParams,
+    inputs: Option<SuperNovaAugmentedCircuitInputs<'a, G>>,
     step_circuit: &'a SC,
     ro_consts: ROConstantsCircuit<G>,
     num_augmented_circuits: usize,
@@ -406,7 +406,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
   }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaCircuit<'a, G, SC> {
+impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC> {
   pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
     self,
     cs: &mut CS,
@@ -622,8 +622,8 @@ mod tests {
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
   fn test_recursive_circuit_with<G1, G2>(
-    primary_params: CircuitParams,
-    secondary_params: CircuitParams,
+    primary_params: SuperNovaAugmentedCircuitParams,
+    secondary_params: SuperNovaAugmentedCircuitParams,
     ro_consts1: ROConstantsCircuit<G2>,
     ro_consts2: ROConstantsCircuit<G1>,
     num_constraints_primary: usize,
@@ -637,8 +637,8 @@ mod tests {
     // Initialize the shape and ck for the primary
     let step_circuit1 = TrivialTestCircuit::default();
     let arity1 = step_circuit1.arity();
-    let circuit1: SuperNovaCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      SuperNovaCircuit::new(&primary_params, None, &step_circuit1, ro_consts1.clone(), 2);
+    let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      SuperNovaAugmentedCircuit::new(&primary_params, None, &step_circuit1, ro_consts1.clone(), 2);
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     if let Err(e) = circuit1.synthesize(&mut cs) {
       panic!("{}", e)
@@ -649,8 +649,8 @@ mod tests {
     // Initialize the shape and ck for the secondary
     let step_circuit2 = TrivialTestCircuit::default();
     let arity2 = step_circuit2.arity();
-    let circuit2: SuperNovaCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      SuperNovaCircuit::new(
+    let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      SuperNovaAugmentedCircuit::new(
         &secondary_params,
         None,
         &step_circuit2,
@@ -668,7 +668,7 @@ mod tests {
     let zero1 = <<G2 as Group>::Base as Field>::ZERO;
     let z0 = vec![zero1; arity1];
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: CircuitInputs<'_, G2> = CircuitInputs::new(
+    let inputs1: SuperNovaAugmentedCircuitInputs<'_, G2> = SuperNovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
       &z0,
@@ -680,8 +680,8 @@ mod tests {
       zero1,
     );
     let step_circuit = TrivialTestCircuit::default();
-    let circuit1: SuperNovaCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      SuperNovaCircuit::new(&primary_params, Some(inputs1), &step_circuit, ro_consts1, 2);
+    let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+      SuperNovaAugmentedCircuit::new(&primary_params, Some(inputs1), &step_circuit, ro_consts1, 2);
     if let Err(e) = circuit1.synthesize(&mut cs1) {
       panic!("{}", e)
     }
@@ -693,7 +693,7 @@ mod tests {
     let zero2 = <<G1 as Group>::Base as Field>::ZERO;
     let z0 = vec![zero2; arity2];
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs2: CircuitInputs<'_, G1> = CircuitInputs::new(
+    let inputs2: SuperNovaAugmentedCircuitInputs<'_, G1> = SuperNovaAugmentedCircuitInputs::new(
       scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,
       &z0,
@@ -705,8 +705,8 @@ mod tests {
       zero2,
     );
     let step_circuit = TrivialTestCircuit::default();
-    let circuit2: SuperNovaCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      SuperNovaCircuit::new(
+    let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+      SuperNovaAugmentedCircuit::new(
         &secondary_params,
         Some(inputs2),
         &step_circuit,
@@ -723,8 +723,8 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit() {
-    let params1 = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = CircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let params1 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
 
