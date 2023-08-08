@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;

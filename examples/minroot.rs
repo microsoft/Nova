@@ -3,7 +3,7 @@
 //! We execute a configurable number of iterations of the MinRoot function per step of Nova's recursion.
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{

@@ -3,9 +3,8 @@
 use crate::traits::Group;
 use ff::Field;
 
-use bellperson::{
-  multiexp::DensityTracker, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
-};
+use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use bellperson::multiexp::DensityTracker;
 
 /// A `ConstraintSystem` which calculates witness values for a concrete instance of an R1CS circuit.
 #[derive(PartialEq)]
@@ -139,18 +138,18 @@ impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
     true
   }
 
-  fn extend(&mut self, other: Self) {
-    self.a_aux_density.extend(other.a_aux_density, false);
-    self.b_input_density.extend(other.b_input_density, true);
-    self.b_aux_density.extend(other.b_aux_density, false);
+  fn extend(&mut self, other: &Self) {
+    self.a_aux_density.extend(&other.a_aux_density, false);
+    self.b_input_density.extend(&other.b_input_density, true);
+    self.b_aux_density.extend(&other.b_aux_density, false);
 
-    self.a.extend(other.a);
-    self.b.extend(other.b);
-    self.c.extend(other.c);
+    self.a.extend(&other.a);
+    self.b.extend(&other.b);
+    self.c.extend(&other.c);
 
     self.input_assignment
             // Skip first input, which must have been a temporarily allocated one variable.
             .extend(&other.input_assignment[1..]);
-    self.aux_assignment.extend(other.aux_assignment);
+    self.aux_assignment.extend(&other.aux_assignment);
   }
 }

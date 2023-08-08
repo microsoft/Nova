@@ -1,9 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
-use bellperson::{
-  gadgets::{boolean::AllocatedBit, num::AllocatedNum},
-  ConstraintSystem, SynthesisError,
-};
+use bellpepper_core::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},

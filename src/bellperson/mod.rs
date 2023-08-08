@@ -16,7 +16,7 @@ mod tests {
     },
     traits::Group,
   };
-  use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::PrimeField;
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(

@@ -30,7 +30,7 @@ use crate::bellperson::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::ConstraintSystem;
+use bellpepper_core::ConstraintSystem;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -828,7 +828,7 @@ mod tests {
   type S1Prime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1<G1>>;
   type S2Prime<G2> = spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2<G2>>;
 
-  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
   use traits::circuit::TrivialTestCircuit;

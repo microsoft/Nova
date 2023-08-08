@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::traits::Group;
-use bellperson::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use core::fmt::Write;
 use ff::{Field, PrimeField};
 

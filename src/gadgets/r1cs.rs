@@ -15,10 +15,8 @@ use crate::{
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit},
 };
-use bellperson::{
-  gadgets::{boolean::Boolean, num::AllocatedNum, Assignment},
-  ConstraintSystem, SynthesisError,
-};
+use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
+use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
 
 /// An Allocated R1CS Instance

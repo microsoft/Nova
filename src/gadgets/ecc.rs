@@ -8,12 +8,10 @@ use crate::{
   },
   traits::Group,
 };
-use bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
-    Assignment,
-  },
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 use ff::{Field, PrimeField};
