@@ -1,4 +1,4 @@
-//! Support for generating R1CS using bellperson.
+//! Support for generating R1CS using bellpepper.
 
 #![allow(non_snake_case)]
 

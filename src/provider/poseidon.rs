@@ -201,7 +201,7 @@ mod tests {
   use super::*;
   use crate::provider::bn256_grumpkin::bn256;
   use crate::{
-    bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
+    bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
     gadgets::utils::le_bits_to_num, traits::Group,
   };
   use ff::Field;

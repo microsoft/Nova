@@ -128,7 +128,7 @@ mod tests {
 
   type G = pasta_curves::pallas::Point;
 
-  fn synthesize_tiny_r1cs_bellperson<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     cs: &mut CS,
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
@@ -161,11 +161,11 @@ mod tests {
     Ok(())
   }
 
-  fn test_tiny_r1cs_bellperson_with<G>()
+  fn test_tiny_r1cs_bellpepper_with<G>()
   where
     G: Group,
   {
-    use crate::bellperson::{
+    use crate::bellpepper::{
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
@@ -173,14 +173,14 @@ mod tests {
 
     // First create the shape
     let mut cs: TestShapeCS<G> = TestShapeCS::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, None);
+    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape();
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(5)));
+    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(G::Scalar::from(5)));
     let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the first instance is satisfiable
@@ -188,7 +188,7 @@ mod tests {
 
     // Now get the instance and assignment for second instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
-    let _ = synthesize_tiny_r1cs_bellperson(&mut cs, Some(G::Scalar::from(135)));
+    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(G::Scalar::from(135)));
     let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
@@ -208,10 +208,10 @@ mod tests {
   }
 
   #[test]
-  fn test_tiny_r1cs_bellperson() {
-    test_tiny_r1cs_bellperson_with::<G>();
+  fn test_tiny_r1cs_bellpepper() {
+    test_tiny_r1cs_bellpepper_with::<G>();
 
-    test_tiny_r1cs_bellperson_with::<crate::provider::bn256_grumpkin::bn256::Point>();
+    test_tiny_r1cs_bellpepper_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 
   #[allow(clippy::too_many_arguments)]

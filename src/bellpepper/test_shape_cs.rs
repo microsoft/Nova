@@ -1,4 +1,4 @@
-//! Support for generating R1CS shape with using bellperson.
+//! Support for generating R1CS shape using bellpepper.
 //! `TestShapeCS` implements a superset of `ShapeCS`, adding non-trivial namespace support for use in testing.
 
 use std::{

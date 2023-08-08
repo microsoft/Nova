@@ -748,7 +748,7 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::{
+  use crate::bellpepper::{
     r1cs::{NovaShape, NovaWitness},
     {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
   };

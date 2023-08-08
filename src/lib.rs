@@ -12,7 +12,7 @@
 #![forbid(unsafe_code)]
 
 // private modules
-mod bellperson;
+mod bellpepper;
 mod circuit;
 mod constants;
 mod nifs;
@@ -25,7 +25,7 @@ pub mod provider;
 pub mod spartan;
 pub mod traits;
 
-use crate::bellperson::{
+use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
