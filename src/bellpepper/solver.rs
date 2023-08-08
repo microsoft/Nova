@@ -1,4 +1,4 @@
-//! Support for generating R1CS witness using bellperson.
+//! Support for generating R1CS witness using bellpepper.
 
 use crate::traits::Group;
 use ff::Field;

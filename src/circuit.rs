@@ -368,14 +368,14 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::{solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
+  use crate::bellpepper::{solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
   type PastaG1 = pasta_curves::pallas::Point;
   type PastaG2 = pasta_curves::vesta::Point;
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::provider;
   use crate::{
-    bellperson::r1cs::{NovaShape, NovaWitness},
+    bellpepper::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
     traits::{circuit::TrivialTestCircuit, ROConstantsTrait},

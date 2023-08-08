@@ -1,4 +1,4 @@
-//! Support for generating R1CS shape using bellperson.
+//! Support for generating R1CS shape using bellpepper.
 
 use crate::traits::Group;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
