@@ -19,7 +19,6 @@ sha3 = "0.10"
 rayon = "1.7"
 rand_core = { version = "0.6", default-features = false }
 rand_chacha = "0.3"
-itertools = "0.11"
 subtle = "2.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
 neptune = { version = "11.0.0", default-features = false }

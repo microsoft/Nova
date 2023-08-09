@@ -20,7 +20,7 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -109,7 +109,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+    let mut z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     let (num_rounds_x, num_rounds_y) = (
       (pk.S.num_cons as f64).log2() as usize,
