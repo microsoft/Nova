@@ -773,6 +773,7 @@ mod tests {
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
   };
   use bellperson::gadgets::boolean::Boolean;
+  use bellperson::LinearCombination;
   use core::marker::PhantomData;
   use ff::Field;
   use ff::PrimeField;
@@ -811,22 +812,17 @@ mod tests {
       })
       .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
 
-    let rom_value = rom_values
+    let sum_lc = rom_values
       .iter()
-      .enumerate()
-      .try_fold(zero, |agg, (i, _circuit_index)| {
-        add_allocated_num(
-          cs.namespace(|| format!("rom_value {:?}", i)),
-          _circuit_index,
-          &agg,
-        )
-      })?;
+      .fold(LinearCombination::<F>::zero(), |acc_lc, row_value| {
+        acc_lc + row_value.get_variable()
+      });
 
     cs.enforce(
-      || "rom_value == circuit_index",
-      |lc| lc + rom_value.get_variable(),
+      || "sum_lc == circuit_index",
+      |lc| lc + circuit_index.get_variable() - &sum_lc,
       |lc| lc + CS::one(),
-      |lc| lc + circuit_index.get_variable(),
+      |lc| lc,
     );
 
     Ok(())

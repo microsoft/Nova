@@ -20,7 +20,7 @@ use crate::{
       conditionally_select_alloc_relaxed_r1cs, AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance,
     },
     utils::{
-      add_allocated_num, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
+      add_allocated_num, alloc_const, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
       conditionally_select_vec, le_bits_to_num, scalar_as_base,
     },
   },
@@ -153,6 +153,13 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     ),
     SynthesisError,
   > {
+    // NOTE `last_augmented_circuit_index` could just be aux without any constraint.
+    // The reason is prover can only produce valid running instance by folding u into correct U_i[last_augmented_circuit_index]
+    let last_augmented_circuit_index =
+      AllocatedNum::alloc(cs.namespace(|| "last_augmented_circuit_index"), || {
+        Ok(self.inputs.get()?.last_augmented_circuit_index)
+      })?;
+
     // Allocate the params
     let params = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "params"),
@@ -169,12 +176,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || {
       Ok(self.inputs.get()?.program_counter)
     })?;
-
-    // Allocate last_augmented_circuit_index
-    let last_augmented_circuit_index =
-      AllocatedNum::alloc(cs.namespace(|| "last_augmented_circuit_index"), || {
-        Ok(self.inputs.get()?.last_augmented_circuit_index)
-      })?;
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -267,10 +268,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       )?;
       (0..num_augmented_circuits)
         .map(|i| {
-          let i_alloc =
-            AllocatedNum::alloc(cs.namespace(|| format!("i allocated on {:?}", i)), || {
-              Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
-            })?;
+          let i_alloc = alloc_const(
+            cs.namespace(|| format!("i allocated on {:?}", i)),
+            scalar_as_base::<G>(G::Scalar::from(i as u64)),
+          )?;
           let equal_bit = Boolean::from(alloc_num_equals(
             cs.namespace(|| format!("check equal bit {:?}", i)),
             &i_alloc,
@@ -322,10 +323,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     ro.absorb(&i);
     ro.absorb(&program_counter);
 
-    // NOTE only witness and DO NOT need to constrain last_augmented_circuit_index.
-    // Because prover can only make valid IVC proof by folding u into correct U_i[last_augmented_circuit_index]
-    // therefore last_augmented_circuit_index can be just aux
-
     for e in &z_0 {
       ro.absorb(e);
     }
@@ -357,10 +354,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       .iter()
       .enumerate()
       .map(|(i, U)| {
-        let i_alloc =
-          AllocatedNum::alloc(cs.namespace(|| format!("U_i i{:?} allocated", i)), || {
-            Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
-          })?;
+        let i_alloc = alloc_const(
+          cs.namespace(|| format!("U_i i{:?} allocated", i)),
+          scalar_as_base::<G>(G::Scalar::from(i as u64)),
+        )?;
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| format!("check U {:?} equal bit", i)),
           &i_alloc,
@@ -376,6 +373,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       .collect();
 
     // Now reduce to one is safe, because only 1 of them != G::Zero based on the previous step
+    // TODO optimize this part to have raw linear-combination on variables to achieve less constraints
     let U_to_fold = U?.iter().enumerate().try_fold(empty_U, |agg, (i, U)| {
       Result::<AllocatedRelaxedR1CSInstance<G>, SynthesisError>::Ok(AllocatedRelaxedR1CSInstance {
         W: agg
@@ -483,9 +481,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       .enumerate()
       .map(|(i, U)| {
         let mut cs = cs.namespace(|| format!("U_i+1 non_base conditional selection {:?}", i));
-        let i_alloc = AllocatedNum::alloc(cs.namespace(|| "i allocated"), || {
-          Ok(scalar_as_base::<G>(G::Scalar::from(i as u64)))
-        })?;
+        let i_alloc = alloc_const(
+          cs.namespace(|| "i allocated"),
+          scalar_as_base::<G>(G::Scalar::from(i as u64)),
+        )?;
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| "check equal bit"),
           &i_alloc,
