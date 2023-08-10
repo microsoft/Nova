@@ -94,40 +94,6 @@ pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(allocated)
 }
 
-#[allow(dead_code)]
-/// Allocate incremental integers within range [start, end) as vector of AllocatedNum
-pub fn alloc_incremental_range_index<F: PrimeField, CS: ConstraintSystem<F>>(
-  mut cs: CS,
-  start: usize,
-  len: usize,
-) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-  if len == 0 {
-    return Ok(vec![]);
-  }
-
-  let one = alloc_one(cs.namespace(|| "one"))?;
-
-  let mut res_vec = if start == 0 {
-    vec![alloc_zero(cs.namespace(|| "zero"))?]
-  } else {
-    vec![alloc_const(
-      cs.namespace(|| format!("start {}", start)),
-      F::from(start as u64),
-    )?]
-  };
-
-  let _ = (start + 1..len).try_fold(&mut res_vec, |res_vec, i| {
-    let new_acc = add_allocated_num(
-      cs.namespace(|| format!("{}", i)),
-      res_vec.last().unwrap(),
-      &one,
-    )?;
-    res_vec.push(new_acc);
-    Ok::<&mut Vec<AllocatedNum<F>>, SynthesisError>(res_vec)
-  })?;
-  Ok(res_vec)
-}
-
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
 pub fn alloc_scalar_as_base<G, CS>(
   mut cs: CS,

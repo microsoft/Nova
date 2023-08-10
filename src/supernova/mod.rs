@@ -765,7 +765,6 @@ pub fn gen_commitmentkey_by_r1cs<G: Group>(shape: &R1CSShape<G>) -> CommitmentKe
 #[cfg(test)]
 mod tests {
   use crate::gadgets::utils::alloc_const;
-  use crate::gadgets::utils::alloc_incremental_range_index;
   use crate::gadgets::utils::alloc_num_equals;
   use crate::gadgets::utils::conditionally_select;
   use crate::traits::circuit_supernova::TrivialTestCircuit;
@@ -788,23 +787,23 @@ mod tests {
     rom: &[AllocatedNum<F>],
     circuit_index: &AllocatedNum<F>,
   ) -> Result<(), SynthesisError> {
-    let indexes_alloc =
-      alloc_incremental_range_index(cs.namespace(|| "augment circuit range index"), 0, rom.len())?;
-
     // select target when index match or empty
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let selected_circuit_index = indexes_alloc
+    let rom_values = rom
       .iter()
-      .zip(rom.iter())
       .enumerate()
-      .map(|(i, (index_alloc, rom_value))| {
+      .map(|(i, rom_value)| {
+        let index_alloc = alloc_const(
+          cs.namespace(|| format!("rom_values {} index ", i)),
+          F::from(i as u64),
+        )?;
         let equal_bit = Boolean::from(alloc_num_equals(
-          cs.namespace(|| format!("check selected_circuit_index {:?} equal bit", i)),
-          index_alloc,
+          cs.namespace(|| format!("rom_values {} equal bit", i)),
+          &index_alloc,
           pc_counter,
         )?);
         conditionally_select(
-          cs.namespace(|| format!("select on index namespace {:?}", i)),
+          cs.namespace(|| format!("rom_values {} conditionally_select ", i)),
           rom_value,
           &zero,
           &equal_bit,
@@ -812,21 +811,20 @@ mod tests {
       })
       .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
 
-    let selected_circuit_index =
-      selected_circuit_index
-        .iter()
-        .enumerate()
-        .try_fold(zero, |agg, (i, _circuit_index)| {
-          add_allocated_num(
-            cs.namespace(|| format!("selected_circuit_index {:?}", i)),
-            _circuit_index,
-            &agg,
-          )
-        })?;
+    let rom_value = rom_values
+      .iter()
+      .enumerate()
+      .try_fold(zero, |agg, (i, _circuit_index)| {
+        add_allocated_num(
+          cs.namespace(|| format!("rom_value {:?}", i)),
+          _circuit_index,
+          &agg,
+        )
+      })?;
 
     cs.enforce(
-      || "selected_circuit_index == circuit_index",
-      |lc| lc + selected_circuit_index.get_variable(),
+      || "rom_value == circuit_index",
+      |lc| lc + rom_value.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc + circuit_index.get_variable(),
     );
