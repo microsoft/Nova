@@ -774,6 +774,8 @@ pub fn gen_commitmentkey_by_r1cs<G: Group>(shape: &R1CSShape<G>) -> CommitmentKe
 
 #[cfg(test)]
 mod tests {
+  use crate::gadgets::utils::alloc_const;
+  use crate::gadgets::utils::alloc_incremental_range_index;
   use crate::gadgets::utils::alloc_num_equals;
   use crate::gadgets::utils::conditionally_select;
   use crate::traits::circuit_supernova::TrivialTestCircuit;
@@ -790,38 +792,36 @@ mod tests {
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 
+  const CIRCUIT_INDEX_MAX_BITS: usize = 16;
+
   fn constraint_augmented_circuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
     pc_counter: &AllocatedNum<F>,
     z: &[AllocatedNum<F>],
-    circuit_index: usize,
+    circuit_index: &AllocatedNum<F>,
     rom_offset: usize,
   ) -> Result<(), SynthesisError> {
-    let circuit_index = AllocatedNum::alloc(cs.namespace(|| "circuit_index"), || {
-      Ok(F::from(circuit_index as u64))
-    })?;
-    let pc_offset_in_z = AllocatedNum::alloc(cs.namespace(|| "pc_offset_in_z"), || {
-      Ok(pc_counter.get_value().unwrap() + F::from(rom_offset as u64))
-    })?;
+    let indexes_alloc = alloc_incremental_range_index(
+      cs.namespace(|| "augment circuit range index"),
+      0,
+      z[rom_offset..].len(),
+    )?;
 
     // select target when index match or empty
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let _selected_circuit_index = z
+    let selected_circuit_index = indexes_alloc
       .iter()
+      .zip(z[rom_offset..].iter())
       .enumerate()
-      .map(|(i, z)| {
-        let i_alloc = AllocatedNum::alloc(
-          cs.namespace(|| format!("_selected_circuit_index i{:?} allocated", i)),
-          || Ok(F::from(i as u64)),
-        )?;
+      .map(|(i, (index_alloc, rom_value))| {
         let equal_bit = Boolean::from(alloc_num_equals(
           cs.namespace(|| format!("check selected_circuit_index {:?} equal bit", i)),
-          &i_alloc,
-          &pc_offset_in_z,
+          index_alloc,
+          pc_counter,
         )?);
         conditionally_select(
           cs.namespace(|| format!("select on index namespace {:?}", i)),
-          z,
+          rom_value,
           &zero,
           &equal_bit,
         )
@@ -829,7 +829,7 @@ mod tests {
       .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()?;
 
     let selected_circuit_index =
-      _selected_circuit_index
+      selected_circuit_index
         .iter()
         .enumerate()
         .try_fold(zero, |agg, (i, _circuit_index)| {
@@ -885,11 +885,16 @@ mod tests {
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
       // constrain rom[pc] equal to `self.circuit_index`
+      let circuit_index = alloc_const(
+        cs.namespace(|| "circuit_index"),
+        F::from(self.circuit_index as u64),
+        CIRCUIT_INDEX_MAX_BITS,
+      )?;
       constraint_augmented_circuit_index(
         cs.namespace(|| "CubicCircuit agumented circuit constraint"),
         pc_counter,
         z,
-        self.circuit_index,
+        &circuit_index,
         1,
       )?;
 
@@ -965,11 +970,16 @@ mod tests {
       z: &[AllocatedNum<F>],
     ) -> Result<(AllocatedNum<F>, Vec<AllocatedNum<F>>), SynthesisError> {
       // constrain rom[pc] equal to `self.circuit_index`
+      let circuit_index = alloc_const(
+        cs.namespace(|| "circuit_index"),
+        F::from(self.circuit_index as u64),
+        CIRCUIT_INDEX_MAX_BITS,
+      )?;
       constraint_augmented_circuit_index(
         cs.namespace(|| "SquareCircuit agumented circuit constraint"),
         pc_counter,
         z,
-        self.circuit_index,
+        &circuit_index,
         1,
       )?;
       let one = alloc_one(cs.namespace(|| "alloc one"))?;

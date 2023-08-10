@@ -7,9 +7,12 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  ConstraintSystem, LinearCombination, SynthesisError,
+  ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
-use ff::{Field, PrimeField, PrimeFieldBits};
+use ff::{
+  derive::bitvec::{prelude::Lsb0, view::AsBits},
+  Field, PrimeField, PrimeFieldBits,
+};
 use num_bigint::BigInt;
 
 /// Gets as input the little indian representation of a number and spits out the number
@@ -72,6 +75,103 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
   );
 
   Ok(one)
+}
+
+#[allow(dead_code)]
+/// alloc a field as a constant
+/// where every bit is deterministic constraint in R1CS
+pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  value: F,
+  n_bits: usize,
+) -> Result<AllocatedNum<F>, SynthesisError> {
+  let allocations: Vec<Variable> = value.to_repr().as_bits::<Lsb0>()[0..n_bits]
+    .iter()
+    .enumerate()
+    .map(|(index, raw_bit)| {
+      let bit = cs.alloc(
+        || "boolean",
+        || {
+          if *raw_bit {
+            Ok(F::ONE)
+          } else {
+            Ok(F::ZERO)
+          }
+        },
+      )?;
+      if *raw_bit {
+        cs.enforce(
+          || format!("{:?} index {index} true", value),
+          |lc| lc + bit,
+          |lc| lc + CS::one(),
+          |lc| lc + CS::one(),
+        );
+      } else {
+        cs.enforce(
+          || format!("{:?} index {index} false", value),
+          |lc| lc + bit,
+          |lc| lc + CS::one(),
+          |lc| lc,
+        );
+      }
+      Ok(bit)
+    })
+    .collect::<Result<Vec<Variable>, SynthesisError>>()?;
+  let mut f = F::ONE;
+  let sum = allocations
+    .iter()
+    .fold(LinearCombination::zero(), |lc, bit| {
+      let l = lc + (f, *bit);
+      f = f.double();
+      l
+    });
+  let value_alloc =
+    AllocatedNum::alloc(cs.namespace(|| format!("{:?} alloc const", value)), || {
+      Ok(value)
+    })?;
+  let sum_lc = LinearCombination::zero() + value_alloc.get_variable() - &sum;
+  cs.enforce(
+    || format!("{:?} sum - value = 0", value),
+    |lc| lc + &sum_lc,
+    |lc| lc + CS::one(),
+    |lc| lc,
+  );
+  Ok(value_alloc)
+}
+
+#[allow(dead_code)]
+/// Allocate incremental integers within range [start, end) as vector of AllocatedNum
+pub fn alloc_incremental_range_index<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  start: usize,
+  len: usize,
+) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+  if len == 0 {
+    return Ok(vec![]);
+  }
+
+  let one = alloc_one(cs.namespace(|| "one"))?;
+
+  let mut res_vec = if start == 0 {
+    vec![alloc_zero(cs.namespace(|| "zero"))?]
+  } else {
+    vec![alloc_const(
+      cs.namespace(|| format!("start {}", start)),
+      F::from(start as u64),
+      usize::BITS as usize,
+    )?]
+  };
+
+  let _ = (start + 1..len).try_fold(&mut res_vec, |res_vec, i| {
+    let new_acc = add_allocated_num(
+      cs.namespace(|| format!("{}", i)),
+      res_vec.last().unwrap(),
+      &one,
+    )?;
+    res_vec.push(new_acc);
+    Ok::<&mut Vec<AllocatedNum<F>>, SynthesisError>(res_vec)
+  })?;
+  Ok(res_vec)
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
