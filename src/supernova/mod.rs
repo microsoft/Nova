@@ -782,26 +782,20 @@ mod tests {
 
   use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 
-  const CIRCUIT_INDEX_MAX_BITS: usize = 16;
-
   fn constraint_augmented_circuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
     pc_counter: &AllocatedNum<F>,
-    z: &[AllocatedNum<F>],
+    rom: &[AllocatedNum<F>],
     circuit_index: &AllocatedNum<F>,
-    rom_offset: usize,
   ) -> Result<(), SynthesisError> {
-    let indexes_alloc = alloc_incremental_range_index(
-      cs.namespace(|| "augment circuit range index"),
-      0,
-      z[rom_offset..].len(),
-    )?;
+    let indexes_alloc =
+      alloc_incremental_range_index(cs.namespace(|| "augment circuit range index"), 0, rom.len())?;
 
     // select target when index match or empty
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let selected_circuit_index = indexes_alloc
       .iter()
-      .zip(z[rom_offset..].iter())
+      .zip(rom.iter())
       .enumerate()
       .map(|(i, (index_alloc, rom_value))| {
         let equal_bit = Boolean::from(alloc_num_equals(
@@ -878,14 +872,12 @@ mod tests {
       let circuit_index = alloc_const(
         cs.namespace(|| "circuit_index"),
         F::from(self.circuit_index as u64),
-        CIRCUIT_INDEX_MAX_BITS,
       )?;
       constraint_augmented_circuit_index(
         cs.namespace(|| "CubicCircuit agumented circuit constraint"),
         pc_counter,
-        z,
+        &z[1..],
         &circuit_index,
-        1,
       )?;
 
       let one = alloc_one(cs.namespace(|| "alloc one"))?;
@@ -963,14 +955,12 @@ mod tests {
       let circuit_index = alloc_const(
         cs.namespace(|| "circuit_index"),
         F::from(self.circuit_index as u64),
-        CIRCUIT_INDEX_MAX_BITS,
       )?;
       constraint_augmented_circuit_index(
         cs.namespace(|| "SquareCircuit agumented circuit constraint"),
         pc_counter,
-        z,
+        &z[1..],
         &circuit_index,
-        1,
       )?;
       let one = alloc_one(cs.namespace(|| "alloc one"))?;
       let pc_next = add_allocated_num(

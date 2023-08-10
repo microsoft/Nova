@@ -7,12 +7,9 @@ use bellperson::{
     num::AllocatedNum,
     Assignment,
   },
-  ConstraintSystem, LinearCombination, SynthesisError, Variable,
+  ConstraintSystem, LinearCombination, SynthesisError,
 };
-use ff::{
-  derive::bitvec::{prelude::Lsb0, view::AsBits},
-  Field, PrimeField, PrimeFieldBits,
-};
+use ff::{Field, PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 
 /// Gets as input the little indian representation of a number and spits out the number
@@ -79,64 +76,22 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
 
 #[allow(dead_code)]
 /// alloc a field as a constant
-/// where every bit is deterministic constraint in R1CS
+/// implemented refer from https://github.com/lurk-lab/lurk-rs/blob/4335fbb3290ed1a1176e29428f7daacb47f8033d/src/circuit/gadgets/data.rs#L387-L402
 pub fn alloc_const<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
-  value: F,
-  n_bits: usize,
+  val: F,
 ) -> Result<AllocatedNum<F>, SynthesisError> {
-  let allocations: Vec<Variable> = value.to_repr().as_bits::<Lsb0>()[0..n_bits]
-    .iter()
-    .enumerate()
-    .map(|(index, raw_bit)| {
-      let bit = cs.alloc(
-        || "boolean",
-        || {
-          if *raw_bit {
-            Ok(F::ONE)
-          } else {
-            Ok(F::ZERO)
-          }
-        },
-      )?;
-      if *raw_bit {
-        cs.enforce(
-          || format!("{:?} index {index} true", value),
-          |lc| lc + bit,
-          |lc| lc + CS::one(),
-          |lc| lc + CS::one(),
-        );
-      } else {
-        cs.enforce(
-          || format!("{:?} index {index} false", value),
-          |lc| lc + bit,
-          |lc| lc + CS::one(),
-          |lc| lc,
-        );
-      }
-      Ok(bit)
-    })
-    .collect::<Result<Vec<Variable>, SynthesisError>>()?;
-  let mut f = F::ONE;
-  let sum = allocations
-    .iter()
-    .fold(LinearCombination::zero(), |lc, bit| {
-      let l = lc + (f, *bit);
-      f = f.double();
-      l
-    });
-  let value_alloc =
-    AllocatedNum::alloc(cs.namespace(|| format!("{:?} alloc const", value)), || {
-      Ok(value)
-    })?;
-  let sum_lc = LinearCombination::zero() + value_alloc.get_variable() - &sum;
+  let allocated = AllocatedNum::<F>::alloc(cs.namespace(|| "allocate const"), || Ok(val))?;
+
+  // allocated * 1 = val
   cs.enforce(
-    || format!("{:?} sum - value = 0", value),
-    |lc| lc + &sum_lc,
+    || "enforce constant",
+    |lc| lc + allocated.get_variable(),
     |lc| lc + CS::one(),
-    |lc| lc,
+    |_| Boolean::Constant(true).lc(CS::one(), val),
   );
-  Ok(value_alloc)
+
+  Ok(allocated)
 }
 
 #[allow(dead_code)]
@@ -158,7 +113,6 @@ pub fn alloc_incremental_range_index<F: PrimeField, CS: ConstraintSystem<F>>(
     vec![alloc_const(
       cs.namespace(|| format!("start {}", start)),
       F::from(start as u64),
-      usize::BITS as usize,
     )?]
   };
 
