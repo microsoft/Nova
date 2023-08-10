@@ -318,17 +318,15 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   pub fn from_evals(evals: &[Scalar]) -> Self {
     // we only support degree-2 or degree-3 univariate polynomials
     assert!(evals.len() == 3 || evals.len() == 4);
+    let two_inv = Scalar::from(2).invert().unwrap();
     let coeffs = if evals.len() == 3 {
       // ax^2 + bx + c
-      let two_inv = Scalar::from(2).invert().unwrap();
-
       let c = evals[0];
       let a = two_inv * (evals[2] - evals[1] - evals[1] + c);
       let b = evals[1] - c - a;
       vec![c, b, a]
     } else {
       // ax^3 + bx^2 + cx + d
-      let two_inv = Scalar::from(2).invert().unwrap();
       let six_inv = Scalar::from(6).invert().unwrap();
 
       let d = evals[0];
