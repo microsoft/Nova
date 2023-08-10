@@ -9,6 +9,7 @@ readme = "README.md"
 repository = "https://github.com/Microsoft/Nova"
 license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
+rust-version="1.67.1"
 
 [dependencies]
 bellpepper-core = { version="0.2.0", default-features = false }

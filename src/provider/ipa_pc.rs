@@ -275,7 +275,7 @@ where
     let mut a_vec = W.a_vec.to_vec();
     let mut b_vec = U.b_vec.to_vec();
     let mut ck = ck;
-    for _i in 0..(U.b_vec.len() as f64).log2() as usize {
+    for _i in 0..usize::try_from(U.b_vec.len().ilog2()).unwrap() {
       let (L, R, a_vec_folded, b_vec_folded, ck_folded) =
         prove_inner(&a_vec, &b_vec, &ck, transcript)?;
       L_vec.push(L);

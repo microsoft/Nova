@@ -1781,7 +1781,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.num_vars as f64).log2() as usize, poly_X)
+        SparsePolynomial::new(usize::try_from(vk.num_vars.ilog2()).unwrap(), poly_X)
           .evaluate(&r_prod_unpad[1..])
       };
       let eval_Z =
