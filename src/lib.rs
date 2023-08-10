@@ -315,7 +315,7 @@ where
       return Err(NovaError::InvalidInitialInputLength);
     }
 
-    // Frist step was already done in the constructor
+    // First step was already done in the constructor
     if self.i == 0 {
       self.i = 1;
       return Ok(());

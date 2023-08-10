@@ -326,14 +326,4 @@ where
     }
     Ok((pc.clone(), vec![y]))
   }
-
-  fn output(&self, pc: F, z: &[F]) -> (F, Vec<F>) {
-    let mut x = z[0];
-    let mut y = x;
-    for _i in 0..self.num_cons {
-      y = x * x;
-      x = y;
-    }
-    (pc, vec![y])
-  }
 }

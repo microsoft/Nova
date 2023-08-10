@@ -15,6 +15,7 @@ use crate::{
 };
 
 use ff::Field;
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::bellperson::{
@@ -276,6 +277,10 @@ where
     let ck_primary = pp.ck_primary.as_ref().ok_or(NovaError::MissingCK)?;
     let ck_secondary = pp.ck_secondary.as_ref().ok_or(NovaError::MissingCK)?;
 
+    if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
+
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: SuperNovaAugmentedCircuitInputs<'_, G2> =
@@ -302,6 +307,9 @@ where
     let (zi_primary_pc_next, zi_primary) = circuit_primary
       .synthesize(&mut cs_primary)
       .map_err(|_| NovaError::SynthesisError)?;
+    if zi_primary.len() != pp.F_arity_primary {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
       .map_err(|_| NovaError::UnSat)?;
@@ -330,6 +338,9 @@ where
     let (_, zi_secondary) = circuit_secondary
       .synthesize(&mut cs_secondary)
       .map_err(|_| NovaError::SynthesisError)?;
+    if zi_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
       .map_err(|_| NovaError::UnSat)?;
@@ -366,29 +377,13 @@ where
       .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
       .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
-    if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidStepOutputLength);
-    }
-
     // handle the base case by initialize U_next in next round
     let r_W_primary_initial_list = (0..num_augmented_circuits)
-      .map(|i| {
-        if i == first_augmented_circuit_index {
-          Some(r_W_primary.clone())
-        } else {
-          None
-        }
-      })
+      .map(|i| (i == first_augmented_circuit_index).then(|| r_W_primary.clone()))
       .collect::<Vec<Option<RelaxedR1CSWitness<G1>>>>();
 
     let r_U_primary_initial_list = (0..num_augmented_circuits)
-      .map(|i| {
-        if i == first_augmented_circuit_index {
-          Some(r_U_primary.clone())
-        } else {
-          None
-        }
-      })
+      .map(|i| (i == first_augmented_circuit_index).then(|| r_U_primary.clone()))
       .collect::<Vec<Option<RelaxedR1CSInstance<G1>>>>();
 
     Ok(Self {
@@ -414,7 +409,7 @@ where
     z0_primary: &[G1::Scalar],
     z0_secondary: &[G2::Scalar],
   ) -> Result<(), NovaError> {
-    // Frist step was already done in the constructor
+    // First step was already done in the constructor
     if self.i == 0 {
       self.i = 1;
       return Ok(());
@@ -477,6 +472,9 @@ where
     let (zi_primary_pc_next, zi_primary) = circuit_primary
       .synthesize(&mut cs_primary)
       .map_err(|_| NovaError::SynthesisError)?;
+    if zi_primary.len() != pp.F_arity_primary {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
 
     let (l_u_primary, l_w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
@@ -484,42 +482,31 @@ where
 
     // Split into `if let`/`else` statement
     // to avoid `returns a value referencing data owned by closure` error on `&RelaxedR1CSInstance::default` and `RelaxedR1CSWitness::default`
-    let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) =
-      if let Some((r_U_primary, r_W_primary)) = self
-        .r_U_primary
-        .get(claim.get_augmented_circuit_index())
-        .unwrap_or(&None)
-        .as_ref()
-        .zip(
-          self
-            .r_W_primary
-            .get(claim.get_augmented_circuit_index())
-            .unwrap_or(&None)
-            .as_ref(),
-        )
-      {
-        NIFS::prove(
-          ck_primary,
-          &pp.ro_consts_primary,
-          &self.pp_digest,
-          &pp.r1cs_shape_primary,
-          r_U_primary,
-          r_W_primary,
-          &l_u_primary,
-          &l_w_primary,
-        )?
-      } else {
-        NIFS::prove(
-          ck_primary,
-          &pp.ro_consts_primary,
-          &self.pp_digest,
-          &pp.r1cs_shape_primary,
-          &RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary),
-          &RelaxedR1CSWitness::default(&pp.r1cs_shape_primary),
-          &l_u_primary,
-          &l_w_primary,
-        )?
-      };
+    let (nifs_primary, (r_U_primary_folded, r_W_primary_folded)) = match (
+      self.r_U_primary.get(claim.get_augmented_circuit_index()),
+      self.r_W_primary.get(claim.get_augmented_circuit_index()),
+    ) {
+      (Some(Some(r_U_primary)), Some(Some(r_W_primary))) => NIFS::prove(
+        ck_primary,
+        &pp.ro_consts_primary,
+        &self.pp_digest,
+        &pp.r1cs_shape_primary,
+        r_U_primary,
+        r_W_primary,
+        &l_u_primary,
+        &l_w_primary,
+      )?,
+      _ => NIFS::prove(
+        ck_primary,
+        &pp.ro_consts_primary,
+        &self.pp_digest,
+        &pp.r1cs_shape_primary,
+        &RelaxedR1CSInstance::default(ck_primary, &pp.r1cs_shape_primary),
+        &RelaxedR1CSWitness::default(&pp.r1cs_shape_primary),
+        &l_u_primary,
+        &l_w_primary,
+      )?,
+    };
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let binding = Commitment::<G1>::decompress(&nifs_primary.comm_T)?;
@@ -546,6 +533,9 @@ where
     let (_, zi_secondary) = circuit_secondary
       .synthesize(&mut cs_secondary)
       .map_err(|_| NovaError::SynthesisError)?;
+    if zi_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
 
     let (l_u_secondary_next, l_w_secondary_next) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
@@ -592,7 +582,7 @@ where
   ) -> Result<(), NovaError> {
     // number of steps cannot be zero
     if self.i == 0 {
-      println!("must verify on valid RecursiveSNARK where i > 0");
+      debug!("must verify on valid RecursiveSNARK where i > 0");
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -612,7 +602,7 @@ where
       .as_ref()
       .map_or(Ok(()), |U| {
         if U.X.len() != 2 {
-          println!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
+          debug!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
           Err(NovaError::ProofVerifyError)
         } else {
           Ok(())
@@ -621,7 +611,7 @@ where
 
     self.r_U_secondary[0].as_ref().map_or(Ok(()), |U| {
       if U.X.len() != 2 {
-        println!(
+        debug!(
           "r_U_secondary got instance length {:?} != {:?}",
           U.X.len(),
           2
@@ -681,14 +671,14 @@ where
     };
 
     if hash_primary != self.l_u_secondary.X[0] {
-      println!(
+      debug!(
         "hash_primary {:?} not equal l_u_secondary.X[0] {:?}",
         hash_primary, self.l_u_secondary.X[0]
       );
       return Err(NovaError::ProofVerifyError);
     }
     if hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1]) {
-      println!(
+      debug!(
         "hash_secondary {:?} not equal l_u_secondary.X[1] {:?}",
         hash_secondary, self.l_u_secondary.X[1]
       );
@@ -1161,27 +1151,19 @@ mod tests {
       });
 
       if augmented_circuit_index == OPCODE_0 {
-        let res = recursive_snark.prove_step(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = &res {
-          println!("res failed {:?}", e);
-        }
-        assert!(res.is_ok());
-        let res = recursive_snark.verify(&running_claim1, &z0_primary, &z0_secondary);
-        if let Err(e) = &res {
-          println!("res failed {:?}", e);
-        }
-        assert!(res.is_ok());
+        let _ = recursive_snark
+          .prove_step(&running_claim1, &z0_primary, &z0_secondary)
+          .unwrap();
+        let _ = recursive_snark
+          .verify(&running_claim1, &z0_primary, &z0_secondary)
+          .unwrap();
       } else if augmented_circuit_index == OPCODE_1 {
-        let res = recursive_snark.prove_step(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = &res {
-          println!("res failed {:?}", e);
-        }
-        assert!(res.is_ok());
-        let res = recursive_snark.verify(&running_claim2, &z0_primary, &z0_secondary);
-        if let Err(e) = &res {
-          println!("res failed {:?}", e);
-        }
-        assert!(res.is_ok());
+        let _ = recursive_snark
+          .prove_step(&running_claim2, &z0_primary, &z0_secondary)
+          .unwrap();
+        let _ = recursive_snark
+          .verify(&running_claim2, &z0_primary, &z0_secondary)
+          .unwrap();
       }
       recursive_snark_option = Some(recursive_snark)
     }
