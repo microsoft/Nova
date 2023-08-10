@@ -23,7 +23,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::{Field, PrimeField};
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -891,7 +891,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+    let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     // compute Az, Bz, Cz
     let (mut Az, mut Bz, mut Cz) = pk.S.multiply_vec(&z)?;
@@ -1781,7 +1781,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.num_vars as f64).log2() as usize, poly_X)
+        SparsePolynomial::new(usize::try_from(vk.num_vars.ilog2()).unwrap(), poly_X)
           .evaluate(&r_prod_unpad[1..])
       };
       let eval_Z =

@@ -20,7 +20,7 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -109,11 +109,11 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+    let mut z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     let (num_rounds_x, num_rounds_y) = (
-      (pk.S.num_cons as f64).log2() as usize,
-      ((pk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(pk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(pk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -350,8 +350,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (
-      (vk.S.num_cons as f64).log2() as usize,
-      ((vk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(vk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(vk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -405,7 +405,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.S.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
+        SparsePolynomial::new(usize::try_from(vk.S.num_vars.ilog2()).unwrap(), poly_X)
+          .evaluate(&r_y[1..])
       };
       (G::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };

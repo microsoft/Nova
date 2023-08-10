@@ -235,7 +235,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    params: AllocatedNum<G::Base>, // hash of R1CSShape of F'
+    params: &AllocatedNum<G::Base>, // hash of R1CSShape of F'
     u: &AllocatedR1CSInstance<G>,
     T: &AllocatedPoint<G>,
     ro_consts: ROConstantsCircuit<G>,
@@ -244,7 +244,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
     let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
-    ro.absorb(&params);
+    ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
     ro.absorb(&T.x);

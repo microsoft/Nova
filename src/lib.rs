@@ -887,14 +887,14 @@ mod tests {
     }
   }
 
-  fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: T1, circuit2: T2, expected: &str)
+  fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: &T1, circuit2: &T2, expected: &str)
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
   {
-    let pp = PublicParams::<G1, G2, T1, T2>::setup(&circuit1, &circuit2);
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
 
     let digest_str = pp
       .digest
@@ -915,14 +915,14 @@ mod tests {
     let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
 
     test_pp_digest_with::<G1, G2, _, _>(
-      trivial_circuit1,
-      trivial_circuit2.clone(),
+      &trivial_circuit1,
+      &trivial_circuit2,
       "39a4ea9dd384346fdeb6b5857c7be56fa035153b616d55311f3191dfbceea603",
     );
 
     test_pp_digest_with::<G1, G2, _, _>(
-      cubic_circuit1,
-      trivial_circuit2,
+      &cubic_circuit1,
+      &trivial_circuit2,
       "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
     );
 
@@ -933,13 +933,13 @@ mod tests {
     let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
 
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
-      trivial_circuit1_grumpkin,
-      trivial_circuit2_grumpkin.clone(),
+      &trivial_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
       "967acca1d6b4731cd65d4072c12bbaca9648f24d7bcc2877aee720e4265d4302",
     );
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
-      cubic_circuit1_grumpkin,
-      trivial_circuit2_grumpkin,
+      &cubic_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
       "44629f26a78bf6c4e3077f940232050d1793d304fdba5e221d0cf66f76a37903",
     );
   }
