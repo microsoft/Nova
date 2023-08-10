@@ -37,8 +37,8 @@ impl<G: Group> PolyEvalWitness<G> {
     if let Some(n) = W.iter().map(|w| w.p.len()).max() {
       W.iter()
         .map(|w| {
-          let mut p = w.p.clone();
-          p.resize(n, G::Scalar::ZERO);
+          let mut p = vec![G::Scalar::ZERO; n];
+          p[..w.p.len()].copy_from_slice(&w.p);
           PolyEvalWitness { p }
         })
         .collect()
