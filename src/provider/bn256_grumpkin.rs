@@ -10,13 +10,11 @@ use crate::{
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
+use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
 use num_bigint::BigInt;
 use num_traits::Num;
-use pasta_curves::{
-  self,
-  arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
-};
+// Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
+use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
