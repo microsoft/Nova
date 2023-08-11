@@ -41,7 +41,7 @@ impl<Scalar: PrimeField> IdentityPolynomial<Scalar> {
   pub fn new(ell: usize) -> Self {
     IdentityPolynomial {
       ell,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 

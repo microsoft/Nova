@@ -72,7 +72,7 @@ impl<G: Group> NIFS<G> {
     Ok((
       Self {
         comm_T: comm_T.compress(),
-        _p: Default::default(),
+        _p: PhantomData,
       },
       (U, W),
     ))

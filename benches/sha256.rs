@@ -34,7 +34,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> Sha256Circuit<Scalar> {
   pub fn new(preimage: Vec<u8>) -> Self {
     Self {
       preimage,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 }

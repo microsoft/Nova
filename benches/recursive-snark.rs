@@ -136,7 +136,7 @@ where
   pub fn new(num_cons: usize) -> Self {
     Self {
       num_cons,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 }
