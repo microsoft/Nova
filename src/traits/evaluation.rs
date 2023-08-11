@@ -8,9 +8,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 /// A trait that ties different pieces of the commitment evaluation together
-pub trait EvaluationEngineTrait<G: Group>:
-  Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
-{
+pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
   /// A type that holds the associated commitment engine
   type CE: CommitmentEngineTrait<G>;
 
