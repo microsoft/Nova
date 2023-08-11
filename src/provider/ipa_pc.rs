@@ -50,13 +50,12 @@ where
   G: Group,
   CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
-  type CE = G::CE;
   type ProverKey = ProverKey<G>;
   type VerifierKey = VerifierKey<G>;
   type EvaluationArgument = EvaluationArgument<G>;
 
   fn setup(
-    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let pk = ProverKey {
       ck_s: G::CE::setup(b"ipa", 1),

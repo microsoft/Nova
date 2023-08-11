@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
   vk_digest: G::Scalar, // digest of the verifier's key
@@ -36,7 +36,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
   digest: G::Scalar,
@@ -47,7 +47,7 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   eval_E: G::Scalar,
@@ -58,9 +58,7 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> 
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G>
-  for RelaxedR1CSSNARK<G, EE>
-{
+impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE> {
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 
