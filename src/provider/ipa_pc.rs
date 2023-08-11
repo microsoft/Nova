@@ -169,7 +169,6 @@ struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G>>,
   R_vec: Vec<CompressedCommitment<G>>,
   a_hat: G::Scalar,
-  _p: PhantomData<G>,
 }
 
 impl<G> InnerProductArgument<G>
@@ -290,7 +289,6 @@ where
       L_vec,
       R_vec,
       a_hat: a_vec[0],
-      _p: Default::default(),
     })
   }
 
