@@ -203,9 +203,6 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
 pub trait CommitmentKeyExtTrait<G: Group> {
-  /// Holds the type of the commitment engine
-  type CE: CommitmentEngineTrait<G>;
-
   /// Splits the commitment key into two pieces at a specified point
   fn split_at(&self, n: usize) -> (Self, Self)
   where
@@ -222,15 +219,13 @@ pub trait CommitmentKeyExtTrait<G: Group> {
 
   /// Reinterprets commitments as commitment keys
   fn reinterpret_commitments_as_ck(
-    c: &[<<<Self as CommitmentKeyExtTrait<G>>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
+    c: &[<<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
   ) -> Result<Self, NovaError>
   where
     Self: Sized;
 }
 
-impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
-  type CE = CommitmentEngine<G>;
-
+impl<G: Group<CE = CommitmentEngine<G>>> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   fn split_at(&self, n: usize) -> (CommitmentKey<G>, CommitmentKey<G>) {
     (
       CommitmentKey {

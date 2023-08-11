@@ -1087,10 +1087,8 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
-      CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey:
-      CommitmentKeyExtTrait<G2, CE = <G2 as Group>::CE>,
+    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
+    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
     let circuit_primary = TrivialTestCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -1182,10 +1180,8 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
-      CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey:
-      CommitmentKeyExtTrait<G2, CE = <G2 as Group>::CE>,
+    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
+    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
     let circuit_primary = TrivialTestCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -1280,10 +1276,8 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
     // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey:
-      CommitmentKeyExtTrait<G1, CE = <G1 as Group>::CE>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey:
-      CommitmentKeyExtTrait<G2, CE = <G2 as Group>::CE>,
+    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
+    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
     // y is a non-deterministic advice representing the fifth root of the input at a step.
     #[derive(Clone, Debug)]

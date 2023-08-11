@@ -48,7 +48,7 @@ pub struct EvaluationEngine<G: Group> {
 impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
 where
   G: Group,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
   type CE = G::CE;
   type ProverKey = ProverKey<G>;
@@ -175,7 +175,7 @@ struct InnerProductArgument<G: Group> {
 impl<G> InnerProductArgument<G>
 where
   G: Group,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
   const fn protocol_name() -> &'static [u8] {
     b"IPA"
