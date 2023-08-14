@@ -1,7 +1,10 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
 use bellpepper_core::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::fmt::Debug;
+use core::{
+  fmt::Debug,
+  ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
+};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
@@ -170,16 +173,29 @@ pub type ROConstantsCircuit<G> =
   <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// A helper trait for types with a group operation.
-pub use group::GroupOps;
+pub trait GroupOps<Rhs = Self, Output = Self>:
+  Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+impl<T, Rhs, Output> GroupOps<Rhs, Output> for T where
+  T: Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
 
 /// A helper trait for references with a group operation.
-pub use group::GroupOpsOwned;
+pub trait GroupOpsOwned<Rhs = Self, Output = Self>: for<'r> GroupOps<&'r Rhs, Output> {}
+impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<&'r Rhs, Output> {}
 
 /// A helper trait for types implementing group scalar multiplication.
-pub use group::ScalarMul;
+pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
+
+impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
+{}
 
 /// A helper trait for references implementing group scalar multiplication.
-pub use group::ScalarMulOwned;
+pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
+impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// This trait allows types to implement how they want to be added to TranscriptEngine
 pub trait TranscriptReprTrait<G: Group>: Send + Sync {
