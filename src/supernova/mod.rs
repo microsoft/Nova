@@ -304,15 +304,20 @@ where
       num_augmented_circuits,
     );
 
-    let (zi_primary_pc_next, zi_primary) = circuit_primary
-      .synthesize(&mut cs_primary)
-      .map_err(|_| NovaError::SynthesisError)?;
+    let (zi_primary_pc_next, zi_primary) =
+      circuit_primary.synthesize(&mut cs_primary).map_err(|err| {
+        debug!("err {:?}", err);
+        NovaError::SynthesisError
+      })?;
     if zi_primary.len() != pp.F_arity_primary {
       return Err(NovaError::InvalidStepOutputLength);
     }
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-      .map_err(|_| NovaError::UnSat)?;
+      .map_err(|err| {
+        debug!("err {:?}", err);
+        NovaError::SynthesisError
+      })?;
 
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -622,11 +627,12 @@ where
       }
     })?;
 
-    // check if the output hashes in R1CS instances point to the right running instances
     let num_field_primary_ro = 3 // params_next, i_new, program_counter_new
     + 2 * pp.F_arity_primary // zo, z1
     + (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // # 1 * (7 + [X0, X1]*#num_limb)
-    let num_field_secondary_ro = 3 // params_next, i_new, program_counter_new
+
+    // secondary circuit
+    let num_field_secondary_ro = 2 // params_next, i_new
     + 2 * pp.F_arity_primary // zo, z1
     + self.num_augmented_circuits * (7 + 2 * pp.augmented_circuit_params_primary.get_n_limbs()); // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
 
@@ -642,15 +648,18 @@ where
       for e in &self.zi_primary {
         hasher.absorb(*e);
       }
-      if let Some(U) = self.r_U_secondary[0].as_ref() {
-        U.absorb_in_ro(&mut hasher)
-      }
+      self.r_U_secondary[0]
+        .as_ref()
+        .map_or(Err(NovaError::ProofVerifyError), |U| {
+          U.absorb_in_ro(&mut hasher);
+          Ok(())
+        })?;
 
       let mut hasher2 =
         <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_secondary_ro);
       hasher2.absorb(scalar_as_base::<G1>(self.pp_digest));
       hasher2.absorb(G2::Scalar::from(self.i as u64));
-      hasher2.absorb(G2::Scalar::ZERO);
+
       for e in z0_secondary {
         hasher2.absorb(*e);
       }

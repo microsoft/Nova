@@ -148,7 +148,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       Vec<AllocatedRelaxedR1CSInstance<G>>,
       AllocatedR1CSInstance<G>,
       AllocatedPoint<G>,
-      AllocatedNum<G::Base>,
+      Option<AllocatedNum<G::Base>>,
       AllocatedNum<G::Base>,
     ),
     SynthesisError,
@@ -172,10 +172,15 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     // Allocate i
     let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
 
-    // Allocate program_counter
-    let program_counter = AllocatedNum::alloc(cs.namespace(|| "program_counter"), || {
-      Ok(self.inputs.get()?.program_counter)
-    })?;
+    // Allocate program_counter only on primary circuit
+    let program_counter = if self.params.is_primary_circuit {
+      Some(AllocatedNum::alloc(
+        cs.namespace(|| "program_counter"),
+        || Ok(self.inputs.get()?.program_counter),
+      )?)
+    } else {
+      None
+    };
 
     // Allocate z0
     let z_0 = (0..arity)
@@ -309,19 +314,22 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     T: AllocatedPoint<G>,
     arity: usize,
     last_augmented_circuit_index: &AllocatedNum<G::Base>,
-    program_counter: AllocatedNum<G::Base>,
+    program_counter: Option<AllocatedNum<G::Base>>,
     num_augmented_circuits: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, i, program_counter, U[], z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      3 // params_next, i_new, program_counter_new
+      2 // params_next, i_new
+      + program_counter.as_ref().map(|_| 1).unwrap_or(0) // optional program counter
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(&params);
     ro.absorb(&i);
-    ro.absorb(&program_counter);
+    if let Some(program_counter) = program_counter.as_ref() {
+      ro.absorb(program_counter)
+    }
 
     for e in &z_0 {
       ro.absorb(e);
@@ -545,11 +553,16 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       &Boolean::from(is_base_case),
     )?;
 
-    let (program_counter_new, z_next) =
+    let (program_counter_new, z_next) = if let Some(program_counter) = &program_counter {
       self
         .step_circuit
-        .synthesize(&mut cs.namespace(|| "F"), &program_counter, &z_input)?;
-
+        .synthesize(&mut cs.namespace(|| "F"), program_counter, &z_input)?
+    } else {
+      let zero_program_counter = alloc_zero(cs.namespace(|| "zero pc"))?;
+      self
+        .step_circuit
+        .synthesize(&mut cs.namespace(|| "F"), &zero_program_counter, &z_input)?
+    };
     if z_next.len() != arity {
       return Err(SynthesisError::IncompatibleLengthVector(
         "z_next".to_string(),
@@ -573,13 +586,17 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     // Compute the new hash H(params, i+1, program_counter, z0, z_{i+1}, U_next)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
-      3 // params_next, i_new, program_counter_new
+      2 // params_next, i_new
+      + program_counter.as_ref().map(|_| 1).unwrap_or(0) // optional program counter
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
     ro.absorb(&params);
     ro.absorb(&i_next);
-    ro.absorb(&program_counter_new);
+    // optionally absorb program counter if exist
+    if program_counter.is_some() {
+      ro.absorb(&program_counter_new)
+    }
     for e in &z_0 {
       ro.absorb(e);
     }
