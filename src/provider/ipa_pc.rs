@@ -48,15 +48,14 @@ pub struct EvaluationEngine<G: Group> {
 impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
 where
   G: Group,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
-  type CE = G::CE;
   type ProverKey = ProverKey<G>;
   type VerifierKey = VerifierKey<G>;
   type EvaluationArgument = EvaluationArgument<G>;
 
   fn setup(
-    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let pk = ProverKey {
       ck_s: G::CE::setup(b"ipa", 1),
@@ -169,13 +168,12 @@ struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G>>,
   R_vec: Vec<CompressedCommitment<G>>,
   a_hat: G::Scalar,
-  _p: PhantomData<G>,
 }
 
 impl<G> InnerProductArgument<G>
 where
   G: Group,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G, CE = G::CE>,
+  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
   const fn protocol_name() -> &'static [u8] {
     b"IPA"
@@ -290,7 +288,6 @@ where
       L_vec,
       R_vec,
       a_hat: a_vec[0],
-      _p: Default::default(),
     })
   }
 

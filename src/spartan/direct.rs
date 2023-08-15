@@ -134,7 +134,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
     Ok(DirectSNARK {
       comm_W: u.comm_W,
       snark,
-      _p: Default::default(),
+      _p: PhantomData,
     })
   }
 

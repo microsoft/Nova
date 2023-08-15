@@ -73,9 +73,7 @@ pub trait CommitmentTrait<G: Group>:
 }
 
 /// A trait that ties different pieces of the commitment generation together
-pub trait CommitmentEngineTrait<G: Group>:
-  Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
-{
+pub trait CommitmentEngineTrait<G: Group>: Clone + Send + Sync {
   /// Holds the type of the commitment key
   type CommitmentKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 

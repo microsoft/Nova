@@ -8,12 +8,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 
 /// A trait that ties different pieces of the commitment evaluation together
-pub trait EvaluationEngineTrait<G: Group>:
-  Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
-{
-  /// A type that holds the associated commitment engine
-  type CE: CommitmentEngineTrait<G>;
-
+pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
   /// A type that holds the prover key
   type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
@@ -25,15 +20,15 @@ pub trait EvaluationEngineTrait<G: Group>:
 
   /// A method to perform any additional setup needed to produce proofs of evaluations
   fn setup(
-    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey);
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(
-    ck: &<Self::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
     pk: &Self::ProverKey,
     transcript: &mut G::TE,
-    comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
+    comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     poly: &[G::Scalar],
     point: &[G::Scalar],
     eval: &G::Scalar,
@@ -43,7 +38,7 @@ pub trait EvaluationEngineTrait<G: Group>:
   fn verify(
     vk: &Self::VerifierKey,
     transcript: &mut G::TE,
-    comm: &<Self::CE as CommitmentEngineTrait<G>>::Commitment,
+    comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     point: &[G::Scalar],
     eval: &G::Scalar,
     arg: &Self::EvaluationArgument,
