@@ -106,7 +106,7 @@ impl<'a, G: Group> SuperNovaAugmentedCircuitInputs<'a, G> {
 
 /// The augmented circuit F' in SuperNova that includes a step circuit F
 /// and the circuit for the verifier in SuperNova's non-interactive folding scheme,
-/// SuperNova NIVS will fold strictly r1cs instance u with respective relaxed r1cs instance U[last_augmented_circuit_index]
+/// SuperNova NIFS will fold strictly r1cs instance u with respective relaxed r1cs instance U[last_augmented_circuit_index]
 pub struct SuperNovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
   params: &'a SuperNovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
@@ -265,8 +265,8 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       )?]
     } else {
       // The secondary circuit convert the incoming R1CS instance on index which match last_augmented_circuit_index
-      let imcomming_r1cs = AllocatedRelaxedR1CSInstance::from_r1cs_instance(
-        cs.namespace(|| "Allocate imcomming_r1cs"),
+      let incoming_r1cs = AllocatedRelaxedR1CSInstance::from_r1cs_instance(
+        cs.namespace(|| "Allocate incoming_r1cs"),
         u,
         self.params.limb_width,
         self.params.n_limbs,
@@ -289,7 +289,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
           )?;
           conditionally_select_alloc_relaxed_r1cs(
             cs.namespace(|| format!("select on index namespace {:?}", i)),
-            &imcomming_r1cs,
+            &incoming_r1cs,
             default,
             &equal_bit,
           )
