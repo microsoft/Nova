@@ -23,9 +23,6 @@ pub enum NovaError {
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance, with error constraint index
   #[error("UnSatIndex")]
   UnSatIndex(usize),
-  /// returned if the supplied witness is not a satisfying witness to a given shape and instance, with error message
-  #[error("UnSatMsg")]
-  UnSatMsg(String),
   /// returned when the supplied compressed commitment cannot be decompressed
   #[error("DecompressionError")]
   DecompressionError,
