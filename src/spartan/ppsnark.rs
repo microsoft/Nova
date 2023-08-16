@@ -293,7 +293,7 @@ pub trait SumcheckEngine<G: Group> {
   /// the size of the polynomials
   fn size(&self) -> usize;
 
-  /// returns evaluation points at 0, 2, 3 (where 3 is the degree of the sum-check polynomial)
+  /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
   fn evaluation_points(&self) -> Vec<Vec<G::Scalar>>;
 
   /// bounds a variable in the constituent polynomials
