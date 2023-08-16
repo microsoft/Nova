@@ -134,7 +134,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let n = self.len() / 2;
 
     let (left, right) = self.Z.split_at_mut(n);
-    let (right, _) = right.split_at(n);
 
     left
       .par_iter_mut()
