@@ -323,7 +323,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
       2 // params_next, i_new
-      + program_counter.as_ref().map(|_| 1).unwrap_or(0) // optional program counter
+      + program_counter.as_ref().map_or(0, |_| 1) // optional program counter
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
@@ -547,7 +547,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
       2 // params_next, i_new
-      + program_counter.as_ref().map(|_| 1).unwrap_or(0) // optional program counter
+      + program_counter.as_ref().map_or(0, |_| 1) // optional program counter
         + 2 * arity // zo, z1
         + num_augmented_circuits * (7 + 2 * self.params.n_limbs), // #num_augmented_circuits * (7 + [X0, X1]*#num_limb)
     );
