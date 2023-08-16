@@ -16,7 +16,7 @@ use crate::spartan::math::Math;
 ///
 /// The polynomial is defined by the formula:
 /// $$
-/// \tilde{eq}(x, e) = \prod_{i=0}^m(e_i * x_i + (1 - e_i) * (1 - x_i))
+/// \tilde{eq}(x, e) = \prod_{i=1}^m(e_i * x_i + (1 - e_i) * (1 - x_i))
 /// $$
 ///
 /// Each element in the vector `r` corresponds to a component $e_i$, representing a bit from the binary representation of an input value $e$.
@@ -88,7 +88,7 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
 ///
 /// The implementation follows
 /// $$
-/// \tilde{Z}(x_1, ..., x_m) = \sum_{e\in {0,1}^m}Z(e)\cdot \prod_{i=0}^m(x_i\cdot e_i)\cdot (1-e_i)
+/// \tilde{Z}(x_1, ..., x_m) = \sum_{e\in {0,1}^m}Z(e) \cdot \prod_{i=1}^m(x_i \cdot e_i + (1-x_i) \cdot (1-e_i))
 /// $$
 ///
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
