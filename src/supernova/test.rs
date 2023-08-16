@@ -2,6 +2,7 @@ use crate::bellpepper::test_shape_cs::TestShapeCS;
 use crate::gadgets::utils::alloc_const;
 use crate::gadgets::utils::alloc_num_equals;
 use crate::gadgets::utils::conditionally_select;
+use crate::provider::poseidon::PoseidonConstantsCircuit;
 use crate::traits::circuit_supernova::TrivialTestCircuit;
 use crate::{
   compute_digest,
@@ -455,6 +456,119 @@ fn test_trivial_nivc() {
   type G1 = pasta_curves::pallas::Point;
   type G2 = pasta_curves::vesta::Point;
 
-  //Expirementing with selecting the running claims for nifs
+  // Expirementing with selecting the running claims for nifs
   test_trivial_nivc_with::<G1, G2>();
+}
+
+// In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
+fn test_recursive_circuit_with<G1, G2>(
+  primary_params: SuperNovaAugmentedCircuitParams,
+  secondary_params: SuperNovaAugmentedCircuitParams,
+  ro_consts1: ROConstantsCircuit<G2>,
+  ro_consts2: ROConstantsCircuit<G1>,
+  num_constraints_primary: usize,
+  num_constraints_secondary: usize,
+) where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+{
+  // Both circuit1 and circuit2 are TrivialTestCircuit
+
+  // Initialize the shape and ck for the primary
+  let step_circuit1 = TrivialTestCircuit::default();
+  let arity1 = step_circuit1.arity();
+  let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    SuperNovaAugmentedCircuit::new(&primary_params, None, &step_circuit1, ro_consts1.clone(), 2);
+  let mut cs: ShapeCS<G1> = ShapeCS::new();
+  if let Err(e) = circuit1.synthesize(&mut cs) {
+    panic!("{}", e)
+  }
+  let (shape1, ck1) = cs.r1cs_shape_with_commitmentkey();
+  assert_eq!(cs.num_constraints(), num_constraints_primary);
+
+  // Initialize the shape and ck for the secondary
+  let step_circuit2 = TrivialTestCircuit::default();
+  let arity2 = step_circuit2.arity();
+  let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    SuperNovaAugmentedCircuit::new(
+      &secondary_params,
+      None,
+      &step_circuit2,
+      ro_consts2.clone(),
+      2,
+    );
+  let mut cs: ShapeCS<G2> = ShapeCS::new();
+  if let Err(e) = circuit2.synthesize(&mut cs) {
+    panic!("{}", e)
+  }
+  let (shape2, ck2) = cs.r1cs_shape_with_commitmentkey();
+  assert_eq!(cs.num_constraints(), num_constraints_secondary);
+
+  // Execute the base case for the primary
+  let zero1 = <<G2 as Group>::Base as Field>::ZERO;
+  let z0 = vec![zero1; arity1];
+  let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+  let inputs1: SuperNovaAugmentedCircuitInputs<'_, G2> = SuperNovaAugmentedCircuitInputs::new(
+    scalar_as_base::<G1>(zero1), // pass zero for testing
+    zero1,
+    &z0,
+    None,
+    None,
+    None,
+    None,
+    zero1,
+    zero1,
+  );
+  let step_circuit = TrivialTestCircuit::default();
+  let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
+    SuperNovaAugmentedCircuit::new(&primary_params, Some(inputs1), &step_circuit, ro_consts1, 2);
+  if let Err(e) = circuit1.synthesize(&mut cs1) {
+    panic!("{}", e)
+  }
+  let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
+  // Make sure that this is satisfiable
+  assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
+
+  // Execute the base case for the secondary
+  let zero2 = <<G1 as Group>::Base as Field>::ZERO;
+  let z0 = vec![zero2; arity2];
+  let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+  let inputs2: SuperNovaAugmentedCircuitInputs<'_, G1> = SuperNovaAugmentedCircuitInputs::new(
+    scalar_as_base::<G2>(zero2), // pass zero for testing
+    zero2,
+    &z0,
+    None,
+    None,
+    Some(&inst1),
+    None,
+    zero2,
+    zero2,
+  );
+  let step_circuit = TrivialTestCircuit::default();
+  let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
+    SuperNovaAugmentedCircuit::new(
+      &secondary_params,
+      Some(inputs2),
+      &step_circuit,
+      ro_consts2,
+      2,
+    );
+  if let Err(e) = circuit2.synthesize(&mut cs2) {
+    panic!("{}", e)
+  }
+  let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
+  // Make sure that it is satisfiable
+  assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
+}
+
+#[test]
+fn test_recursive_circuit() {
+  type G1 = pasta_curves::pallas::Point;
+  type G2 = pasta_curves::vesta::Point;
+  let params1 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+  let params2 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+  let ro_consts1: ROConstantsCircuit<G2> = PoseidonConstantsCircuit::new();
+  let ro_consts2: ROConstantsCircuit<G1> = PoseidonConstantsCircuit::new();
+
+  test_recursive_circuit_with::<G1, G2>(params1, params2, ro_consts1, ro_consts2, 9918, 12178);
 }

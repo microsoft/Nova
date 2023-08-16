@@ -35,6 +35,7 @@ use circuit::{
 use self::error::SuperNovaError;
 
 pub mod error;
+pub(crate) mod utils;
 
 #[cfg(test)]
 mod test;
