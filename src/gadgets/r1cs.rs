@@ -62,6 +62,7 @@ impl<G: Group> AllocatedR1CSInstance<G> {
 }
 
 /// An Allocated Relaxed R1CS Instance
+#[derive(Clone)]
 pub struct AllocatedRelaxedR1CSInstance<G: Group> {
   pub(crate) W: AllocatedPoint<G>,
   pub(crate) E: AllocatedPoint<G>,

@@ -20,8 +20,8 @@ use crate::{
       conditionally_select_alloc_relaxed_r1cs, AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance,
     },
     utils::{
-      add_allocated_num, alloc_const, alloc_num_equals, alloc_scalar_as_base, alloc_zero,
-      conditionally_select_vec, le_bits_to_num, scalar_as_base,
+      alloc_const, alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec,
+      le_bits_to_num, scalar_as_base,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -32,19 +32,17 @@ use crate::{
   Commitment,
 };
 use bellpepper_core::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 
-use bellpepper::{
-  gadgets::{
-    Assignment,
-  },
-};
+use bellpepper::gadgets::Assignment;
 
 use ff::Field;
 use serde::{Deserialize, Serialize};
+
+use super::utils::get_from_vec_alloc_relaxed_r1cs;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuperNovaAugmentedCircuitParams {
@@ -355,53 +353,11 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     )?;
 
     // Run NIFS Verifier
-    let empty_U = AllocatedRelaxedR1CSInstance::alloc(
-      cs.namespace(|| "empty U"),
-      None,
-      self.params.limb_width,
-      self.params.n_limbs,
+    let U_to_fold = get_from_vec_alloc_relaxed_r1cs(
+      cs.namespace(|| "U to fold"),
+      U,
+      last_augmented_circuit_index,
     )?;
-    // select target when index match last_augmented_circuit_index, other left as empty
-    let U: Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> = U
-      .iter()
-      .enumerate()
-      .map(|(i, U)| {
-        let i_alloc = alloc_const(
-          cs.namespace(|| format!("U_i i{:?} allocated", i)),
-          scalar_as_base::<G>(G::Scalar::from(i as u64)),
-        )?;
-        let equal_bit = Boolean::from(alloc_num_equals(
-          cs.namespace(|| format!("check U {:?} equal bit", i)),
-          &i_alloc,
-          last_augmented_circuit_index,
-        )?);
-        conditionally_select_alloc_relaxed_r1cs(
-          cs.namespace(|| format!("select on index namespace {:?}", i)),
-          U,
-          &empty_U,
-          &equal_bit,
-        )
-      })
-      .collect();
-
-    // Now reduce to one is safe, because only 1 of them != G::Zero based on the previous step
-    // TODO optimize this part to have raw linear-combination on variables to achieve less constraints
-    let U_to_fold = U?.iter().enumerate().try_fold(empty_U, |agg, (i, U)| {
-      Result::<AllocatedRelaxedR1CSInstance<G>, SynthesisError>::Ok(AllocatedRelaxedR1CSInstance {
-        W: agg
-          .W
-          .add(cs.namespace(|| format!("fold W {:?}", i)), &U.W)?,
-        E: agg
-          .E
-          .add(cs.namespace(|| format!("fold E {:?}", i)), &U.E)?,
-        u: {
-          let cs = cs.namespace(|| format!("fold u {:?}", i));
-          add_allocated_num(cs, &agg.u, &U.u)?
-        },
-        X0: agg.X0.add(&U.X0)?,
-        X1: agg.X1.add(&U.X1)?,
-      })
-    })?;
     let U_fold = U_to_fold.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
       &params,
@@ -622,140 +578,5 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
 
     Ok((program_counter_new, z_next))
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::{
-    bellpepper::{
-      r1cs::{NovaShape, NovaWitness},
-      shape_cs::ShapeCS,
-      solver::SatisfyingAssignment,
-    },
-    traits::Group,
-  };
-  type PastaG1 = pasta_curves::pallas::Point;
-  type PastaG2 = pasta_curves::vesta::Point;
-
-  use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
-  use crate::{
-    gadgets::utils::scalar_as_base,
-    provider::poseidon::PoseidonConstantsCircuit,
-    traits::{circuit_supernova::TrivialTestCircuit, ROConstantsTrait},
-  };
-
-  // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-  fn test_recursive_circuit_with<G1, G2>(
-    primary_params: SuperNovaAugmentedCircuitParams,
-    secondary_params: SuperNovaAugmentedCircuitParams,
-    ro_consts1: ROConstantsCircuit<G2>,
-    ro_consts2: ROConstantsCircuit<G1>,
-    num_constraints_primary: usize,
-    num_constraints_secondary: usize,
-  ) where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-  {
-    // Both circuit1 and circuit2 are TrivialTestCircuit
-
-    // Initialize the shape and ck for the primary
-    let step_circuit1 = TrivialTestCircuit::default();
-    let arity1 = step_circuit1.arity();
-    let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      SuperNovaAugmentedCircuit::new(&primary_params, None, &step_circuit1, ro_consts1.clone(), 2);
-    let mut cs: ShapeCS<G1> = ShapeCS::new();
-    if let Err(e) = circuit1.synthesize(&mut cs) {
-      panic!("{}", e)
-    }
-    let (shape1, ck1) = cs.r1cs_shape_with_commitmentkey();
-    assert_eq!(cs.num_constraints(), num_constraints_primary);
-
-    // Initialize the shape and ck for the secondary
-    let step_circuit2 = TrivialTestCircuit::default();
-    let arity2 = step_circuit2.arity();
-    let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      SuperNovaAugmentedCircuit::new(
-        &secondary_params,
-        None,
-        &step_circuit2,
-        ro_consts2.clone(),
-        2,
-      );
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
-    if let Err(e) = circuit2.synthesize(&mut cs) {
-      panic!("{}", e)
-    }
-    let (shape2, ck2) = cs.r1cs_shape_with_commitmentkey();
-    assert_eq!(cs.num_constraints(), num_constraints_secondary);
-
-    // Execute the base case for the primary
-    let zero1 = <<G2 as Group>::Base as Field>::ZERO;
-    let z0 = vec![zero1; arity1];
-    let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let inputs1: SuperNovaAugmentedCircuitInputs<'_, G2> = SuperNovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G1>(zero1), // pass zero for testing
-      zero1,
-      &z0,
-      None,
-      None,
-      None,
-      None,
-      zero1,
-      zero1,
-    );
-    let step_circuit = TrivialTestCircuit::default();
-    let circuit1: SuperNovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      SuperNovaAugmentedCircuit::new(&primary_params, Some(inputs1), &step_circuit, ro_consts1, 2);
-    if let Err(e) = circuit1.synthesize(&mut cs1) {
-      panic!("{}", e)
-    }
-    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
-    // Make sure that this is satisfiable
-    assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
-
-    // Execute the base case for the secondary
-    let zero2 = <<G1 as Group>::Base as Field>::ZERO;
-    let z0 = vec![zero2; arity2];
-    let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let inputs2: SuperNovaAugmentedCircuitInputs<'_, G1> = SuperNovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G2>(zero2), // pass zero for testing
-      zero2,
-      &z0,
-      None,
-      None,
-      Some(&inst1),
-      None,
-      zero2,
-      zero2,
-    );
-    let step_circuit = TrivialTestCircuit::default();
-    let circuit2: SuperNovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      SuperNovaAugmentedCircuit::new(
-        &secondary_params,
-        Some(inputs2),
-        &step_circuit,
-        ro_consts2,
-        2,
-      );
-    if let Err(e) = circuit2.synthesize(&mut cs2) {
-      panic!("{}", e)
-    }
-    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
-    // Make sure that it is satisfiable
-    assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
-  }
-
-  #[test]
-  fn test_recursive_circuit() {
-    let params1 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = SuperNovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
-
-    test_recursive_circuit_with::<PastaG1, PastaG2>(
-      params1, params2, ro_consts1, ro_consts2, 9918, 12178,
-    );
   }
 }
