@@ -1,10 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
 use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
-use bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
-  },
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 use core::marker::PhantomData;
@@ -203,7 +201,7 @@ mod tests {
   use super::*;
   use crate::provider::bn256_grumpkin::bn256;
   use crate::{
-    bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
+    bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
     gadgets::utils::le_bits_to_num, traits::Group,
   };
   use ff::Field;

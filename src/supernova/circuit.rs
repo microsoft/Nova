@@ -31,14 +31,18 @@ use crate::{
   },
   Commitment,
 };
-use bellperson::{
-  gadgets::{
+use bellpepper_core::{
     boolean::{AllocatedBit, Boolean},
     num::AllocatedNum,
-    Assignment,
-  },
   ConstraintSystem, SynthesisError,
 };
+
+use bellpepper::{
+  gadgets::{
+    Assignment,
+  },
+};
+
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
@@ -400,7 +404,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     })?;
     let U_fold = U_to_fold.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
-      params,
+      &params,
       &u,
       &T,
       self.ro_consts.clone(),
@@ -624,13 +628,19 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellperson::{shape_cs::ShapeCS, solver::SatisfyingAssignment};
+  use crate::{
+    bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+    },
+    traits::Group,
+  };
   type PastaG1 = pasta_curves::pallas::Point;
   type PastaG2 = pasta_curves::vesta::Point;
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::{
-    bellperson::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
     traits::{circuit_supernova::TrivialTestCircuit, ROConstantsTrait},

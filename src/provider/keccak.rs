@@ -55,7 +55,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
       round: 0u16,
       state: output,
       transcript: keccak_instance,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 

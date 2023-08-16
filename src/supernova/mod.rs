@@ -3,6 +3,7 @@
 use std::marker::PhantomData;
 
 use crate::{
+  bellpepper::test_shape_cs::TestShapeCS,
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness, R1CS},
@@ -18,12 +19,11 @@ use ff::Field;
 use log::debug;
 use serde::{Deserialize, Serialize};
 
-use crate::bellperson::{
+use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
-  shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
-use ::bellperson::ConstraintSystem;
+use bellpepper_core::ConstraintSystem;
 
 use crate::nifs::NIFS;
 
@@ -31,6 +31,10 @@ mod circuit; // declare the module first
 use circuit::{
   SuperNovaAugmentedCircuit, SuperNovaAugmentedCircuitInputs, SuperNovaAugmentedCircuitParams,
 };
+
+use self::error::SuperNovaError;
+
+pub mod error;
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize)]
@@ -46,12 +50,10 @@ where
   ro_consts_circuit_primary: ROConstantsCircuit<G2>,
   ck_primary: Option<CommitmentKey<G1>>,
   r1cs_shape_primary: R1CSShape<G1>,
-  constraints_path_primary: Vec<String>,
   ro_consts_secondary: ROConstants<G2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
   ck_secondary: Option<CommitmentKey<G2>>,
   r1cs_shape_secondary: R1CSShape<G2>,
-  constraints_path_secondary: Vec<String>,
   augmented_circuit_params_primary: SuperNovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: SuperNovaAugmentedCircuitParams,
 }
@@ -92,14 +94,8 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-
     // We use the largest commitment_key for all instances
     let r1cs_shape_primary = cs.r1cs_shape();
-    let constraints_path_primary = cs
-      .constraints
-      .iter()
-      .map(|constraint| constraint.3.clone())
-      .collect();
 
     // Initialize ck for the secondary
     let circuit_secondary: SuperNovaAugmentedCircuit<'_, G1, C2> = SuperNovaAugmentedCircuit::new(
@@ -111,12 +107,6 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let constraints_path_secondary = cs
-      .constraints
-      .iter()
-      .map(|constraint| constraint.3.clone())
-      .collect();
-
     let r1cs_shape_secondary = cs.r1cs_shape();
 
     Self {
@@ -126,12 +116,10 @@ where
       ro_consts_circuit_primary,
       ck_primary: None,
       r1cs_shape_primary,
-      constraints_path_primary,
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       ck_secondary: None,
       r1cs_shape_secondary,
-      constraints_path_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
     }
@@ -269,16 +257,18 @@ where
     num_augmented_circuits: usize,
     z0_primary: &[G1::Scalar],
     z0_secondary: &[G2::Scalar],
-  ) -> Result<Self, NovaError> {
+  ) -> Result<Self, SuperNovaError> {
     let pp = &claim.params;
     let c_primary = &claim.c_primary;
     let c_secondary = &claim.c_secondary;
     // commitment key for primary & secondary circuit
-    let ck_primary = pp.ck_primary.as_ref().ok_or(NovaError::MissingCK)?;
-    let ck_secondary = pp.ck_secondary.as_ref().ok_or(NovaError::MissingCK)?;
+    let ck_primary = pp.ck_primary.as_ref().ok_or(SuperNovaError::MissingCK)?;
+    let ck_secondary = pp.ck_secondary.as_ref().ok_or(SuperNovaError::MissingCK)?;
 
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidStepOutputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidStepOutputLength,
+      ));
     }
 
     // base case for the primary
@@ -307,16 +297,18 @@ where
     let (zi_primary_pc_next, zi_primary) =
       circuit_primary.synthesize(&mut cs_primary).map_err(|err| {
         debug!("err {:?}", err);
-        NovaError::SynthesisError
+        SuperNovaError::NovaError(NovaError::SynthesisError)
       })?;
     if zi_primary.len() != pp.F_arity_primary {
-      return Err(NovaError::InvalidStepOutputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidStepOutputLength,
+      ));
     }
     let (u_primary, w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
       .map_err(|err| {
         debug!("err {:?}", err);
-        NovaError::SynthesisError
+        SuperNovaError::NovaError(NovaError::SynthesisError)
       })?;
 
     // base case for the secondary
@@ -342,13 +334,15 @@ where
     );
     let (_, zi_secondary) = circuit_secondary
       .synthesize(&mut cs_secondary)
-      .map_err(|_| NovaError::SynthesisError)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::SynthesisError))?;
     if zi_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidStepOutputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidStepOutputLength,
+      ));
     }
     let (u_secondary, w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-      .map_err(|_| NovaError::UnSat)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::UnSat))?;
 
     // IVC proof for the primary circuit
     let l_w_primary = w_primary;
@@ -372,15 +366,21 @@ where
     // Outputs of the two circuits and next program counter thus far.
     let zi_primary = zi_primary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+      .map(|v| {
+        v.get_value()
+          .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))
+      })
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, SuperNovaError>>()?;
     let zi_primary_pc_next = zi_primary_pc_next
       .get_value()
-      .ok_or(NovaError::SynthesisError)?;
+      .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))?;
     let zi_secondary = zi_secondary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
+      .map(|v| {
+        v.get_value()
+          .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))
+      })
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, SuperNovaError>>()?;
 
     // handle the base case by initialize U_next in next round
     let r_W_primary_initial_list = (0..num_augmented_circuits)
@@ -413,7 +413,7 @@ where
     claim: &RunningClaim<G1, G2, C1, C2>,
     z0_primary: &[G1::Scalar],
     z0_secondary: &[G2::Scalar],
-  ) -> Result<(), NovaError> {
+  ) -> Result<(), SuperNovaError> {
     // First step was already done in the constructor
     if self.i == 0 {
       self.i = 1;
@@ -421,18 +421,20 @@ where
     }
 
     if self.r_U_secondary.len() != 1 || self.r_W_secondary.len() != 1 {
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
 
     let pp = &claim.params;
     let c_primary = &claim.c_primary;
     let c_secondary = &claim.c_secondary;
     // commitment key for primary & secondary circuit
-    let ck_primary = pp.ck_primary.as_ref().ok_or(NovaError::MissingCK)?;
-    let ck_secondary = pp.ck_secondary.as_ref().ok_or(NovaError::MissingCK)?;
+    let ck_primary = pp.ck_primary.as_ref().ok_or(SuperNovaError::MissingCK)?;
+    let ck_secondary = pp.ck_secondary.as_ref().ok_or(SuperNovaError::MissingCK)?;
 
     if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidInitialInputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidInitialInputLength,
+      ));
     }
 
     // fold the secondary circuit's instance
@@ -445,14 +447,16 @@ where
       self.r_W_secondary[0].as_ref().unwrap(),
       &self.l_u_secondary,
       &self.l_w_secondary,
-    )?;
+    )
+    .map_err(SuperNovaError::NovaError)?;
 
     // clone and updated running instance on respective circuit_index
     let r_U_secondary_next = r_U_secondary_folded;
     let r_W_secondary_next = r_W_secondary_folded;
 
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
-    let T = Commitment::<G2>::decompress(&nifs_secondary.comm_T)?;
+    let T =
+      Commitment::<G2>::decompress(&nifs_secondary.comm_T).map_err(SuperNovaError::NovaError)?;
     let inputs_primary: SuperNovaAugmentedCircuitInputs<'_, G2> =
       SuperNovaAugmentedCircuitInputs::new(
         scalar_as_base::<G1>(self.pp_digest),
@@ -476,14 +480,16 @@ where
 
     let (zi_primary_pc_next, zi_primary) = circuit_primary
       .synthesize(&mut cs_primary)
-      .map_err(|_| NovaError::SynthesisError)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::SynthesisError))?;
     if zi_primary.len() != pp.F_arity_primary {
-      return Err(NovaError::InvalidInitialInputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidInitialInputLength,
+      ));
     }
 
     let (l_u_primary, l_w_primary) = cs_primary
       .r1cs_instance_and_witness(&pp.r1cs_shape_primary, ck_primary)
-      .map_err(|_| NovaError::UnSat)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::UnSat))?;
 
     // Split into `if let`/`else` statement
     // to avoid `returns a value referencing data owned by closure` error on `&RelaxedR1CSInstance::default` and `RelaxedR1CSWitness::default`
@@ -500,7 +506,8 @@ where
         r_W_primary,
         &l_u_primary,
         &l_w_primary,
-      )?,
+      )
+      .map_err(SuperNovaError::NovaError)?,
       _ => NIFS::prove(
         ck_primary,
         &pp.ro_consts_primary,
@@ -510,11 +517,13 @@ where
         &RelaxedR1CSWitness::default(&pp.r1cs_shape_primary),
         &l_u_primary,
         &l_w_primary,
-      )?,
+      )
+      .map_err(SuperNovaError::NovaError)?,
     };
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
-    let binding = Commitment::<G1>::decompress(&nifs_primary.comm_T)?;
+    let binding =
+      Commitment::<G1>::decompress(&nifs_primary.comm_T).map_err(SuperNovaError::NovaError)?;
     let inputs_secondary: SuperNovaAugmentedCircuitInputs<'_, G1> =
       SuperNovaAugmentedCircuitInputs::new(
         self.pp_digest,
@@ -537,30 +546,40 @@ where
     );
     let (_, zi_secondary) = circuit_secondary
       .synthesize(&mut cs_secondary)
-      .map_err(|_| NovaError::SynthesisError)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::SynthesisError))?;
     if zi_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidInitialInputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidInitialInputLength,
+      ));
     }
 
     let (l_u_secondary_next, l_w_secondary_next) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, ck_secondary)
-      .map_err(|_| NovaError::UnSat)?;
+      .map_err(|_| SuperNovaError::NovaError(NovaError::UnSat))?;
 
     // update the running instances and witnesses
     let zi_primary = zi_primary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+      .map(|v| {
+        v.get_value()
+          .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))
+      })
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, SuperNovaError>>()?;
     let zi_primary_pc_next = zi_primary_pc_next
       .get_value()
-      .ok_or(NovaError::SynthesisError)?;
+      .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))?;
     let zi_secondary = zi_secondary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
+      .map(|v| {
+        v.get_value()
+          .ok_or(SuperNovaError::NovaError(NovaError::SynthesisError))
+      })
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, SuperNovaError>>()?;
 
     if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidStepOutputLength);
+      return Err(SuperNovaError::NovaError(
+        NovaError::InvalidStepOutputLength,
+      ));
     }
 
     // clone and updated running instance on respective circuit_index
@@ -584,31 +603,31 @@ where
     claim: &RunningClaim<G1, G2, C1, C2>,
     z0_primary: &[G1::Scalar],
     z0_secondary: &[G2::Scalar],
-  ) -> Result<(), NovaError> {
+  ) -> Result<(), SuperNovaError> {
     // number of steps cannot be zero
     if self.i == 0 {
       debug!("must verify on valid RecursiveSNARK where i > 0");
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
 
     // check the (relaxed) R1CS instances public outputs.
     if self.l_u_secondary.X.len() != 2 {
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
 
     if self.r_U_secondary.len() != 1 || self.r_W_secondary.len() != 1 {
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
 
     let pp = &claim.params;
-    let ck_primary = pp.ck_primary.as_ref().ok_or(NovaError::MissingCK)?;
+    let ck_primary = pp.ck_primary.as_ref().ok_or(SuperNovaError::MissingCK)?;
 
     self.r_U_primary[claim.get_augmented_circuit_index()]
       .as_ref()
       .map_or(Ok(()), |U| {
         if U.X.len() != 2 {
           debug!("r_U_primary got instance length {:?} != {:?}", U.X.len(), 2);
-          Err(NovaError::ProofVerifyError)
+          Err(SuperNovaError::NovaError(NovaError::ProofVerifyError))
         } else {
           Ok(())
         }
@@ -621,7 +640,7 @@ where
           U.X.len(),
           2
         );
-        Err(NovaError::ProofVerifyError)
+        Err(SuperNovaError::NovaError(NovaError::ProofVerifyError))
       } else {
         Ok(())
       }
@@ -648,12 +667,13 @@ where
       for e in &self.zi_primary {
         hasher.absorb(*e);
       }
-      self.r_U_secondary[0]
-        .as_ref()
-        .map_or(Err(NovaError::ProofVerifyError), |U| {
+      self.r_U_secondary[0].as_ref().map_or(
+        Err(SuperNovaError::NovaError(NovaError::ProofVerifyError)),
+        |U| {
           U.absorb_in_ro(&mut hasher);
           Ok(())
-        })?;
+        },
+      )?;
 
       let mut hasher2 =
         <G1 as Group>::RO::new(pp.ro_consts_primary.clone(), num_field_secondary_ro);
@@ -684,14 +704,14 @@ where
         "hash_primary {:?} not equal l_u_secondary.X[0] {:?}",
         hash_primary, self.l_u_secondary.X[0]
       );
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
     if hash_secondary != scalar_as_base::<G2>(self.l_u_secondary.X[1]) {
       debug!(
         "hash_secondary {:?} not equal l_u_secondary.X[1] {:?}",
         hash_secondary, self.l_u_secondary.X[1]
       );
-      return Err(NovaError::ProofVerifyError);
+      return Err(SuperNovaError::NovaError(NovaError::ProofVerifyError));
     }
 
     // check the satisfiability of the provided `circuit_index` instance
@@ -730,31 +750,16 @@ where
     );
 
     res_r_primary.map_err(|err| match err {
-      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
-        "res_r_primary is_sat_relaxed relation failed at constraint path {:?}",
-        pp.constraints_path_primary
-          .get(i)
-          .unwrap_or(&"".to_string())
-      )),
-      e => e,
+      NovaError::UnSatIndex(i) => SuperNovaError::UnSatIndex("r_primary", i),
+      e => SuperNovaError::NovaError(e),
     })?;
     res_r_secondary.map_err(|err| match err {
-      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
-        "res_r_secondary is_sat_relaxed relation failed at constraint path {:?}",
-        pp.constraints_path_primary
-          .get(i)
-          .unwrap_or(&"".to_string())
-      )),
-      e => e,
+      NovaError::UnSatIndex(i) => SuperNovaError::UnSatIndex("r_secondary", i),
+      e => SuperNovaError::NovaError(e),
     })?;
     res_l_secondary.map_err(|err| match err {
-      NovaError::UnSatIndex(i) => NovaError::UnSatMsg(format!(
-        "res_l_secondary is_sat relation failed at constraint path {:?}",
-        pp.constraints_path_primary
-          .get(i)
-          .unwrap_or(&"".to_string())
-      )),
-      e => e,
+      NovaError::UnSatIndex(i) => SuperNovaError::UnSatIndex("l_secondary", i),
+      e => SuperNovaError::NovaError(e),
     })?;
 
     Ok(())
@@ -781,15 +786,14 @@ mod tests {
     compute_digest,
     gadgets::utils::{add_allocated_num, alloc_one, alloc_zero},
   };
-  use bellperson::gadgets::boolean::Boolean;
-  use bellperson::LinearCombination;
+  use bellpepper::gadgets::boolean::Boolean;
+  use bellpepper_core::num::AllocatedNum;
+  use bellpepper_core::{ConstraintSystem, LinearCombination, SynthesisError};
   use core::marker::PhantomData;
   use ff::Field;
   use ff::PrimeField;
 
   use super::*;
-
-  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
 
   fn constraint_augmented_circuit_index<F: PrimeField, CS: ConstraintSystem<F>>(
     mut cs: CS,
@@ -1001,6 +1005,50 @@ mod tests {
     }
   }
 
+  fn print_constraints_name_on_error_index<G1, G2, Ca, Cb>(
+    err: SuperNovaError,
+    running_claim: &RunningClaim<G1, G2, Ca, Cb>,
+    num_augmented_circuits: usize,
+  ) where
+    G1: Group<Base = <G2 as Group>::Scalar>,
+    G2: Group<Base = <G1 as Group>::Scalar>,
+    Ca: StepCircuit<G1::Scalar>,
+    Cb: StepCircuit<G2::Scalar>,
+  {
+    match err {
+      SuperNovaError::UnSatIndex(msg, index) if msg == "r_primary" => {
+        let circuit_primary: SuperNovaAugmentedCircuit<'_, G2, Ca> = SuperNovaAugmentedCircuit::new(
+          &running_claim.params.augmented_circuit_params_primary,
+          None,
+          &running_claim.c_primary,
+          running_claim.params.ro_consts_circuit_primary.clone(),
+          num_augmented_circuits,
+        );
+        let mut cs: TestShapeCS<G1> = TestShapeCS::new();
+        let _ = circuit_primary.synthesize(&mut cs);
+        cs.constraints
+          .get(index)
+          .map(|constraint| debug!("{msg} failed at constraint {}", constraint.3));
+      }
+      SuperNovaError::UnSatIndex(msg, index) if msg == "r_secondary" || msg == "l_secondary" => {
+        let circuit_secondary: SuperNovaAugmentedCircuit<'_, G1, Cb> =
+          SuperNovaAugmentedCircuit::new(
+            &running_claim.params.augmented_circuit_params_secondary,
+            None,
+            &running_claim.c_secondary,
+            running_claim.params.ro_consts_circuit_secondary.clone(),
+            num_augmented_circuits,
+          );
+        let mut cs: TestShapeCS<G2> = TestShapeCS::new();
+        let _ = circuit_secondary.synthesize(&mut cs);
+        cs.constraints
+          .get(index)
+          .map(|constraint| debug!("{msg} failed at constraint {}", constraint.3));
+      }
+      _ => (),
+    }
+  }
+
   const OPCODE_0: usize = 0;
   const OPCODE_1: usize = 1;
   fn test_trivial_nivc_with<G1, G2>()
@@ -1149,6 +1197,9 @@ mod tests {
           .unwrap();
         let _ = recursive_snark
           .verify(&running_claim1, &z0_primary, &z0_secondary)
+          .map_err(|err| {
+            print_constraints_name_on_error_index(err, &running_claim1, num_augmented_circuit)
+          })
           .unwrap();
       } else if augmented_circuit_index == OPCODE_1 {
         let _ = recursive_snark
@@ -1156,6 +1207,9 @@ mod tests {
           .unwrap();
         let _ = recursive_snark
           .verify(&running_claim2, &z0_primary, &z0_secondary)
+          .map_err(|err| {
+            print_constraints_name_on_error_index(err, &running_claim2, num_augmented_circuit)
+          })
           .unwrap();
       }
       recursive_snark_option = Some(recursive_snark)

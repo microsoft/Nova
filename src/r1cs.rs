@@ -14,7 +14,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -193,7 +193,7 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if Az * Bz = u*Cz + E
     let res_eq: Result<(), NovaError> = {
-      let z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+      let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
       let (Az, Bz, Cz) = self.multiply_vec(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
@@ -235,7 +235,7 @@ impl<G: Group> R1CSShape<G> {
 
     // verify if Az * Bz = u*Cz
     let res_eq: Result<(), NovaError> = {
-      let z = concat(vec![W.W.clone(), vec![G::Scalar::ONE], U.X.clone()]);
+      let z = [W.W.clone(), vec![G::Scalar::ONE], U.X.clone()].concat();
       let (Az, Bz, Cz) = self.multiply_vec(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
@@ -271,12 +271,12 @@ impl<G: Group> R1CSShape<G> {
     W2: &R1CSWitness<G>,
   ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
     let (AZ_1, BZ_1, CZ_1) = {
-      let Z1 = concat(vec![W1.W.clone(), vec![U1.u], U1.X.clone()]);
+      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
       self.multiply_vec(&Z1)?
     };
 
     let (AZ_2, BZ_2, CZ_2) = {
-      let Z2 = concat(vec![W2.W.clone(), vec![G::Scalar::ONE], U2.X.clone()]);
+      let Z2 = [W2.W.clone(), vec![G::Scalar::ONE], U2.X.clone()].concat();
       self.multiply_vec(&Z2)?
     };
 

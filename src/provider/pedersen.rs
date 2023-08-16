@@ -19,7 +19,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitmentKey<G: Group> {
   ck: Vec<G::PreprocessedGroupElement>,
-  _p: PhantomData<G>,
 }
 
 /// A type that holds a commitment
@@ -191,7 +190,6 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     Self::CommitmentKey {
       ck: G::from_label(label, n.next_power_of_two()),
-      _p: Default::default(),
     }
   }
 
@@ -205,9 +203,6 @@ impl<G: Group> CommitmentEngineTrait<G> for CommitmentEngine<G> {
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
 pub trait CommitmentKeyExtTrait<G: Group> {
-  /// Holds the type of the commitment engine
-  type CE: CommitmentEngineTrait<G>;
-
   /// Splits the commitment key into two pieces at a specified point
   fn split_at(&self, n: usize) -> (Self, Self)
   where
@@ -224,24 +219,20 @@ pub trait CommitmentKeyExtTrait<G: Group> {
 
   /// Reinterprets commitments as commitment keys
   fn reinterpret_commitments_as_ck(
-    c: &[<<<Self as CommitmentKeyExtTrait<G>>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
+    c: &[<<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment],
   ) -> Result<Self, NovaError>
   where
     Self: Sized;
 }
 
-impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
-  type CE = CommitmentEngine<G>;
-
+impl<G: Group<CE = CommitmentEngine<G>>> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
   fn split_at(&self, n: usize) -> (CommitmentKey<G>, CommitmentKey<G>) {
     (
       CommitmentKey {
         ck: self.ck[0..n].to_vec(),
-        _p: Default::default(),
       },
       CommitmentKey {
         ck: self.ck[n..].to_vec(),
-        _p: Default::default(),
       },
     )
   }
@@ -252,10 +243,7 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
       c.extend(other.ck.clone());
       c
     };
-    CommitmentKey {
-      ck,
-      _p: Default::default(),
-    }
+    CommitmentKey { ck }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
@@ -271,10 +259,7 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
       })
       .collect();
 
-    CommitmentKey {
-      ck,
-      _p: Default::default(),
-    }
+    CommitmentKey { ck }
   }
 
   /// Scales each element in `self` by `r`
@@ -286,10 +271,7 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
       .map(|g| G::vartime_multiscalar_mul(&[*r], &[g]).preprocessed())
       .collect();
 
-    CommitmentKey {
-      ck: ck_scaled,
-      _p: Default::default(),
-    }
+    CommitmentKey { ck: ck_scaled }
   }
 
   /// reinterprets a vector of commitments as a set of generators
@@ -302,9 +284,6 @@ impl<G: Group> CommitmentKeyExtTrait<G> for CommitmentKey<G> {
       .into_par_iter()
       .map(|i| d[i].comm.preprocessed())
       .collect();
-    Ok(CommitmentKey {
-      ck,
-      _p: Default::default(),
-    })
+    Ok(CommitmentKey { ck })
   }
 }

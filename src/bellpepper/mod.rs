@@ -1,22 +1,23 @@
-//! Support for generating R1CS from [Bellperson].
+//! Support for generating R1CS from [Bellpepper].
 //!
-//! [Bellperson]: https://github.com/filecoin-project/bellperson
+//! [Bellpepper]: https://github.com/lurk-lab/bellpepper
 
 pub mod r1cs;
 pub mod shape_cs;
 pub mod solver;
+pub mod test_shape_cs;
 
 #[cfg(test)]
 mod tests {
   use crate::{
-    bellperson::{
+    bellpepper::{
       r1cs::{NovaShape, NovaWitness},
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
     traits::Group,
   };
-  use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::PrimeField;
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(

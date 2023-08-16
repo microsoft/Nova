@@ -5,13 +5,10 @@
 #![allow(non_snake_case)]
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-use ::bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::{AllocatedNum, Num},
-    sha256::sha256,
-    Assignment,
-  },
+use bellpepper::gadgets::{sha256::sha256, Assignment};
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::{AllocatedNum, Num},
   ConstraintSystem, SynthesisError,
 };
 use core::time::Duration;
@@ -37,7 +34,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> Sha256Circuit<Scalar> {
   pub fn new(preimage: Vec<u8>) -> Self {
     Self {
       preimage,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 }

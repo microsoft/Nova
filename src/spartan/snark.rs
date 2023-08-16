@@ -20,14 +20,14 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
   vk_digest: G::Scalar, // digest of the verifier's key
@@ -36,7 +36,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
   digest: G::Scalar,
@@ -47,7 +47,7 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   eval_E: G::Scalar,
@@ -58,9 +58,7 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> 
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G>
-  for RelaxedR1CSSNARK<G, EE>
-{
+impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE> {
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 
@@ -109,11 +107,11 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+    let mut z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     let (num_rounds_x, num_rounds_y) = (
-      (pk.S.num_cons as f64).log2() as usize,
-      ((pk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(pk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(pk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -350,8 +348,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (
-      (vk.S.num_cons as f64).log2() as usize,
-      ((vk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(vk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(vk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -405,7 +403,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.S.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
+        SparsePolynomial::new(usize::try_from(vk.S.num_vars.ilog2()).unwrap(), poly_X)
+          .evaluate(&r_y[1..])
       };
       (G::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };
