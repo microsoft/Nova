@@ -20,14 +20,14 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
-use itertools::concat;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
   S: R1CSShape<G>,
   vk_digest: G::Scalar, // digest of the verifier's key
@@ -36,7 +36,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
   digest: G::Scalar,
@@ -47,7 +47,7 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> {
+pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   eval_E: G::Scalar,
@@ -58,9 +58,7 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> 
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G>
-  for RelaxedR1CSSNARK<G, EE>
-{
+impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE> {
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 
@@ -102,21 +100,18 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // sanity check that R1CSShape has certain size characteristics
-    assert_eq!(pk.S.num_cons.next_power_of_two(), pk.S.num_cons);
-    assert_eq!(pk.S.num_vars.next_power_of_two(), pk.S.num_vars);
-    assert_eq!(pk.S.num_io.next_power_of_two(), pk.S.num_io);
-    assert!(pk.S.num_io < pk.S.num_vars);
+    pk.S.check_regular_shape();
 
     // append the digest of vk (which includes R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"U", U);
 
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let mut z = concat(vec![W.W.clone(), vec![U.u], U.X.clone()]);
+    let mut z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     let (num_rounds_x, num_rounds_y) = (
-      (pk.S.num_cons as f64).log2() as usize,
-      ((pk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(pk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(pk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -353,8 +348,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (
-      (vk.S.num_cons as f64).log2() as usize,
-      ((vk.S.num_vars as f64).log2() as usize + 1),
+      usize::try_from(vk.S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(vk.S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -408,7 +403,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
             .map(|i| (i + 1, U.X[i]))
             .collect::<Vec<(usize, G::Scalar)>>(),
         );
-        SparsePolynomial::new((vk.S.num_vars as f64).log2() as usize, poly_X).evaluate(&r_y[1..])
+        SparsePolynomial::new(usize::try_from(vk.S.num_vars.ilog2()).unwrap(), poly_X)
+          .evaluate(&r_y[1..])
       };
       (G::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };
@@ -421,13 +417,12 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       let evaluate_with_table =
         |M: &[(usize, usize, G::Scalar)], T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
           (0..M.len())
-            .collect::<Vec<usize>>()
-            .par_iter()
-            .map(|&i| {
+            .into_par_iter()
+            .map(|i| {
               let (row, col, val) = M[i];
               T_x[row] * T_y[col] * val
             })
-            .reduce(|| G::Scalar::ZERO, |acc, x| acc + x)
+            .sum()
         };
 
       let (T_x, T_y) = rayon::join(
@@ -436,9 +431,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G, CE = G::CE>> RelaxedR1CSSNARKTrait<G
       );
 
       (0..M_vec.len())
-        .collect::<Vec<usize>>()
-        .par_iter()
-        .map(|&i| evaluate_with_table(M_vec[i], &T_x, &T_y))
+        .into_par_iter()
+        .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
         .collect()
     };
 

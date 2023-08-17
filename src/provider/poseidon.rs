@@ -1,10 +1,8 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
 use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
-use bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
-  },
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 use core::marker::PhantomData;
@@ -138,9 +136,9 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb(&mut self, e: AllocatedNum<Scalar>) {
+  fn absorb(&mut self, e: &AllocatedNum<Scalar>) {
     assert!(!self.squeezed, "Cannot absorb after squeezing");
-    self.state.push(e);
+    self.state.push(e.clone());
   }
 
   /// Compute a challenge by hashing the current state
@@ -201,10 +199,13 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::bn256_grumpkin::bn256;
+  use crate::provider::{
+    bn256_grumpkin::bn256,
+    secp_secq
+  };
   use crate::{
-    bellperson::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num, traits::Group, provider::secp_secq,
+    bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
+    gadgets::utils::le_bits_to_num, traits::Group,
   };
   use ff::Field;
   use rand::rngs::OsRng;
@@ -233,7 +234,7 @@ mod tests {
       num_gadget
         .inputize(&mut cs.namespace(|| format!("input {i}")))
         .unwrap();
-      ro_gadget.absorb(num_gadget);
+      ro_gadget.absorb(&num_gadget);
     }
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();

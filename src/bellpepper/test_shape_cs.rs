@@ -1,4 +1,5 @@
-//! Support for generating R1CS shape using bellperson.
+//! Support for generating R1CS shape using bellpepper.
+//! `TestShapeCS` implements a superset of `ShapeCS`, adding non-trivial namespace support for use in testing.
 
 use std::{
   cmp::Ordering,
@@ -6,7 +7,7 @@ use std::{
 };
 
 use crate::traits::Group;
-use bellperson::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use core::fmt::Write;
 use ff::{Field, PrimeField};
 
@@ -47,15 +48,15 @@ impl Ord for OrderedVariable {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-/// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct ShapeCS<G: Group>
+/// `TestShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
+pub struct TestShapeCS<G: Group>
 where
   G::Scalar: PrimeField + Field,
 {
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
   #[allow(clippy::type_complexity)]
-  /// All constraints added to the `ShapeCS`.
+  /// All constraints added to the `TestShapeCS`.
   pub constraints: Vec<(
     LinearCombination<G::Scalar>,
     LinearCombination<G::Scalar>,
@@ -92,26 +93,27 @@ fn proc_lc<Scalar: PrimeField>(
   map
 }
 
-impl<G: Group> ShapeCS<G>
+impl<G: Group> TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
-  /// Create a new, default `ShapeCS`,
+  #[allow(unused)]
+  /// Create a new, default `TestShapeCS`,
   pub fn new() -> Self {
-    ShapeCS::default()
+    TestShapeCS::default()
   }
 
-  /// Returns the number of constraints defined for this `ShapeCS`.
+  /// Returns the number of constraints defined for this `TestShapeCS`.
   pub fn num_constraints(&self) -> usize {
     self.constraints.len()
   }
 
-  /// Returns the number of inputs defined for this `ShapeCS`.
+  /// Returns the number of inputs defined for this `TestShapeCS`.
   pub fn num_inputs(&self) -> usize {
     self.inputs.len()
   }
 
-  /// Returns the number of aux inputs defined for this `ShapeCS`.
+  /// Returns the number of aux inputs defined for this `TestShapeCS`.
   pub fn num_aux(&self) -> usize {
     self.aux.len()
   }
@@ -216,14 +218,14 @@ where
   }
 }
 
-impl<G: Group> Default for ShapeCS<G>
+impl<G: Group> Default for TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
   fn default() -> Self {
     let mut map = HashMap::new();
-    map.insert("ONE".into(), NamedObject::Var(ShapeCS::<G>::one()));
-    ShapeCS {
+    map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<G>::one()));
+    TestShapeCS {
       named_objects: map,
       current_namespace: vec![],
       constraints: vec![],
@@ -233,7 +235,7 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G>
+impl<G: Group> ConstraintSystem<G::Scalar> for TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
@@ -308,36 +310,17 @@ fn compute_path(ns: &[String], this: &str) -> String {
     "'/' is not allowed in names"
   );
 
-  let mut name = ns.join("/");
-  if !name.is_empty() {
-    name.push('/');
-  }
+  let mut name = String::new();
 
-  name.push_str(this);
+  let mut needs_separation = false;
+  for ns in ns.iter().chain(Some(this.to_string()).iter()) {
+    if needs_separation {
+      name += "/";
+    }
+
+    name += ns;
+    needs_separation = true;
+  }
 
   name
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_compute_path() {
-    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
-    let this = "file";
-    assert_eq!(compute_path(&ns, this), "path/to/dir/file");
-
-    let ns = vec!["".to_string(), "".to_string(), "".to_string()];
-    let this = "file";
-    assert_eq!(compute_path(&ns, this), "///file");
-  }
-
-  #[test]
-  #[should_panic(expected = "'/' is not allowed in names")]
-  fn test_compute_path_invalid() {
-    let ns = vec!["path".to_string(), "to".to_string(), "dir".to_string()];
-    let this = "fi/le";
-    compute_path(&ns, this);
-  }
 }

@@ -2,7 +2,7 @@
 //! In particular, it supports any SNARK that implements RelaxedR1CSSNARK trait
 //! (e.g., with the SNARKs implemented in ppsnark.rs or snark.rs).
 use crate::{
-  bellperson::{
+  bellpepper::{
     r1cs::{NovaShape, NovaWitness},
     shape_cs::ShapeCS,
     solver::SatisfyingAssignment,
@@ -12,7 +12,7 @@ use crate::{
   traits::{circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, Group},
   Commitment, CommitmentKey,
 };
-use bellperson::{gadgets::num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -134,7 +134,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
     Ok(DirectSNARK {
       comm_W: u.comm_W,
       snark,
-      _p: Default::default(),
+      _p: PhantomData,
     })
   }
 
@@ -153,8 +153,11 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1};
-  use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use crate::provider::{
+    bn256_grumpkin::bn256,
+    secp_secq::secp256k1,
+  };
+  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
 
@@ -201,7 +204,9 @@ mod tests {
 
       Ok(vec![y])
     }
+  }
 
+  impl<F: PrimeField> CubicCircuit<F> {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }

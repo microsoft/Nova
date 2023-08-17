@@ -6,9 +6,11 @@ use crate::{
 };
 use core::{
   fmt::Debug,
-  ops::{Add, AddAssign, Mul, MulAssign},
+  ops::{Add, AddAssign},
 };
 use serde::{Deserialize, Serialize};
+
+use super::ScalarMul;
 
 /// Defines basic operations on commitments
 pub trait CommitmentOps<Rhs = Self, Output = Self>:
@@ -30,12 +32,6 @@ impl<T, Rhs, Output> CommitmentOpsOwned<Rhs, Output> for T where
   T: for<'r> CommitmentOps<&'r Rhs, Output>
 {
 }
-
-/// A helper trait for types implementing a multiplication of a commitment with a scalar
-pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
-
-impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
-{}
 
 /// This trait defines the behavior of the commitment
 pub trait CommitmentTrait<G: Group>:
@@ -77,9 +73,7 @@ pub trait CommitmentTrait<G: Group>:
 }
 
 /// A trait that ties different pieces of the commitment generation together
-pub trait CommitmentEngineTrait<G: Group>:
-  Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>
-{
+pub trait CommitmentEngineTrait<G: Group>: Clone + Send + Sync {
   /// Holds the type of the commitment key
   type CommitmentKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 

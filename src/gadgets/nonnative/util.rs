@@ -1,6 +1,6 @@
 use super::{BitAccess, OptionExt};
-use bellperson::{
-  gadgets::num::AllocatedNum,
+use bellpepper_core::{
+  num::AllocatedNum,
   {ConstraintSystem, LinearCombination, SynthesisError, Variable},
 };
 use byteorder::WriteBytesExt;
@@ -69,7 +69,7 @@ pub struct Num<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> Num<Scalar> {
-  pub fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
+  pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
     Self { value, num }
   }
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>

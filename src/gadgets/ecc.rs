@@ -8,12 +8,10 @@ use crate::{
   },
   traits::Group,
 };
-use bellperson::{
-  gadgets::{
-    boolean::{AllocatedBit, Boolean},
-    num::AllocatedNum,
-    Assignment,
-  },
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
   ConstraintSystem, SynthesisError,
 };
 use ff::{Field, PrimeField};
@@ -81,7 +79,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(
+  pub const fn get_coordinates(
     &self,
   ) -> (
     &AllocatedNum<G::Base>,
@@ -424,7 +422,7 @@ where
   }
 
   /// A gadget for scalar multiplication, optimized to use incomplete addition law.
-  /// The optimization here is analogous to https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295,
+  /// The optimization here is analogous to <https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295>,
   /// except we use complete addition law over affine coordinates instead of projective coordinates for the tail bits
   pub fn scalar_mul<CS: ConstraintSystem<G::Base>>(
     &self,
@@ -570,7 +568,7 @@ where
   G: Group,
 {
   /// Creates a new AllocatedPointNonInfinity from the specified coordinates
-  pub fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
+  pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
     Self { x, y }
   }
 
@@ -610,7 +608,7 @@ where
   }
 
   /// Returns coordinates associated with the point.
-  pub fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
+  pub const fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
     (&self.x, &self.y)
   }
 
@@ -750,13 +748,13 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::bn256_grumpkin::{bn256, grumpkin};
-  use crate::{
-    bellperson::{
-      r1cs::{NovaShape, NovaWitness},
-      {shape_cs::ShapeCS, solver::SatisfyingAssignment},
-    },
-    provider::secp_secq::{secp256k1, secq256k1},
+  use crate::bellpepper::{
+    r1cs::{NovaShape, NovaWitness},
+    {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
+  };
+  use crate::provider::{
+    bn256_grumpkin::{bn256, grumpkin},
+    secp_secq::{secp256k1, secq256k1}
   };
   use ff::{Field, PrimeFieldBits};
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
@@ -1000,7 +998,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();
@@ -1056,7 +1054,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();
@@ -1116,7 +1114,7 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
-    let mut cs: ShapeCS<G2> = ShapeCS::new();
+    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape();

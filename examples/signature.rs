@@ -1,6 +1,5 @@
-use bellperson::{
-  gadgets::{boolean::AllocatedBit, test::TestConstraintSystem},
-  ConstraintSystem, SynthesisError,
+use bellpepper_core::{
+  boolean::AllocatedBit, test_cs::TestConstraintSystem, ConstraintSystem, SynthesisError,
 };
 use core::ops::{AddAssign, MulAssign};
 use ff::{
@@ -179,7 +178,7 @@ impl<E: AsRef<[u64]>> Iterator for BitIterator<E> {
 // Synthesize a bit representation into circuit gadgets.
 pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
   cs: &mut CS,
-  bits: Option<Vec<bool>>,
+  bits: &Option<Vec<bool>>,
 ) -> Result<Vec<AllocatedBit>, SynthesisError> {
   (0..F::NUM_BITS)
     .map(|i| {
@@ -193,10 +192,10 @@ pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
 
 pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
   cs: &mut CS,
-  pk: AllocatedPoint<G>,
-  r: AllocatedPoint<G>,
-  s_bits: Vec<AllocatedBit>,
-  c_bits: Vec<AllocatedBit>,
+  pk: &AllocatedPoint<G>,
+  r: &AllocatedPoint<G>,
+  s_bits: &[AllocatedBit],
+  c_bits: &[AllocatedBit],
 ) -> Result<(), SynthesisError> {
   let g = AllocatedPoint::<G>::alloc(
     cs.namespace(|| "g"),
@@ -233,9 +232,9 @@ pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
     |lc| lc + (G::Base::from_str_vartime("2").unwrap(), CS::one()),
   );
 
-  let sg = g.scalar_mul(cs.namespace(|| "[s]G"), &s_bits)?;
-  let cpk = pk.scalar_mul(&mut cs.namespace(|| "[c]PK"), &c_bits)?;
-  let rcpk = cpk.add(&mut cs.namespace(|| "R + [c]PK"), &r)?;
+  let sg = g.scalar_mul(cs.namespace(|| "[s]G"), s_bits)?;
+  let cpk = pk.scalar_mul(&mut cs.namespace(|| "[c]PK"), c_bits)?;
+  let rcpk = cpk.add(&mut cs.namespace(|| "R + [c]PK"), r)?;
 
   let (rcpk_x, rcpk_y, _) = rcpk.get_coordinates();
   let (sg_x, sg_y, _) = sg.get_coordinates();
@@ -298,16 +297,16 @@ fn main() {
       .map(|b| *b)
       .collect::<Vec<bool>>();
 
-    synthesize_bits(&mut cs.namespace(|| "s bits"), Some(s_bits)).unwrap()
+    synthesize_bits(&mut cs.namespace(|| "s bits"), &Some(s_bits)).unwrap()
   };
   let c = {
     let c_bits = c.to_le_bits().iter().map(|b| *b).collect::<Vec<bool>>();
 
-    synthesize_bits(&mut cs.namespace(|| "c bits"), Some(c_bits)).unwrap()
+    synthesize_bits(&mut cs.namespace(|| "c bits"), &Some(c_bits)).unwrap()
   };
 
   // Check the signature was signed by the correct sk using the pk
-  verify_signature(&mut cs, pk, r, s, c).unwrap();
+  verify_signature(&mut cs, &pk, &r, &s, &c).unwrap();
 
   assert!(cs.is_satisfied());
 }

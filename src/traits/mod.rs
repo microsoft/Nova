@@ -1,9 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
-use bellperson::{
-  gadgets::{boolean::AllocatedBit, num::AllocatedNum},
-  ConstraintSystem, SynthesisError,
-};
+use bellpepper_core::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
@@ -34,15 +31,10 @@ pub trait Group:
   + for<'de> Deserialize<'de>
 {
   /// A type representing an element of the base field of the group
-  type Base: PrimeField
-    + PrimeFieldBits
-    + TranscriptReprTrait<Self>
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeField
-    + PrimeFieldBits
+  type Scalar: PrimeFieldBits
     + PrimeFieldExt
     + Send
     + Sync
@@ -51,25 +43,23 @@ pub trait Group:
     + for<'de> Deserialize<'de>;
 
   /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   /// A type representing preprocessed group element
   type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
-  type RO: ROTrait<Self::Base, Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
+  type RO: ROTrait<Self::Base, Self::Scalar>;
 
   /// An alternate implementation of Self::RO in the circuit model
-  type ROCircuit: ROCircuitTrait<Self::Base> + Serialize + for<'de> Deserialize<'de>;
+  type ROCircuit: ROCircuitTrait<Self::Base>;
 
   /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
   type TE: TranscriptEngineTrait<Self>;
 
   /// A type that defines a commitment engine over scalars in the group
-  type CE: CommitmentEngineTrait<Self> + Serialize + for<'de> Deserialize<'de>;
+  type CE: CommitmentEngineTrait<Self>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -114,7 +104,7 @@ pub trait CompressedGroup:
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group + Serialize + for<'de> Deserialize<'de>;
+  type GroupElement: Group;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
@@ -160,7 +150,7 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
 
   /// Adds a scalar to the internal state
-  fn absorb(&mut self, e: AllocatedNum<Base>);
+  fn absorb(&mut self, e: &AllocatedNum<Base>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
   fn squeeze<CS>(&mut self, cs: CS, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>
@@ -236,11 +226,9 @@ pub trait PrimeFieldExt: PrimeField {
 
 impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    (0..self.len())
-      .map(|i| self[i].to_transcript_bytes())
-      .collect::<Vec<_>>()
-      .into_iter()
-      .flatten()
+    self
+      .iter()
+      .flat_map(|t| t.to_transcript_bytes())
       .collect::<Vec<u8>>()
   }
 }

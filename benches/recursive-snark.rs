@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
@@ -56,7 +56,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let c_secondary = TrivialTestCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(c_primary.clone(), c_secondary.clone());
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
 
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing
@@ -136,7 +136,7 @@ where
   pub fn new(num_cons: usize) -> Self {
     Self {
       num_cons,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 }
@@ -161,15 +161,5 @@ where
       x = y.clone();
     }
     Ok(vec![y])
-  }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    let mut x = z[0];
-    let mut y = x;
-    for _i in 0..self.num_cons {
-      y = x * x;
-      x = y;
-    }
-    vec![y]
   }
 }

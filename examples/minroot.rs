@@ -3,7 +3,7 @@
 //! We execute a configurable number of iterations of the MinRoot function per step of Nova's recursion.
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-use ::bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
@@ -127,18 +127,6 @@ where
 
     z_out
   }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    // sanity check
-    debug_assert_eq!(z[0], self.seq[0].x_i);
-    debug_assert_eq!(z[1], self.seq[0].y_i);
-
-    // compute output using advice
-    vec![
-      self.seq[self.seq.len() - 1].x_i_plus_1,
-      self.seq[self.seq.len() - 1].y_i_plus_1,
-    ]
-  }
 }
 
 fn main() {
@@ -172,7 +160,7 @@ fn main() {
       G2,
       MinRootCircuit<<G1 as Group>::Scalar>,
       TrivialTestCircuit<<G2 as Group>::Scalar>,
-    >::setup(circuit_primary.clone(), circuit_secondary.clone());
+    >::setup(&circuit_primary, &circuit_secondary);
     println!("PublicParams::setup, took {:?} ", start.elapsed());
 
     println!(

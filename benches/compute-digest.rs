@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, time::Duration};
 
-use bellperson::{gadgets::num::AllocatedNum, ConstraintSystem, SynthesisError};
+use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
 use nova_snark::{
@@ -27,7 +27,7 @@ criterion_main!(compute_digest);
 fn bench_compute_digest(c: &mut Criterion) {
   c.bench_function("compute_digest", |b| {
     b.iter(|| {
-      PublicParams::<G1, G2, C1, C2>::setup(black_box(C1::new(10)), black_box(C2::default()))
+      PublicParams::<G1, G2, C1, C2>::setup(black_box(&C1::new(10)), black_box(&C2::default()))
     })
   });
 }
@@ -45,7 +45,7 @@ where
   pub fn new(num_cons: usize) -> Self {
     Self {
       num_cons,
-      _p: Default::default(),
+      _p: PhantomData,
     }
   }
 }
@@ -70,15 +70,5 @@ where
       x = y.clone();
     }
     Ok(vec![y])
-  }
-
-  fn output(&self, z: &[F]) -> Vec<F> {
-    let mut x = z[0];
-    let mut y = x;
-    for _i in 0..self.num_cons {
-      y = x * x;
-      x = y;
-    }
-    vec![y]
   }
 }

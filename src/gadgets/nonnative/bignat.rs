@@ -4,7 +4,7 @@ use super::{
   },
   OptionExt,
 };
-use bellperson::{ConstraintSystem, LinearCombination, SynthesisError};
+use bellpepper_core::{ConstraintSystem, LinearCombination, SynthesisError};
 use ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -783,7 +783,9 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use bellperson::Circuit;
+  use bellpepper_core::{test_cs::TestConstraintSystem, Circuit};
+  use pasta_curves::pallas::Scalar;
+  use proptest::prelude::*;
 
   pub struct PolynomialMultiplier<Scalar: PrimeField> {
     pub a: Vec<Scalar>,
@@ -816,6 +818,81 @@ mod tests {
       };
       let _prod = a.alloc_product(cs.namespace(|| "product"), &b)?;
       Ok(())
+    }
+  }
+
+  #[test]
+  fn test_polynomial_multiplier_circuit() {
+    let mut cs = TestConstraintSystem::<pasta_curves::pallas::Scalar>::new();
+
+    let circuit = PolynomialMultiplier {
+      a: [1, 1, 1].iter().map(|i| Scalar::from_u128(*i)).collect(),
+      b: [1, 1].iter().map(|i| Scalar::from_u128(*i)).collect(),
+    };
+
+    circuit.synthesize(&mut cs).expect("synthesis failed");
+
+    if let Some(token) = cs.which_is_unsatisfied() {
+      eprintln!("Error: {} is unsatisfied", token);
+    }
+  }
+
+  #[derive(Debug)]
+  pub struct BigNatBitDecompInputs {
+    pub n: BigInt,
+  }
+
+  pub struct BigNatBitDecompParams {
+    pub limb_width: usize,
+    pub n_limbs: usize,
+  }
+
+  pub struct BigNatBitDecomp {
+    inputs: Option<BigNatBitDecompInputs>,
+    params: BigNatBitDecompParams,
+  }
+
+  impl<Scalar: PrimeField> Circuit<Scalar> for BigNatBitDecomp {
+    fn synthesize<CS: ConstraintSystem<Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+      let n = BigNat::alloc_from_nat(
+        cs.namespace(|| "n"),
+        || Ok(self.inputs.grab()?.n.clone()),
+        self.params.limb_width,
+        self.params.n_limbs,
+      )?;
+      n.decompose(cs.namespace(|| "decomp"))?;
+      Ok(())
+    }
+  }
+
+  proptest! {
+
+    #![proptest_config(ProptestConfig {
+      cases: 10, // this test is costlier as max n gets larger
+      .. ProptestConfig::default()
+    })]
+    #[test]
+    fn test_big_nat_can_decompose(n in any::<u16>(), limb_width in 40u8..200) {
+        let n = n as usize;
+
+        let n_limbs = if n == 0 {
+            1
+        } else {
+            (n - 1) / limb_width as usize + 1
+        };
+
+        let circuit = BigNatBitDecomp {
+           inputs: Some(BigNatBitDecompInputs {
+                n: BigInt::from(n),
+            }),
+            params: BigNatBitDecompParams {
+                limb_width: limb_width as usize,
+                n_limbs,
+            },
+        };
+        let mut cs = TestConstraintSystem::<pasta_curves::pallas::Scalar>::new();
+        circuit.synthesize(&mut cs).expect("synthesis failed");
+        prop_assert!(cs.is_satisfied());
     }
   }
 }
