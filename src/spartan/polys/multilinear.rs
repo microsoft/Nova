@@ -11,7 +11,7 @@ use rayon::prelude::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::spartan::{math::Math, polys::eq_poly::EqPolynomial};
+use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.

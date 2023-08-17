@@ -14,7 +14,7 @@ mod sumcheck;
 
 use crate::{traits::Group, Commitment};
 use ff::Field;
-use polys::mlpoly::SparsePolynomial;
+use polys::multilinear::SparsePolynomial;
 
 fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);

@@ -9,9 +9,9 @@ use crate::{
   spartan::{
     math::Math,
     polys::{
-      eq_poly::EqPolynomial,
-      mlpoly::MultilinearPolynomial,
-      unipoly::{CompressedUniPoly, UniPoly},
+      eq::EqPolynomial,
+      multilinear::MultilinearPolynomial,
+      univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
     sumcheck::SumcheckProof,

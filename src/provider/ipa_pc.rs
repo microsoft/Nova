@@ -3,7 +3,7 @@
 use crate::{
   errors::NovaError,
   provider::pedersen::CommitmentKeyExtTrait,
-  spartan::polys::eq_poly::EqPolynomial,
+  spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,

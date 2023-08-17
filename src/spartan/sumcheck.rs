@@ -2,8 +2,8 @@
 #![allow(clippy::type_complexity)]
 use crate::errors::NovaError;
 use crate::spartan::polys::{
-  mlpoly::MultilinearPolynomial,
-  unipoly::{CompressedUniPoly, UniPoly},
+  multilinear::MultilinearPolynomial,
+  univariate::{CompressedUniPoly, UniPoly},
 };
 use crate::traits::{Group, TranscriptEngineTrait};
 use ff::Field;
