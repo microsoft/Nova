@@ -1,4 +1,4 @@
-//! This module implements the Nova traits for bn256::Point, bn256::Scalar, grumpkin::Point, grumpkin::Scalar.
+//! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
   provider::{
     cpu_best_multiexp,

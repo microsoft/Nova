@@ -99,7 +99,7 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
-  /// Creates a new MultilinearPolynomial from the given evaluations.
+  /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///
   /// The number of evaluations must be a power of two.
   pub fn new(Z: Vec<Scalar>) -> Self {

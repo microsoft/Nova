@@ -71,7 +71,7 @@ pub struct AllocatedRelaxedR1CSInstance<G: Group> {
 }
 
 impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
-  /// Allocates the given RelaxedR1CSInstance as a witness of the circuit
+  /// Allocates the given `RelaxedR1CSInstance` as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
     inst: Option<&RelaxedR1CSInstance<G>>,
@@ -117,7 +117,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
   }
 
-  /// Allocates the hardcoded default RelaxedR1CSInstance in the circuit.
+  /// Allocates the hardcoded default `RelaxedR1CSInstance` in the circuit.
   /// W = E = 0, u = 0, X0 = X1 = 0
   pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,
@@ -146,7 +146,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
   }
 
-  /// Allocates the R1CS Instance as a RelaxedR1CSInstance in the circuit.
+  /// Allocates the R1CS Instance as a `RelaxedR1CSInstance` in the circuit.
   /// E = 0, u = 1
   pub fn from_r1cs_instance<CS: ConstraintSystem<<G as Group>::Base>>(
     mut cs: CS,

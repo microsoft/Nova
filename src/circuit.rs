@@ -182,7 +182,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     Ok((params, i, z_0, z_i, U, u, T))
   }
 
-  /// Synthesizes base case and returns the new relaxed R1CSInstance
+  /// Synthesizes base case and returns the new relaxed `R1CSInstance`
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -207,7 +207,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     Ok(U_default)
   }
 
-  /// Synthesizes non base case and returns the new relaxed R1CSInstance
+  /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
   #[allow(clippy::too_many_arguments)]
   fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(

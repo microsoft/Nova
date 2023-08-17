@@ -1,4 +1,4 @@
-//! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
+//! This module implements `RelaxedR1CSSNARKTrait` using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
 //! We provide two implementations, one in snark.rs (which does not use any preprocessing)
 //! and another in ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS provides a succinct verifier)

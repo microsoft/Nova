@@ -1,4 +1,4 @@
-//! This module implements RelaxedR1CSSNARK traits using a spark-based approach to prove evaluations of
+//! This module implements `RelaxedR1CSSNARK` traits using a spark-based approach to prove evaluations of
 //! sparse multilinear polynomials involved in Spartan's sum-check protocol, thereby providing a preprocessing SNARK
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
@@ -59,7 +59,7 @@ impl<Scalar: PrimeField> IdentityPolynomial<Scalar> {
   }
 }
 
-/// A type that holds R1CSShape in a form amenable to memory checking
+/// A type that holds `R1CSShape` in a form amenable to memory checking
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSShapeSparkRepr<G: Group> {
@@ -118,7 +118,7 @@ impl<G: Group> TranscriptReprTrait<G> for R1CSShapeSparkCommitment<G> {
 }
 
 impl<G: Group> R1CSShapeSparkRepr<G> {
-  /// represents R1CSShape in a Spark-friendly format amenable to memory checking
+  /// represents `R1CSShape` in a Spark-friendly format amenable to memory checking
   pub fn new(S: &R1CSShape<G>) -> R1CSShapeSparkRepr<G> {
     let N = {
       let total_nz = S.A.len() + S.B.len() + S.C.len();
@@ -874,7 +874,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     Ok((pk, vk))
   }
 
-  /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
+  /// produces a succinct proof of satisfiability of a `RelaxedR1CS` instance
   fn prove(
     ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
@@ -1484,7 +1484,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     })
   }
 
-  /// verifies a proof of satisfiability of a RelaxedR1CS instance
+  /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();

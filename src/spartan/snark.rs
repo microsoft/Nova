@@ -1,4 +1,4 @@
-//! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
+//! This module implements `RelaxedR1CSSNARKTrait` using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
 //! This version of Spartan does not use preprocessing so the verifier keeps the entire
 //! description of R1CS matrices. This is essentially optimal for the verifier when using
@@ -89,7 +89,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     Ok((pk, vk))
   }
 
-  /// produces a succinct proof of satisfiability of a RelaxedR1CS instance
+  /// produces a succinct proof of satisfiability of a `RelaxedR1CS` instance
   fn prove(
     ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
@@ -339,7 +339,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     })
   }
 
-  /// verifies a proof of satisfiability of a RelaxedR1CS instance
+  /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 

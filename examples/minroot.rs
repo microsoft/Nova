@@ -1,6 +1,6 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
-//! iterations of the MinRoot function, thereby realizing a Nova-based verifiable delay function (VDF).
-//! We execute a configurable number of iterations of the MinRoot function per step of Nova's recursion.
+//! iterations of the `MinRoot` function, thereby realizing a Nova-based verifiable delay function (VDF).
+//! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};

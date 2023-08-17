@@ -16,7 +16,7 @@ use bellpepper_core::{
 };
 use ff::{Field, PrimeField};
 
-/// AllocatedPoint provides an elliptic curve abstraction inside a circuit.
+/// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
 pub struct AllocatedPoint<G>
 where
@@ -156,7 +156,7 @@ where
   }
 
   /// Adds other point to this point and returns the result. Assumes that the two points are
-  /// different and that both other.is_infinity and this.is_infinty are bits
+  /// different and that both `other.is_infinity` and `this.is_infinty` are bits
   pub fn add_internal<CS: ConstraintSystem<G::Base>>(
     &self,
     mut cs: CS,
@@ -554,7 +554,7 @@ where
 }
 
 #[derive(Clone)]
-/// AllocatedPoint but one that is guaranteed to be not infinity
+/// `AllocatedPoint` but one that is guaranteed to be not infinity
 pub struct AllocatedPointNonInfinity<G>
 where
   G: Group,
@@ -567,7 +567,7 @@ impl<G> AllocatedPointNonInfinity<G>
 where
   G: Group,
 {
-  /// Creates a new AllocatedPointNonInfinity from the specified coordinates
+  /// Creates a new `AllocatedPointNonInfinity` from the specified coordinates
   pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
     Self { x, y }
   }
@@ -587,7 +587,7 @@ where
     Ok(Self { x, y })
   }
 
-  /// Turns an AllocatedPoint into an AllocatedPointNonInfinity (assumes it is not infinity)
+  /// Turns an `AllocatedPoint` into an `AllocatedPointNonInfinity` (assumes it is not infinity)
   pub fn from_allocated_point(p: &AllocatedPoint<G>) -> Self {
     Self {
       x: p.x.clone(),
@@ -595,7 +595,7 @@ where
     }
   }
 
-  /// Returns an AllocatedPoint from an AllocatedPointNonInfinity
+  /// Returns an `AllocatedPoint` from an `AllocatedPointNonInfinity`
   pub fn to_allocated_point(
     &self,
     is_infinity: &AllocatedNum<G::Base>,

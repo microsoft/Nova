@@ -1,4 +1,4 @@
-//! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
+//! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
   provider::{
     cpu_best_multiexp,
