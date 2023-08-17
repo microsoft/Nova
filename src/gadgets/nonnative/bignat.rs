@@ -91,12 +91,12 @@ pub struct BigNat<Scalar: PrimeField> {
   pub params: BigNatParams,
 }
 
-impl<Scalar: PrimeField> std::cmp::PartialEq for BigNat<Scalar> {
+impl<Scalar: PrimeField> PartialEq for BigNat<Scalar> {
   fn eq(&self, other: &Self) -> bool {
     self.value == other.value && self.params == other.params
   }
 }
-impl<Scalar: PrimeField> std::cmp::Eq for BigNat<Scalar> {}
+impl<Scalar: PrimeField> Eq for BigNat<Scalar> {}
 
 impl<Scalar: PrimeField> From<BigNat<Scalar>> for Polynomial<Scalar> {
   fn from(other: BigNat<Scalar>) -> Polynomial<Scalar> {
@@ -360,7 +360,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let n = min(self.limbs.len(), other.limbs.len());
     let target_base = BigInt::from(1u8) << self.params.limb_width as u32;
     let mut accumulated_extra = BigInt::from(0usize);
-    let max_word = std::cmp::max(&self.params.max_word, &other.params.max_word);
+    let max_word = max(&self.params.max_word, &other.params.max_word);
     let carry_bits = (((max_word.to_f64().unwrap() * 2.0).log2() - self.params.limb_width as f64)
       .ceil()
       + 0.1) as usize;
@@ -439,7 +439,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     other: &Self,
   ) -> Result<(), SynthesisError> {
     self.enforce_limb_width_agreement(other, "equal_when_carried_regroup")?;
-    let max_word = std::cmp::max(&self.params.max_word, &other.params.max_word);
+    let max_word = max(&self.params.max_word, &other.params.max_word);
     let carry_bits = (((max_word.to_f64().unwrap() * 2.0).log2() - self.params.limb_width as f64)
       .ceil()
       + 0.1) as usize;
@@ -552,7 +552,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       x
     };
     let right_max_word = {
-      let mut x = BigInt::from(std::cmp::min(quotient.limbs.len(), modulus.limbs.len()));
+      let mut x = BigInt::from(min(quotient.limbs.len(), modulus.limbs.len()));
       x *= &quotient.params.max_word;
       x *= &modulus.params.max_word;
       x += &remainder.params.max_word;
@@ -598,7 +598,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let right = right_product.sum(&r_poly);
 
     let right_max_word = {
-      let mut x = BigInt::from(std::cmp::min(quotient.limbs.len(), modulus.limbs.len()));
+      let mut x = BigInt::from(min(quotient.limbs.len(), modulus.limbs.len()));
       x *= &quotient.params.max_word;
       x *= &modulus.params.max_word;
       x += &remainder.params.max_word;
@@ -823,7 +823,7 @@ mod tests {
 
   #[test]
   fn test_polynomial_multiplier_circuit() {
-    let mut cs = TestConstraintSystem::<pasta_curves::pallas::Scalar>::new();
+    let mut cs = TestConstraintSystem::<Scalar>::new();
 
     let circuit = PolynomialMultiplier {
       a: [1, 1, 1].iter().map(|i| Scalar::from_u128(*i)).collect(),
@@ -890,7 +890,7 @@ mod tests {
                 n_limbs,
             },
         };
-        let mut cs = TestConstraintSystem::<pasta_curves::pallas::Scalar>::new();
+        let mut cs = TestConstraintSystem::<Scalar>::new();
         circuit.synthesize(&mut cs).expect("synthesis failed");
         prop_assert!(cs.is_satisfied());
     }
