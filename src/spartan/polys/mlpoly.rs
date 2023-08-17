@@ -283,4 +283,31 @@ mod tests {
   fn test_mlp_scalar_mul() {
     test_mlp_scalar_mul_with::<Fp>();
   }
+
+  fn test_evaluation_with<F: PrimeField>() {
+    let num_evals = 4;
+    let mut evals: Vec<F> = Vec::with_capacity(num_evals);
+    for _ in 0..num_evals {
+      evals.push(F::from_u128(8));
+    }
+    let dense_poly: MultilinearPolynomial<F> = MultilinearPolynomial::new(evals.clone());
+
+    // Evaluate at 3:
+    // (0, 0) = 1
+    // (0, 1) = 1
+    // (1, 0) = 1
+    // (1, 1) = 1
+    // g(x_0,x_1) => c_0*(1 - x_0)(1 - x_1) + c_1*(1-x_0)(x_1) + c_2*(x_0)(1-x_1) + c_3*(x_0)(x_1)
+    // g(3, 4) = 8*(1 - 3)(1 - 4) + 8*(1-3)(4) + 8*(3)(1-4) + 8*(3)(4) = 48 + -64 + -72 + 96  = 8
+    // g(5, 10) = 8*(1 - 5)(1 - 10) + 8*(1 - 5)(10) + 8*(5)(1-10) + 8*(5)(10) = 96 + -16 + -72 + 96  = 8
+    assert_eq!(
+      dense_poly.evaluate(vec![F::from(3), F::from(4)].as_slice()),
+      F::from(8)
+    );
+  }
+
+  #[test]
+  fn test_evaluation() {
+    test_evaluation_with::<Fp>();
+  }
 }
