@@ -7,15 +7,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::traits::{Group, TranscriptReprTrait};
 
-// ax^2 + bx + c stored as vec![a,b,c]
-// ax^3 + bx^2 + cx + d stored as vec![a,b,c,d]
+// ax^2 + bx + c stored as vec![c, b, a]
+// ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
 #[derive(Debug)]
 pub struct UniPoly<Scalar: PrimeField> {
   coeffs: Vec<Scalar>,
 }
 
-// ax^2 + bx + c stored as vec![a,c]
-// ax^3 + bx^2 + cx + d stored as vec![a,c,d]
+// ax^2 + bx + c stored as vec![c, a]
+// ax^3 + bx^2 + cx + d stored as vec![d, c, a]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompressedUniPoly<Scalar: PrimeField> {
   coeffs_except_linear_term: Vec<Scalar>,
@@ -110,5 +110,77 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs.as_slice().to_transcript_bytes()
+  }
+}
+#[cfg(test)]
+mod tests {
+  use crate::provider::bn256_grumpkin;
+
+  use super::*;
+
+  fn test_from_evals_quad_with<F: PrimeField>() {
+    // polynomial is 2x^2 + 3x + 1
+    let e0 = F::ONE;
+    let e1 = F::from(6);
+    let e2 = F::from(15);
+    let evals = vec![e0, e1, e2];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.eval_at_zero(), e0);
+    assert_eq!(poly.eval_at_one(), e1);
+    assert_eq!(poly.coeffs.len(), 3);
+    assert_eq!(poly.coeffs[0], F::ONE);
+    assert_eq!(poly.coeffs[1], F::from(3));
+    assert_eq!(poly.coeffs[2], F::from(2));
+
+    let hint = e0 + e1;
+    let compressed_poly = poly.compress();
+    let decompressed_poly = compressed_poly.decompress(&hint);
+    for i in 0..decompressed_poly.coeffs.len() {
+      assert_eq!(decompressed_poly.coeffs[i], poly.coeffs[i]);
+    }
+
+    let e3 = F::from(28);
+    assert_eq!(poly.evaluate(&F::from(3)), e3);
+  }
+
+  #[test]
+  fn test_from_evals_quad() {
+    test_from_evals_quad_with::<pasta_curves::pallas::Scalar>();
+    test_from_evals_quad_with::<bn256_grumpkin::bn256::Scalar>();
+  }
+
+  fn test_from_evals_cubic_with<F: PrimeField>() {
+    // polynomial is x^3 + 2x^2 + 3x + 1
+    let e0 = F::ONE;
+    let e1 = F::from(7);
+    let e2 = F::from(23);
+    let e3 = F::from(55);
+    let evals = vec![e0, e1, e2, e3];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.eval_at_zero(), e0);
+    assert_eq!(poly.eval_at_one(), e1);
+    assert_eq!(poly.coeffs.len(), 4);
+
+    assert_eq!(poly.coeffs[1], F::from(3));
+    assert_eq!(poly.coeffs[2], F::from(2));
+    assert_eq!(poly.coeffs[3], F::from(1));
+
+    let hint = e0 + e1;
+    let compressed_poly = poly.compress();
+    let decompressed_poly = compressed_poly.decompress(&hint);
+    for i in 0..decompressed_poly.coeffs.len() {
+      assert_eq!(decompressed_poly.coeffs[i], poly.coeffs[i]);
+    }
+
+    let e4 = F::from(109);
+    assert_eq!(poly.evaluate(&F::from(4)), e4);
+  }
+
+  #[test]
+  fn test_from_evals_cubic() {
+    test_from_evals_cubic_with::<pasta_curves::pallas::Scalar>();
+    test_from_evals_cubic_with::<bn256_grumpkin::bn256::Scalar>();
   }
 }
