@@ -9,7 +9,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
-    polynomial::{EqPolynomial, MultilinearPolynomial, SparsePolynomial},
+    polys::{eq_poly::EqPolynomial, mlpoly::MultilinearPolynomial, mlpoly::SparsePolynomial},
     powers,
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,

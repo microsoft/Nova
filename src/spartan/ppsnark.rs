@@ -8,9 +8,13 @@ use crate::{
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
     math::Math,
-    polynomial::{EqPolynomial, MultilinearPolynomial},
+    polys::{
+      eq_poly::EqPolynomial,
+      mlpoly::MultilinearPolynomial,
+      unipoly::{CompressedUniPoly, UniPoly},
+    },
     powers,
-    sumcheck::{CompressedUniPoly, SumcheckProof, UniPoly},
+    sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
   traits::{

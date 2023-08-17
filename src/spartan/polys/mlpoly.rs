@@ -1,80 +1,17 @@
-//! This module provides foundational types and functions for manipulating multilinear polynomials in the context of cryptographic computations.
-//!
 //! Main components:
-//! - `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
-use core::ops::Index;
+
+use std::ops::{Add, Index};
+
 use ff::PrimeField;
-use rayon::prelude::*;
+use rayon::prelude::{
+  IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+  IntoParallelRefMutIterator, ParallelIterator,
+};
 use serde::{Deserialize, Serialize};
-use std::ops::Add;
 
-use crate::spartan::math::Math;
-
-/// Represents the multilinear extension polynomial (MLE) of the equality polynomial $eq(x,e)$, denoted as $\tilde{eq}(x, e)$.
-///
-/// The polynomial is defined by the formula:
-/// $$
-/// \tilde{eq}(x, e) = \prod_{i=1}^m(e_i * x_i + (1 - e_i) * (1 - x_i))
-/// $$
-///
-/// Each element in the vector `r` corresponds to a component $e_i$, representing a bit from the binary representation of an input value $e$.
-/// This polynomial evaluates to 1 if every component $x_i$ equals its corresponding $e_i$, and 0 otherwise.
-///
-/// For instance, for e = 6 (with a binary representation of 0b110), the vector r would be [1, 1, 0].
-pub struct EqPolynomial<Scalar: PrimeField> {
-  r: Vec<Scalar>,
-}
-
-impl<Scalar: PrimeField> EqPolynomial<Scalar> {
-  /// Creates a new `EqPolynomial` from a vector of Scalars `r`.
-  ///
-  /// Each Scalar in `r` corresponds to a bit from the binary representation of an input value `e`.
-  pub const fn new(r: Vec<Scalar>) -> Self {
-    EqPolynomial { r }
-  }
-
-  /// Evaluates the `EqPolynomial` at a given point `rx`.
-  ///
-  /// This function computes the value of the polynomial at the point specified by `rx`.
-  /// It expects `rx` to have the same length as the internal vector `r`.
-  ///
-  /// Panics if `rx` and `r` have different lengths.
-  pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
-    assert_eq!(self.r.len(), rx.len());
-    (0..rx.len())
-      .map(|i| rx[i] * self.r[i] + (Scalar::ONE - rx[i]) * (Scalar::ONE - self.r[i]))
-      .fold(Scalar::ONE, |acc, item| acc * item)
-  }
-
-  /// Evaluates the `EqPolynomial` at all the `2^|r|` points in its domain.
-  ///
-  /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
-  pub fn evals(&self) -> Vec<Scalar> {
-    let ell = self.r.len();
-    let mut evals: Vec<Scalar> = vec![Scalar::ZERO; (2_usize).pow(ell as u32)];
-    let mut size = 1;
-    evals[0] = Scalar::ONE;
-
-    for r in self.r.iter().rev() {
-      let (evals_left, evals_right) = evals.split_at_mut(size);
-      let (evals_right, _) = evals_right.split_at_mut(size);
-
-      evals_left
-        .par_iter_mut()
-        .zip(evals_right.par_iter_mut())
-        .for_each(|(x, y)| {
-          *y = *x * r;
-          *x -= &*y;
-        });
-
-      size *= 2;
-    }
-
-    evals
-  }
-}
+use crate::spartan::{math::Math, polys::eq_poly::EqPolynomial};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
@@ -269,24 +206,6 @@ mod tests {
     }
   }
 
-  fn test_eq_polynomial_with<F: PrimeField>() {
-    let eq_poly = EqPolynomial::<F>::new(vec![F::ONE, F::ZERO, F::ONE]);
-    let y = eq_poly.evaluate(vec![F::ONE, F::ONE, F::ONE].as_slice());
-    assert_eq!(y, F::ZERO);
-
-    let y = eq_poly.evaluate(vec![F::ONE, F::ZERO, F::ONE].as_slice());
-    assert_eq!(y, F::ONE);
-
-    let eval_list = eq_poly.evals();
-    for (i, &coeff) in eval_list.iter().enumerate().take((2_usize).pow(3)) {
-      if i == 5 {
-        assert_eq!(coeff, F::ONE);
-      } else {
-        assert_eq!(coeff, F::ZERO);
-      }
-    }
-  }
-
   fn test_multilinear_polynomial_with<F: PrimeField>() {
     // Let the polynomial has 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
     // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
@@ -326,11 +245,6 @@ mod tests {
 
     let x = vec![F::ONE, F::ZERO, F::ONE];
     assert_eq!(m_poly.evaluate(x.as_slice()), F::ONE);
-  }
-
-  #[test]
-  fn test_eq_polynomial() {
-    test_eq_polynomial_with::<Fp>();
   }
 
   #[test]
