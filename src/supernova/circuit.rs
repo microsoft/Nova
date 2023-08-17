@@ -17,7 +17,9 @@ use crate::{
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{
-      conditionally_select_alloc_relaxed_r1cs, AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance,
+      conditionally_select_alloc_relaxed_r1cs,
+      conditionally_select_vec_allocated_relaxed_r1cs_instance, AllocatedR1CSInstance,
+      AllocatedRelaxedR1CSInstance,
     },
     utils::{
       alloc_const, alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec,
@@ -155,8 +157,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     ),
     SynthesisError,
   > {
-    // NOTE `last_augmented_circuit_index` could just be aux without any constraint.
-    // The reason is prover can only produce valid running instance by folding u into correct U_i[last_augmented_circuit_index]
     let last_augmented_circuit_index =
       AllocatedNum::alloc(cs.namespace(|| "last_augmented_circuit_index"), || {
         Ok(self.inputs.get()?.last_augmented_circuit_index)
@@ -253,7 +253,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstance<G>,
-    last_augmented_circuit_index: &AllocatedNum<G::Base>,
+    last_augmented_circuit_index_checked: &AllocatedNum<G::Base>,
     num_augmented_circuits: usize,
   ) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
     let mut cs = cs.namespace(|| "alloc U_i default");
@@ -282,7 +282,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
           let equal_bit = Boolean::from(alloc_num_equals(
             cs.namespace(|| format!("check equal bit {:?}", i)),
             &i_alloc,
-            last_augmented_circuit_index,
+            last_augmented_circuit_index_checked,
           )?);
           let default = &AllocatedRelaxedR1CSInstance::default(
             cs.namespace(|| format!("Allocate U_default {:?}", i)),
@@ -318,7 +318,14 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     last_augmented_circuit_index: &AllocatedNum<G::Base>,
     program_counter: Option<AllocatedNum<G::Base>>,
     num_augmented_circuits: usize,
-  ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
+  ) -> Result<
+    (
+      AllocatedNum<G::Base>,
+      Vec<AllocatedRelaxedR1CSInstance<G>>,
+      AllocatedBit,
+    ),
+    SynthesisError,
+  > {
     // Check that u.x[0] = Hash(params, i, program_counter, U[], z0, zi)
     let mut ro = G::ROCircuit::new(
       self.ro_consts.clone(),
@@ -353,7 +360,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     )?;
 
     // Run NIFS Verifier
-    let U_to_fold = get_from_vec_alloc_relaxed_r1cs(
+    let (last_augmented_circuit_index_checked, U_to_fold) = get_from_vec_alloc_relaxed_r1cs(
       cs.namespace(|| "U to fold"),
       U,
       last_augmented_circuit_index,
@@ -368,7 +375,31 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       self.params.n_limbs,
     )?;
 
-    Ok((U_fold, check_pass))
+    // update AllocatedRelaxedR1CSInstance on index match augmented circuit index
+    let U_next: Vec<AllocatedRelaxedR1CSInstance<G>> = U
+      .iter()
+      .enumerate()
+      .map(|(i, U)| {
+        let mut cs = cs.namespace(|| format!("U_i+1 non_base conditional selection {:?}", i));
+        let i_alloc = alloc_const(
+          cs.namespace(|| "i allocated"),
+          scalar_as_base::<G>(G::Scalar::from(i as u64)),
+        )?;
+        let equal_bit = Boolean::from(alloc_num_equals(
+          cs.namespace(|| "check equal bit"),
+          &i_alloc,
+          &last_augmented_circuit_index_checked,
+        )?);
+        conditionally_select_alloc_relaxed_r1cs(
+          cs.namespace(|| "select on index namespace"),
+          &U_fold,
+          U,
+          &equal_bit,
+        )
+      })
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
+
+    Ok((last_augmented_circuit_index_checked, U_next, check_pass))
   }
 }
 
@@ -377,6 +408,24 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     self,
     cs: &mut CS,
   ) -> Result<(AllocatedNum<G::Base>, Vec<AllocatedNum<G::Base>>), SynthesisError> {
+    // NOTE `last_augmented_circuit_index` is aux without any constraint.
+    // Reason is prover can only produce valid running instance by folding u into proper U_i[last_augmented_circuit_index]
+    // However, there is crucial pre-asumption: `last_augmented_circuit_index` must within range [0, num_augmented_circuits)
+    // otherwise there will be a soundness error, such that maliculous prover can choose out of range last_augmented_circuit_index.
+    // The soundness error depends on how we process out-of-range condition.
+    //
+    // there are 2 possible solution
+    // 1. range check `last_augmented_circuit_index`
+    // 2. if last_augmented_circuit_index out of range, then by default select index 0
+    //
+    // For current version we choose 2, due to its simplicify and fit well in last_augmented_circuit_index use case.
+    // Recap, the only way to pass running instance check is folding u into respective U_i[last_augmented_circuit_index]
+    // So, a circuit implementing to set out-of-range last_augmented_circuit_index to index 0 is fine.
+    // The illegal running instances will be propogate to later phase and finally captured with "high" probability on the basis of Nova IVC security.
+    //
+    // Although above "informal" analysis implies there is no `malleability` on statement (malleability refer `NARK.8 Malleability of Nova’s IVC` https://eprint.iacr.org/2023/969.pdf )
+    // We need to carefully check whether it lead to other vulnerability.
+
     let arity = self.step_circuit.arity();
     let num_augmented_circuits = if self.params.is_primary_circuit {
       // primary circuit only fold single running instance with secondary output strict r1cs instance
@@ -418,54 +467,32 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
-    // Synthesize the circuit for the base case and get the new running instances
-    let Unew_base = self.synthesize_base_case(
-      cs.namespace(|| "base case"),
-      u.clone(),
-      &last_augmented_circuit_index,
-      num_augmented_circuits,
-    )?;
-
     // Synthesize the circuit for the non-base case and get the new running
     // instances along with a boolean indicating if all checks have passed
-    let (Unew_non_base_folded, check_non_base_pass) = self.synthesize_non_base_case(
-      cs.namespace(|| "synthesize non base case"),
-      params.clone(),
-      i.clone(),
-      z_0.clone(),
-      z_i.clone(),
-      &U,
+    // must use return `last_augmented_circuit_index_checked` since it got range checked
+    let (last_augmented_circuit_index_checked, U_next_non_base, check_non_base_pass) = self
+      .synthesize_non_base_case(
+        cs.namespace(|| "synthesize non base case"),
+        params.clone(),
+        i.clone(),
+        z_0.clone(),
+        z_i.clone(),
+        &U,
+        u.clone(),
+        T,
+        arity,
+        &last_augmented_circuit_index,
+        program_counter.clone(),
+        num_augmented_circuits,
+      )?;
+
+    // Synthesize the circuit for the base case and get the new running instances
+    let U_next_base = self.synthesize_base_case(
+      cs.namespace(|| "base case"),
       u.clone(),
-      T,
-      arity,
-      &last_augmented_circuit_index,
-      program_counter.clone(),
+      &last_augmented_circuit_index_checked,
       num_augmented_circuits,
     )?;
-
-    // update AllocatedRelaxedR1CSInstance on index match augmented circuit index
-    let Unew_non_base: Vec<AllocatedRelaxedR1CSInstance<G>> = U
-      .iter()
-      .enumerate()
-      .map(|(i, U)| {
-        let mut cs = cs.namespace(|| format!("U_i+1 non_base conditional selection {:?}", i));
-        let i_alloc = alloc_const(
-          cs.namespace(|| "i allocated"),
-          scalar_as_base::<G>(G::Scalar::from(i as u64)),
-        )?;
-        let equal_bit = Boolean::from(alloc_num_equals(
-          cs.namespace(|| "check equal bit"),
-          &i_alloc,
-          &last_augmented_circuit_index,
-        )?);
-        conditionally_select_alloc_relaxed_r1cs(
-          cs.namespace(|| "select on index namespace"),
-          &Unew_non_base_folded,
-          U,
-          &equal_bit,
-        )
-      })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
 
     // Either check_non_base_pass=true or we are in the base case
     let should_be_false = AllocatedBit::nor(
@@ -480,19 +507,13 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> SuperNovaAugmentedCircuit<'a, G, SC
       |lc| lc,
     );
 
-    // Compute the U_new
-    let U_next = Unew_non_base
-      .iter()
-      .enumerate()
-      .zip(Unew_base.iter())
-      .map(|((i, Unew_non_base), Unew_base)| {
-        Unew_base.conditionally_select(
-          cs.namespace(|| format!("compute U_new {:?}", i)),
-          Unew_non_base,
-          &Boolean::from(is_base_case.clone()),
-        )
-      })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
+    // Compute the U_next
+    let U_next = conditionally_select_vec_allocated_relaxed_r1cs_instance(
+      cs.namespace(|| "U_next"),
+      &U_next_base[..],
+      &U_next_non_base[..],
+      &Boolean::from(is_base_case.clone()),
+    )?;
 
     // Compute i + 1
     let i_next = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {

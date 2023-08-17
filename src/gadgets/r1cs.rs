@@ -385,6 +385,29 @@ pub fn conditionally_select_alloc_relaxed_r1cs<
   Ok(c)
 }
 
+/// c = cond ? a: b, where a, b: vec[AllocatedRelaxedR1CSInstance]
+pub fn conditionally_select_vec_allocated_relaxed_r1cs_instance<
+  G: Group,
+  CS: ConstraintSystem<<G as Group>::Base>,
+>(
+  mut cs: CS,
+  a: &[AllocatedRelaxedR1CSInstance<G>],
+  b: &[AllocatedRelaxedR1CSInstance<G>],
+  condition: &Boolean,
+) -> Result<Vec<AllocatedRelaxedR1CSInstance<G>>, SynthesisError> {
+  a.iter()
+    .enumerate()
+    .zip(b.iter())
+    .map(|((i, a), b)| {
+      a.conditionally_select(
+        cs.namespace(|| format!("cond ? a[{}]: b[{}]", i, i)),
+        b,
+        condition,
+      )
+    })
+    .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()
+}
+
 /// c = cond ? a: b, where a, b: AllocatedPoint
 pub fn conditionally_select_point<G: Group, CS: ConstraintSystem<<G as Group>::Base>>(
   mut cs: CS,
