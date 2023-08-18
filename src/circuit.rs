@@ -487,9 +487,8 @@ mod tests {
       PoseidonConstantsCircuit::new();
 
     test_recursive_circuit_with::<
-    provider::secp_secq::secp256k1::Point,
-    provider::secp_secq::secq256k1::Point,
+      provider::secp_secq::secp256k1::Point,
+      provider::secp_secq::secq256k1::Point,
     >(&params1, &params2, ro_consts1, ro_consts2, 10262, 10959);
   }
-
 }

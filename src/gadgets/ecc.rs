@@ -754,7 +754,7 @@ mod tests {
   };
   use crate::provider::{
     bn256_grumpkin::{bn256, grumpkin},
-    secp_secq::{secp256k1, secq256k1}
+    secp_secq::{secp256k1, secq256k1},
   };
   use ff::{Field, PrimeFieldBits};
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};

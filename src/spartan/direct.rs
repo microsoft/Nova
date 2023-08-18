@@ -153,10 +153,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{
-    bn256_grumpkin::bn256,
-    secp_secq::secp256k1,
-  };
+  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -234,7 +231,6 @@ mod tests {
     type S3pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G3, EE3>;
     test_direct_snark_with::<G3, S3>();
     test_direct_snark_with::<G3, S3pp>();
-
   }
 
   fn test_direct_snark_with<G: Group, S: RelaxedR1CSSNARKTrait<G>>() {
