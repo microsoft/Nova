@@ -47,8 +47,14 @@ impl<Scalar: PrimeField> IdentityPolynomial<Scalar> {
 
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.ell, r.len());
+    let mut power_of_two = 1_u64;
     (0..self.ell)
-      .map(|i| Scalar::from(2_usize.pow((self.ell - i - 1) as u32) as u64) * r[i])
+      .rev()
+      .map(|i| {
+        let result = Scalar::from(power_of_two) * r[i];
+        power_of_two *= 2;
+        result
+      })
       .fold(Scalar::ZERO, |acc, item| acc + item)
   }
 }
