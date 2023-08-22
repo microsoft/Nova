@@ -107,7 +107,7 @@ where
 #[derive(Serialize, Deserialize)]
 pub struct PoseidonROCircuit<Scalar>
 where
-  Scalar: PrimeField + PrimeFieldBits,
+  Scalar: PrimeField,
 {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
