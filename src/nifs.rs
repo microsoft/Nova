@@ -10,7 +10,6 @@ use crate::{
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
 };
-use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -19,7 +18,6 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct NIFS<G: Group> {
   pub(crate) comm_T: CompressedCommitment<G>,
-  _p: PhantomData<G>,
 }
 
 type ROConstants<G> =
@@ -72,7 +70,6 @@ impl<G: Group> NIFS<G> {
     Ok((
       Self {
         comm_T: comm_T.compress(),
-        _p: PhantomData,
       },
       (U, W),
     ))
