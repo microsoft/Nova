@@ -1,4 +1,4 @@
-//! This module defines a collection of traits that define the behavior of a zkSNARK for RelaxedR1CS
+//! This module defines a collection of traits that define the behavior of a `zkSNARK` for `RelaxedR1CS`
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
@@ -8,7 +8,7 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 
-/// A trait that defines the behavior of a zkSNARK
+/// A trait that defines the behavior of a `zkSNARK`
 pub trait RelaxedR1CSSNARKTrait<G: Group>:
   Sized + Send + Sync + Serialize + for<'de> Deserialize<'de>
 {

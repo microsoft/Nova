@@ -225,7 +225,7 @@ pub fn conditionally_select_vec<F: PrimeField, CS: ConstraintSystem<F>>(
     .collect::<Result<Vec<AllocatedNum<F>>, SynthesisError>>()
 }
 
-/// If condition return a otherwise b where a and b are BigNats
+/// If condition return a otherwise b where a and b are `BigNats`
 pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &BigNat<F>,
@@ -259,7 +259,7 @@ pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-/// Same as the above but Condition is an AllocatedNum that needs to be
+/// Same as the above but Condition is an `AllocatedNum` that needs to be
 /// 0 or 1. 1 => True, 0 => False
 pub fn conditionally_select2<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

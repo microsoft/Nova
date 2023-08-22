@@ -1,4 +1,4 @@
-//! This module provides an implementation of TranscriptEngineTrait using keccak256
+//! This module provides an implementation of `TranscriptEngineTrait` using keccak256
 use crate::traits::PrimeFieldExt;
 use crate::{
   errors::NovaError,
@@ -13,7 +13,7 @@ const KECCAK256_STATE_SIZE: usize = 64;
 const KECCAK256_PREFIX_CHALLENGE_LO: u8 = 0;
 const KECCAK256_PREFIX_CHALLENGE_HI: u8 = 1;
 
-/// Provides an implementation of TranscriptEngine
+/// Provides an implementation of `TranscriptEngine`
 #[derive(Debug, Clone)]
 pub struct Keccak256Transcript<G: Group> {
   round: u16,

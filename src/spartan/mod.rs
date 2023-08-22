@@ -1,4 +1,4 @@
-//! This module implements RelaxedR1CSSNARKTrait using Spartan that is generic
+//! This module implements `RelaxedR1CSSNARKTrait` using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
 //! We provide two implementations, one in snark.rs (which does not use any preprocessing)
 //! and another in ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS provides a succinct verifier)
@@ -7,14 +7,14 @@
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
 pub mod direct;
 pub(crate) mod math;
-pub mod polynomial;
+pub mod polys;
 pub mod ppsnark;
 pub mod snark;
 mod sumcheck;
 
 use crate::{traits::Group, Commitment};
 use ff::Field;
-use polynomial::SparsePolynomial;
+use polys::multilinear::SparsePolynomial;
 
 fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);
