@@ -1,5 +1,5 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
+use crate::traits::{ROCircuitTrait, ROTrait};
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},
   num::AllocatedNum,
@@ -24,13 +24,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
-impl<Scalar> ROConstantsTrait<Scalar> for PoseidonConstantsCircuit<Scalar>
-where
-  Scalar: PrimeField + PrimeFieldBits,
-{
+impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
   /// Generate Poseidon constants
-  #[allow(clippy::new_without_default)]
-  fn new() -> Self {
+  fn default() -> Self {
     Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
   }
 }
@@ -39,8 +35,8 @@ where
 #[derive(Serialize, Deserialize)]
 pub struct PoseidonRO<Base, Scalar>
 where
-  Base: PrimeField + PrimeFieldBits,
-  Scalar: PrimeField + PrimeFieldBits,
+  Base: PrimeField,
+  Scalar: PrimeField,
 {
   // Internal State
   state: Vec<Base>,
@@ -53,8 +49,9 @@ where
 impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
   Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
-  Scalar: PrimeField + PrimeFieldBits,
+  Scalar: PrimeField,
 {
+  type CircuitRO = PoseidonROCircuit<Base>;
   type Constants = PoseidonConstantsCircuit<Base>;
 
   fn new(constants: PoseidonConstantsCircuit<Base>, num_absorbs: usize) -> Self {
@@ -123,6 +120,7 @@ impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
+  type VanillaRO<T: PrimeField> = PoseidonRO<Scalar, T>;
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
   /// Initialize the internal state and set the poseidon constants
@@ -217,7 +215,7 @@ mod tests {
   {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = PoseidonConstantsCircuit::<G::Scalar>::new();
+    let constants = PoseidonConstantsCircuit::<G::Scalar>::default();
     let num_absorbs = 32;
     let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
     let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
