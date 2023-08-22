@@ -476,4 +476,19 @@ mod tests {
       provider::bn256_grumpkin::grumpkin::Point,
     >(&params1, &params2, ro_consts1, ro_consts2, 9983, 10536);
   }
+
+  #[test]
+  fn test_recursive_circuit_secp() {
+    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let ro_consts1: ROConstantsCircuit<provider::secp_secq::secq256k1::Point> =
+      PoseidonConstantsCircuit::new();
+    let ro_consts2: ROConstantsCircuit<provider::secp_secq::secp256k1::Point> =
+      PoseidonConstantsCircuit::new();
+
+    test_recursive_circuit_with::<
+      provider::secp_secq::secp256k1::Point,
+      provider::secp_secq::secq256k1::Point,
+    >(&params1, &params2, ro_consts1, ro_consts2, 10262, 10959);
+  }
 }

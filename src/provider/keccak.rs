@@ -100,7 +100,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
 mod tests {
   use crate::{
     provider::bn256_grumpkin::bn256,
-    provider::keccak::Keccak256Transcript,
+    provider::{keccak::Keccak256Transcript, secp_secq},
     traits::{Group, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
   use ff::PrimeField;
@@ -239,5 +239,7 @@ mod tests {
   fn test_keccak_transcript_incremental_vs_explicit() {
     test_keccak_transcript_incremental_vs_explicit_with::<pasta_curves::pallas::Point>();
     test_keccak_transcript_incremental_vs_explicit_with::<bn256::Point>();
+    test_keccak_transcript_incremental_vs_explicit_with::<secp_secq::secp256k1::Point>();
+    test_keccak_transcript_incremental_vs_explicit_with::<secp_secq::secq256k1::Point>();
   }
 }
