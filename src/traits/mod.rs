@@ -135,7 +135,7 @@ pub trait ROTrait<Base: PrimeField, Scalar> {
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
 pub trait ROCircuitTrait<Base: PrimeField> {
   /// the vanilla alter ego of this trait - this constrains it to use the same constants
-  type VanillaRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
+  type NativeRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
 
   /// A type representing constants/parameters associated with the hash function on this Base field
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
