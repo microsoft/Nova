@@ -470,8 +470,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               t.add_assign(b);
               t
             }
-            (Some(a), None) => *a,
-            (None, Some(a)) => *a,
+            (Some(a), None) | (None, Some(a)) => *a,
             (None, None) => unreachable!(),
           })
           .collect()

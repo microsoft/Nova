@@ -267,9 +267,10 @@ where
     let r_U_secondary =
       RelaxedR1CSInstance::<G2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
 
-    if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
-      panic!("Invalid step length");
-    }
+    assert!(
+      !(zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary),
+      "Invalid step length"
+    );
 
     let zi_primary = zi_primary
       .iter()

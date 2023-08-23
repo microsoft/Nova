@@ -25,8 +25,7 @@ impl Eq for OrderedVariable {}
 impl PartialEq for OrderedVariable {
   fn eq(&self, other: &OrderedVariable) -> bool {
     match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a == b,
-      (Index::Aux(ref a), Index::Aux(ref b)) => a == b,
+      (Index::Input(ref a), Index::Input(ref b)) | (Index::Aux(ref a), Index::Aux(ref b)) => a == b,
       _ => false,
     }
   }
@@ -39,8 +38,9 @@ impl PartialOrd for OrderedVariable {
 impl Ord for OrderedVariable {
   fn cmp(&self, other: &Self) -> Ordering {
     match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a.cmp(b),
-      (Index::Aux(ref a), Index::Aux(ref b)) => a.cmp(b),
+      (Index::Input(ref a), Index::Input(ref b)) | (Index::Aux(ref a), Index::Aux(ref b)) => {
+        a.cmp(b)
+      }
       (Index::Input(_), Index::Aux(_)) => Ordering::Less,
       (Index::Aux(_), Index::Input(_)) => Ordering::Greater,
     }

@@ -138,7 +138,7 @@ where
     let mut acc = BigUint::new(Vec::<u32>::new());
     while let Some(b) = bits.pop() {
       acc <<= 1_i32;
-      acc += b as u8;
+      acc += u8::from(b);
     }
     let modulus = acc.to_str_radix(10);
     G::Scalar::from_str_vartime(&modulus).unwrap()
