@@ -20,7 +20,6 @@ pub trait Group:
   + Copy
   + Debug
   + Eq
-  + Sized
   + GroupOps
   + GroupOpsOwned
   + ScalarMul<<Self as Group>::Scalar>
@@ -95,7 +94,6 @@ pub trait CompressedGroup:
   + Copy
   + Debug
   + Eq
-  + Sized
   + Send
   + Sync
   + TranscriptReprTrait<Self::GroupElement>
@@ -117,14 +115,12 @@ pub trait AbsorbInROTrait<G: Group> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base, Scalar> {
+pub trait ROTrait<Base: PrimeField, Scalar> {
+  /// The circuit alter ego of this trait impl - this constrains it to use the same constants
+  type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
+
   /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base>
-    + Clone
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -138,13 +134,11 @@ pub trait ROTrait<Base, Scalar> {
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
 pub trait ROCircuitTrait<Base: PrimeField> {
-  /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base>
-    + Clone
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  /// the vanilla alter ego of this trait - this constrains it to use the same constants
+  type NativeRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
+
+  /// A type representing constants/parameters associated with the hash function on this Base field
+  type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -158,13 +152,7 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     CS: ConstraintSystem<Base>;
 }
 
-/// A helper trait that defines the constants associated with a hash function
-pub trait ROConstantsTrait<Base> {
-  /// produces constants/parameters associated with the hash function
-  fn new() -> Self;
-}
-
-/// An alias for constants associated with `G::RO`
+/// An alias for constants associated with G::RO
 pub type ROConstants<G> =
   <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
