@@ -1807,7 +1807,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     // finish the final step of the sum-check
     let (claim_init_expected_row, claim_audit_expected_row) = {
       let addr = IdentityPolynomial::new(r_prod.len()).evaluate(&r_prod);
-      let val = EqPolynomial::new(tau.to_vec()).evaluate(&r_prod);
+      let val = EqPolynomial::new(tau).evaluate(&r_prod);
       (
         hash_func(&addr, &val, &G::Scalar::ZERO),
         hash_func(&addr, &val, &self.eval_row_audit_ts),

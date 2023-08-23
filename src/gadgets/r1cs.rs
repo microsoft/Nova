@@ -207,7 +207,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // absorb each of the limbs of X[0]
-    for limb in X0_bn.into_iter() {
+    for limb in X0_bn {
       ro.absorb(&limb);
     }
 
@@ -223,7 +223,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
     // absorb each of the limbs of X[1]
-    for limb in X1_bn.into_iter() {
+    for limb in X1_bn {
       ro.absorb(&limb);
     }
 
