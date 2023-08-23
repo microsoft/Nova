@@ -190,7 +190,6 @@ macro_rules! impl_traits {
           uniform_bytes_vec.push(uniform_bytes);
         }
         let gens_proj: Vec<$name_curve> = (0..n)
-          .collect::<Vec<usize>>()
           .into_par_iter()
           .map(|i| {
             let hash = $name_curve::hash_to_curve("from_uniform_bytes");
@@ -202,9 +201,8 @@ macro_rules! impl_traits {
         if gens_proj.len() > num_threads {
           let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
           (0..num_threads)
-            .collect::<Vec<usize>>()
             .into_par_iter()
-            .map(|i| {
+            .flat_map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {
                 gens_proj.len()
@@ -219,9 +217,6 @@ macro_rules! impl_traits {
                 vec![]
               }
             })
-            .collect::<Vec<Vec<$name_curve_affine>>>()
-            .into_par_iter()
-            .flatten()
             .collect()
         } else {
           let mut gens = vec![$name_curve_affine::identity(); n];
