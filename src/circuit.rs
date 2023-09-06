@@ -182,7 +182,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     Ok((params, i, z_0, z_i, U, u, T))
   }
 
-  /// Synthesizes base case and returns the new relaxed R1CSInstance
+  /// Synthesizes base case and returns the new relaxed `R1CSInstance`
   fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -207,7 +207,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     Ok(U_default)
   }
 
-  /// Synthesizes non base case and returns the new relaxed R1CSInstance
+  /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
   #[allow(clippy::too_many_arguments)]
   fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
@@ -378,7 +378,7 @@ mod tests {
     bellpepper::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
-    traits::{circuit::TrivialTestCircuit, ROConstantsTrait},
+    traits::circuit::TrivialTestCircuit,
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
@@ -454,8 +454,8 @@ mod tests {
   fn test_recursive_circuit_pasta() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::new();
-    let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::new();
+    let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::default();
+    let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
       &params1, &params2, ro_consts1, ro_consts2, 9815, 10347,
@@ -467,9 +467,9 @@ mod tests {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<provider::bn256_grumpkin::grumpkin::Point> =
-      PoseidonConstantsCircuit::new();
+      PoseidonConstantsCircuit::default();
     let ro_consts2: ROConstantsCircuit<provider::bn256_grumpkin::bn256::Point> =
-      PoseidonConstantsCircuit::new();
+      PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<
       provider::bn256_grumpkin::bn256::Point,
@@ -482,9 +482,9 @@ mod tests {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<provider::secp_secq::secq256k1::Point> =
-      PoseidonConstantsCircuit::new();
+      PoseidonConstantsCircuit::default();
     let ro_consts2: ROConstantsCircuit<provider::secp_secq::secp256k1::Point> =
-      PoseidonConstantsCircuit::new();
+      PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<
       provider::secp_secq::secp256k1::Point,

@@ -20,7 +20,6 @@ pub trait Group:
   + Copy
   + Debug
   + Eq
-  + Sized
   + GroupOps
   + GroupOpsOwned
   + ScalarMul<<Self as Group>::Scalar>
@@ -52,7 +51,7 @@ pub trait Group:
   /// from the base field and squeezes out elements of the scalar field
   type RO: ROTrait<Self::Base, Self::Scalar>;
 
-  /// An alternate implementation of Self::RO in the circuit model
+  /// An alternate implementation of `Self::RO` in the circuit model
   type ROCircuit: ROCircuitTrait<Self::Base>;
 
   /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
@@ -95,7 +94,6 @@ pub trait CompressedGroup:
   + Copy
   + Debug
   + Eq
-  + Sized
   + Send
   + Sync
   + TranscriptReprTrait<Self::GroupElement>
@@ -117,14 +115,12 @@ pub trait AbsorbInROTrait<G: Group> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base, Scalar> {
+pub trait ROTrait<Base: PrimeField, Scalar> {
+  /// The circuit alter ego of this trait impl - this constrains it to use the same constants
+  type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
+
   /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base>
-    + Clone
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -138,13 +134,11 @@ pub trait ROTrait<Base, Scalar> {
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
 pub trait ROCircuitTrait<Base: PrimeField> {
-  /// A type representing constants/parameters associated with the hash function
-  type Constants: ROConstantsTrait<Base>
-    + Clone
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  /// the vanilla alter ego of this trait - this constrains it to use the same constants
+  type NativeRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
+
+  /// A type representing constants/parameters associated with the hash function on this Base field
+  type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
@@ -158,17 +152,11 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     CS: ConstraintSystem<Base>;
 }
 
-/// A helper trait that defines the constants associated with a hash function
-pub trait ROConstantsTrait<Base> {
-  /// produces constants/parameters associated with the hash function
-  fn new() -> Self;
-}
-
 /// An alias for constants associated with G::RO
 pub type ROConstants<G> =
   <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
 
-/// An alias for constants associated with G::ROCircuit
+/// An alias for constants associated with `G::ROCircuit`
 pub type ROConstantsCircuit<G> =
   <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
 
@@ -197,7 +185,7 @@ impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Out
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
-/// This trait allows types to implement how they want to be added to TranscriptEngine
+/// This trait allows types to implement how they want to be added to `TranscriptEngine`
 pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   /// returns a byte representation of self to be added to the transcript
   fn to_transcript_bytes(&self) -> Vec<u8>;
@@ -211,14 +199,14 @@ pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
   /// returns a scalar element of the group as a challenge
   fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
 
-  /// absorbs any type that implements TranscriptReprTrait under a label
+  /// absorbs any type that implements `TranscriptReprTrait` under a label
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T);
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
 }
 
-/// Defines additional methods on PrimeField objects
+/// Defines additional methods on `PrimeField` objects
 pub trait PrimeFieldExt: PrimeField {
   /// Returns a scalar representing the bytes
   fn from_uniform(bytes: &[u8]) -> Self;

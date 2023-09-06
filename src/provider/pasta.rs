@@ -1,4 +1,4 @@
-//! This module implements the Nova traits for pallas::Point, pallas::Scalar, vesta::Point, vesta::Scalar.
+//! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
   provider::{
     cpu_best_multiexp,
@@ -106,7 +106,6 @@ macro_rules! impl_traits {
           uniform_bytes_vec.push(uniform_bytes);
         }
         let ck_proj: Vec<$name_curve> = (0..n)
-          .collect::<Vec<usize>>()
           .into_par_iter()
           .map(|i| {
             let hash = $name_curve::hash_to_curve("from_uniform_bytes");
@@ -118,9 +117,8 @@ macro_rules! impl_traits {
         if ck_proj.len() > num_threads {
           let chunk = (ck_proj.len() as f64 / num_threads as f64).ceil() as usize;
           (0..num_threads)
-            .collect::<Vec<usize>>()
             .into_par_iter()
-            .map(|i| {
+            .flat_map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {
                 ck_proj.len()
@@ -135,9 +133,6 @@ macro_rules! impl_traits {
                 vec![]
               }
             })
-            .collect::<Vec<Vec<$name_curve_affine>>>()
-            .into_par_iter()
-            .flatten()
             .collect()
         } else {
           let mut ck = vec![$name_curve_affine::identity(); n];

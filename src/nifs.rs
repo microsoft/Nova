@@ -10,7 +10,6 @@ use crate::{
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
 };
-use core::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -19,7 +18,6 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct NIFS<G: Group> {
   pub(crate) comm_T: CompressedCommitment<G>,
-  _p: PhantomData<G>,
 }
 
 type ROConstants<G> =
@@ -72,7 +70,6 @@ impl<G: Group> NIFS<G> {
     Ok((
       Self {
         comm_T: comm_T.compress(),
-        _p: PhantomData,
       },
       (U, W),
     ))
@@ -118,10 +115,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    r1cs::R1CS,
-    traits::{Group, ROConstantsTrait},
-  };
+  use crate::{r1cs::R1CS, traits::Group};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -176,7 +170,7 @@ mod tests {
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape();
     let ro_consts =
-      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
@@ -328,7 +322,7 @@ mod tests {
     // generate generators and ro constants
     let ck = R1CS::<G>::commitment_key(&S);
     let ro_consts =
-      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::new();
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<G>, I: &G::Scalar| -> (G::Scalar, R1CSInstance<G>, R1CSWitness<G>) {

@@ -3,7 +3,7 @@
 use crate::{
   errors::NovaError,
   provider::pedersen::CommitmentKeyExtTrait,
-  spartan::polynomial::EqPolynomial,
+  spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
@@ -32,13 +32,6 @@ pub struct VerifierKey<G: Group> {
   ck_s: CommitmentKey<G>,
 }
 
-/// Provides an implementation of a polynomial evaluation argument
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct EvaluationArgument<G: Group> {
-  ipa: InnerProductArgument<G>,
-}
-
 /// Provides an implementation of a polynomial evaluation engine using IPA
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationEngine<G: Group> {
@@ -52,7 +45,7 @@ where
 {
   type ProverKey = ProverKey<G>;
   type VerifierKey = VerifierKey<G>;
-  type EvaluationArgument = EvaluationArgument<G>;
+  type EvaluationArgument = InnerProductArgument<G>;
 
   fn setup(
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
@@ -81,9 +74,7 @@ where
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
     let w = InnerProductWitness::new(poly);
 
-    Ok(EvaluationArgument {
-      ipa: InnerProductArgument::prove(ck, &pk.ck_s, &u, &w, transcript)?,
-    })
+    InnerProductArgument::prove(ck, &pk.ck_s, &u, &w, transcript)
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
@@ -97,7 +88,7 @@ where
   ) -> Result<(), NovaError> {
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
 
-    arg.ipa.verify(
+    arg.verify(
       &vk.ck_v,
       &vk.ck_s,
       (2_usize).pow(point.len() as u32),
@@ -164,7 +155,7 @@ impl<G: Group> InnerProductWitness<G> {
 /// An inner product argument
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-struct InnerProductArgument<G: Group> {
+pub struct InnerProductArgument<G: Group> {
   L_vec: Vec<CompressedCommitment<G>>,
   R_vec: Vec<CompressedCommitment<G>>,
   a_hat: G::Scalar,
