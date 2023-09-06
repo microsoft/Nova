@@ -50,13 +50,14 @@ where
   fn setup(
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
+    let ck_s = G::CE::setup(b"ipa", 1);
     let pk = ProverKey {
-      ck_s: G::CE::setup(b"ipa", 1),
+      ck_s: ck_s.clone(),
     };
 
     let vk = VerifierKey {
       ck_v: ck.clone(),
-      ck_s: G::CE::setup(b"ipa", 1),
+      ck_s: ck_s,
     };
 
     (pk, vk)
@@ -362,7 +363,7 @@ where
       let mut s = vec![G::Scalar::ZERO; n];
       s[0] = {
         let mut v = G::Scalar::ONE;
-        for r_inverse_i in &r_inverse {
+        for r_inverse_i in r_inverse {
           v *= r_inverse_i;
         }
         v
