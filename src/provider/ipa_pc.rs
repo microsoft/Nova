@@ -51,10 +51,8 @@ where
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let ck_s = G::CE::setup(b"ipa", 1);
-    let pk = ProverKey {
-      ck_s: ck_s.clone(),
-    };
 
+    let pk = ProverKey { ck_s: ck_s.clone() };
     let vk = VerifierKey {
       ck_v: ck.clone(),
       ck_s: ck_s,
