@@ -346,7 +346,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
     ro.absorb(&params);
     ro.absorb(&i_new);
-    for e in &z_0 {
+    for e in z_0 {
       ro.absorb(e);
     }
     for e in &z_next {
