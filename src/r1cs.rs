@@ -2,6 +2,7 @@
 #![allow(clippy::type_complexity)]
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   gadgets::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
@@ -14,6 +15,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
+use once_cell::sync::OnceCell;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -34,7 +36,11 @@ pub struct R1CSShape<G: Group> {
   pub(crate) A: Vec<(usize, usize, G::Scalar)>,
   pub(crate) B: Vec<(usize, usize, G::Scalar)>,
   pub(crate) C: Vec<(usize, usize, G::Scalar)>,
+  #[serde(skip, default = "OnceCell::new")]
+  pub(crate) digest: OnceCell<G::Scalar>,
 }
+
+impl<G: Group> SimpleDigestible for R1CSShape<G> {}
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,7 +136,17 @@ impl<G: Group> R1CSShape<G> {
       A: A.to_owned(),
       B: B.to_owned(),
       C: C.to_owned(),
+      digest: OnceCell::new(),
     })
+  }
+
+  /// returnd the digest of the `R1CSShape`
+  pub fn digest(&self) -> G::Scalar {
+    self
+      .digest
+      .get_or_try_init(|| DigestComputer::new(self).digest())
+      .cloned()
+      .expect("Failure retrieving digest")
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
@@ -326,6 +342,7 @@ impl<G: Group> R1CSShape<G> {
         A: self.A.clone(),
         B: self.B.clone(),
         C: self.C.clone(),
+        digest: OnceCell::new(),
       };
     }
 
@@ -359,6 +376,7 @@ impl<G: Group> R1CSShape<G> {
       A: A_padded,
       B: B_padded,
       C: C_padded,
+      digest: OnceCell::new(),
     }
   }
 }

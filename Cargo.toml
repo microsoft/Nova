@@ -34,6 +34,7 @@ byteorder = "1.4.3"
 thiserror = "1.0"
 halo2curves = { version = "0.4.0", features = ["derive_serde"] }
 group = "0.13.0"
+once_cell = "1.18.0"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }

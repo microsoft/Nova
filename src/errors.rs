@@ -56,4 +56,7 @@ pub enum NovaError {
   /// return when error during synthesis
   #[error("SynthesisError")]
   SynthesisError,
+  /// returned when there is an error creating a digest
+  #[error("DigestError")]
+  DigestError,
 }
