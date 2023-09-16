@@ -1,4 +1,7 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
+pub mod sparse;
+mod util;
+
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
@@ -19,6 +22,8 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use self::sparse::SparseMatrix;
+
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -32,9 +37,9 @@ pub struct R1CSShape<G: Group> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
-  pub(crate) A: Vec<(usize, usize, G::Scalar)>,
-  pub(crate) B: Vec<(usize, usize, G::Scalar)>,
-  pub(crate) C: Vec<(usize, usize, G::Scalar)>,
+  pub(crate) A: SparseMatrix<G::Scalar>,
+  pub(crate) B: SparseMatrix<G::Scalar>,
+  pub(crate) C: SparseMatrix<G::Scalar>,
   #[serde(skip, default = "OnceCell::new")]
   pub(crate) digest: OnceCell<G::Scalar>,
 }
@@ -88,18 +93,18 @@ impl<G: Group> R1CSShape<G> {
     num_cons: usize,
     num_vars: usize,
     num_io: usize,
-    A: &[(usize, usize, G::Scalar)],
-    B: &[(usize, usize, G::Scalar)],
-    C: &[(usize, usize, G::Scalar)],
+    A: SparseMatrix<G::Scalar>,
+    B: SparseMatrix<G::Scalar>,
+    C: SparseMatrix<G::Scalar>,
   ) -> Result<R1CSShape<G>, NovaError> {
     let is_valid = |num_cons: usize,
                     num_vars: usize,
                     num_io: usize,
-                    M: &[(usize, usize, G::Scalar)]|
+                    M: &SparseMatrix<G::Scalar>|
      -> Result<(), NovaError> {
-      let res = (0..M.len())
-        .map(|i| {
-          let (row, col, _val) = M[i];
+      let res = M
+        .iter()
+        .map(|(row, col, _val)| {
           if row >= num_cons || col > num_io + num_vars {
             Err(NovaError::InvalidIndex)
           } else {
@@ -115,9 +120,9 @@ impl<G: Group> R1CSShape<G> {
       }
     };
 
-    let res_A = is_valid(num_cons, num_vars, num_io, A);
-    let res_B = is_valid(num_cons, num_vars, num_io, B);
-    let res_C = is_valid(num_cons, num_vars, num_io, C);
+    let res_A = is_valid(num_cons, num_vars, num_io, &A);
+    let res_B = is_valid(num_cons, num_vars, num_io, &B);
+    let res_C = is_valid(num_cons, num_vars, num_io, &C);
 
     if res_A.is_err() || res_B.is_err() || res_C.is_err() {
       return Err(NovaError::InvalidIndex);
@@ -132,9 +137,9 @@ impl<G: Group> R1CSShape<G> {
       num_cons,
       num_vars,
       num_io,
-      A: A.to_owned(),
-      B: B.to_owned(),
-      C: C.to_owned(),
+      A,
+      B,
+      C,
       digest: OnceCell::new(),
     })
   }
@@ -166,30 +171,9 @@ impl<G: Group> R1CSShape<G> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    // computes a product between a sparse matrix `M` and a vector `z`
-    // This does not perform any validation of entries in M (e.g., if entries in `M` reference indexes outside the range of `z`)
-    // This is safe since we know that `M` is valid
-    let sparse_matrix_vec_product =
-      |M: &Vec<(usize, usize, G::Scalar)>, num_rows: usize, z: &[G::Scalar]| -> Vec<G::Scalar> {
-        (0..M.len())
-          .map(|i| {
-            let (row, col, val) = M[i];
-            (row, val * z[col])
-          })
-          .fold(vec![G::Scalar::ZERO; num_rows], |mut Mz, (r, v)| {
-            Mz[r] += v;
-            Mz
-          })
-      };
-
     let (Az, (Bz, Cz)) = rayon::join(
-      || sparse_matrix_vec_product(&self.A, self.num_cons, z),
-      || {
-        rayon::join(
-          || sparse_matrix_vec_product(&self.B, self.num_cons, z),
-          || sparse_matrix_vec_product(&self.C, self.num_cons, z),
-        )
-      },
+      || self.A.multiply_vec(z),
+      || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
     );
 
     Ok((Az, Bz, Cz))
@@ -290,22 +274,25 @@ impl<G: Group> R1CSShape<G> {
       self.multiply_vec(&Z2)?
     };
 
-    let AZ_1_circ_BZ_2 = (0..AZ_1.len())
-      .into_par_iter()
-      .map(|i| AZ_1[i] * BZ_2[i])
-      .collect::<Vec<G::Scalar>>();
-    let AZ_2_circ_BZ_1 = (0..AZ_2.len())
-      .into_par_iter()
-      .map(|i| AZ_2[i] * BZ_1[i])
-      .collect::<Vec<G::Scalar>>();
-    let u_1_cdot_CZ_2 = (0..CZ_2.len())
-      .into_par_iter()
-      .map(|i| U1.u * CZ_2[i])
-      .collect::<Vec<G::Scalar>>();
-    let u_2_cdot_CZ_1 = (0..CZ_1.len())
-      .into_par_iter()
-      .map(|i| CZ_1[i])
-      .collect::<Vec<G::Scalar>>();
+    let (AZ_1_circ_BZ_2, AZ_2_circ_BZ_1, u_1_cdot_CZ_2, u_2_cdot_CZ_1) = {
+      let AZ_1_circ_BZ_2 = (0..AZ_1.len())
+        .into_par_iter()
+        .map(|i| AZ_1[i] * BZ_2[i])
+        .collect::<Vec<G::Scalar>>();
+      let AZ_2_circ_BZ_1 = (0..AZ_2.len())
+        .into_par_iter()
+        .map(|i| AZ_2[i] * BZ_1[i])
+        .collect::<Vec<G::Scalar>>();
+      let u_1_cdot_CZ_2 = (0..CZ_2.len())
+        .into_par_iter()
+        .map(|i| U1.u * CZ_2[i])
+        .collect::<Vec<G::Scalar>>();
+      let u_2_cdot_CZ_1 = (0..CZ_1.len())
+        .into_par_iter()
+        .map(|i| CZ_1[i])
+        .collect::<Vec<G::Scalar>>();
+      (AZ_1_circ_BZ_2, AZ_2_circ_BZ_1, u_1_cdot_CZ_2, u_2_cdot_CZ_1)
+    };
 
     let T = AZ_1_circ_BZ_2
       .par_iter()
@@ -348,25 +335,27 @@ impl<G: Group> R1CSShape<G> {
     // otherwise, we need to pad the number of variables and renumber variable accesses
     let num_vars_padded = m;
     let num_cons_padded = m;
-    let apply_pad = |M: &[(usize, usize, G::Scalar)]| -> Vec<(usize, usize, G::Scalar)> {
-      M.par_iter()
-        .map(|(r, c, v)| {
-          (
-            *r,
-            if c >= &self.num_vars {
-              c + num_vars_padded - self.num_vars
-            } else {
-              *c
-            },
-            *v,
-          )
-        })
-        .collect::<Vec<_>>()
+
+    let apply_pad = |mut M: SparseMatrix<G::Scalar>| -> SparseMatrix<G::Scalar> {
+      M.indices.par_iter_mut().for_each(|c| {
+        if *c >= self.num_vars {
+          *c += num_vars_padded - self.num_vars
+        }
+      });
+
+      M.cols += num_vars_padded - self.num_vars;
+
+      let ex = {
+        let nnz = M.indptr.last().unwrap();
+        vec![*nnz; num_cons_padded - self.num_cons]
+      };
+      M.indptr.extend(ex);
+      M
     };
 
-    let A_padded = apply_pad(&self.A);
-    let B_padded = apply_pad(&self.B);
-    let C_padded = apply_pad(&self.C);
+    let A_padded = apply_pad(self.A.clone());
+    let B_padded = apply_pad(self.B.clone());
+    let C_padded = apply_pad(self.C.clone());
 
     R1CSShape {
       num_cons: num_cons_padded,
@@ -583,5 +572,95 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
         ro.absorb(scalar_as_base::<G>(limb));
       }
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use ff::Field;
+
+  use super::*;
+  use crate::{r1cs::sparse::SparseMatrix, traits::Group};
+
+  fn tiny_r1cs<G: Group>(num_vars: usize) -> R1CSShape<G> {
+    let one = <G::Scalar as Field>::ONE;
+    let (num_cons, num_vars, num_io, A, B, C) = {
+      let num_cons = 4;
+      let num_io = 2;
+
+      // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      // The R1CS for this problem consists of the following constraints:
+      // `I0 * I0 - Z0 = 0`
+      // `Z0 * I0 - Z1 = 0`
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      // `(Z2 + 5) * 1 - I1 = 0`
+
+      // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
+      // constraint and a column for every entry in z = (vars, u, inputs)
+      // An R1CS instance is satisfiable iff:
+      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
+      let mut A: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut B: Vec<(usize, usize, G::Scalar)> = Vec::new();
+      let mut C: Vec<(usize, usize, G::Scalar)> = Vec::new();
+
+      // constraint 0 entries in (A,B,C)
+      // `I0 * I0 - Z0 = 0`
+      A.push((0, num_vars + 1, one));
+      B.push((0, num_vars + 1, one));
+      C.push((0, 0, one));
+
+      // constraint 1 entries in (A,B,C)
+      // `Z0 * I0 - Z1 = 0`
+      A.push((1, 0, one));
+      B.push((1, num_vars + 1, one));
+      C.push((1, 1, one));
+
+      // constraint 2 entries in (A,B,C)
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      A.push((2, 1, one));
+      A.push((2, num_vars + 1, one));
+      B.push((2, num_vars, one));
+      C.push((2, 2, one));
+
+      // constraint 3 entries in (A,B,C)
+      // `(Z2 + 5) * 1 - I1 = 0`
+      A.push((3, 2, one));
+      A.push((3, num_vars, one + one + one + one + one));
+      B.push((3, num_vars, one));
+      C.push((3, num_vars + 2, one));
+
+      (num_cons, num_vars, num_io, A, B, C)
+    };
+
+    // create a shape object
+    let rows = num_cons;
+    let cols = num_vars + num_io + 1;
+
+    let res = R1CSShape::new(
+      num_cons,
+      num_vars,
+      num_io,
+      SparseMatrix::new(&A, rows, cols),
+      SparseMatrix::new(&B, rows, cols),
+      SparseMatrix::new(&C, rows, cols),
+    );
+    assert!(res.is_ok());
+    res.unwrap()
+  }
+
+  fn test_pad_tiny_r1cs_with<G: Group>() {
+    let padded_r1cs = tiny_r1cs::<G>(3).pad();
+    padded_r1cs.check_regular_shape();
+
+    let expected_r1cs = tiny_r1cs::<G>(4);
+
+    assert_eq!(padded_r1cs, expected_r1cs);
+  }
+
+  #[test]
+  fn test_pad_tiny_r1cs() {
+    test_pad_tiny_r1cs_with::<pasta_curves::pallas::Point>();
+    test_pad_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
+    test_pad_tiny_r1cs_with::<crate::provider::secp_secq::secp256k1::Point>();
   }
 }

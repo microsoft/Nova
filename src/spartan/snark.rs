@@ -7,7 +7,7 @@
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
-  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::{sparse::SparseMatrix, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
     powers,
@@ -190,9 +190,11 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
         |S: &R1CSShape<G>, rx: &[G::Scalar]| -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
           assert_eq!(rx.len(), S.num_cons);
 
-          let inner = |M: &Vec<(usize, usize, G::Scalar)>, M_evals: &mut Vec<G::Scalar>| {
-            for (row, col, val) in M {
-              M_evals[*col] += rx[*row] * val;
+          let inner = |M: &SparseMatrix<G::Scalar>, M_evals: &mut Vec<G::Scalar>| {
+            for (row_idx, ptrs) in M.indptr.windows(2).enumerate() {
+              for (val, col_idx) in M.get_row_unchecked(ptrs.try_into().unwrap()) {
+                M_evals[*col_idx] += rx[row_idx] * val;
+              }
             }
           };
 
@@ -428,17 +430,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     };
 
     // compute evaluations of R1CS matrices
-    let multi_evaluate = |M_vec: &[&[(usize, usize, G::Scalar)]],
+    let multi_evaluate = |M_vec: &[&SparseMatrix<G::Scalar>],
                           r_x: &[G::Scalar],
                           r_y: &[G::Scalar]|
      -> Vec<G::Scalar> {
       let evaluate_with_table =
-        |M: &[(usize, usize, G::Scalar)], T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
-          (0..M.len())
-            .into_par_iter()
-            .map(|i| {
-              let (row, col, val) = M[i];
-              T_x[row] * T_y[col] * val
+        |M: &SparseMatrix<G::Scalar>, T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
+          M.indptr
+            .par_windows(2)
+            .enumerate()
+            .map(|(row_idx, ptrs)| {
+              M.get_row_unchecked(ptrs.try_into().unwrap())
+                .map(|(val, col_idx)| T_x[row_idx] * T_y[*col_idx] * val)
+                .sum::<G::Scalar>()
             })
             .sum()
         };
