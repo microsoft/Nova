@@ -196,6 +196,8 @@ impl<Scalar: PrimeField> Add for MultilinearPolynomial<Scalar> {
 
 #[cfg(test)]
 mod tests {
+  use crate::provider::{self, bn256_grumpkin::bn256, secp_secq::secp256k1};
+
   use super::*;
   use pasta_curves::Fp;
 
@@ -277,11 +279,15 @@ mod tests {
   #[test]
   fn test_mlp_add() {
     test_mlp_add_with::<Fp>();
+    test_mlp_add_with::<bn256::Scalar>();
+    test_mlp_add_with::<secp256k1::Scalar>();
   }
 
   #[test]
   fn test_mlp_scalar_mul() {
     test_mlp_scalar_mul_with::<Fp>();
+    test_mlp_scalar_mul_with::<bn256::Scalar>();
+    test_mlp_scalar_mul_with::<secp256k1::Scalar>();
   }
 
   fn test_evaluation_with<F: PrimeField>() {
@@ -309,5 +315,7 @@ mod tests {
   #[test]
   fn test_evaluation() {
     test_evaluation_with::<Fp>();
+    test_evaluation_with::<provider::bn256_grumpkin::bn256::Scalar>();
+    test_evaluation_with::<provider::secp_secq::secp256k1::Scalar>();
   }
 }

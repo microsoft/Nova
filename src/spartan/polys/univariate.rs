@@ -114,7 +114,7 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
 }
 #[cfg(test)]
 mod tests {
-  use crate::provider::bn256_grumpkin;
+  use crate::provider::{bn256_grumpkin, secp_secq::secp256k1};
 
   use super::*;
 
@@ -148,6 +148,7 @@ mod tests {
   fn test_from_evals_quad() {
     test_from_evals_quad_with::<pasta_curves::pallas::Scalar>();
     test_from_evals_quad_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_quad_with::<secp256k1::Scalar>();
   }
 
   fn test_from_evals_cubic_with<F: PrimeField>() {
@@ -182,5 +183,6 @@ mod tests {
   fn test_from_evals_cubic() {
     test_from_evals_cubic_with::<pasta_curves::pallas::Scalar>();
     test_from_evals_cubic_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_cubic_with::<secp256k1::Scalar>()
   }
 }
