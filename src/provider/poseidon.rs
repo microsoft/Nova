@@ -21,7 +21,7 @@ use neptune::{
 use serde::{Deserialize, Serialize};
 
 /// All Poseidon Constants that are used in Nova
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
