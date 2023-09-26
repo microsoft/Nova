@@ -33,6 +33,7 @@ use crate::bellpepper::{
   shape_cs::ShapeCS,
   solver::SatisfyingAssignment,
 };
+use crate::digest::{DigestComputer, SimpleDigestible};
 use bellpepper_core::ConstraintSystem;
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
@@ -43,8 +44,6 @@ use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
-
-use crate::digest::{DigestComputer, SimpleDigestible};
 use traits::{
   circuit::StepCircuit,
   commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -810,6 +809,7 @@ mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
   use crate::provider::pedersen::CommitmentKeyExtTrait;
   use crate::provider::secp_secq::{secp256k1, secq256k1};
+  use core::fmt::Write;
 
   use super::*;
   type EE1<G1> = provider::ipa_pc::EvaluationEngine<G1>;
@@ -892,8 +892,10 @@ mod tests {
       .to_repr()
       .as_ref()
       .iter()
-      .map(|b| format!("{b:02x}"))
-      .collect::<String>();
+      .fold(String::new(), |mut output, b| {
+        let _ = write!(output, "{b:02x}");
+        output
+      });
     assert_eq!(digest_str, expected);
   }
 
