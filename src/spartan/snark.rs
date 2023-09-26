@@ -5,7 +5,7 @@
 //! an IPA-based polynomial commitment scheme.
 
 use crate::{
-  compute_digest,
+  digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
@@ -20,6 +20,7 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
+use once_cell::sync::OnceCell;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -39,7 +40,32 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
 pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
-  digest: G::Scalar,
+  #[serde(skip, default = "OnceCell::new")]
+  digest: OnceCell<G::Scalar>,
+}
+
+impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
+
+impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
+  fn new(shape: R1CSShape<G>, vk_ee: EE::VerifierKey) -> Self {
+    VerifierKey {
+      vk_ee,
+      S: shape,
+      digest: OnceCell::new(),
+    }
+  }
+
+  /// Returns the digest of the verifier's key.
+  pub fn digest(&self) -> G::Scalar {
+    self
+      .digest
+      .get_or_try_init(|| {
+        let dc = DigestComputer::<G::Scalar, _>::new(self);
+        dc.digest()
+      })
+      .cloned()
+      .expect("Failure to retrieve digest!")
+  }
 }
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
@@ -70,20 +96,12 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     let S = S.pad();
 
-    let vk = {
-      let mut vk = VerifierKey {
-        vk_ee,
-        S: S.clone(),
-        digest: G::Scalar::ZERO,
-      };
-      vk.digest = compute_digest::<G, VerifierKey<G, EE>>(&vk);
-      vk
-    };
+    let vk: VerifierKey<G, EE> = VerifierKey::new(S.clone(), vk_ee);
 
     let pk = ProverKey {
       pk_ee,
       S,
-      vk_digest: vk.digest,
+      vk_digest: vk.digest(),
     };
 
     Ok((pk, vk))
@@ -344,7 +362,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"vk", &vk.digest);
+    transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"U", U);
 
     let (num_rounds_x, num_rounds_y) = (

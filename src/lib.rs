@@ -15,6 +15,7 @@
 mod bellpepper;
 mod circuit;
 mod constants;
+mod digest;
 mod nifs;
 mod r1cs;
 
@@ -24,6 +25,8 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+
+use once_cell::sync::OnceCell;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
@@ -40,7 +43,8 @@ use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_256};
+
+use crate::digest::{DigestComputer, SimpleDigestible};
 use traits::{
   circuit::StepCircuit,
   commitment::{CommitmentEngineTrait, CommitmentTrait},
@@ -70,9 +74,18 @@ where
   r1cs_shape_secondary: R1CSShape<G2>,
   augmented_circuit_params_primary: NovaAugmentedCircuitParams,
   augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
-  digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
+  #[serde(skip, default = "OnceCell::new")]
+  digest: OnceCell<G1::Scalar>,
+  _p: PhantomData<(C1, C2)>,
+}
+
+impl<G1, G2, C1, C2> SimpleDigestible for PublicParams<G1, G2, C1, C2>
+where
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  C1: StepCircuit<G1::Scalar>,
+  C2: StepCircuit<G2::Scalar>,
+{
 }
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
@@ -121,7 +134,7 @@ where
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
 
-    let mut pp = Self {
+    PublicParams {
       F_arity_primary,
       F_arity_secondary,
       ro_consts_primary,
@@ -134,15 +147,18 @@ where
       r1cs_shape_secondary,
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
-      digest: G1::Scalar::ZERO,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
-    };
+      digest: OnceCell::new(),
+      _p: Default::default(),
+    }
+  }
 
-    // set the digest in pp
-    pp.digest = compute_digest::<G1, PublicParams<G1, G2, C1, C2>>(&pp);
-
-    pp
+  /// Retrieve the digest of the public parameters.
+  pub fn digest(&self) -> G1::Scalar {
+    self
+      .digest
+      .get_or_try_init(|| DigestComputer::new(self).digest())
+      .cloned()
+      .expect("Failure in retrieving digest")
   }
 
   /// Returns the number of constraints in the primary and secondary circuits
@@ -203,7 +219,7 @@ where
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G1>(pp.digest),
+      scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::ZERO,
       z0_primary,
       None,
@@ -230,7 +246,7 @@ where
     // base case for the secondary
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
-      pp.digest,
+      pp.digest(),
       G2::Scalar::ZERO,
       z0_secondary,
       None,
@@ -323,7 +339,7 @@ where
     let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
-      &scalar_as_base::<G1>(pp.digest),
+      &scalar_as_base::<G1>(pp.digest()),
       &pp.r1cs_shape_secondary,
       &self.r_U_secondary,
       &self.r_W_secondary,
@@ -334,7 +350,7 @@ where
 
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G1>(pp.digest),
+      scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::from(self.i as u64),
       z0_primary,
       Some(self.zi_primary.clone()),
@@ -362,7 +378,7 @@ where
     let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
       &pp.ck_primary,
       &pp.ro_consts_primary,
-      &pp.digest,
+      &pp.digest(),
       &pp.r1cs_shape_primary,
       &self.r_U_primary,
       &self.r_W_primary,
@@ -373,7 +389,7 @@ where
 
     let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
-      pp.digest,
+      pp.digest(),
       G2::Scalar::from(self.i as u64),
       z0_secondary,
       Some(self.zi_secondary.clone()),
@@ -452,7 +468,7 @@ where
         pp.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
       );
-      hasher.absorb(pp.digest);
+      hasher.absorb(pp.digest());
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
         hasher.absorb(*e);
@@ -466,7 +482,7 @@ where
         pp.ro_consts_primary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
       );
-      hasher2.absorb(scalar_as_base::<G1>(pp.digest));
+      hasher2.absorb(scalar_as_base::<G1>(pp.digest()));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(*e);
@@ -557,7 +573,7 @@ where
   F_arity_secondary: usize,
   ro_consts_primary: ROConstants<G1>,
   ro_consts_secondary: ROConstants<G2>,
-  digest: G1::Scalar,
+  pp_digest: G1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
   _p_c1: PhantomData<C1>,
@@ -625,7 +641,7 @@ where
       F_arity_secondary: pp.F_arity_secondary,
       ro_consts_primary: pp.ro_consts_primary.clone(),
       ro_consts_secondary: pp.ro_consts_secondary.clone(),
-      digest: pp.digest,
+      pp_digest: pp.digest(),
       vk_primary,
       vk_secondary,
       _p_c1: Default::default(),
@@ -645,7 +661,7 @@ where
     let res_secondary = NIFS::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
-      &scalar_as_base::<G1>(pp.digest),
+      &scalar_as_base::<G1>(pp.digest()),
       &pp.r1cs_shape_secondary,
       &recursive_snark.r_U_secondary,
       &recursive_snark.r_W_secondary,
@@ -719,7 +735,7 @@ where
         vk.ro_consts_secondary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
       );
-      hasher.absorb(vk.digest);
+      hasher.absorb(vk.pp_digest);
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
         hasher.absorb(e);
@@ -733,7 +749,7 @@ where
         vk.ro_consts_primary.clone(),
         NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_secondary,
       );
-      hasher2.absorb(scalar_as_base::<G1>(vk.digest));
+      hasher2.absorb(scalar_as_base::<G1>(vk.pp_digest));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
@@ -758,7 +774,7 @@ where
     // fold the running instance and last instance to get a folded instance
     let f_U_secondary = self.nifs_secondary.verify(
       &vk.ro_consts_secondary,
-      &scalar_as_base::<G1>(vk.digest),
+      &scalar_as_base::<G1>(vk.pp_digest),
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
@@ -788,33 +804,6 @@ type CommitmentKey<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitme
 type Commitment<G> = <<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment;
 type CompressedCommitment<G> = <<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment as CommitmentTrait<G>>::CompressedCommitment;
 type CE<G> = <G as Group>::CE;
-
-fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
-  // obtain a vector of bytes representing public parameters
-  let bytes = bincode::serialize(o).unwrap();
-  // convert pp_bytes into a short digest
-  let mut hasher = Sha3_256::new();
-  hasher.update(&bytes);
-  let digest = hasher.finalize();
-
-  // truncate the digest to NUM_HASH_BITS bits
-  let bv = (0..NUM_HASH_BITS).map(|i| {
-    let (byte_pos, bit_pos) = (i / 8, i % 8);
-    let bit = (digest[byte_pos] >> bit_pos) & 1;
-    bit == 1
-  });
-
-  // turn the bit vector into a scalar
-  let mut digest = G::Scalar::ZERO;
-  let mut coeff = G::Scalar::ONE;
-  for bit in bv {
-    if bit {
-      digest += coeff;
-    }
-    coeff += coeff;
-  }
-  digest
-}
 
 #[cfg(test)]
 mod tests {
@@ -899,7 +888,7 @@ mod tests {
     let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
 
     let digest_str = pp
-      .digest
+      .digest()
       .to_repr()
       .as_ref()
       .iter()
@@ -919,13 +908,13 @@ mod tests {
     test_pp_digest_with::<G1, G2, _, _>(
       &trivial_circuit1,
       &trivial_circuit2,
-      "39a4ea9dd384346fdeb6b5857c7be56fa035153b616d55311f3191dfbceea603",
+      "fe14a77d74cb8b8bb13105cea9c5b98b621b42c8d61da8f2adce8b9dd0d51b03",
     );
 
     test_pp_digest_with::<G1, G2, _, _>(
       &cubic_circuit1,
       &trivial_circuit2,
-      "3f7b25f589f2da5ab26254beba98faa54f6442ebf5fa5860caf7b08b576cab00",
+      "21ac840e52c75a62823cfdda4ca77aae2f07e4b6f5aa0eba80135492b2fbd003",
     );
 
     let trivial_circuit1_grumpkin =
@@ -937,12 +926,12 @@ mod tests {
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "967acca1d6b4731cd65d4072c12bbaca9648f24d7bcc2877aee720e4265d4302",
+      "0b25debdc99cef04b6d113a9a2814de89b3fad239aea90b29f2bdb27d95afa02",
     );
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "44629f26a78bf6c4e3077f940232050d1793d304fdba5e221d0cf66f76a37903",
+      "0747f68f8d1c4bac4c3fb82689a1488b5835bbc97d6f6023fbe2760bb0053b00",
     );
 
     let trivial_circuit1_secp =
@@ -953,13 +942,13 @@ mod tests {
 
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
       &trivial_circuit1_secp,
-      &trivial_circuit2_secp.clone(),
-      "b99760668a42354643e17b2f0a2d54f173d237eb213e7e758b20a88b4c653c01",
+      &trivial_circuit2_secp,
+      "0cf0880fa8debe42b7789474f6787062f8118ef251450dd5a7a4b5430f4bb902",
     );
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
       &cubic_circuit1_secp,
       &trivial_circuit2_secp,
-      "68db620e610a3cd75146a1e1bdd168f486b82c0b670277ad1e3d50441c501502",
+      "623a1dd99f3c906e79397f3de0dc1565b35fcb69abf2da51847bc9879a0a6000",
     );
   }
 
