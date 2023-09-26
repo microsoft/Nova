@@ -22,11 +22,11 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
 
 /// A trivial step circuit that simply returns the input
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct TrivialTestCircuit<F: PrimeField> {
+pub struct TrivialCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
 
-impl<F> StepCircuit<F> for TrivialTestCircuit<F>
+impl<F> StepCircuit<F> for TrivialCircuit<F>
 where
   F: PrimeField,
 {

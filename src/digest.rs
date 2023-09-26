@@ -39,7 +39,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
     Sha3_256::new()
   }
 
-  fn map_to_field(digest: &mut [u8]) -> F {
+  fn map_to_field(digest: &[u8]) -> F {
     let bv = (0..NUM_HASH_BITS).map(|i| {
       let (byte_pos, bit_pos) = (i / 8, i % 8);
       let bit = (digest[byte_pos] >> bit_pos) & 1;
@@ -73,8 +73,8 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
       .inner
       .write_bytes(&mut hasher)
       .expect("Serialization error");
-    let mut bytes: [u8; 32] = hasher.finalize().into();
-    Ok(Self::map_to_field(&mut bytes))
+    let bytes: [u8; 32] = hasher.finalize().into();
+    Ok(Self::map_to_field(&bytes))
   }
 }
 
