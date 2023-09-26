@@ -6,7 +6,7 @@ use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
   traits::{
-    circuit::{StepCircuit, TrivialTestCircuit},
+    circuit::{StepCircuit, TrivialCircuit},
     Group,
   },
   PublicParams, RecursiveSNARK,
@@ -15,8 +15,8 @@ use std::time::Duration;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialTestCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -52,8 +52,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(10);
 
-    let c_primary = NonTrivialTestCircuit::new(num_cons);
-    let c_secondary = TrivialTestCircuit::default();
+    let c_primary = NonTrivialCircuit::new(num_cons);
+    let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
     let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
@@ -124,12 +124,12 @@ fn bench_recursive_snark(c: &mut Criterion) {
 }
 
 #[derive(Clone, Debug, Default)]
-struct NonTrivialTestCircuit<F: PrimeField> {
+struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,
 }
 
-impl<F> NonTrivialTestCircuit<F>
+impl<F> NonTrivialCircuit<F>
 where
   F: PrimeField,
 {
@@ -140,7 +140,7 @@ where
     }
   }
 }
-impl<F> StepCircuit<F> for NonTrivialTestCircuit<F>
+impl<F> StepCircuit<F> for NonTrivialCircuit<F>
 where
   F: PrimeField,
 {

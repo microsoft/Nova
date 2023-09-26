@@ -822,7 +822,7 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
-  use traits::circuit::TrivialTestCircuit;
+  use traits::circuit::TrivialCircuit;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -901,8 +901,8 @@ mod tests {
   fn test_pp_digest() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    let trivial_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
-    let trivial_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
+    let trivial_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+    let trivial_circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
     let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
 
     test_pp_digest_with::<G1, G2, _, _>(
@@ -917,10 +917,8 @@ mod tests {
       "21ac840e52c75a62823cfdda4ca77aae2f07e4b6f5aa0eba80135492b2fbd003",
     );
 
-    let trivial_circuit1_grumpkin =
-      TrivialTestCircuit::<<bn256::Point as Group>::Scalar>::default();
-    let trivial_circuit2_grumpkin =
-      TrivialTestCircuit::<<grumpkin::Point as Group>::Scalar>::default();
+    let trivial_circuit1_grumpkin = TrivialCircuit::<<bn256::Point as Group>::Scalar>::default();
+    let trivial_circuit2_grumpkin = TrivialCircuit::<<grumpkin::Point as Group>::Scalar>::default();
     let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
 
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
@@ -934,10 +932,8 @@ mod tests {
       "0747f68f8d1c4bac4c3fb82689a1488b5835bbc97d6f6023fbe2760bb0053b00",
     );
 
-    let trivial_circuit1_secp =
-      TrivialTestCircuit::<<secp256k1::Point as Group>::Scalar>::default();
-    let trivial_circuit2_secp =
-      TrivialTestCircuit::<<secq256k1::Point as Group>::Scalar>::default();
+    let trivial_circuit1_secp = TrivialCircuit::<<secp256k1::Point as Group>::Scalar>::default();
+    let trivial_circuit2_secp = TrivialCircuit::<<secq256k1::Point as Group>::Scalar>::default();
     let cubic_circuit1_secp = CubicCircuit::<<secp256k1::Point as Group>::Scalar>::default();
 
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
@@ -957,15 +953,15 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
-    let test_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
+    let test_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+    let test_circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
@@ -1014,14 +1010,14 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
@@ -1031,7 +1027,7 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
@@ -1100,14 +1096,14 @@ mod tests {
     <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
     <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
-    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
@@ -1117,7 +1113,7 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
@@ -1194,14 +1190,14 @@ mod tests {
     <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
     <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
-    let circuit_primary = TrivialTestCircuit::default();
+    let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
@@ -1211,7 +1207,7 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
@@ -1355,14 +1351,14 @@ mod tests {
       y: <G1 as Group>::Scalar::ZERO,
     };
 
-    let circuit_secondary = TrivialTestCircuit::default();
+    let circuit_secondary = TrivialCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
@@ -1376,12 +1372,12 @@ mod tests {
       G1,
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     > = RecursiveSNARK::<
       G1,
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &roots[0],
@@ -1433,14 +1429,14 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    let test_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+    let test_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
     let test_circuit2 = CubicCircuit::<<G2 as Group>::Scalar>::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&test_circuit1, &test_circuit2);
 
@@ -1450,7 +1446,7 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialTestCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,

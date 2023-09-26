@@ -6,7 +6,7 @@ use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
   traits::{
-    circuit::{StepCircuit, TrivialTestCircuit},
+    circuit::{StepCircuit, TrivialCircuit},
     Group,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -23,8 +23,8 @@ type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
 // SNARKs with computational commitments
 type SS1 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1>;
 type SS2 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
-type C1 = NonTrivialTestCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -61,8 +61,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(num_samples);
 
-    let c_primary = NonTrivialTestCircuit::new(num_cons);
-    let c_secondary = TrivialTestCircuit::default();
+    let c_primary = NonTrivialCircuit::new(num_cons);
+    let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
     let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
@@ -148,8 +148,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
       .sampling_mode(SamplingMode::Flat)
       .sample_size(num_samples);
 
-    let c_primary = NonTrivialTestCircuit::new(num_cons);
-    let c_secondary = TrivialTestCircuit::default();
+    let c_primary = NonTrivialCircuit::new(num_cons);
+    let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
     let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
@@ -221,12 +221,12 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
 }
 
 #[derive(Clone, Debug, Default)]
-struct NonTrivialTestCircuit<F: PrimeField> {
+struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,
 }
 
-impl<F> NonTrivialTestCircuit<F>
+impl<F> NonTrivialCircuit<F>
 where
   F: PrimeField,
 {
@@ -237,7 +237,7 @@ where
     }
   }
 }
-impl<F> StepCircuit<F> for NonTrivialTestCircuit<F>
+impl<F> StepCircuit<F> for NonTrivialCircuit<F>
 where
   F: PrimeField,
 {

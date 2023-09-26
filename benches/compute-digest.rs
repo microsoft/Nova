@@ -5,7 +5,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
 use nova_snark::{
   traits::{
-    circuit::{StepCircuit, TrivialTestCircuit},
+    circuit::{StepCircuit, TrivialCircuit},
     Group,
   },
   PublicParams,
@@ -13,8 +13,8 @@ use nova_snark::{
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialTestCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 criterion_group! {
 name = compute_digest;
@@ -33,12 +33,12 @@ fn bench_compute_digest(c: &mut Criterion) {
 }
 
 #[derive(Clone, Debug, Default)]
-struct NonTrivialTestCircuit<F: PrimeField> {
+struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,
 }
 
-impl<F> NonTrivialTestCircuit<F>
+impl<F> NonTrivialCircuit<F>
 where
   F: PrimeField,
 {
@@ -49,7 +49,7 @@ where
     }
   }
 }
-impl<F> StepCircuit<F> for NonTrivialTestCircuit<F>
+impl<F> StepCircuit<F> for NonTrivialCircuit<F>
 where
   F: PrimeField,
 {

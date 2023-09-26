@@ -8,7 +8,7 @@ use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{
-    circuit::{StepCircuit, TrivialTestCircuit},
+    circuit::{StepCircuit, TrivialCircuit},
     Group,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -148,7 +148,7 @@ fn main() {
       ],
     };
 
-    let circuit_secondary = TrivialTestCircuit::default();
+    let circuit_secondary = TrivialCircuit::default();
 
     println!("Proving {num_iters_per_step} iterations of MinRoot per step");
 
@@ -159,7 +159,7 @@ fn main() {
       G1,
       G2,
       MinRootCircuit<<G1 as Group>::Scalar>,
-      TrivialTestCircuit<<G2 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
     println!("PublicParams::setup, took {:?} ", start.elapsed());
 
@@ -203,7 +203,7 @@ fn main() {
     let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
 
     type C1 = MinRootCircuit<<G1 as Group>::Scalar>;
-    type C2 = TrivialTestCircuit<<G2 as Group>::Scalar>;
+    type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
     // produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::<G1, G2, C1, C2>::new(

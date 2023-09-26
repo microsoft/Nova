@@ -1,10 +1,8 @@
 //! There are two Verification Circuits. The primary and the secondary.
-//! Each of them is over a Pasta curve but
-//! only the primary executes the next step of the computation.
+//! Each of them is over a curve in a 2-cycle of curves.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
-//! of the running instances. Each of these hashes is
-//! H(params = H(shape, ck), i, z0, zi, U). Each circuit folds the last invocation of
-//! the other into the running instance
+//! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
+//! Each circuit folds the last invocation of the other into the running instance
 
 use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
@@ -50,7 +48,7 @@ impl NovaAugmentedCircuitParams {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NovaAugmentedCircuitInputs<G: Group> {
-  params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+  params: G::Scalar,
   i: G::Base,
   z0: Vec<G::Base>,
   zi: Option<Vec<G::Base>>,
@@ -378,7 +376,7 @@ mod tests {
     bellpepper::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
     provider::poseidon::PoseidonConstantsCircuit,
-    traits::circuit::TrivialTestCircuit,
+    traits::circuit::TrivialCircuit,
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
@@ -393,19 +391,19 @@ mod tests {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    let ttc1 = TrivialTestCircuit::default();
+    let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaAugmentedCircuit::new(primary_params, None, &ttc1, ro_consts1.clone());
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+      NovaAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
     let mut cs: TestShapeCS<G1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
-    let ttc2 = TrivialTestCircuit::default();
+    let tc2 = TrivialCircuit::default();
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaAugmentedCircuit::new(secondary_params, None, &ttc2, ro_consts2.clone());
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+      NovaAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape();
@@ -423,8 +421,8 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialTestCircuit<<G2 as Group>::Base>> =
-      NovaAugmentedCircuit::new(primary_params, Some(inputs1), &ttc1, ro_consts1);
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+      NovaAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
@@ -442,8 +440,8 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialTestCircuit<<G1 as Group>::Base>> =
-      NovaAugmentedCircuit::new(secondary_params, Some(inputs2), &ttc2, ro_consts2);
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+      NovaAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
