@@ -812,12 +812,9 @@ mod tests {
   use core::fmt::Write;
 
   use super::*;
-  type EE1<G1> = provider::ipa_pc::EvaluationEngine<G1>;
-  type EE2<G2> = provider::ipa_pc::EvaluationEngine<G2>;
-  type S1<G1> = spartan::snark::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2<G2> = spartan::snark::RelaxedR1CSSNARK<G2, EE2<G2>>;
-  type S1Prime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1<G1>>;
-  type S2Prime<G2> = spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2<G2>>;
+  type EE<G> = provider::ipa_pc::EvaluationEngine<G>;
+  type S<G1> = spartan::snark::RelaxedR1CSSNARK<G1, EE<G1>>;
+  type SPrime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE<G1>>;
 
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
@@ -1157,10 +1154,10 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1<G1>, S2<G2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S1<G1>, S2<G2>>::prove(&pp, &pk, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1253,11 +1250,11 @@ mod tests {
     // run the compressed snark with Spark compiler
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1Prime<G1>, S2Prime<G2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, SPrime<G1>, SPrime<G2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
     let res =
-      CompressedSNARK::<_, _, _, _, S1Prime<G1>, S2Prime<G2>>::prove(&pp, &pk, &recursive_snark);
+      CompressedSNARK::<_, _, _, _, SPrime<G1>, SPrime<G2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1404,10 +1401,10 @@ mod tests {
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1<G1>, S2<G2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S1<G1>, S2<G2>>::prove(&pp, &pk, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
