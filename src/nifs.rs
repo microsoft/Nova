@@ -1,6 +1,5 @@
 //! This module implements a non-interactive folding scheme
 #![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
 
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
@@ -30,7 +29,6 @@ impl<G: Group> NIFS<G> {
   /// a folded Relaxed R1CS instance-witness tuple `(U, W)` of the same shape `shape`,
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
-  #[allow(clippy::too_many_arguments)]
   pub fn prove(
     ck: &CommitmentKey<G>,
     ro_consts: &ROConstants<G>,
@@ -208,7 +206,6 @@ mod tests {
     test_tiny_r1cs_bellpepper_with::<crate::provider::bn256_grumpkin::bn256::Point>();
   }
 
-  #[allow(clippy::too_many_arguments)]
   fn execute_sequence<G>(
     ck: &CommitmentKey<G>,
     ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,

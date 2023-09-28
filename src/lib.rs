@@ -8,7 +8,6 @@
   missing_docs
 )]
 #![allow(non_snake_case)]
-#![allow(clippy::type_complexity)]
 #![forbid(unsafe_code)]
 
 // private modules

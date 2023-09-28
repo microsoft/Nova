@@ -55,7 +55,6 @@ where
 {
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
-  #[allow(clippy::type_complexity)]
   /// All constraints added to the `TestShapeCS`.
   pub constraints: Vec<(
     LinearCombination<G::Scalar>,

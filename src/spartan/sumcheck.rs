@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
 use crate::errors::NovaError;
 use crate::spartan::polys::{
   multilinear::MultilinearPolynomial,
