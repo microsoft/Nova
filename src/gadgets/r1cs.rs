@@ -36,17 +36,11 @@ impl<G: Group> AllocatedR1CSInstance<G> {
     // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
-      u.get().map_or(None, |u| Some(u.comm_W.to_coordinates())),
+      u.map(|u| u.comm_W.to_coordinates()),
     )?;
 
-    let X0 = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "allocate X[0]"),
-      u.get().map_or(None, |u| Some(u.X[0])),
-    )?;
-    let X1 = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "allocate X[1]"),
-      u.get().map_or(None, |u| Some(u.X[1])),
-    )?;
+    let X0 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
+    let X1 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
 
     Ok(AllocatedR1CSInstance { W, X0, X1 })
   }
@@ -80,24 +74,17 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   ) -> Result<Self, SynthesisError> {
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
-      inst
-        .get()
-        .map_or(None, |inst| Some(inst.comm_W.to_coordinates())),
+      inst.map(|inst| inst.comm_W.to_coordinates()),
     )?;
 
     let E = AllocatedPoint::alloc(
       cs.namespace(|| "allocate E"),
-      inst
-        .get()
-        .map_or(None, |inst| Some(inst.comm_E.to_coordinates())),
+      inst.map(|inst| inst.comm_E.to_coordinates()),
     )?;
 
     // u << |G::Base| despite the fact that u is a scalar.
     // So we parse all of its bytes as a G::Base element
-    let u = alloc_scalar_as_base::<G, _>(
-      cs.namespace(|| "allocate u"),
-      inst.get().map_or(None, |inst| Some(inst.u)),
-    )?;
+    let u = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate u"), inst.map(|inst| inst.u))?;
 
     // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
@@ -231,7 +218,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   }
 
   /// Folds self with a relaxed r1cs instance and returns the result
-  #[allow(clippy::too_many_arguments)]
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,

@@ -1,6 +1,6 @@
 //! Main components:
-//! - UniPoly: an univariate dense polynomial in coefficient form (big endian),
-//! - CompressedUniPoly: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
+//! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
+//! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};

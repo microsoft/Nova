@@ -58,7 +58,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
     digest
   }
 
-  /// Create a new DigestComputer
+  /// Create a new `DigestComputer`
   pub fn new(inner: &'a T) -> Self {
     DigestComputer {
       inner,

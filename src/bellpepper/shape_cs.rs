@@ -10,7 +10,6 @@ pub struct ShapeCS<G: Group>
 where
   G::Scalar: PrimeField,
 {
-  #[allow(clippy::type_complexity)]
   /// All constraints added to the `ShapeCS`.
   pub constraints: Vec<(
     LinearCombination<G::Scalar>,

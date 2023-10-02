@@ -1,5 +1,4 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
-#![allow(clippy::too_many_arguments)]
 use crate::{
   errors::NovaError,
   provider::pedersen::CommitmentKeyExtTrait,
