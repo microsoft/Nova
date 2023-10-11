@@ -7,7 +7,7 @@
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
-  r1cs::{sparse::SparseMatrix, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness, SparseMatrix},
   spartan::{
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
     powers,

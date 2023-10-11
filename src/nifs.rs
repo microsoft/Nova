@@ -113,7 +113,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{r1cs::sparse::SparseMatrix, r1cs::R1CS, traits::Group};
+  use crate::{r1cs::SparseMatrix, r1cs::R1CS, traits::Group};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
