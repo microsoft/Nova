@@ -311,12 +311,13 @@ mod tests {
 
     // create a shape object
     let rows = num_cons;
-    let cols = num_vars + num_io + 1;
+    let num_inputs = num_io + 1;
+    let cols = num_vars + num_inputs;
     let S = {
       let res = R1CSShape::new(
         num_cons,
         num_vars,
-        num_io,
+        num_inputs - 1,
         SparseMatrix::new(&A, rows, cols),
         SparseMatrix::new(&B, rows, cols),
         SparseMatrix::new(&C, rows, cols),
