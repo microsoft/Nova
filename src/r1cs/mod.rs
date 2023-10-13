@@ -1,5 +1,6 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 mod sparse;
+#[cfg(test)]
 mod util;
 
 use crate::{
