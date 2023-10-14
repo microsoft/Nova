@@ -126,15 +126,14 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
     n_limbs,
   )?;
   // Now enforce that the limbs are all equal to the constants
-  #[allow(clippy::needless_range_loop)]
-  for i in 0..n_limbs {
+  (0..n_limbs).for_each(|i| {
     cs.enforce(
       || format!("check limb {i}"),
       |lc| lc + &bignat.limbs[i],
       |lc| lc + CS::one(),
       |lc| lc + (limbs[i], CS::one()),
     );
-  }
+  });
   Ok(bignat)
 }
 

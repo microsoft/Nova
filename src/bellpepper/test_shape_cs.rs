@@ -47,7 +47,6 @@ impl Ord for OrderedVariable {
   }
 }
 
-#[allow(clippy::upper_case_acronyms)]
 /// `TestShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
 pub struct TestShapeCS<G: Group>
 where
