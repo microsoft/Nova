@@ -129,12 +129,13 @@ where
   }
 }
 
+/// cargo run --release --example minroot
 fn main() {
   println!("Nova-based VDF with MinRoot delay function");
   println!("=========================================================");
 
   let num_steps = 10;
-  for num_iters_per_step in [1024, 2048, 4096, 8192, 16384, 32768, 65535] {
+  for num_iters_per_step in [1024, 2048, 4096, 8192, 16384, 32768, 65536] {
     // number of iterations of MinRoot per Nova's recursive step
     let circuit_primary = MinRootCircuit {
       seq: vec![
