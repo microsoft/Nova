@@ -4,7 +4,6 @@ use crate::traits::Group;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use ff::PrimeField;
 
-#[allow(clippy::upper_case_acronyms)]
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
 pub struct ShapeCS<G: Group>
 where
