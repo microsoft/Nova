@@ -806,14 +806,14 @@ type CE<G> = <G as Group>::CE;
 #[cfg(test)]
 mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
-  use crate::provider::pedersen::CommitmentKeyExtTrait;
   use crate::provider::secp_secq::{secp256k1, secq256k1};
+  use crate::traits::evaluation::EvaluationEngineTrait;
   use core::fmt::Write;
 
   use super::*;
   type EE<G> = provider::ipa_pc::EvaluationEngine<G>;
-  type S<G1> = spartan::snark::RelaxedR1CSSNARK<G1, EE<G1>>;
-  type SPrime<G1> = spartan::ppsnark::RelaxedR1CSSNARK<G1, EE<G1>>;
+  type S<G, EE> = spartan::snark::RelaxedR1CSSNARK<G, EE>;
+  type SPrime<G, EE> = spartan::ppsnark::RelaxedR1CSSNARK<G, EE>;
 
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
@@ -1086,13 +1086,12 @@ mod tests {
     test_ivc_nontrivial_with::<secp256k1::Point, secq256k1::Point>();
   }
 
-  fn test_ivc_nontrivial_with_compression_with<G1, G2>()
+  fn test_ivc_nontrivial_with_compression_with<G1, G2, E1, E2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
+    E1: EvaluationEngineTrait<G1>,
+    E2: EvaluationEngineTrait<G2>,
   {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -1153,10 +1152,11 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::prove(&pp, &pk, &recursive_snark);
+    let res =
+      CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1175,18 +1175,17 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nontrivial_with_compression_with::<G1, G2>();
-    test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_nontrivial_with_compression_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_nontrivial_with_compression_with::<G1, G2, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<secp256k1::Point, secq256k1::Point, EE<_>, EE<_>>();
   }
 
-  fn test_ivc_nontrivial_with_spark_compression_with<G1, G2>()
+  fn test_ivc_nontrivial_with_spark_compression_with<G1, G2, E1, E2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
+    E1: EvaluationEngineTrait<G1>,
+    E2: EvaluationEngineTrait<G2>,
   {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -1249,11 +1248,15 @@ mod tests {
     // run the compressed snark with Spark compiler
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, SPrime<G1>, SPrime<G2>>::setup(&pp).unwrap();
+    let (pk, vk) =
+      CompressedSNARK::<_, _, _, _, SPrime<G1, E1>, SPrime<G2, E2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res =
-      CompressedSNARK::<_, _, _, _, SPrime<G1>, SPrime<G2>>::prove(&pp, &pk, &recursive_snark);
+    let res = CompressedSNARK::<_, _, _, _, SPrime<G1, E1>, SPrime<G2, E2>>::prove(
+      &pp,
+      &pk,
+      &recursive_snark,
+    );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1272,18 +1275,23 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nontrivial_with_spark_compression_with::<G1, G2>();
-    test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_nontrivial_with_spark_compression_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_nontrivial_with_spark_compression_with::<G1, G2, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>(
+    );
+    test_ivc_nontrivial_with_spark_compression_with::<
+      secp256k1::Point,
+      secq256k1::Point,
+      EE<_>,
+      EE<_>,
+    >();
   }
 
-  fn test_ivc_nondet_with_compression_with<G1, G2>()
+  fn test_ivc_nondet_with_compression_with<G1, G2, E1, E2>()
   where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    // this is due to the reliance on CommitmentKeyExtTrait as a bound in ipa_pc
-    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
-    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
+    E1: EvaluationEngineTrait<G1>,
+    E2: EvaluationEngineTrait<G2>,
   {
     // y is a non-deterministic advice representing the fifth root of the input at a step.
     #[derive(Clone, Debug)]
@@ -1400,10 +1408,11 @@ mod tests {
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<G1>, S<G2>>::prove(&pp, &pk, &recursive_snark);
+    let res =
+      CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1417,9 +1426,9 @@ mod tests {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
 
-    test_ivc_nondet_with_compression_with::<G1, G2>();
-    test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_nondet_with_compression_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_nondet_with_compression_with::<G1, G2, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<secp256k1::Point, secq256k1::Point, EE<_>, EE<_>>();
   }
 
   fn test_ivc_base_with<G1, G2>()
