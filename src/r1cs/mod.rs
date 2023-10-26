@@ -145,7 +145,7 @@ impl<G: Group> R1CSShape<G> {
     })
   }
 
-  /// returnd the digest of the `R1CSShape`
+  /// returned the digest of the `R1CSShape`
   pub fn digest(&self) -> G::Scalar {
     self
       .digest
@@ -301,7 +301,7 @@ impl<G: Group> R1CSShape<G> {
   }
 
   /// Pads the `R1CSShape` so that the number of variables is a power of two
-  /// Renumbers variables to accomodate padded variables
+  /// Renumbers variables to accommodate padded variables
   pub fn pad(&self) -> Self {
     // equalize the number of variables and constraints
     let m = max(self.num_vars, self.num_cons).next_power_of_two();

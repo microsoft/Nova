@@ -186,7 +186,7 @@ where
     // absorb the instance in the transcript
     transcript.absorb(b"U", U);
 
-    // sample a random base for commiting to the inner product
+    // sample a random base for committing to the inner product
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
 
@@ -302,7 +302,7 @@ where
     // absorb the instance in the transcript
     transcript.absorb(b"U", U);
 
-    // sample a random base for commiting to the inner product
+    // sample a random base for committing to the inner product
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
 
