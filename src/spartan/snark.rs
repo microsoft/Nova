@@ -30,7 +30,6 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
-  S: R1CSShape<G>,
   vk_digest: G::Scalar, // digest of the verifier's key
 }
 
@@ -96,11 +95,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     let S = S.pad();
 
-    let vk: VerifierKey<G, EE> = VerifierKey::new(S.clone(), vk_ee);
+    let vk: VerifierKey<G, EE> = VerifierKey::new(S, vk_ee);
 
     let pk = ProverKey {
       pk_ee,
-      S,
       vk_digest: vk.digest(),
     };
 
@@ -111,14 +109,17 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
   fn prove(
     ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
+    S: &R1CSShape<G>,
     U: &RelaxedR1CSInstance<G>,
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
-    let W = W.pad(&pk.S); // pad the witness
-    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
+    // pad the R1CSShape
+    let S = S.pad();
+    // sanity check that R1CSShape has all required size characteristics
+    assert!(S.is_regular_shape());
 
-    // sanity check that R1CSShape has certain size characteristics
-    pk.S.check_regular_shape();
+    let W = W.pad(&S); // pad the witness
+    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
     // append the digest of vk (which includes R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
@@ -128,8 +129,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let mut z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     let (num_rounds_x, num_rounds_y) = (
-      usize::try_from(pk.S.num_cons.ilog2()).unwrap(),
-      (usize::try_from(pk.S.num_vars.ilog2()).unwrap() + 1),
+      usize::try_from(S.num_cons.ilog2()).unwrap(),
+      (usize::try_from(S.num_vars.ilog2()).unwrap() + 1),
     );
 
     // outer sum-check
@@ -139,8 +140,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     let mut poly_tau = MultilinearPolynomial::new(EqPolynomial::new(tau).evals());
     let (mut poly_Az, mut poly_Bz, poly_Cz, mut poly_uCz_E) = {
-      let (poly_Az, poly_Bz, poly_Cz) = pk.S.multiply_vec(&z)?;
-      let poly_uCz_E = (0..pk.S.num_cons)
+      let (poly_Az, poly_Bz, poly_Cz) = S.multiply_vec(&z)?;
+      let poly_uCz_E = (0..S.num_cons)
         .map(|i| U.u * poly_Cz[i] + W.E[i])
         .collect::<Vec<G::Scalar>>();
       (
@@ -223,7 +224,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
           (A_evals, B_evals, C_evals)
         };
 
-      let (evals_A, evals_B, evals_C) = compute_eval_table_sparse(&pk.S, &evals_rx);
+      let (evals_A, evals_B, evals_C) = compute_eval_table_sparse(&S, &evals_rx);
 
       assert_eq!(evals_A.len(), evals_B.len());
       assert_eq!(evals_A.len(), evals_C.len());
@@ -234,7 +235,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     };
 
     let poly_z = {
-      z.resize(pk.S.num_vars * 2, G::Scalar::ZERO);
+      z.resize(S.num_vars * 2, G::Scalar::ZERO);
       z
     };
 
