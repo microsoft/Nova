@@ -670,21 +670,11 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   num_vars: usize,
   vk_ee: EE::VerifierKey,
   S_comm: R1CSShapeSparkCommitment<G>,
-  digest: G::Scalar,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "")]
-struct VerifierKeyInternal<G: Group, EE: EvaluationEngineTrait<G>> {
-  num_cons: usize,
-  num_vars: usize,
-  vk_ee: EE::VerifierKey,
-  S_comm: R1CSShapeSparkCommitment<G>,
   #[serde(skip, default = "OnceCell::new")]
   digest: OnceCell<G::Scalar>,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKeyInternal<G, EE> {}
+impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
@@ -852,14 +842,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
   }
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKeyInternal<G, EE> {
+impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
   fn new(
     num_cons: usize,
     num_vars: usize,
     S_comm: R1CSShapeSparkCommitment<G>,
     vk_ee: EE::VerifierKey,
   ) -> Self {
-    VerifierKeyInternal {
+    VerifierKey {
       num_cons,
       num_vars,
       S_comm,
@@ -897,23 +887,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let S_repr = R1CSShapeSparkRepr::new(&S);
     let S_comm = S_repr.commit(ck);
 
-    let vk_internal: VerifierKeyInternal<G, EE> =
-      VerifierKeyInternal::new(S.num_cons, S.num_vars, S_comm.clone(), vk_ee.clone());
+    let vk = VerifierKey::new(S.num_cons, S.num_vars, S_comm.clone(), vk_ee);
 
     let pk = ProverKey {
       pk_ee,
       S,
       S_repr,
-      S_comm: S_comm.clone(),
-      vk_digest: vk_internal.digest(),
-    };
-
-    let vk = VerifierKey {
-      num_cons: vk_internal.num_cons,
-      num_vars: vk_internal.num_vars,
-      vk_ee,
       S_comm,
-      digest: vk_internal.digest(),
+      vk_digest: vk.digest(),
     };
 
     Ok((pk, vk))
@@ -1535,7 +1516,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
-    transcript.absorb(b"vk", &vk.digest);
+    transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"U", U);
 
     let comm_Az = Commitment::<G>::decompress(&self.comm_Az)?;

@@ -207,23 +207,19 @@ fn main() {
     type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
     // produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
-    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::<G1, G2, C1, C2>::new(
-      &pp,
-      &minroot_circuits[0],
-      &circuit_secondary,
-      z0_primary.clone(),
-      z0_secondary.clone(),
-    );
+    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> =
+      RecursiveSNARK::<G1, G2, C1, C2>::new(
+        &pp,
+        &minroot_circuits[0],
+        &circuit_secondary,
+        &z0_primary,
+        &z0_secondary,
+      )
+      .unwrap();
 
     for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
       let start = Instant::now();
-      let res = recursive_snark.prove_step(
-        &pp,
-        circuit_primary,
-        &circuit_secondary,
-        z0_primary.clone(),
-        z0_secondary.clone(),
-      );
+      let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
       println!(
         "RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
@@ -274,7 +270,7 @@ fn main() {
     // verify the compressed SNARK
     println!("Verifying a CompressedSNARK...");
     let start = Instant::now();
-    let res = compressed_snark.verify(&vk, num_steps, z0_primary, z0_secondary);
+    let res = compressed_snark.verify(&vk, num_steps, &z0_primary, &z0_secondary);
     println!(
       "CompressedSNARK::verify: {:?}, took {:?}",
       res.is_ok(),
