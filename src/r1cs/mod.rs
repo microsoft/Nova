@@ -102,9 +102,8 @@ impl<G: Group> R1CSShape<G> {
                     num_vars: usize,
                     num_io: usize,
                     M: &SparseMatrix<G::Scalar>|
-     -> Result<(), NovaError> {
-      let res = M
-        .iter()
+     -> Result<Vec<()>, NovaError> {
+      M.iter()
         .map(|(row, col, _val)| {
           if row >= num_cons || col > num_io + num_vars {
             Err(NovaError::InvalidIndex)
@@ -112,22 +111,12 @@ impl<G: Group> R1CSShape<G> {
             Ok(())
           }
         })
-        .collect::<Result<Vec<()>, NovaError>>();
-
-      if res.is_err() {
-        Err(NovaError::InvalidIndex)
-      } else {
-        Ok(())
-      }
+        .collect::<Result<Vec<()>, NovaError>>()
     };
 
-    let res_A = is_valid(num_cons, num_vars, num_io, &A);
-    let res_B = is_valid(num_cons, num_vars, num_io, &B);
-    let res_C = is_valid(num_cons, num_vars, num_io, &C);
-
-    if res_A.is_err() || res_B.is_err() || res_C.is_err() {
-      return Err(NovaError::InvalidIndex);
-    }
+    is_valid(num_cons, num_vars, num_io, &A)?;
+    is_valid(num_cons, num_vars, num_io, &B)?;
+    is_valid(num_cons, num_vars, num_io, &C)?;
 
     // We require the number of public inputs/outputs to be even
     if num_io % 2 != 0 {
