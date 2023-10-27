@@ -67,8 +67,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       &pp,
       &c_primary,
       &c_secondary,
-      vec![<G1 as Group>::Scalar::from(2u64)],
-      vec![<G2 as Group>::Scalar::from(2u64)],
+      &[<G1 as Group>::Scalar::from(2u64)],
+      &[<G2 as Group>::Scalar::from(2u64)],
     );
 
     for i in 0..num_warmup_steps {
@@ -76,8 +76,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
         &pp,
         &c_primary,
         &c_secondary,
-        vec![<G1 as Group>::Scalar::from(2u64)],
-        vec![<G2 as Group>::Scalar::from(2u64)],
+        &[<G1 as Group>::Scalar::from(2u64)],
+        &[<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
 
@@ -99,8 +99,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
             black_box(&pp),
             black_box(&c_primary),
             black_box(&c_secondary),
-            black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
-            black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
