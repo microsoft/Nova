@@ -186,6 +186,8 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
+  z0_primary: Vec<G1::Scalar>,
+  z0_secondary: Vec<G2::Scalar>,
   r_W_primary: RelaxedR1CSWitness<G1>,
   r_U_primary: RelaxedR1CSInstance<G1>,
   r_W_secondary: RelaxedR1CSWitness<G2>,
@@ -211,15 +213,19 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     c_primary: &C1,
     c_secondary: &C2,
-    z0_primary: Vec<G1::Scalar>,
-    z0_secondary: Vec<G2::Scalar>,
-  ) -> Self {
+    z0_primary: &[G1::Scalar],
+    z0_secondary: &[G2::Scalar],
+  ) -> Result<Self, NovaError> {
+    if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidInitialInputLength);
+    }
+
     // base case for the primary
     let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::ZERO,
-      z0_primary,
+      z0_primary.to_vec(),
       None,
       None,
       None,
@@ -246,7 +252,7 @@ where
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
       G2::Scalar::ZERO,
-      z0_secondary,
+      z0_secondary.to_vec(),
       None,
       None,
       Some(u_primary.clone()),
@@ -298,7 +304,9 @@ where
       .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()
       .expect("Nova error synthesis");
 
-    Self {
+    Ok(Self {
+      z0_primary: z0_primary.to_vec(),
+      z0_secondary: z0_secondary.to_vec(),
       r_W_primary,
       r_U_primary,
       r_W_secondary,
@@ -310,7 +318,7 @@ where
       zi_secondary,
       _p_c1: Default::default(),
       _p_c2: Default::default(),
-    }
+    })
   }
 
   /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
@@ -320,14 +328,8 @@ where
     pp: &PublicParams<G1, G2, C1, C2>,
     c_primary: &C1,
     c_secondary: &C2,
-    z0_primary: Vec<G1::Scalar>,
-    z0_secondary: Vec<G2::Scalar>,
   ) -> Result<(), NovaError> {
-    if z0_primary.len() != pp.F_arity_primary || z0_secondary.len() != pp.F_arity_secondary {
-      return Err(NovaError::InvalidInitialInputLength);
-    }
-
-    // Frist step was already done in the constructor
+    // first step was already done in the constructor
     if self.i == 0 {
       self.i = 1;
       return Ok(());
@@ -350,7 +352,7 @@ where
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::from(self.i as u64),
-      z0_primary,
+      self.z0_primary.to_vec(),
       Some(self.zi_primary.clone()),
       Some(self.r_U_secondary.clone()),
       Some(self.l_u_secondary.clone()),
@@ -389,7 +391,7 @@ where
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
       G2::Scalar::from(self.i as u64),
-      z0_secondary,
+      self.z0_secondary.to_vec(),
       Some(self.zi_secondary.clone()),
       Some(self.r_U_primary.clone()),
       Some(l_u_primary),
@@ -449,6 +451,11 @@ where
 
     // check if the provided proof has executed num_steps
     if self.i != num_steps {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the initial inputs match
+    if self.z0_primary != z0_primary || self.z0_secondary != z0_secondary {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -675,6 +682,7 @@ where
         S1::prove(
           &pp.ck_primary,
           &pk.pk_primary,
+          &pp.r1cs_shape_primary,
           &recursive_snark.r_U_primary,
           &recursive_snark.r_W_primary,
         )
@@ -683,6 +691,7 @@ where
         S2::prove(
           &pp.ck_secondary,
           &pk.pk_secondary,
+          &pp.r1cs_shape_secondary,
           &f_U_secondary,
           &f_W_secondary,
         )
@@ -711,8 +720,8 @@ where
     &self,
     vk: &VerifierKey<G1, G2, C1, C2, S1, S2>,
     num_steps: usize,
-    z0_primary: Vec<G1::Scalar>,
-    z0_secondary: Vec<G2::Scalar>,
+    z0_primary: &[G1::Scalar],
+    z0_secondary: &[G2::Scalar],
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
     if num_steps == 0 {
@@ -736,7 +745,7 @@ where
       hasher.absorb(vk.pp_digest);
       hasher.absorb(G1::Scalar::from(num_steps as u64));
       for e in z0_primary {
-        hasher.absorb(e);
+        hasher.absorb(*e);
       }
       for e in &self.zn_primary {
         hasher.absorb(*e);
@@ -750,7 +759,7 @@ where
       hasher2.absorb(scalar_as_base::<G1>(vk.pp_digest));
       hasher2.absorb(G2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
-        hasher2.absorb(e);
+        hasher2.absorb(*e);
       }
       for e in &self.zn_secondary {
         hasher2.absorb(*e);
@@ -969,17 +978,12 @@ mod tests {
       &pp,
       &test_circuit1,
       &test_circuit2,
-      vec![<G1 as Group>::Scalar::ZERO],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+      &[<G1 as Group>::Scalar::ZERO],
+      &[<G2 as Group>::Scalar::ZERO],
+    )
+    .unwrap();
 
-    let res = recursive_snark.prove_step(
-      &pp,
-      &test_circuit1,
-      &test_circuit2,
-      vec![<G1 as Group>::Scalar::ZERO],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+    let res = recursive_snark.prove_step(&pp, &test_circuit1, &test_circuit2);
 
     assert!(res.is_ok());
 
@@ -1031,18 +1035,13 @@ mod tests {
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
+    )
+    .unwrap();
 
     for i in 0..num_steps {
-      let res = recursive_snark.prove_step(
-        &pp,
-        &circuit_primary,
-        &circuit_secondary,
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
-      );
+      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
@@ -1116,18 +1115,13 @@ mod tests {
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
+    )
+    .unwrap();
 
     for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(
-        &pp,
-        &circuit_primary,
-        &circuit_secondary,
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
-      );
+      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
     }
 
@@ -1164,8 +1158,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1210,18 +1204,13 @@ mod tests {
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
+    )
+    .unwrap();
 
     for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(
-        &pp,
-        &circuit_primary,
-        &circuit_secondary,
-        vec![<G1 as Group>::Scalar::ONE],
-        vec![<G2 as Group>::Scalar::ZERO],
-      );
+      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
     }
 
@@ -1264,8 +1253,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1388,18 +1377,13 @@ mod tests {
       &pp,
       &roots[0],
       &circuit_secondary,
-      z0_primary.clone(),
-      z0_secondary.clone(),
-    );
+      &z0_primary,
+      &z0_secondary,
+    )
+    .unwrap();
 
     for circuit_primary in roots.iter().take(num_steps) {
-      let res = recursive_snark.prove_step(
-        &pp,
-        circuit_primary,
-        &circuit_secondary.clone(),
-        z0_primary.clone(),
-        z0_secondary.clone(),
-      );
+      let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
     }
 
@@ -1417,7 +1401,7 @@ mod tests {
     let compressed_snark = res.unwrap();
 
     // verify the compressed SNARK
-    let res = compressed_snark.verify(&vk, num_steps, z0_primary, z0_secondary);
+    let res = compressed_snark.verify(&vk, num_steps, &z0_primary, &z0_secondary);
     assert!(res.is_ok());
   }
 
@@ -1459,18 +1443,13 @@ mod tests {
       &pp,
       &test_circuit1,
       &test_circuit2,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
+    )
+    .unwrap();
 
     // produce a recursive SNARK
-    let res = recursive_snark.prove_step(
-      &pp,
-      &test_circuit1,
-      &test_circuit2,
-      vec![<G1 as Group>::Scalar::ONE],
-      vec![<G2 as Group>::Scalar::ZERO],
-    );
+    let res = recursive_snark.prove_step(&pp, &test_circuit1, &test_circuit2);
 
     assert!(res.is_ok());
 

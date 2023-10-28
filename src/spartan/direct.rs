@@ -129,7 +129,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
     );
 
     // prove the instance using Spartan
-    let snark = S::prove(&pk.ck, &pk.pk, &u_relaxed, &w_relaxed)?;
+    let snark = S::prove(&pk.ck, &pk.pk, &pk.S, &u_relaxed, &w_relaxed)?;
 
     Ok(DirectSNARK {
       comm_W: u.comm_W,

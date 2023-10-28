@@ -167,17 +167,17 @@ fn bench_recursive_snark(c: &mut Criterion) {
           black_box(&pp),
           black_box(&circuit_primary),
           black_box(&circuit_secondary),
-          black_box(z0_primary.clone()),
-          black_box(z0_secondary.clone()),
-        );
+          black_box(&z0_primary),
+          black_box(&z0_secondary),
+        )
+        .unwrap();
+
         // produce a recursive SNARK for a step of the recursion
         assert!(recursive_snark
           .prove_step(
             black_box(&pp),
             black_box(&circuit_primary),
             black_box(&circuit_secondary),
-            black_box(z0_primary.clone()),
-            black_box(z0_secondary.clone()),
           )
           .is_ok());
       })
