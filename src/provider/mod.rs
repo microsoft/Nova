@@ -126,7 +126,7 @@ pub(crate) fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C
       .par_chunks(chunk)
       .zip(bases.par_chunks(chunk))
       .map(|(coeffs, bases)| cpu_multiexp_serial(coeffs, bases))
-      .reduce(|| C::Curve::identity(), |sum, evl| sum + evl)
+      .reduce(C::Curve::identity, |sum, evl| sum + evl)
   } else {
     cpu_multiexp_serial(coeffs, bases)
   }
