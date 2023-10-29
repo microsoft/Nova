@@ -16,7 +16,7 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   type ProverKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents the verifier's key
-  type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de> + DigestHelperTrait<G>;
 
   /// Produces the keys for the prover and the verifier
   fn setup(
@@ -35,4 +35,10 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
 
   /// Verifies a SNARK for a relaxed R1CS
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError>;
+}
+
+/// A helper trait that defines the behavior of a verifier key of `zkSNARK`
+pub trait DigestHelperTrait<G: Group> {
+  /// Returns the digest of the verifier's key
+  fn digest(&self) -> G::Scalar;
 }
