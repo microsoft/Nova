@@ -15,7 +15,9 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
-    evaluation::EvaluationEngineTrait, snark::{RelaxedR1CSSNARKTrait, DigestHelperTrait} , Group, TranscriptEngineTrait,
+    evaluation::EvaluationEngineTrait,
+    snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
+    Group, TranscriptEngineTrait,
   },
   Commitment, CommitmentKey,
 };

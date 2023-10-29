@@ -20,7 +20,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    snark::{RelaxedR1CSSNARKTrait, DigestHelperTrait},
+    snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Group, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment,

@@ -9,7 +9,11 @@ use crate::{
   },
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{circuit::StepCircuit, snark::{RelaxedR1CSSNARKTrait, DigestHelperTrait}, Group},
+  traits::{
+    circuit::StepCircuit,
+    snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
+    Group,
+  },
   Commitment, CommitmentKey,
 };
 use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
