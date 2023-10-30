@@ -20,7 +20,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    snark::RelaxedR1CSSNARKTrait,
+    snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Group, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment,
@@ -856,9 +856,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
       digest: Default::default(),
     }
   }
-
+}
+impl<G: Group, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKey<G, EE> {
   /// Returns the digest of the verifier's key
-  pub fn digest(&self) -> G::Scalar {
+  fn digest(&self) -> G::Scalar {
     self
       .digest
       .get_or_try_init(|| {

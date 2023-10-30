@@ -9,7 +9,11 @@ use crate::{
   },
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait, Group},
+  traits::{
+    circuit::StepCircuit,
+    snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
+    Group,
+  },
   Commitment, CommitmentKey,
 };
 use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
@@ -73,6 +77,13 @@ where
   S: RelaxedR1CSSNARKTrait<G>,
 {
   vk: S::VerifierKey,
+}
+
+impl<G: Group, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
+  /// Returns the digest of the verifier's key
+  pub fn digest(&self) -> G::Scalar {
+    self.vk.digest()
+  }
 }
 
 /// A direct SNARK proving a step circuit
