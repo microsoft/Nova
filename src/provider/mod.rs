@@ -14,10 +14,11 @@ pub mod secp_secq;
 
 use ff::PrimeField;
 use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};
+use rayon::{current_num_threads, prelude::*};
 
 /// Native implementation of fast multiexp
 /// Adapted from zcash/halo2
-fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
+fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
   let c = if bases.len() < 4 {
@@ -49,10 +50,11 @@ fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &
   }
 
   let segments = (256 / c) + 1;
+  let mut acc = C::Curve::identity();
 
   for current_segment in (0..segments).rev() {
     for _ in 0..c {
-      *acc = acc.double();
+      acc = acc.double();
     }
 
     #[derive(Clone, Copy)]
@@ -102,9 +104,10 @@ fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &
     let mut running_sum = C::Curve::identity();
     for exp in buckets.into_iter().rev() {
       running_sum = exp.add(running_sum);
-      *acc += &running_sum;
+      acc += &running_sum;
     }
   }
+  acc
 }
 
 /// Performs a multi-exponentiation operation without GPU acceleration.
@@ -116,27 +119,16 @@ fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &
 pub(crate) fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   assert_eq!(coeffs.len(), bases.len());
 
-  let num_threads = rayon::current_num_threads();
+  let num_threads = current_num_threads();
   if coeffs.len() > num_threads {
     let chunk = coeffs.len() / num_threads;
-    let num_chunks = coeffs.chunks(chunk).len();
-    let mut results = vec![C::Curve::identity(); num_chunks];
-    rayon::scope(|scope| {
-      for ((coeffs, bases), acc) in coeffs
-        .chunks(chunk)
-        .zip(bases.chunks(chunk))
-        .zip(results.iter_mut())
-      {
-        scope.spawn(move |_| {
-          cpu_multiexp_serial(coeffs, bases, acc);
-        });
-      }
-    });
-    results.iter().fold(C::Curve::identity(), |a, b| a + b)
+    coeffs
+      .par_chunks(chunk)
+      .zip(bases.par_chunks(chunk))
+      .map(|(coeffs, bases)| cpu_multiexp_serial(coeffs, bases))
+      .reduce(C::Curve::identity, |sum, evl| sum + evl)
   } else {
-    let mut acc = C::Curve::identity();
-    cpu_multiexp_serial(coeffs, bases, &mut acc);
-    acc
+    cpu_multiexp_serial(coeffs, bases)
   }
 }
 
