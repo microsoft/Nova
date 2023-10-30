@@ -10,27 +10,67 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Install
-      run: rustup default stable
-    - name: Install rustfmt Components
-      run: rustup component add rustfmt
-    - name: Install clippy
-      run: rustup component add clippy
-    - name: Install Wasm target
-      run: rustup target add wasm32-unknown-unknown
-    - name: Build
-      run: cargo build --verbose
-    - name: Wasm build
-      run: cargo build --target wasm32-unknown-unknown
-    - name: Build examples
-      run: cargo build --examples --verbose
-    - name: Build benches
-      run: cargo build --benches --verbose
-    - name: Run tests
-      run: cargo +stable test --release --verbose
-    - name: Check Rustfmt Code Style
-      run: cargo fmt --all -- --check
-    - name: Check clippy warnings
-      run: cargo clippy --all-targets -- -D warnings
+      - uses: actions/checkout@v2
+      - name: Build
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --examples --benches --verbose
 
+  build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Wasm build
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --target wasm32-unknown-unknown
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run tests
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --verbose
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Check Rustfmt Code Style
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Check clippy warnings
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets -- -D warnings
