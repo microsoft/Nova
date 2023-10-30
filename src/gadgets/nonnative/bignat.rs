@@ -244,7 +244,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     // (1) decompose `bignat` into a bitvector `bv`
     let bv = bignat.decompose(cs.namespace(|| "bv"))?;
     // (2) recompose bits and check if it equals n
-    n.is_equal(cs.namespace(|| "n"), &bv)?;
+    n.is_equal(cs.namespace(|| "n"), &bv);
 
     Ok(bignat)
   }

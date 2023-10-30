@@ -59,7 +59,7 @@ impl<G: Group> NIFS<G> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
     let W = W1.fold(W2, &T, &r)?;
@@ -103,7 +103,7 @@ impl<G: Group> NIFS<G> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r);
 
     // return the folded instance
     Ok(U)
@@ -125,7 +125,7 @@ mod tests {
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
     // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x_val.unwrap()))?;
+    let x = AllocatedNum::alloc_infallible(cs.namespace(|| "x"), || x_val.unwrap());
     let _ = x.inputize(cs.namespace(|| "x is input"));
 
     let x_sq = x.square(cs.namespace(|| "x_sq"))?;

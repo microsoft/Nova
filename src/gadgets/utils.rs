@@ -44,24 +44,20 @@ where
 }
 
 /// Allocate a variable that is set to zero
-pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
-  mut cs: CS,
-) -> Result<AllocatedNum<F>, SynthesisError> {
-  let zero = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::ZERO))?;
+pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> AllocatedNum<F> {
+  let zero = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || F::ZERO);
   cs.enforce(
     || "check zero is valid",
     |lc| lc,
     |lc| lc,
     |lc| lc + zero.get_variable(),
   );
-  Ok(zero)
+  zero
 }
 
 /// Allocate a variable that is set to one
-pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
-  mut cs: CS,
-) -> Result<AllocatedNum<F>, SynthesisError> {
-  let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(F::ONE))?;
+pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> AllocatedNum<F> {
+  let one = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || F::ONE);
   cs.enforce(
     || "check one is valid",
     |lc| lc + CS::one(),
@@ -69,7 +65,7 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
     |lc| lc + one.get_variable(),
   );
 
-  Ok(one)
+  one
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
