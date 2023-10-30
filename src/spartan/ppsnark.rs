@@ -288,7 +288,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 }
 
 /// Defines a trait for implementing sum-check in a generic manner
-pub trait SumcheckEngine<G: Group> {
+pub trait SumcheckEngine<G: Group>: Send + Sync {
   /// returns the initial claims
   fn initial_claims(&self) -> Vec<G::Scalar>;
 
@@ -403,20 +403,36 @@ impl<G: Group> ProductSumcheckInstance<G> {
       .map(|_i| transcript.squeeze(b"e"))
       .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
 
-    let poly_A = MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals());
-    let poly_B_vec = left_vec
-      .into_par_iter()
-      .map(MultilinearPolynomial::new)
-      .collect::<Vec<_>>();
-    let poly_C_vec = right_vec
-      .into_par_iter()
-      .map(MultilinearPolynomial::new)
-      .collect::<Vec<_>>();
-    let poly_D_vec = output_vec
-      .clone()
-      .into_par_iter()
-      .map(MultilinearPolynomial::new)
-      .collect::<Vec<_>>();
+    let ((poly_A, poly_B_vec), (poly_C_vec, poly_D_vec)) = rayon::join(
+      || {
+        rayon::join(
+          || MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals()),
+          || {
+            left_vec
+              .into_par_iter()
+              .map(MultilinearPolynomial::new)
+              .collect::<Vec<_>>()
+          },
+        )
+      },
+      || {
+        rayon::join(
+          || {
+            right_vec
+              .into_par_iter()
+              .map(MultilinearPolynomial::new)
+              .collect::<Vec<_>>()
+          },
+          || {
+            output_vec
+              .clone()
+              .into_par_iter()
+              .map(MultilinearPolynomial::new)
+              .collect::<Vec<_>>()
+          },
+        )
+      },
+    );
 
     Ok(Self {
       claims,
@@ -479,17 +495,27 @@ impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
   }
 
   fn bound(&mut self, r: &G::Scalar) {
-    self.poly_A.bound_poly_var_top(r);
-    for ((poly_B, poly_C), poly_D) in self
-      .poly_B_vec
-      .iter_mut()
-      .zip(self.poly_C_vec.iter_mut())
-      .zip(self.poly_D_vec.iter_mut())
-    {
-      poly_B.bound_poly_var_top(r);
-      poly_C.bound_poly_var_top(r);
-      poly_D.bound_poly_var_top(r);
-    }
+    let _ = rayon::join(
+      || self.poly_A.bound_poly_var_top(r),
+      || {
+        for ((poly_B, poly_C), poly_D) in self
+          .poly_B_vec
+          .iter_mut()
+          .zip(self.poly_C_vec.iter_mut())
+          .zip(self.poly_D_vec.iter_mut())
+        {
+          let _ = rayon::join(
+            || poly_B.bound_poly_var_top(r),
+            || {
+              rayon::join(
+                || poly_C.bound_poly_var_top(r),
+                || poly_D.bound_poly_var_top(r),
+              )
+            },
+          );
+        }
+      },
+    );
   }
   fn final_claims(&self) -> Vec<Vec<G::Scalar>> {
     let poly_A_final = vec![self.poly_A[0]];
@@ -819,9 +845,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
-      mem.bound(&r_i);
-      outer.bound(&r_i);
-      inner.bound(&r_i);
+      let _ = rayon::join(
+        || mem.bound(&r_i),
+        || rayon::join(|| outer.bound(&r_i), || inner.bound(&r_i)),
+      );
 
       e = poly.evaluate(&r_i);
       cubic_polys.push(poly.compress());
@@ -1040,55 +1067,99 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       (*ts * gamma_1_sqr + *val * gamma_1 + *addr) - gamma_2
     };
 
-    let init_row = (0..mem_row.len())
-      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_row[i], &G::Scalar::ZERO))
-      .collect::<Vec<G::Scalar>>();
-    let read_row = (0..E_row.len())
-      .map(|i| hash_func(&pk.S_repr.row[i], &E_row[i], &pk.S_repr.row_read_ts[i]))
-      .collect::<Vec<G::Scalar>>();
-    let write_row = (0..E_row.len())
-      .map(|i| {
-        hash_func(
-          &pk.S_repr.row[i],
-          &E_row[i],
-          &(pk.S_repr.row_read_ts[i] + G::Scalar::ONE),
+    let (
+      ((init_row, read_row), (write_row, audit_row)),
+      ((init_col, read_col), (write_col, audit_col)),
+    ) = rayon::join(
+      || {
+        rayon::join(
+          || {
+            rayon::join(
+              || {
+                (0..mem_row.len())
+                  .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_row[i], &G::Scalar::ZERO))
+                  .collect::<Vec<G::Scalar>>()
+              },
+              || {
+                (0..E_row.len())
+                  .map(|i| hash_func(&pk.S_repr.row[i], &E_row[i], &pk.S_repr.row_read_ts[i]))
+                  .collect::<Vec<G::Scalar>>()
+              },
+            )
+          },
+          || {
+            rayon::join(
+              || {
+                (0..E_row.len())
+                  .map(|i| {
+                    hash_func(
+                      &pk.S_repr.row[i],
+                      &E_row[i],
+                      &(pk.S_repr.row_read_ts[i] + G::Scalar::ONE),
+                    )
+                  })
+                  .collect::<Vec<G::Scalar>>()
+              },
+              || {
+                (0..mem_row.len())
+                  .map(|i| {
+                    hash_func(
+                      &G::Scalar::from(i as u64),
+                      &mem_row[i],
+                      &pk.S_repr.row_audit_ts[i],
+                    )
+                  })
+                  .collect::<Vec<G::Scalar>>()
+              },
+            )
+          },
         )
-      })
-      .collect::<Vec<G::Scalar>>();
-    let audit_row = (0..mem_row.len())
-      .map(|i| {
-        hash_func(
-          &G::Scalar::from(i as u64),
-          &mem_row[i],
-          &pk.S_repr.row_audit_ts[i],
+      },
+      || {
+        rayon::join(
+          || {
+            rayon::join(
+              || {
+                (0..mem_col.len())
+                  .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_col[i], &G::Scalar::ZERO))
+                  .collect::<Vec<G::Scalar>>()
+              },
+              || {
+                (0..E_col.len())
+                  .map(|i| hash_func(&pk.S_repr.col[i], &E_col[i], &pk.S_repr.col_read_ts[i]))
+                  .collect::<Vec<G::Scalar>>()
+              },
+            )
+          },
+          || {
+            rayon::join(
+              || {
+                (0..E_col.len())
+                  .map(|i| {
+                    hash_func(
+                      &pk.S_repr.col[i],
+                      &E_col[i],
+                      &(pk.S_repr.col_read_ts[i] + G::Scalar::ONE),
+                    )
+                  })
+                  .collect::<Vec<G::Scalar>>()
+              },
+              || {
+                (0..mem_col.len())
+                  .map(|i| {
+                    hash_func(
+                      &G::Scalar::from(i as u64),
+                      &mem_col[i],
+                      &pk.S_repr.col_audit_ts[i],
+                    )
+                  })
+                  .collect::<Vec<G::Scalar>>()
+              },
+            )
+          },
         )
-      })
-      .collect::<Vec<G::Scalar>>();
-
-    let init_col = (0..mem_col.len())
-      .map(|i| hash_func(&G::Scalar::from(i as u64), &mem_col[i], &G::Scalar::ZERO))
-      .collect::<Vec<G::Scalar>>();
-    let read_col = (0..E_col.len())
-      .map(|i| hash_func(&pk.S_repr.col[i], &E_col[i], &pk.S_repr.col_read_ts[i]))
-      .collect::<Vec<G::Scalar>>();
-    let write_col = (0..E_col.len())
-      .map(|i| {
-        hash_func(
-          &pk.S_repr.col[i],
-          &E_col[i],
-          &(pk.S_repr.col_read_ts[i] + G::Scalar::ONE),
-        )
-      })
-      .collect::<Vec<G::Scalar>>();
-    let audit_col = (0..mem_col.len())
-      .map(|i| {
-        hash_func(
-          &G::Scalar::from(i as u64),
-          &mem_col[i],
-          &pk.S_repr.col_audit_ts[i],
-        )
-      })
-      .collect::<Vec<G::Scalar>>();
+      },
+    );
 
     let mut mem_sc_inst = ProductSumcheckInstance::new(
       ck,
