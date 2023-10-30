@@ -143,7 +143,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   ) -> Result<Self, SynthesisError> {
     let E = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
 
-    let u = alloc_one(cs.namespace(|| "one"))?;
+    let u = alloc_one(cs.namespace(|| "one"));
 
     let X0 = BigNat::from_num(
       cs.namespace(|| "allocate X0 from relaxed r1cs"),

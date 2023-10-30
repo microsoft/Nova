@@ -125,7 +125,7 @@ mod tests {
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
     // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(x_val.unwrap()))?;
+    let x = AllocatedNum::alloc_infallible(cs.namespace(|| "x"), || x_val.unwrap());
     let _ = x.inputize(cs.namespace(|| "x is input"));
 
     let x_sq = x.square(cs.namespace(|| "x_sq"))?;

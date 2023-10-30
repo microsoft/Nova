@@ -68,8 +68,8 @@ where
   where
     CS: ConstraintSystem<G::Base>,
   {
-    let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let one = alloc_one(cs.namespace(|| "one"))?;
+    let zero = alloc_zero(cs.namespace(|| "zero"));
+    let one = alloc_one(cs.namespace(|| "one"));
 
     Ok(AllocatedPoint {
       x: zero.clone(),
