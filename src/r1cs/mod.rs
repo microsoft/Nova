@@ -500,7 +500,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     U2: &R1CSInstance<G>,
     comm_T: &Commitment<G>,
     r: &G::Scalar,
-  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
+  ) -> RelaxedR1CSInstance<G> {
     let (X1, u1, comm_W_1, comm_E_1) =
       (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
     let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
@@ -515,12 +515,12 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
 
-    Ok(RelaxedR1CSInstance {
+    RelaxedR1CSInstance {
       comm_W,
       comm_E,
       X,
       u,
-    })
+    }
   }
 }
 

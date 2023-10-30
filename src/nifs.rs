@@ -59,7 +59,7 @@ impl<G: Group> NIFS<G> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
     let W = W1.fold(W2, &T, &r)?;
@@ -103,7 +103,7 @@ impl<G: Group> NIFS<G> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r)?;
+    let U = U1.fold(U2, &comm_T, &r);
 
     // return the folded instance
     Ok(U)
