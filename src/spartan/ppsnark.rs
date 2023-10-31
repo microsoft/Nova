@@ -11,6 +11,7 @@ use crate::{
     polys::{
       eq::EqPolynomial,
       multilinear::MultilinearPolynomial,
+      power::PowPolynomial,
       univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
@@ -242,7 +243,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
   fn evaluation_oracles(
     &self,
     S: &R1CSShape<G>,
-    r_x: &[G::Scalar],
+    r_x: &G::Scalar,
     z: &[G::Scalar],
   ) -> (
     Vec<G::Scalar>,
@@ -250,13 +251,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     Vec<G::Scalar>,
     Vec<G::Scalar>,
   ) {
-    let r_x_padded = {
-      let mut x = vec![G::Scalar::ZERO; self.N.log_2() - r_x.len()];
-      x.extend(r_x);
-      x
-    };
-
-    let mem_row = EqPolynomial::new(r_x_padded).evals();
+    let mem_row = PowPolynomial::new(r_x, self.N.log_2()).evals();
     let mem_col = {
       let mut val = vec![G::Scalar::ZERO; self.N];
       for (i, v) in z.iter().enumerate() {
@@ -397,16 +392,14 @@ impl<G: Group> ProductSumcheckInstance<G> {
     transcript.absorb(b"o", &comm_output_vec.as_slice());
     transcript.absorb(b"c", &claims.as_slice());
 
-    // generate randomness for the eq polynomial
+    // generate randomness for the eq polynomial emulated via the power polynomial
     let num_rounds = output_vec[0].len().log_2();
-    let rand_eq = (0..num_rounds)
-      .map(|_i| transcript.squeeze(b"e"))
-      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+    let rand_eq = transcript.squeeze(b"e")?;
 
     let ((poly_A, poly_B_vec), (poly_C_vec, poly_D_vec)) = rayon::join(
       || {
         rayon::join(
-          || MultilinearPolynomial::new(EqPolynomial::new(rand_eq).evals()),
+          || MultilinearPolynomial::new(PowPolynomial::new(&rand_eq, num_rounds).evals()),
           || {
             left_vec
               .into_par_iter()
@@ -965,9 +958,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     // number of rounds of the satisfiability sum-check
     let num_rounds_sat = pk.S_repr.N.log_2();
-    let tau = (0..num_rounds_sat)
-      .map(|_| transcript.squeeze(b"t"))
-      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+    let tau = transcript.squeeze(b"t")?;
+    let tau_coords = PowPolynomial::new(&tau, num_rounds_sat).coordinates();
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
     let (Az, Bz, Cz, E) = {
@@ -988,7 +980,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let (eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau) = {
       let evals_at_tau = [&Az, &Bz, &Cz]
         .into_par_iter()
-        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
+        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau_coords))
         .collect::<Vec<G::Scalar>>();
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
@@ -1017,7 +1009,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
     let w = PolyEvalWitness::batch(&poly_vec, &c);
-    let u = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
+    let u = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
     w_u_vec.push((w, u));
 
     let c_inner = c;
@@ -1029,7 +1021,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     // a sum-check instance to prove the first claim
     let mut outer_sc_inst = OuterSumcheckInstance {
-      poly_tau: MultilinearPolynomial::new(EqPolynomial::new(tau).evals()),
+      poly_tau: MultilinearPolynomial::new(PowPolynomial::new(&tau, num_rounds_sat).evals()),
       poly_Az: MultilinearPolynomial::new(Az.clone()),
       poly_Bz: MultilinearPolynomial::new(Bz.clone()),
       poly_uCz_E: {
@@ -1601,9 +1593,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
     let num_rounds_sat = vk.S_comm.N.log_2();
-    let tau = (0..num_rounds_sat)
-      .map(|_i| transcript.squeeze(b"t"))
-      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+    let tau = transcript.squeeze(b"t")?;
+    let tau_coords = PowPolynomial::new(&tau, num_rounds_sat).coordinates();
 
     transcript.absorb(
       b"e",
@@ -1628,7 +1619,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
     transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
-    let u = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
+    let u = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
     let claim_inner = u.e;
     let c_inner = c;
     u_vec.push(u);
@@ -1666,9 +1657,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     transcript.absorb(b"c", &self.claims_product_arr.as_slice());
 
     let num_rounds = vk.S_comm.N.log_2();
-    let rand_eq = (0..num_rounds)
-      .map(|_i| transcript.squeeze(b"e"))
-      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+    let rand_eq = transcript.squeeze(b"e")?;
+    let rand_eq_coords = PowPolynomial::new(&rand_eq, num_rounds).coordinates();
 
     let num_claims = 10;
     let coeffs = {
@@ -1686,8 +1676,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       .verify(claim, num_rounds_sat, 3, &mut transcript)?;
 
     // verify claim_sat_final
-    let taus_bound_r_sat = EqPolynomial::new(tau.clone()).evaluate(&r_sat);
-    let rand_eq_bound_r_sat = EqPolynomial::new(rand_eq).evaluate(&r_sat);
+    let taus_bound_r_sat = PowPolynomial::new(&tau, num_rounds_sat).evaluate(&r_sat);
+    let rand_eq_bound_r_sat = EqPolynomial::new(rand_eq_coords).evaluate(&r_sat);
     let claim_mem_final_expected: G::Scalar = (0..8)
       .map(|i| {
         coeffs[i]
@@ -1902,7 +1892,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     // finish the final step of the sum-check
     let (claim_init_expected_row, claim_audit_expected_row) = {
       let addr = IdentityPolynomial::new(r_prod.len()).evaluate(&r_prod);
-      let val = EqPolynomial::new(tau).evaluate(&r_prod);
+      let val = EqPolynomial::new(tau_coords.to_vec()).evaluate(&r_prod);
       (
         hash_func(&addr, &val, &G::Scalar::ZERO),
         hash_func(&addr, &val, &self.eval_row_audit_ts),
