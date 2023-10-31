@@ -61,7 +61,9 @@ impl<G: GroupExt> CommitmentTrait<G> for Commitment<G> {
 
 impl<G: GroupExt> Default for Commitment<G> {
   fn default() -> Self {
-    Commitment { comm: G::zero() }
+    Commitment {
+      comm: G::identity(),
+    }
   }
 }
 

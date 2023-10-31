@@ -7,7 +7,10 @@ use group::Group;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
+pub mod circuit;
 pub mod commitment;
+pub mod evaluation;
+pub mod snark;
 
 use commitment::CommitmentEngineTrait;
 
@@ -62,12 +65,6 @@ pub trait GroupExt:
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
-
-  /// Returns an element that is the additive identity of the group
-  fn zero() -> Self;
-
-  /// Returns the generator of the group
-  fn get_generator() -> Self;
 
   /// Returns A, B, and the order of the group as a big integer
   fn get_curve_params() -> (Self::Base, Self::Base, BigInt);
@@ -180,7 +177,3 @@ impl<G: GroupExt, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
       .collect::<Vec<u8>>()
   }
 }
-
-pub mod circuit;
-pub mod evaluation;
-pub mod snark;

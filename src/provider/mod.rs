@@ -236,14 +236,6 @@ macro_rules! impl_traits {
 
         (A, B, order)
       }
-
-      fn zero() -> Self {
-        $name::Point::identity()
-      }
-
-      fn get_generator() -> Self {
-        $name::Point::generator()
-      }
     }
 
     impl PrimeFieldExt for $name::Scalar {

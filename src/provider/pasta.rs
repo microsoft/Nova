@@ -15,7 +15,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding},
+  group::{cofactor::CofactorCurveAffine, Curve, GroupEncoding},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;
@@ -156,14 +156,6 @@ macro_rules! impl_traits {
         let order = BigInt::from_str_radix($order_str, 16).unwrap();
 
         (A, B, order)
-      }
-
-      fn zero() -> Self {
-        $name::Point::identity()
-      }
-
-      fn get_generator() -> Self {
-        $name::Point::generator()
       }
     }
 
