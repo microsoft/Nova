@@ -15,7 +15,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
+  group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;

@@ -13,7 +13,7 @@ pub mod poseidon;
 pub mod secp_secq;
 
 use ff::PrimeField;
-use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};
+use pasta_curves::{self, arithmetic::CurveAffine, group::Group};
 use rayon::{current_num_threads, prelude::*};
 
 /// Native implementation of fast multiexp

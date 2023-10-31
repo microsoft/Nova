@@ -11,7 +11,7 @@ use crate::{
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
+use group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding};
 use num_bigint::BigInt;
 use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
