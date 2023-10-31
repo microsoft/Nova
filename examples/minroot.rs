@@ -6,11 +6,9 @@ type G2 = pasta_curves::vesta::Point;
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
+use group::Group;
 use nova_snark::{
-  traits::{
-    circuit::{StepCircuit, TrivialCircuit},
-    GroupExt,
-  },
+  traits::circuit::{StepCircuit, TrivialCircuit},
   CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use num_bigint::BigUint;
@@ -140,10 +138,10 @@ fn main() {
     let circuit_primary = MinRootCircuit {
       seq: vec![
         MinRootIteration {
-          x_i: <G1 as GroupExt>::Scalar::zero(),
-          y_i: <G1 as GroupExt>::Scalar::zero(),
-          x_i_plus_1: <G1 as GroupExt>::Scalar::zero(),
-          y_i_plus_1: <G1 as GroupExt>::Scalar::zero(),
+          x_i: <G1 as Group>::Scalar::zero(),
+          y_i: <G1 as Group>::Scalar::zero(),
+          x_i_plus_1: <G1 as Group>::Scalar::zero(),
+          y_i_plus_1: <G1 as Group>::Scalar::zero(),
         };
         num_iters_per_step
       ],
@@ -159,8 +157,8 @@ fn main() {
     let pp = PublicParams::<
       G1,
       G2,
-      MinRootCircuit<<G1 as GroupExt>::Scalar>,
-      TrivialCircuit<<G2 as GroupExt>::Scalar>,
+      MinRootCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
     println!("PublicParams::setup, took {:?} ", start.elapsed());
 
@@ -185,8 +183,8 @@ fn main() {
     // produce non-deterministic advice
     let (z0_primary, minroot_iterations) = MinRootIteration::new(
       num_iters_per_step * num_steps,
-      &<G1 as GroupExt>::Scalar::zero(),
-      &<G1 as GroupExt>::Scalar::one(),
+      &<G1 as Group>::Scalar::zero(),
+      &<G1 as Group>::Scalar::one(),
     );
     let minroot_circuits = (0..num_steps)
       .map(|i| MinRootCircuit {
@@ -201,10 +199,10 @@ fn main() {
       })
       .collect::<Vec<_>>();
 
-    let z0_secondary = vec![<G2 as GroupExt>::Scalar::zero()];
+    let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
 
-    type C1 = MinRootCircuit<<G1 as GroupExt>::Scalar>;
-    type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
+    type C1 = MinRootCircuit<<G1 as Group>::Scalar>;
+    type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
     // produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> =

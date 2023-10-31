@@ -3,18 +3,16 @@ use std::{marker::PhantomData, time::Duration};
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
+use group::Group;
 use nova_snark::{
-  traits::{
-    circuit::{StepCircuit, TrivialCircuit},
-    GroupExt,
-  },
+  traits::circuit::{StepCircuit, TrivialCircuit},
   PublicParams,
 };
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialCircuit<<G1 as GroupExt>::Scalar>;
-type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 criterion_group! {
 name = compute_digest;

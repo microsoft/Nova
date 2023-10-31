@@ -4,19 +4,17 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
+use group::Group;
 use nova_snark::{
-  traits::{
-    circuit::{StepCircuit, TrivialCircuit},
-    GroupExt,
-  },
+  traits::circuit::{StepCircuit, TrivialCircuit},
   PublicParams, RecursiveSNARK,
 };
 use std::time::Duration;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialCircuit<<G1 as GroupExt>::Scalar>;
-type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -67,8 +65,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as GroupExt>::Scalar::from(2u64)],
-      &[<G2 as GroupExt>::Scalar::from(2u64)],
+      &[<G1 as Group>::Scalar::from(2u64)],
+      &[<G2 as Group>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -80,8 +78,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as GroupExt>::Scalar::from(2u64)],
-        &[<G2 as GroupExt>::Scalar::from(2u64)],
+        &[<G1 as Group>::Scalar::from(2u64)],
+        &[<G2 as Group>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -106,8 +104,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
           .verify(
             black_box(&pp),
             black_box(num_warmup_steps),
-            black_box(&[<G1 as GroupExt>::Scalar::from(2u64)]),
-            black_box(&[<G2 as GroupExt>::Scalar::from(2u64)]),
+            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
           )
           .is_ok());
       });

@@ -14,11 +14,9 @@ use bellpepper_core::{
 use core::time::Duration;
 use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
+use group::Group;
 use nova_snark::{
-  traits::{
-    circuit::{StepCircuit, TrivialCircuit},
-    GroupExt,
-  },
+  traits::circuit::{StepCircuit, TrivialCircuit},
   PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
@@ -119,8 +117,8 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
   }
 }
 
-type C1 = Sha256Circuit<<G1 as GroupExt>::Scalar>;
-type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
+type C1 = Sha256Circuit<<G1 as Group>::Scalar>;
+type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
 
 criterion_group! {
 name = recursive_snark;
@@ -158,8 +156,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let pp = PublicParams::<G1, G2, C1, C2>::setup(&circuit_primary, &ttc);
 
     let circuit_secondary = TrivialCircuit::default();
-    let z0_primary = vec![<G1 as GroupExt>::Scalar::from(2u64)];
-    let z0_secondary = vec![<G2 as GroupExt>::Scalar::from(2u64)];
+    let z0_primary = vec![<G1 as Group>::Scalar::from(2u64)];
+    let z0_secondary = vec![<G2 as Group>::Scalar::from(2u64)];
 
     group.bench_function("Prove", |b| {
       b.iter(|| {
