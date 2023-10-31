@@ -146,7 +146,7 @@ macro_rules! impl_traits {
     $name_curve_affine:ident,
     $order_str:literal
   ) => {
-    impl Group for $name::Point {
+    impl GroupExt for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
       type CompressedGroupElement = $name_compressed;
@@ -253,7 +253,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
+    impl<G: GroupExt> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.as_ref().to_vec()
       }

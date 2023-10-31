@@ -200,18 +200,18 @@ mod tests {
   use crate::provider::{bn256_grumpkin::bn256, secp_secq};
   use crate::{
     bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num, traits::Group,
+    gadgets::utils::le_bits_to_num, traits::GroupExt,
   };
   use ff::Field;
   use rand::rngs::OsRng;
 
-  fn test_poseidon_ro_with<G: Group>()
+  fn test_poseidon_ro_with<G: GroupExt>()
   where
     // we can print the field elements we get from G's Base & Scalar fields,
     // and compare their byte representations
-    <<G as Group>::Base as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Scalar as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Base as PrimeField>::Repr: PartialEq<<<G as Group>::Scalar as PrimeField>::Repr>,
+    <G::Base as PrimeField>::Repr: std::fmt::Debug,
+    <G::Scalar as PrimeField>::Repr: std::fmt::Debug,
+    <G::Base as PrimeField>::Repr: PartialEq<<G::Scalar as PrimeField>::Repr>,
   {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;

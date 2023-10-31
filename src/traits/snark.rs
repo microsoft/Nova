@@ -2,14 +2,14 @@
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::Group,
+  traits::GroupExt,
   CommitmentKey,
 };
 
 use serde::{Deserialize, Serialize};
 
 /// A trait that defines the behavior of a `zkSNARK`
-pub trait RelaxedR1CSSNARKTrait<G: Group>:
+pub trait RelaxedR1CSSNARKTrait<G: GroupExt>:
   Send + Sync + Serialize + for<'de> Deserialize<'de>
 {
   /// A type that represents the prover's key
@@ -38,7 +38,7 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
 }
 
 /// A helper trait that defines the behavior of a verifier key of `zkSNARK`
-pub trait DigestHelperTrait<G: Group> {
+pub trait DigestHelperTrait<G: GroupExt> {
   /// Returns the digest of the verifier's key
   fn digest(&self) -> G::Scalar;
 }

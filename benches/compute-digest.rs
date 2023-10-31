@@ -6,15 +6,15 @@ use ff::PrimeField;
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
-    Group,
+    GroupExt,
   },
   PublicParams,
 };
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as GroupExt>::Scalar>;
+type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
 
 criterion_group! {
 name = compute_digest;

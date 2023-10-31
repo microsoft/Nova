@@ -15,7 +15,7 @@ use crate::{
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
+    circuit::StepCircuit, commitment::CommitmentTrait, GroupExt, ROCircuitTrait, ROConstantsCircuit,
   },
   Commitment,
 };
@@ -47,7 +47,7 @@ impl NovaAugmentedCircuitParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NovaAugmentedCircuitInputs<G: Group> {
+pub struct NovaAugmentedCircuitInputs<G: GroupExt> {
   params: G::Scalar,
   i: G::Base,
   z0: Vec<G::Base>,
@@ -57,7 +57,7 @@ pub struct NovaAugmentedCircuitInputs<G: Group> {
   T: Option<Commitment<G>>,
 }
 
-impl<G: Group> NovaAugmentedCircuitInputs<G> {
+impl<G: GroupExt> NovaAugmentedCircuitInputs<G> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
     params: G::Scalar,
@@ -82,14 +82,14 @@ impl<G: Group> NovaAugmentedCircuitInputs<G> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
+pub struct NovaAugmentedCircuit<'a, G: GroupExt, SC: StepCircuit<G::Base>> {
   params: &'a NovaAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<G>,
   inputs: Option<NovaAugmentedCircuitInputs<G>>,
   step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
+impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
     params: &'a NovaAugmentedCircuitParams,
@@ -106,7 +106,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 
   /// Allocate all witnesses and return
-  fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn alloc_witness<CS: ConstraintSystem<G::Base>>(
     &self,
     mut cs: CS,
     arity: usize,
@@ -177,7 +177,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 
   /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-  fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_base_case<CS: ConstraintSystem<<G as GroupExt>::Base>>(
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstance<G>,
@@ -203,7 +203,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 
   /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
-  fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_non_base_case<CS: ConstraintSystem<G::Base>>(
     &self,
     mut cs: CS,
     params: &AllocatedNum<G::Base>,
@@ -253,9 +253,9 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
+impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn synthesize<CS: ConstraintSystem<<G as GroupExt>::Base>>(
     self,
     cs: &mut CS,
   ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
@@ -383,12 +383,12 @@ mod tests {
     num_constraints_primary: usize,
     num_constraints_secondary: usize,
   ) where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
+    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
   {
     let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as GroupExt>::Base>> =
       NovaAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
     let mut cs: TestShapeCS<G1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
@@ -397,7 +397,7 @@ mod tests {
 
     let tc2 = TrivialCircuit::default();
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as GroupExt>::Base>> =
       NovaAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
@@ -405,7 +405,7 @@ mod tests {
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary
-    let zero1 = <<G2 as Group>::Base as Field>::ZERO;
+    let zero1 = <<G2 as GroupExt>::Base as Field>::ZERO;
     let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
     let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(zero1), // pass zero for testing
@@ -416,7 +416,7 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as GroupExt>::Base>> =
       NovaAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
@@ -424,7 +424,7 @@ mod tests {
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
 
     // Execute the base case for the secondary
-    let zero2 = <<G1 as Group>::Base as Field>::ZERO;
+    let zero2 = <<G1 as GroupExt>::Base as Field>::ZERO;
     let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G2>(zero2), // pass zero for testing
@@ -435,7 +435,7 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as GroupExt>::Base>> =
       NovaAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();

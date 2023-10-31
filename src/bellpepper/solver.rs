@@ -1,19 +1,19 @@
 //! Support for generating R1CS witness using bellpepper.
 
-use crate::traits::Group;
+use crate::traits::GroupExt;
 use ff::Field;
 
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 
 /// A `ConstraintSystem` which calculates witness values for a concrete instance of an R1CS circuit.
-pub struct SatisfyingAssignment<G: Group> {
+pub struct SatisfyingAssignment<G: GroupExt> {
   // Assignments of variables
   pub(crate) input_assignment: Vec<G::Scalar>,
   pub(crate) aux_assignment: Vec<G::Scalar>,
 }
 use std::fmt;
 
-impl<G: Group> fmt::Debug for SatisfyingAssignment<G> {
+impl<G: GroupExt> fmt::Debug for SatisfyingAssignment<G> {
   fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt
       .debug_struct("SatisfyingAssignment")
@@ -23,13 +23,13 @@ impl<G: Group> fmt::Debug for SatisfyingAssignment<G> {
   }
 }
 
-impl<G: Group> PartialEq for SatisfyingAssignment<G> {
+impl<G: GroupExt> PartialEq for SatisfyingAssignment<G> {
   fn eq(&self, other: &SatisfyingAssignment<G>) -> bool {
     self.input_assignment == other.input_assignment && self.aux_assignment == other.aux_assignment
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
+impl<G: GroupExt> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
   type Root = Self;
 
   fn new() -> Self {
@@ -143,7 +143,7 @@ impl<G: Group> ConstraintSystem<G::Scalar> for SatisfyingAssignment<G> {
 }
 
 #[allow(dead_code)]
-impl<G: Group> SatisfyingAssignment<G> {
+impl<G: GroupExt> SatisfyingAssignment<G> {
   pub fn scalar_inputs(&self) -> Vec<G::Scalar> {
     self.input_assignment.clone()
   }

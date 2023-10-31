@@ -85,20 +85,20 @@ mod tests {
   use pasta_curves::pallas;
   use serde::{Deserialize, Serialize};
 
-  use crate::traits::Group;
+  use crate::traits::GroupExt;
 
   use super::{DigestComputer, SimpleDigestible};
 
   #[derive(Serialize, Deserialize)]
-  struct S<G: Group> {
+  struct S<G: GroupExt> {
     i: usize,
     #[serde(skip, default = "OnceCell::new")]
     digest: OnceCell<G::Scalar>,
   }
 
-  impl<G: Group> SimpleDigestible for S<G> {}
+  impl<G: GroupExt> SimpleDigestible for S<G> {}
 
-  impl<G: Group> S<G> {
+  impl<G: GroupExt> S<G> {
     fn new(i: usize) -> Self {
       S {
         i,
@@ -123,15 +123,15 @@ mod tests {
 
     // let's set up a struct with a weird digest field to make sure the digest computation does not depend of it
     let oc = OnceCell::new();
-    oc.set(<G as Group>::Scalar::ONE).unwrap();
+    oc.set(<G as GroupExt>::Scalar::ONE).unwrap();
 
     let s2: S<G> = S { i: 42, digest: oc };
 
     assert_eq!(
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s1)
+      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s1)
         .digest()
         .unwrap(),
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
+      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -140,7 +140,7 @@ mod tests {
     // equality will not result in `s1.digest() == s2.digest`
     assert_ne!(
       s2.digest(),
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
+      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -152,7 +152,7 @@ mod tests {
 
     // let's set up a struct with a weird digest field to confuse deserializers
     let oc = OnceCell::new();
-    oc.set(<G as Group>::Scalar::ONE).unwrap();
+    oc.set(<G as GroupExt>::Scalar::ONE).unwrap();
 
     let bad_s: S<G> = S { i: 42, digest: oc };
     // this justifies the adjective "bad"

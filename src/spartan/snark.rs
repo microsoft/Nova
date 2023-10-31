@@ -17,7 +17,7 @@ use crate::{
   traits::{
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
-    Group, TranscriptEngineTrait,
+    GroupExt, TranscriptEngineTrait,
   },
   Commitment, CommitmentKey,
 };
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct ProverKey<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
   vk_digest: G::Scalar, // digest of the verifier's key
 }
@@ -38,16 +38,16 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
 /// A type that represents the verifier's key
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct VerifierKey<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   vk_ee: EE::VerifierKey,
   S: R1CSShape<G>,
   #[serde(skip, default = "OnceCell::new")]
   digest: OnceCell<G::Scalar>,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
   fn new(shape: R1CSShape<G>, vk_ee: EE::VerifierKey) -> Self {
     VerifierKey {
       vk_ee,
@@ -57,7 +57,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
   }
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKey<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKey<G, EE> {
   /// Returns the digest of the verifier's key.
   fn digest(&self) -> G::Scalar {
     self
@@ -76,7 +76,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKe
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct RelaxedR1CSSNARK<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   sc_proof_outer: SumcheckProof<G>,
   claims_outer: (G::Scalar, G::Scalar, G::Scalar),
   eval_E: G::Scalar,
@@ -87,7 +87,9 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G>
+  for RelaxedR1CSSNARK<G, EE>
+{
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 

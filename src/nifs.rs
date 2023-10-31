@@ -6,7 +6,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
-  traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
+  traits::{commitment::CommitmentTrait, AbsorbInROTrait, GroupExt, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
 };
 use serde::{Deserialize, Serialize};
@@ -15,14 +15,14 @@ use serde::{Deserialize, Serialize};
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NIFS<G: Group> {
+pub struct NIFS<G: GroupExt> {
   pub(crate) comm_T: CompressedCommitment<G>,
 }
 
 type ROConstants<G> =
-  <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants;
 
-impl<G: Group> NIFS<G> {
+impl<G: GroupExt> NIFS<G> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
   /// an R1CS instance-witness tuple `(U2, W2)` with the same structure `shape`
   /// and defined with respect to the same `ck`, and outputs
@@ -113,7 +113,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{r1cs::SparseMatrix, r1cs::R1CS, traits::Group};
+  use crate::{r1cs::SparseMatrix, r1cs::R1CS, traits::GroupExt};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -155,7 +155,7 @@ mod tests {
 
   fn test_tiny_r1cs_bellpepper_with<G>()
   where
-    G: Group,
+    G: GroupExt,
   {
     use crate::bellpepper::{
       r1cs::{NovaShape, NovaWitness},
@@ -167,8 +167,10 @@ mod tests {
     let mut cs: TestShapeCS<G> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape();
-    let ro_consts =
-      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
+    let ro_consts = <<G as GroupExt>::RO as ROTrait<
+      <G as GroupExt>::Base,
+      <G as GroupExt>::Scalar,
+    >>::Constants::default();
 
     // Now get the instance and assignment for one instance
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
@@ -190,7 +192,7 @@ mod tests {
     execute_sequence(
       &ck,
       &ro_consts,
-      &<G as Group>::Scalar::ZERO,
+      &<G as GroupExt>::Scalar::ZERO,
       &shape,
       &U1,
       &W1,
@@ -208,15 +210,15 @@ mod tests {
 
   fn execute_sequence<G>(
     ck: &CommitmentKey<G>,
-    ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
-    pp_digest: &<G as Group>::Scalar,
+    ro_consts: &<<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants,
+    pp_digest: &<G as GroupExt>::Scalar,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
     W1: &R1CSWitness<G>,
     U2: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
   ) where
-    G: Group,
+    G: GroupExt,
   {
     // produce a default running instance
     let mut r_W = RelaxedR1CSWitness::default(shape);
@@ -258,7 +260,7 @@ mod tests {
     assert!(shape.is_sat_relaxed(ck, &r_U, &r_W).is_ok());
   }
 
-  fn test_tiny_r1cs_with<G: Group>() {
+  fn test_tiny_r1cs_with<G: GroupExt>() {
     let one = <G::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
@@ -328,8 +330,10 @@ mod tests {
 
     // generate generators and ro constants
     let ck = R1CS::<G>::commitment_key(&S);
-    let ro_consts =
-      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
+    let ro_consts = <<G as GroupExt>::RO as ROTrait<
+      <G as GroupExt>::Base,
+      <G as GroupExt>::Scalar,
+    >>::Constants::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<G>, I: &G::Scalar| -> (G::Scalar, R1CSInstance<G>, R1CSWitness<G>) {
@@ -375,7 +379,7 @@ mod tests {
     execute_sequence(
       &ck,
       &ro_consts,
-      &<G as Group>::Scalar::ZERO,
+      &<G as GroupExt>::Scalar::ZERO,
       &S,
       &U1,
       &W1,

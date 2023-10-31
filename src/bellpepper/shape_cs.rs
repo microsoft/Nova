@@ -1,11 +1,11 @@
 //! Support for generating R1CS shape using bellpepper.
 
-use crate::traits::Group;
+use crate::traits::GroupExt;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use ff::PrimeField;
 
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct ShapeCS<G: Group>
+pub struct ShapeCS<G: GroupExt>
 where
   G::Scalar: PrimeField,
 {
@@ -19,7 +19,7 @@ where
   aux: usize,
 }
 
-impl<G: Group> ShapeCS<G> {
+impl<G: GroupExt> ShapeCS<G> {
   /// Create a new, default `ShapeCS`,
   pub fn new() -> Self {
     ShapeCS::default()
@@ -41,7 +41,7 @@ impl<G: Group> ShapeCS<G> {
   }
 }
 
-impl<G: Group> Default for ShapeCS<G> {
+impl<G: GroupExt> Default for ShapeCS<G> {
   fn default() -> Self {
     ShapeCS {
       constraints: vec![],
@@ -51,7 +51,7 @@ impl<G: Group> Default for ShapeCS<G> {
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
+impl<G: GroupExt> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   type Root = Self;
 
   fn alloc<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>

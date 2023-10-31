@@ -1,6 +1,6 @@
 //! This module implements various low-level gadgets
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
-use crate::traits::Group;
+use crate::traits::GroupExt;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},
@@ -74,9 +74,9 @@ pub fn alloc_scalar_as_base<G, CS>(
   input: Option<G::Scalar>,
 ) -> Result<AllocatedNum<G::Base>, SynthesisError>
 where
-  G: Group,
-  <G as Group>::Scalar: PrimeFieldBits,
-  CS: ConstraintSystem<<G as Group>::Base>,
+  G: GroupExt,
+  G::Scalar: PrimeFieldBits,
+  CS: ConstraintSystem<G::Base>,
 {
   AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
     let input_bits = input.unwrap_or(G::Scalar::ZERO).clone().to_le_bits();
@@ -93,7 +93,7 @@ where
 }
 
 /// interepret scalar as base
-pub fn scalar_as_base<G: Group>(input: G::Scalar) -> G::Base {
+pub fn scalar_as_base<G: GroupExt>(input: G::Scalar) -> G::Base {
   let input_bits = input.to_le_bits();
   let mut mult = G::Base::ONE;
   let mut val = G::Base::ZERO;

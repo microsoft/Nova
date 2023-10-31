@@ -12,11 +12,11 @@ pub mod ppsnark;
 pub mod snark;
 mod sumcheck;
 
-use crate::{traits::Group, Commitment};
+use crate::{traits::GroupExt, Commitment};
 use ff::Field;
 use polys::multilinear::SparsePolynomial;
 
-fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
+fn powers<G: GroupExt>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);
   let mut powers = Vec::new();
   powers.push(G::Scalar::ONE);
@@ -27,11 +27,11 @@ fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
 }
 
 /// A type that holds a witness to a polynomial evaluation instance
-pub struct PolyEvalWitness<G: Group> {
+pub struct PolyEvalWitness<G: GroupExt> {
   p: Vec<G::Scalar>, // polynomial
 }
 
-impl<G: Group> PolyEvalWitness<G> {
+impl<G: GroupExt> PolyEvalWitness<G> {
   fn pad(W: &[PolyEvalWitness<G>]) -> Vec<PolyEvalWitness<G>> {
     // determine the maximum size
     if let Some(n) = W.iter().map(|w| w.p.len()).max() {
@@ -71,13 +71,13 @@ impl<G: Group> PolyEvalWitness<G> {
 }
 
 /// A type that holds a polynomial evaluation instance
-pub struct PolyEvalInstance<G: Group> {
+pub struct PolyEvalInstance<G: GroupExt> {
   c: Commitment<G>,  // commitment to the polynomial
   x: Vec<G::Scalar>, // evaluation point
   e: G::Scalar,      // claimed evaluation
 }
 
-impl<G: Group> PolyEvalInstance<G> {
+impl<G: GroupExt> PolyEvalInstance<G> {
   fn pad(U: &[PolyEvalInstance<G>]) -> Vec<PolyEvalInstance<G>> {
     // determine the maximum size
     if let Some(ell) = U.iter().map(|u| u.x.len()).max() {

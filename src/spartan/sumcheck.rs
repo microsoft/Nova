@@ -3,18 +3,18 @@ use crate::spartan::polys::{
   multilinear::MultilinearPolynomial,
   univariate::{CompressedUniPoly, UniPoly},
 };
-use crate::traits::{Group, TranscriptEngineTrait};
+use crate::traits::{GroupExt, TranscriptEngineTrait};
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub(crate) struct SumcheckProof<G: Group> {
+pub(crate) struct SumcheckProof<G: GroupExt> {
   compressed_polys: Vec<CompressedUniPoly<G::Scalar>>,
 }
 
-impl<G: Group> SumcheckProof<G> {
+impl<G: GroupExt> SumcheckProof<G> {
   pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
     Self { compressed_polys }
   }

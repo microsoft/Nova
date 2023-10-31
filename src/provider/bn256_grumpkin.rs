@@ -7,7 +7,7 @@ use crate::{
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
   },
-  traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{CompressedGroup, GroupExt, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -41,13 +41,13 @@ pub mod grumpkin {
   };
 }
 
-impl<G: Group> TranscriptReprTrait<G> for grumpkin::Base {
+impl<G: GroupExt> TranscriptReprTrait<G> for grumpkin::Base {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for grumpkin::Scalar {
+impl<G: GroupExt> TranscriptReprTrait<G> for grumpkin::Scalar {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
@@ -94,7 +94,7 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let ck_par = <G as Group>::from_label(label, n);
+      let ck_par = <G as GroupExt>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);

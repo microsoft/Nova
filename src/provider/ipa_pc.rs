@@ -6,7 +6,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    Group, TranscriptEngineTrait, TranscriptReprTrait,
+    GroupExt, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment, CE,
 };
@@ -19,27 +19,27 @@ use std::marker::PhantomData;
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group> {
+pub struct ProverKey<G: GroupExt> {
   ck_s: CommitmentKey<G>,
 }
 
 /// Provides an implementation of the verifier key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group> {
+pub struct VerifierKey<G: GroupExt> {
   ck_v: CommitmentKey<G>,
   ck_s: CommitmentKey<G>,
 }
 
 /// Provides an implementation of a polynomial evaluation engine using IPA
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct EvaluationEngine<G: Group> {
+pub struct EvaluationEngine<G: GroupExt> {
   _p: PhantomData<G>,
 }
 
 impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
 where
-  G: Group,
+  G: GroupExt,
   CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
   type ProverKey = ProverKey<G>;
@@ -47,7 +47,7 @@ where
   type EvaluationArgument = InnerProductArgument<G>;
 
   fn setup(
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<G as GroupExt>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
     let ck_c = G::CE::setup(b"ipa", 1);
 
@@ -111,13 +111,13 @@ where
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
 /// and the claim that c = <a, b>.
-pub struct InnerProductInstance<G: Group> {
+pub struct InnerProductInstance<G: GroupExt> {
   comm_a_vec: Commitment<G>,
   b_vec: Vec<G::Scalar>,
   c: G::Scalar,
 }
 
-impl<G: Group> InnerProductInstance<G> {
+impl<G: GroupExt> InnerProductInstance<G> {
   fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
     InnerProductInstance {
       comm_a_vec: *comm_a_vec,
@@ -127,7 +127,7 @@ impl<G: Group> InnerProductInstance<G> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for InnerProductInstance<G> {
+impl<G: GroupExt> TranscriptReprTrait<G> for InnerProductInstance<G> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     // we do not need to include self.b_vec as in our context it is produced from the transcript
     [
@@ -138,11 +138,11 @@ impl<G: Group> TranscriptReprTrait<G> for InnerProductInstance<G> {
   }
 }
 
-struct InnerProductWitness<G: Group> {
+struct InnerProductWitness<G: GroupExt> {
   a_vec: Vec<G::Scalar>,
 }
 
-impl<G: Group> InnerProductWitness<G> {
+impl<G: GroupExt> InnerProductWitness<G> {
   fn new(a_vec: &[G::Scalar]) -> Self {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
@@ -153,7 +153,7 @@ impl<G: Group> InnerProductWitness<G> {
 /// An inner product argument
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct InnerProductArgument<G: Group> {
+pub struct InnerProductArgument<G: GroupExt> {
   L_vec: Vec<CompressedCommitment<G>>,
   R_vec: Vec<CompressedCommitment<G>>,
   a_hat: G::Scalar,
@@ -161,7 +161,7 @@ pub struct InnerProductArgument<G: Group> {
 
 impl<G> InnerProductArgument<G>
 where
-  G: Group,
+  G: GroupExt,
   CommitmentKey<G>: CommitmentKeyExtTrait<G>,
 {
   const fn protocol_name() -> &'static [u8] {
@@ -254,7 +254,7 @@ where
       Ok((L, R, a_vec_folded, b_vec_folded, ck_folded))
     };
 
-    // two vectors to hold the logarithmic number of group elements
+    // two vectors to hold the logarithmic number of GroupExt elements
     let mut L_vec: Vec<CompressedCommitment<G>> = Vec::new();
     let mut R_vec: Vec<CompressedCommitment<G>> = Vec::new();
 

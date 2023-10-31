@@ -6,7 +6,7 @@ use ff::{
   derive::byteorder::{ByteOrder, LittleEndian},
   Field, PrimeField, PrimeFieldBits,
 };
-use nova_snark::{gadgets::ecc::AllocatedPoint, traits::Group as NovaGroup};
+use nova_snark::{gadgets::ecc::AllocatedPoint, traits::GroupExt as NovaGroup};
 use num_bigint::BigUint;
 use pasta_curves::{
   arithmetic::CurveAffine,

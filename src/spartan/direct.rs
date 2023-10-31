@@ -12,7 +12,7 @@ use crate::{
   traits::{
     circuit::StepCircuit,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
-    Group,
+    GroupExt,
   },
   Commitment, CommitmentKey,
 };
@@ -21,12 +21,12 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-struct DirectCircuit<G: Group, SC: StepCircuit<G::Scalar>> {
+struct DirectCircuit<G: GroupExt, SC: StepCircuit<G::Scalar>> {
   z_i: Option<Vec<G::Scalar>>, // inputs to the circuit
   sc: SC,                      // step circuit to be executed
 }
 
-impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<G, SC> {
+impl<G: GroupExt, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<G, SC> {
   fn synthesize<CS: ConstraintSystem<G::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
     // obtain the arity information
     let arity = self.sc.arity();
@@ -60,7 +60,7 @@ impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<
 #[serde(bound = "")]
 pub struct ProverKey<G, S>
 where
-  G: Group,
+  G: GroupExt,
   S: RelaxedR1CSSNARKTrait<G>,
 {
   S: R1CSShape<G>,
@@ -73,13 +73,13 @@ where
 #[serde(bound = "")]
 pub struct VerifierKey<G, S>
 where
-  G: Group,
+  G: GroupExt,
   S: RelaxedR1CSSNARKTrait<G>,
 {
   vk: S::VerifierKey,
 }
 
-impl<G: Group, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
+impl<G: GroupExt, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
   /// Returns the digest of the verifier's key
   pub fn digest(&self) -> G::Scalar {
     self.vk.digest()
@@ -91,7 +91,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
 #[serde(bound = "")]
 pub struct DirectSNARK<G, S, C>
 where
-  G: Group,
+  G: GroupExt,
   S: RelaxedR1CSSNARKTrait<G>,
   C: StepCircuit<G::Scalar>,
 {
@@ -100,7 +100,7 @@ where
   _p: PhantomData<C>,
 }
 
-impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNARK<G, S, C> {
+impl<G: GroupExt, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNARK<G, S, C> {
   /// Produces prover and verifier keys for the direct SNARK
   pub fn setup(sc: C) -> Result<(ProverKey<G, S>, VerifierKey<G, S>), NovaError> {
     // construct a circuit that can be synthesized
@@ -244,17 +244,16 @@ mod tests {
     test_direct_snark_with::<G3, S3pp>();
   }
 
-  fn test_direct_snark_with<G: Group, S: RelaxedR1CSSNARKTrait<G>>() {
+  fn test_direct_snark_with<G: GroupExt, S: RelaxedR1CSSNARKTrait<G>>() {
     let circuit = CubicCircuit::default();
 
     // produce keys
-    let (pk, vk) =
-      DirectSNARK::<G, S, CubicCircuit<<G as Group>::Scalar>>::setup(circuit.clone()).unwrap();
+    let (pk, vk) = DirectSNARK::<G, S, CubicCircuit<G::Scalar>>::setup(circuit.clone()).unwrap();
 
     let num_steps = 3;
 
     // setup inputs
-    let z0 = vec![<G as Group>::Scalar::ZERO];
+    let z0 = vec![G::Scalar::ZERO];
     let mut z_i = z0;
 
     for _i in 0..num_steps {
@@ -280,6 +279,6 @@ mod tests {
     }
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(z_i, vec![<G as Group>::Scalar::from(2460515u64)]);
+    assert_eq!(z_i, vec![G::Scalar::from(2460515u64)]);
   }
 }

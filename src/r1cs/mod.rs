@@ -12,7 +12,7 @@ use crate::{
     utils::scalar_as_base,
   },
   traits::{
-    commitment::CommitmentEngineTrait, AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, AbsorbInROTrait, GroupExt, ROTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CE,
 };
@@ -28,13 +28,13 @@ pub(crate) use self::sparse::SparseMatrix;
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CS<G: Group> {
+pub struct R1CS<G: GroupExt> {
   _p: PhantomData<G>,
 }
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct R1CSShape<G: Group> {
+pub struct R1CSShape<G: GroupExt> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
   pub(crate) num_io: usize,
@@ -45,25 +45,25 @@ pub struct R1CSShape<G: Group> {
   pub(crate) digest: OnceCell<G::Scalar>,
 }
 
-impl<G: Group> SimpleDigestible for R1CSShape<G> {}
+impl<G: GroupExt> SimpleDigestible for R1CSShape<G> {}
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct R1CSWitness<G: Group> {
+pub struct R1CSWitness<G: GroupExt> {
   W: Vec<G::Scalar>,
 }
 
 /// A type that holds an R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CSInstance<G: Group> {
+pub struct R1CSInstance<G: GroupExt> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
 }
 
 /// A type that holds a witness for a given Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RelaxedR1CSWitness<G: Group> {
+pub struct RelaxedR1CSWitness<G: GroupExt> {
   pub(crate) W: Vec<G::Scalar>,
   pub(crate) E: Vec<G::Scalar>,
 }
@@ -71,14 +71,14 @@ pub struct RelaxedR1CSWitness<G: Group> {
 /// A type that holds a Relaxed R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSInstance<G: Group> {
+pub struct RelaxedR1CSInstance<G: GroupExt> {
   pub(crate) comm_W: Commitment<G>,
   pub(crate) comm_E: Commitment<G>,
   pub(crate) X: Vec<G::Scalar>,
   pub(crate) u: G::Scalar,
 }
 
-impl<G: Group> R1CS<G> {
+impl<G: GroupExt> R1CS<G> {
   /// Samples public parameters for the specified number of constraints and variables in an R1CS
   pub fn commitment_key(S: &R1CSShape<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
@@ -88,7 +88,7 @@ impl<G: Group> R1CS<G> {
   }
 }
 
-impl<G: Group> R1CSShape<G> {
+impl<G: GroupExt> R1CSShape<G> {
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
     num_cons: usize,
@@ -352,7 +352,7 @@ impl<G: Group> R1CSShape<G> {
   }
 }
 
-impl<G: Group> R1CSWitness<G> {
+impl<G: GroupExt> R1CSWitness<G> {
   /// A method to create a witness object using a vector of scalars
   pub fn new(S: &R1CSShape<G>, W: &[G::Scalar]) -> Result<R1CSWitness<G>, NovaError> {
     if S.num_vars != W.len() {
@@ -368,7 +368,7 @@ impl<G: Group> R1CSWitness<G> {
   }
 }
 
-impl<G: Group> R1CSInstance<G> {
+impl<G: GroupExt> R1CSInstance<G> {
   /// A method to create an instance object using consitituent elements
   pub fn new(
     S: &R1CSShape<G>,
@@ -386,7 +386,7 @@ impl<G: Group> R1CSInstance<G> {
   }
 }
 
-impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
+impl<G: GroupExt> AbsorbInROTrait<G> for R1CSInstance<G> {
   fn absorb_in_ro(&self, ro: &mut G::RO) {
     self.comm_W.absorb_in_ro(ro);
     for x in &self.X {
@@ -395,7 +395,7 @@ impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
   }
 }
 
-impl<G: Group> RelaxedR1CSWitness<G> {
+impl<G: GroupExt> RelaxedR1CSWitness<G> {
   /// Produces a default `RelaxedR1CSWitness` given an `R1CSShape`
   pub fn default(S: &R1CSShape<G>) -> RelaxedR1CSWitness<G> {
     RelaxedR1CSWitness {
@@ -456,7 +456,7 @@ impl<G: Group> RelaxedR1CSWitness<G> {
   }
 }
 
-impl<G: Group> RelaxedR1CSInstance<G> {
+impl<G: GroupExt> RelaxedR1CSInstance<G> {
   /// Produces a default `RelaxedR1CSInstance` given `R1CSGens` and `R1CSShape`
   pub fn default(_ck: &CommitmentKey<G>, S: &R1CSShape<G>) -> RelaxedR1CSInstance<G> {
     let (comm_W, comm_E) = (Commitment::<G>::default(), Commitment::<G>::default());
@@ -524,7 +524,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
+impl<G: GroupExt> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_W.to_transcript_bytes(),
@@ -536,7 +536,7 @@ impl<G: Group> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
   }
 }
 
-impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
+impl<G: GroupExt> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
   fn absorb_in_ro(&self, ro: &mut G::RO) {
     self.comm_W.absorb_in_ro(ro);
     self.comm_E.absorb_in_ro(ro);
@@ -557,9 +557,9 @@ mod tests {
   use ff::Field;
 
   use super::*;
-  use crate::{r1cs::sparse::SparseMatrix, traits::Group};
+  use crate::{r1cs::sparse::SparseMatrix, traits::GroupExt};
 
-  fn tiny_r1cs<G: Group>(num_vars: usize) -> R1CSShape<G> {
+  fn tiny_r1cs<G: GroupExt>(num_vars: usize) -> R1CSShape<G> {
     let one = <G::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
@@ -625,7 +625,7 @@ mod tests {
     res.unwrap()
   }
 
-  fn test_pad_tiny_r1cs_with<G: Group>() {
+  fn test_pad_tiny_r1cs_with<G: GroupExt>() {
     let padded_r1cs = tiny_r1cs::<G>(3).pad();
     assert!(padded_r1cs.is_regular_shape());
 

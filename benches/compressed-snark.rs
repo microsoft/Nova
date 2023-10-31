@@ -7,7 +7,7 @@ use ff::PrimeField;
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
-    Group,
+    GroupExt,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
 };
@@ -23,8 +23,8 @@ type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
 // SNARKs with computational commitments
 type SS1 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1>;
 type SS2 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
-type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<G1 as GroupExt>::Scalar>;
+type C2 = TrivialCircuit<<G2 as GroupExt>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -76,8 +76,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as Group>::Scalar::from(2u64)],
-      &[<G2 as Group>::Scalar::from(2u64)],
+      &[<G1 as GroupExt>::Scalar::from(2u64)],
+      &[<G2 as GroupExt>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -89,8 +89,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as Group>::Scalar::from(2u64)],
-        &[<G2 as Group>::Scalar::from(2u64)],
+        &[<G1 as GroupExt>::Scalar::from(2u64)],
+        &[<G2 as GroupExt>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -117,8 +117,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
           .verify(
             black_box(&vk),
             black_box(num_steps),
-            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as GroupExt>::Scalar::from(2u64)]),
+            black_box(&[<G2 as GroupExt>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
@@ -158,8 +158,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as Group>::Scalar::from(2u64)],
-      &[<G2 as Group>::Scalar::from(2u64)],
+      &[<G1 as GroupExt>::Scalar::from(2u64)],
+      &[<G2 as GroupExt>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -171,8 +171,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as Group>::Scalar::from(2u64)],
-        &[<G2 as Group>::Scalar::from(2u64)],
+        &[<G1 as GroupExt>::Scalar::from(2u64)],
+        &[<G2 as GroupExt>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -199,8 +199,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
           .verify(
             black_box(&vk),
             black_box(num_steps),
-            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<G1 as GroupExt>::Scalar::from(2u64)]),
+            black_box(&[<G2 as GroupExt>::Scalar::from(2u64)]),
           )
           .is_ok());
       })

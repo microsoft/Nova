@@ -6,7 +6,7 @@ use crate::{
     select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
     select_one_or_num2, select_zero_or_num2,
   },
-  traits::Group,
+  traits::GroupExt,
 };
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{
@@ -20,7 +20,7 @@ use ff::{Field, PrimeField};
 #[derive(Clone)]
 pub struct AllocatedPoint<G>
 where
-  G: Group,
+  G: GroupExt,
 {
   pub(crate) x: AllocatedNum<G::Base>,
   pub(crate) y: AllocatedNum<G::Base>,
@@ -29,7 +29,7 @@ where
 
 impl<G> AllocatedPoint<G>
 where
-  G: Group,
+  G: GroupExt,
 {
   /// Allocates a new point on the curve using coordinates provided by `coords`.
   /// If coords = None, it allocates the default infinity point
@@ -422,7 +422,7 @@ where
   }
 
   /// A gadget for scalar multiplication, optimized to use incomplete addition law.
-  /// The optimization here is analogous to <https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295>,
+  /// The optimization here is analogous to <https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/GroupExts/curves/short_weierstrass/mod.rs#L295>,
   /// except we use complete addition law over affine coordinates instead of projective coordinates for the tail bits
   pub fn scalar_mul<CS: ConstraintSystem<G::Base>>(
     &self,
@@ -557,7 +557,7 @@ where
 /// `AllocatedPoint` but one that is guaranteed to be not infinity
 pub struct AllocatedPointNonInfinity<G>
 where
-  G: Group,
+  G: GroupExt,
 {
   x: AllocatedNum<G::Base>,
   y: AllocatedNum<G::Base>,
@@ -565,7 +565,7 @@ where
 
 impl<G> AllocatedPointNonInfinity<G>
 where
-  G: Group,
+  G: GroupExt,
 {
   /// Creates a new `AllocatedPointNonInfinity` from the specified coordinates
   pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
@@ -763,7 +763,7 @@ mod tests {
   #[derive(Debug, Clone)]
   pub struct Point<G>
   where
-    G: Group,
+    G: GroupExt,
   {
     x: G::Base,
     y: G::Base,
@@ -772,7 +772,7 @@ mod tests {
 
   impl<G> Point<G>
   where
-    G: Group,
+    G: GroupExt,
   {
     pub fn new(x: G::Base, y: G::Base, is_infinity: bool) -> Self {
       Self { x, y, is_infinity }
@@ -872,7 +872,7 @@ mod tests {
   }
 
   // Allocate a random point. Only used for testing
-  pub fn alloc_random_point<G: Group, CS: ConstraintSystem<G::Base>>(
+  pub fn alloc_random_point<G: GroupExt, CS: ConstraintSystem<G::Base>>(
     mut cs: CS,
   ) -> Result<AllocatedPoint<G>, SynthesisError> {
     // get a random point
@@ -881,7 +881,7 @@ mod tests {
   }
 
   /// Make the point io
-  pub fn inputize_allocted_point<G: Group, CS: ConstraintSystem<G::Base>>(
+  pub fn inputize_allocted_point<G: GroupExt, CS: ConstraintSystem<G::Base>>(
     p: &AllocatedPoint<G>,
     mut cs: CS,
   ) {
@@ -907,14 +907,14 @@ mod tests {
   fn test_ecc_ops_with<C, G>()
   where
     C: CurveAffine<Base = G::Base, ScalarExt = G::Scalar>,
-    G: Group,
+    G: GroupExt,
   {
     // perform some curve arithmetic
     let a = Point::<G>::random_vartime();
     let b = Point::<G>::random_vartime();
     let c = a.add(&b);
     let d = a.double();
-    let s = <G as Group>::Scalar::random(&mut OsRng);
+    let s = G::Scalar::random(&mut OsRng);
     let e = a.scalar_mul(&s);
 
     // perform the same computation by translating to curve types
@@ -959,7 +959,7 @@ mod tests {
 
   fn synthesize_smul<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>, G::Scalar)
   where
-    G: Group,
+    G: GroupExt,
     CS: ConstraintSystem<G::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
@@ -993,8 +993,8 @@ mod tests {
 
   fn test_ecc_circuit_ops_with<G1, G2>()
   where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
+    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
@@ -1010,12 +1010,12 @@ mod tests {
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
-      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
+      a.is_infinity.get_value().unwrap() == <G1 as GroupExt>::Base::ONE,
     );
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
+      e.is_infinity.get_value().unwrap() == <G1 as GroupExt>::Base::ONE,
     );
     let e_new = a_p.scalar_mul(&s);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
@@ -1025,7 +1025,7 @@ mod tests {
 
   fn synthesize_add_equal<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>)
   where
-    G: Group,
+    G: GroupExt,
     CS: ConstraintSystem<G::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
@@ -1049,8 +1049,8 @@ mod tests {
 
   fn test_ecc_circuit_add_equal_with<G1, G2>()
   where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
+    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
@@ -1065,12 +1065,12 @@ mod tests {
     let a_p: Point<G1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
-      a.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
+      a.is_infinity.get_value().unwrap() == <G1 as GroupExt>::Base::ONE,
     );
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
+      e.is_infinity.get_value().unwrap() == <G1 as GroupExt>::Base::ONE,
     );
     let e_new = a_p.add(&a_p);
     assert!(e_p.x == e_new.x && e_p.y == e_new.y);
@@ -1080,7 +1080,7 @@ mod tests {
 
   fn synthesize_add_negation<G, CS>(mut cs: CS) -> AllocatedPoint<G>
   where
-    G: Group,
+    G: GroupExt,
     CS: ConstraintSystem<G::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
@@ -1109,8 +1109,8 @@ mod tests {
 
   fn test_ecc_circuit_add_negation_with<G1, G2>()
   where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
+    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
@@ -1125,7 +1125,7 @@ mod tests {
     let e_p: Point<G1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
-      e.is_infinity.get_value().unwrap() == <G1 as Group>::Base::ONE,
+      e.is_infinity.get_value().unwrap() == <G1 as GroupExt>::Base::ONE,
     );
     assert!(e_p.is_infinity);
     // Make sure that it is satisfiable

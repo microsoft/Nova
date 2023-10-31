@@ -15,15 +15,15 @@ use commitment::CommitmentEngineTrait;
 
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
-pub trait Group:
+pub trait GroupExt:
   Clone
   + Copy
   + Debug
   + Eq
   + GroupOps
   + GroupOpsOwned
-  + ScalarMul<<Self as Group>::Scalar>
-  + ScalarMulOwned<<Self as Group>::Scalar>
+  + ScalarMul<Self::Scalar>
+  + ScalarMulOwned<Self::Scalar>
   + Send
   + Sync
   + Serialize
@@ -102,14 +102,14 @@ pub trait CompressedGroup:
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
+  type GroupElement: GroupExt;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
 }
 
 /// A helper trait to absorb different objects in RO
-pub trait AbsorbInROTrait<G: Group> {
+pub trait AbsorbInROTrait<G: GroupExt> {
   /// Absorbs the value in the provided RO
   fn absorb_in_ro(&self, ro: &mut G::RO);
 }
@@ -154,11 +154,11 @@ pub trait ROCircuitTrait<Base: PrimeField> {
 
 /// An alias for constants associated with G::RO
 pub type ROConstants<G> =
-  <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants;
 
 /// An alias for constants associated with `G::ROCircuit`
 pub type ROConstantsCircuit<G> =
-  <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
+  <<G as GroupExt>::ROCircuit as ROCircuitTrait<<G as GroupExt>::Base>>::Constants;
 
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:
@@ -186,13 +186,13 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
-pub trait TranscriptReprTrait<G: Group>: Send + Sync {
+pub trait TranscriptReprTrait<G: GroupExt>: Send + Sync {
   /// returns a byte representation of self to be added to the transcript
   fn to_transcript_bytes(&self) -> Vec<u8>;
 }
 
 /// This trait defines the behavior of a transcript engine compatible with Spartan
-pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
+pub trait TranscriptEngineTrait<G: GroupExt>: Send + Sync {
   /// initializes the transcript
   fn new(label: &'static [u8]) -> Self;
 
@@ -212,7 +212,7 @@ pub trait PrimeFieldExt: PrimeField {
   fn from_uniform(bytes: &[u8]) -> Self;
 }
 
-impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
+impl<G: GroupExt, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self
       .iter()

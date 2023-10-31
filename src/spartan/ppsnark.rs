@@ -21,7 +21,7 @@ use crate::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
-    Group, TranscriptEngineTrait, TranscriptReprTrait,
+    GroupExt, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment,
 };
@@ -67,7 +67,7 @@ impl<Scalar: PrimeField> IdentityPolynomial<Scalar> {
 /// A type that holds `R1CSShape` in a form amenable to memory checking
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CSShapeSparkRepr<G: Group> {
+pub struct R1CSShapeSparkRepr<G: GroupExt> {
   N: usize, // size of the vectors
 
   // dense representation
@@ -87,7 +87,7 @@ pub struct R1CSShapeSparkRepr<G: Group> {
 /// A type that holds a commitment to a sparse polynomial
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CSShapeSparkCommitment<G: Group> {
+pub struct R1CSShapeSparkCommitment<G: GroupExt> {
   N: usize, // size of each vector
 
   // commitments to the dense representation
@@ -104,7 +104,7 @@ pub struct R1CSShapeSparkCommitment<G: Group> {
   comm_col_audit_ts: Commitment<G>,
 }
 
-impl<G: Group> TranscriptReprTrait<G> for R1CSShapeSparkCommitment<G> {
+impl<G: GroupExt> TranscriptReprTrait<G> for R1CSShapeSparkCommitment<G> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_row,
@@ -122,7 +122,7 @@ impl<G: Group> TranscriptReprTrait<G> for R1CSShapeSparkCommitment<G> {
   }
 }
 
-impl<G: Group> R1CSShapeSparkRepr<G> {
+impl<G: GroupExt> R1CSShapeSparkRepr<G> {
   /// represents `R1CSShape` in a Spark-friendly format amenable to memory checking
   pub fn new(S: &R1CSShape<G>) -> R1CSShapeSparkRepr<G> {
     let N = {
@@ -288,7 +288,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
 }
 
 /// Defines a trait for implementing sum-check in a generic manner
-pub trait SumcheckEngine<G: Group>: Send + Sync {
+pub trait SumcheckEngine<G: GroupExt>: Send + Sync {
   /// returns the initial claims
   fn initial_claims(&self) -> Vec<G::Scalar>;
 
@@ -308,7 +308,7 @@ pub trait SumcheckEngine<G: Group>: Send + Sync {
   fn final_claims(&self) -> Vec<Vec<G::Scalar>>;
 }
 
-struct ProductSumcheckInstance<G: Group> {
+struct ProductSumcheckInstance<G: GroupExt> {
   pub(crate) claims: Vec<G::Scalar>, // claimed products
   pub(crate) comm_output_vec: Vec<Commitment<G>>,
 
@@ -321,7 +321,7 @@ struct ProductSumcheckInstance<G: Group> {
   poly_D_vec: Vec<MultilinearPolynomial<G::Scalar>>,
 }
 
-impl<G: Group> ProductSumcheckInstance<G> {
+impl<G: GroupExt> ProductSumcheckInstance<G> {
   pub fn new(
     ck: &CommitmentKey<G>,
     input_vec: Vec<Vec<G::Scalar>>, // list of input vectors
@@ -447,7 +447,7 @@ impl<G: Group> ProductSumcheckInstance<G> {
   }
 }
 
-impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
+impl<G: GroupExt> SumcheckEngine<G> for ProductSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
     vec![G::Scalar::ZERO; 8]
   }
@@ -533,14 +533,14 @@ impl<G: Group> SumcheckEngine<G> for ProductSumcheckInstance<G> {
   }
 }
 
-struct OuterSumcheckInstance<G: Group> {
+struct OuterSumcheckInstance<G: GroupExt> {
   poly_tau: MultilinearPolynomial<G::Scalar>,
   poly_Az: MultilinearPolynomial<G::Scalar>,
   poly_Bz: MultilinearPolynomial<G::Scalar>,
   poly_uCz_E: MultilinearPolynomial<G::Scalar>,
 }
 
-impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
+impl<G: GroupExt> SumcheckEngine<G> for OuterSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
     vec![G::Scalar::ZERO]
   }
@@ -594,14 +594,14 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
   }
 }
 
-struct InnerSumcheckInstance<G: Group> {
+struct InnerSumcheckInstance<G: GroupExt> {
   claim: G::Scalar,
   poly_E_row: MultilinearPolynomial<G::Scalar>,
   poly_E_col: MultilinearPolynomial<G::Scalar>,
   poly_val: MultilinearPolynomial<G::Scalar>,
 }
 
-impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
+impl<G: GroupExt> SumcheckEngine<G> for InnerSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
     vec![self.claim]
   }
@@ -680,7 +680,7 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
 /// A type that represents the prover's key
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct ProverKey<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   pk_ee: EE::ProverKey,
   S_repr: R1CSShapeSparkRepr<G>,
   S_comm: R1CSShapeSparkCommitment<G>,
@@ -690,7 +690,7 @@ pub struct ProverKey<G: Group, EE: EvaluationEngineTrait<G>> {
 /// A type that represents the verifier's key
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct VerifierKey<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   num_cons: usize,
   num_vars: usize,
   vk_ee: EE::VerifierKey,
@@ -699,14 +699,14 @@ pub struct VerifierKey<G: Group, EE: EvaluationEngineTrait<G>> {
   digest: OnceCell<G::Scalar>,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> SimpleDigestible for VerifierKey<G, EE> {}
 
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
+pub struct RelaxedR1CSSNARK<G: GroupExt, EE: EvaluationEngineTrait<G>> {
   // commitment to oracles
   comm_Az: CompressedCommitment<G>,
   comm_Bz: CompressedCommitment<G>,
@@ -759,7 +759,7 @@ pub struct RelaxedR1CSSNARK<G: Group, EE: EvaluationEngineTrait<G>> {
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
   fn prove_inner<T1, T2, T3>(
     mem: &mut T1,
     outer: &mut T2,
@@ -868,7 +868,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
   }
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
   fn new(
     num_cons: usize,
     num_vars: usize,
@@ -884,7 +884,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> VerifierKey<G, EE> {
     }
   }
 }
-impl<G: Group, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKey<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKey<G, EE> {
   /// Returns the digest of the verifier's key
   fn digest(&self) -> G::Scalar {
     self
@@ -898,7 +898,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> DigestHelperTrait<G> for VerifierKe
   }
 }
 
-impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for RelaxedR1CSSNARK<G, EE> {
+impl<G: GroupExt, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G>
+  for RelaxedR1CSSNARK<G, EE>
+{
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 

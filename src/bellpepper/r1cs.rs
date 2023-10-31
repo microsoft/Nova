@@ -6,14 +6,14 @@ use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::Test
 use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
-  traits::Group,
+  traits::GroupExt,
   CommitmentKey,
 };
 use bellpepper_core::{Index, LinearCombination};
 use ff::PrimeField;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
-pub trait NovaWitness<G: Group> {
+pub trait NovaWitness<G: GroupExt> {
   /// Return an instance and witness, given a shape and ck.
   fn r1cs_instance_and_witness(
     &self,
@@ -23,12 +23,12 @@ pub trait NovaWitness<G: Group> {
 }
 
 /// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
-pub trait NovaShape<G: Group> {
+pub trait NovaShape<G: GroupExt> {
   /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
   fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
 }
 
-impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
+impl<G: GroupExt> NovaWitness<G> for SatisfyingAssignment<G> {
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<G>,
@@ -47,7 +47,7 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
 
 macro_rules! impl_nova_shape {
   ( $name:ident) => {
-    impl<G: Group> NovaShape<G> for $name<G>
+    impl<G: GroupExt> NovaShape<G> for $name<G>
     where
       G::Scalar: PrimeField,
     {

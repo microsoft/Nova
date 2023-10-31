@@ -6,7 +6,7 @@ use std::{
   collections::{BTreeMap, HashMap},
 };
 
-use crate::traits::Group;
+use crate::traits::GroupExt;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use core::fmt::Write;
 use ff::{Field, PrimeField};
@@ -48,7 +48,7 @@ impl Ord for OrderedVariable {
 }
 
 /// `TestShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct TestShapeCS<G: Group>
+pub struct TestShapeCS<G: GroupExt>
 where
   G::Scalar: PrimeField + Field,
 {
@@ -91,7 +91,7 @@ fn proc_lc<Scalar: PrimeField>(
   map
 }
 
-impl<G: Group> TestShapeCS<G>
+impl<G: GroupExt> TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
@@ -216,7 +216,7 @@ where
   }
 }
 
-impl<G: Group> Default for TestShapeCS<G>
+impl<G: GroupExt> Default for TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
@@ -233,7 +233,7 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for TestShapeCS<G>
+impl<G: GroupExt> ConstraintSystem<G::Scalar> for TestShapeCS<G>
 where
   G::Scalar: PrimeField,
 {
