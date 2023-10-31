@@ -8,13 +8,14 @@
 pub mod direct;
 pub(crate) mod math;
 pub mod polys;
-pub mod ppsnark;
 pub mod snark;
 mod sumcheck;
 
+pub mod ppsnark;
+use polys::multilinear::SparsePolynomial;
+
 use crate::{traits::Group, Commitment};
 use ff::Field;
-use polys::multilinear::SparsePolynomial;
 
 fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);
