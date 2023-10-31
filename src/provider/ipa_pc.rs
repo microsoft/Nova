@@ -4,11 +4,10 @@ use crate::{
   provider::pedersen::CommitmentKeyExtTrait,
   spartan::polys::eq::EqPolynomial,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait},
-    evaluation::EvaluationEngineTrait,
-    GroupExt, TranscriptEngineTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait, GroupExt,
+    TranscriptEngineTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CompressedCommitment, CE,
+  Commitment, CommitmentKey, CommitmentTrait, CompressedCommitment, CE,
 };
 use core::iter;
 use ff::Field;

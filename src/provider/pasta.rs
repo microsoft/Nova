@@ -59,7 +59,7 @@ macro_rules! impl_traits {
   ) => {
     impl GroupExt for $name::Point {
       type Base = $name::Base;
-      type Scalar = $name::Scalar;
+      type ScalarExt = $name::Scalar;
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;

@@ -14,10 +14,8 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, GroupExt, ROCircuitTrait, ROConstantsCircuit,
-  },
-  Commitment,
+  traits::{circuit::StepCircuit, GroupExt, ROCircuitTrait, ROConstantsCircuit},
+  Commitment, CommitmentTrait,
 };
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{
@@ -177,7 +175,7 @@ impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> 
   }
 
   /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-  fn synthesize_base_case<CS: ConstraintSystem<<G as GroupExt>::Base>>(
+  fn synthesize_base_case<CS: ConstraintSystem<G::Base>>(
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstance<G>,
@@ -255,7 +253,7 @@ impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> 
 
 impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<G as GroupExt>::Base>>(
+  pub fn synthesize<CS: ConstraintSystem<G::Base>>(
     self,
     cs: &mut CS,
   ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
@@ -362,9 +360,6 @@ impl<'a, G: GroupExt, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> 
 mod tests {
   use super::*;
   use crate::bellpepper::{solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
-  type PastaG1 = pasta_curves::pallas::Point;
-  type PastaG2 = pasta_curves::vesta::Point;
-
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::provider;
   use crate::{
@@ -373,6 +368,10 @@ mod tests {
     provider::poseidon::PoseidonConstantsCircuit,
     traits::circuit::TrivialCircuit,
   };
+
+  use group::Group;
+  type PastaG1 = pasta_curves::pallas::Point;
+  type PastaG2 = pasta_curves::vesta::Point;
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
   fn test_recursive_circuit_with<G1, G2>(
@@ -383,8 +382,8 @@ mod tests {
     num_constraints_primary: usize,
     num_constraints_secondary: usize,
   ) where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
     let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary

@@ -6,9 +6,10 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
-  traits::{commitment::CommitmentTrait, AbsorbInROTrait, GroupExt, ROTrait},
-  Commitment, CommitmentKey, CompressedCommitment,
+  traits::{AbsorbInROTrait, GroupExt, ROTrait},
+  Commitment, CommitmentKey, CommitmentTrait, CompressedCommitment,
 };
+use group::Group;
 use serde::{Deserialize, Serialize};
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -20,7 +21,7 @@ pub struct NIFS<G: GroupExt> {
 }
 
 type ROConstants<G> =
-  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants;
+  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as Group>::Scalar>>::Constants;
 
 impl<G: GroupExt> NIFS<G> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
@@ -169,7 +170,7 @@ mod tests {
     let (shape, ck) = cs.r1cs_shape();
     let ro_consts = <<G as GroupExt>::RO as ROTrait<
       <G as GroupExt>::Base,
-      <G as GroupExt>::Scalar,
+      <G as Group>::Scalar,
     >>::Constants::default();
 
     // Now get the instance and assignment for one instance
@@ -192,7 +193,7 @@ mod tests {
     execute_sequence(
       &ck,
       &ro_consts,
-      &<G as GroupExt>::Scalar::ZERO,
+      &<G as Group>::Scalar::ZERO,
       &shape,
       &U1,
       &W1,
@@ -210,8 +211,8 @@ mod tests {
 
   fn execute_sequence<G>(
     ck: &CommitmentKey<G>,
-    ro_consts: &<<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants,
-    pp_digest: &<G as GroupExt>::Scalar,
+    ro_consts: &<<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as Group>::Scalar>>::Constants,
+    pp_digest: &<G as Group>::Scalar,
     shape: &R1CSShape<G>,
     U1: &R1CSInstance<G>,
     W1: &R1CSWitness<G>,
@@ -332,7 +333,7 @@ mod tests {
     let ck = R1CS::<G>::commitment_key(&S);
     let ro_consts = <<G as GroupExt>::RO as ROTrait<
       <G as GroupExt>::Base,
-      <G as GroupExt>::Scalar,
+      <G as Group>::Scalar,
     >>::Constants::default();
 
     let rand_inst_witness_generator =
@@ -379,7 +380,7 @@ mod tests {
     execute_sequence(
       &ck,
       &ro_consts,
-      &<G as GroupExt>::Scalar::ZERO,
+      &<G as Group>::Scalar::ZERO,
       &S,
       &U1,
       &W1,

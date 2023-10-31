@@ -81,6 +81,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 #[cfg(test)]
 mod tests {
   use ff::Field;
+  use group::Group;
   use once_cell::sync::OnceCell;
   use pasta_curves::pallas;
   use serde::{Deserialize, Serialize};
@@ -123,15 +124,15 @@ mod tests {
 
     // let's set up a struct with a weird digest field to make sure the digest computation does not depend of it
     let oc = OnceCell::new();
-    oc.set(<G as GroupExt>::Scalar::ONE).unwrap();
+    oc.set(<G as Group>::Scalar::ONE).unwrap();
 
     let s2: S<G> = S { i: 42, digest: oc };
 
     assert_eq!(
-      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s1)
+      DigestComputer::<<G as Group>::Scalar, _>::new(&s1)
         .digest()
         .unwrap(),
-      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s2)
+      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -140,7 +141,7 @@ mod tests {
     // equality will not result in `s1.digest() == s2.digest`
     assert_ne!(
       s2.digest(),
-      DigestComputer::<<G as GroupExt>::Scalar, _>::new(&s2)
+      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -152,7 +153,7 @@ mod tests {
 
     // let's set up a struct with a weird digest field to confuse deserializers
     let oc = OnceCell::new();
-    oc.set(<G as GroupExt>::Scalar::ONE).unwrap();
+    oc.set(<G as Group>::Scalar::ONE).unwrap();
 
     let bad_s: S<G> = S { i: 42, digest: oc };
     // this justifies the adjective "bad"

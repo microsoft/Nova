@@ -1,11 +1,9 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
 use bellpepper_core::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
-use core::{
-  fmt::Debug,
-  ops::{Add, AddAssign, Mul, MulAssign, Sub, SubAssign},
-};
+use core::fmt::Debug;
 use ff::{PrimeField, PrimeFieldBits};
+use group::Group;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
@@ -16,27 +14,14 @@ use commitment::CommitmentEngineTrait;
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
 pub trait GroupExt:
-  Clone
-  + Copy
-  + Debug
-  + Eq
-  + GroupOps
-  + GroupOpsOwned
-  + ScalarMul<Self::Scalar>
-  + ScalarMulOwned<Self::Scalar>
-  + Send
-  + Sync
-  + Serialize
-  + for<'de> Deserialize<'de>
+  Group<Scalar = Self::ScalarExt> + Serialize + for<'de> Deserialize<'de>
 {
   /// A type representing an element of the base field of the group
   type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeFieldBits
+  type ScalarExt: PrimeFieldBits
     + PrimeFieldExt
-    + Send
-    + Sync
     + TranscriptReprTrait<Self>
     + Serialize
     + for<'de> Deserialize<'de>;
@@ -154,36 +139,11 @@ pub trait ROCircuitTrait<Base: PrimeField> {
 
 /// An alias for constants associated with G::RO
 pub type ROConstants<G> =
-  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as GroupExt>::Scalar>>::Constants;
+  <<G as GroupExt>::RO as ROTrait<<G as GroupExt>::Base, <G as Group>::Scalar>>::Constants;
 
 /// An alias for constants associated with `G::ROCircuit`
 pub type ROConstantsCircuit<G> =
   <<G as GroupExt>::ROCircuit as ROCircuitTrait<<G as GroupExt>::Base>>::Constants;
-
-/// A helper trait for types with a group operation.
-pub trait GroupOps<Rhs = Self, Output = Self>:
-  Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
-{
-}
-
-impl<T, Rhs, Output> GroupOps<Rhs, Output> for T where
-  T: Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
-{
-}
-
-/// A helper trait for references with a group operation.
-pub trait GroupOpsOwned<Rhs = Self, Output = Self>: for<'r> GroupOps<&'r Rhs, Output> {}
-impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<&'r Rhs, Output> {}
-
-/// A helper trait for types implementing group scalar multiplication.
-pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
-
-impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
-{}
-
-/// A helper trait for references implementing group scalar multiplication.
-pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
-impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
 pub trait TranscriptReprTrait<G: GroupExt>: Send + Sync {

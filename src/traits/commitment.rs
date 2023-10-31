@@ -8,9 +8,8 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign},
 };
+use group::ScalarMul;
 use serde::{Deserialize, Serialize};
-
-use super::ScalarMul;
 
 /// Defines basic operations on commitments
 pub trait CommitmentOps<Rhs = Self, Output = Self>:

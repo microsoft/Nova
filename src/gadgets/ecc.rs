@@ -757,6 +757,7 @@ mod tests {
     secp_secq::{secp256k1, secq256k1},
   };
   use ff::{Field, PrimeFieldBits};
+  use group::Group;
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
   use rand::rngs::OsRng;
 
@@ -993,8 +994,8 @@ mod tests {
 
   fn test_ecc_circuit_ops_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
@@ -1049,8 +1050,8 @@ mod tests {
 
   fn test_ecc_circuit_add_equal_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
@@ -1109,8 +1110,8 @@ mod tests {
 
   fn test_ecc_circuit_add_negation_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
     // First create the shape
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();

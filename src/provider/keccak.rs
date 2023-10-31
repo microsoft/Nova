@@ -104,6 +104,7 @@ mod tests {
     traits::{GroupExt, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
   use ff::PrimeField;
+  use group::Group;
   use rand::Rng;
   use sha3::{Digest, Keccak256};
 
@@ -215,7 +216,7 @@ mod tests {
     let mut rng = rand::thread_rng();
 
     // ten scalars
-    let scalars = std::iter::from_fn(|| Some(<G as GroupExt>::Scalar::from(rng.gen::<u64>())))
+    let scalars = std::iter::from_fn(|| Some(<G as Group>::Scalar::from(rng.gen::<u64>())))
       .take(10)
       .collect::<Vec<_>>();
 

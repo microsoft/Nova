@@ -40,6 +40,7 @@ use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
+use group::Group;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
@@ -55,8 +56,8 @@ use traits::{
 #[serde(bound = "")]
 pub struct PublicParams<G1, G2, C1, C2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
@@ -79,8 +80,8 @@ where
 
 impl<G1, G2, C1, C2> SimpleDigestible for PublicParams<G1, G2, C1, C2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
@@ -88,8 +89,8 @@ where
 
 impl<G1, G2, C1, C2> PublicParams<G1, G2, C1, C2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
@@ -181,8 +182,8 @@ where
 #[serde(bound = "")]
 pub struct RecursiveSNARK<G1, G2, C1, C2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
@@ -203,8 +204,8 @@ where
 
 impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
@@ -295,13 +296,13 @@ where
     let zi_primary = zi_primary
       .iter()
       .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G1 as GroupExt>::Scalar>, NovaError>>()
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()
       .expect("Nova error synthesis");
 
     let zi_secondary = zi_secondary
       .iter()
       .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G2 as GroupExt>::Scalar>, NovaError>>()
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()
       .expect("Nova error synthesis");
 
     Ok(Self {
@@ -416,11 +417,11 @@ where
     self.zi_primary = zi_primary
       .iter()
       .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G1 as GroupExt>::Scalar>, NovaError>>()?;
+      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
     self.zi_secondary = zi_secondary
       .iter()
       .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G2 as GroupExt>::Scalar>, NovaError>>()?;
+      .collect::<Result<Vec<<G2 as Group>::Scalar>, NovaError>>()?;
 
     self.l_u_secondary = l_u_secondary;
     self.l_w_secondary = l_w_secondary;
@@ -549,8 +550,8 @@ where
 #[serde(bound = "")]
 pub struct ProverKey<G1, G2, C1, C2, S1, S2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
@@ -567,8 +568,8 @@ where
 #[serde(bound = "")]
 pub struct VerifierKey<G1, G2, C1, C2, S1, S2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
@@ -590,8 +591,8 @@ where
 #[serde(bound = "")]
 pub struct CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
@@ -614,8 +615,8 @@ where
 
 impl<G1, G2, C1, C2, S1, S2> CompressedSNARK<G1, G2, C1, C2, S1, S2>
 where
-  G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-  G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+  G1: GroupExt<Base = <G2 as Group>::Scalar>,
+  G2: GroupExt<Base = <G1 as Group>::Scalar>,
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<G1>,
@@ -827,6 +828,7 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use group::Group;
   use traits::circuit::TrivialCircuit;
 
   #[derive(Clone, Debug, Default)]
@@ -885,8 +887,8 @@ mod tests {
 
   fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: &T1, circuit2: &T2, expected: &str)
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
   {
@@ -908,9 +910,9 @@ mod tests {
   fn test_pp_digest() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    let trivial_circuit1 = TrivialCircuit::<<G1 as GroupExt>::Scalar>::default();
-    let trivial_circuit2 = TrivialCircuit::<<G2 as GroupExt>::Scalar>::default();
-    let cubic_circuit1 = CubicCircuit::<<G1 as GroupExt>::Scalar>::default();
+    let trivial_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+    let trivial_circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
+    let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
 
     test_pp_digest_with::<G1, G2, _, _>(
       &trivial_circuit1,
@@ -924,10 +926,9 @@ mod tests {
       "583c9964e180332e63a59450870a72b4cbf663ce0d274ac5bd0d052d4cd92903",
     );
 
-    let trivial_circuit1_grumpkin = TrivialCircuit::<<bn256::Point as GroupExt>::Scalar>::default();
-    let trivial_circuit2_grumpkin =
-      TrivialCircuit::<<grumpkin::Point as GroupExt>::Scalar>::default();
-    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as GroupExt>::Scalar>::default();
+    let trivial_circuit1_grumpkin = TrivialCircuit::<<bn256::Point as Group>::Scalar>::default();
+    let trivial_circuit2_grumpkin = TrivialCircuit::<<grumpkin::Point as Group>::Scalar>::default();
+    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
 
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &trivial_circuit1_grumpkin,
@@ -940,9 +941,9 @@ mod tests {
       "684b2f7151031a79310f6fb553ab1480e290d73731fa34e74c27e004d589f102",
     );
 
-    let trivial_circuit1_secp = TrivialCircuit::<<secp256k1::Point as GroupExt>::Scalar>::default();
-    let trivial_circuit2_secp = TrivialCircuit::<<secq256k1::Point as GroupExt>::Scalar>::default();
-    let cubic_circuit1_secp = CubicCircuit::<<secp256k1::Point as GroupExt>::Scalar>::default();
+    let trivial_circuit1_secp = TrivialCircuit::<<secp256k1::Point as Group>::Scalar>::default();
+    let trivial_circuit2_secp = TrivialCircuit::<<secq256k1::Point as Group>::Scalar>::default();
+    let cubic_circuit1_secp = CubicCircuit::<<secp256k1::Point as Group>::Scalar>::default();
 
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
       &trivial_circuit1_secp,
@@ -958,18 +959,18 @@ mod tests {
 
   fn test_ivc_trivial_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
-    let test_circuit1 = TrivialCircuit::<<G1 as GroupExt>::Scalar>::default();
-    let test_circuit2 = TrivialCircuit::<<G2 as GroupExt>::Scalar>::default();
+    let test_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+    let test_circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      TrivialCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
@@ -979,8 +980,8 @@ mod tests {
       &pp,
       &test_circuit1,
       &test_circuit2,
-      &[<G1 as GroupExt>::Scalar::ZERO],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ZERO],
+      &[<G2 as Group>::Scalar::ZERO],
     )
     .unwrap();
 
@@ -992,8 +993,8 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ZERO],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ZERO],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1010,8 +1011,8 @@ mod tests {
 
   fn test_ivc_nontrivial_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
@@ -1020,8 +1021,8 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
@@ -1030,14 +1031,14 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     )
     .unwrap();
 
@@ -1049,8 +1050,8 @@ mod tests {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as GroupExt>::Scalar::ONE],
-        &[<G2 as GroupExt>::Scalar::ZERO],
+        &[<G1 as Group>::Scalar::ONE],
+        &[<G2 as Group>::Scalar::ZERO],
       );
       assert!(res.is_ok());
     }
@@ -1059,24 +1060,21 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as GroupExt>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<G2 as GroupExt>::Scalar::ZERO];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = circuit_secondary.clone().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(
-      zn_secondary,
-      vec![<G2 as GroupExt>::Scalar::from(2460515u64)]
-    );
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
   }
 
   #[test]
@@ -1091,8 +1089,8 @@ mod tests {
 
   fn test_ivc_nontrivial_with_compression_with<G1, G2, E1, E2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
     E1: EvaluationEngineTrait<G1>,
     E2: EvaluationEngineTrait<G2>,
   {
@@ -1103,8 +1101,8 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
@@ -1113,14 +1111,14 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     )
     .unwrap();
 
@@ -1133,24 +1131,21 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as GroupExt>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<G2 as GroupExt>::Scalar::ZERO];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = circuit_secondary.clone().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(
-      zn_secondary,
-      vec![<G2 as GroupExt>::Scalar::from(2460515u64)]
-    );
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // produce the prover and verifier keys for compressed snark
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::setup(&pp).unwrap();
@@ -1165,8 +1160,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1183,8 +1178,8 @@ mod tests {
 
   fn test_ivc_nontrivial_with_spark_compression_with<G1, G2, E1, E2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
     E1: EvaluationEngineTrait<G1>,
     E2: EvaluationEngineTrait<G2>,
   {
@@ -1195,8 +1190,8 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
@@ -1205,14 +1200,14 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &circuit_primary,
       &circuit_secondary,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     )
     .unwrap();
 
@@ -1225,24 +1220,21 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<G1 as GroupExt>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<G2 as GroupExt>::Scalar::ZERO];
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<G2 as Group>::Scalar::ZERO];
     for _i in 0..num_steps {
       zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
     }
     assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(
-      zn_secondary,
-      vec![<G2 as GroupExt>::Scalar::from(2460515u64)]
-    );
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // run the compressed snark with Spark compiler
 
@@ -1263,8 +1255,8 @@ mod tests {
     let res = compressed_snark.verify(
       &vk,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
   }
@@ -1287,8 +1279,8 @@ mod tests {
 
   fn test_ivc_nondet_with_compression_with<G1, G2, E1, E2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
     E1: EvaluationEngineTrait<G1>,
     E2: EvaluationEngineTrait<G2>,
   {
@@ -1353,7 +1345,7 @@ mod tests {
     }
 
     let circuit_primary = FifthRootCheckingCircuit {
-      y: <G1 as GroupExt>::Scalar::ZERO,
+      y: <G1 as Group>::Scalar::ZERO,
     };
 
     let circuit_secondary = TrivialCircuit::default();
@@ -1362,27 +1354,27 @@ mod tests {
     let pp = PublicParams::<
       G1,
       G2,
-      FifthRootCheckingCircuit<<G1 as GroupExt>::Scalar>,
-      TrivialCircuit<<G2 as GroupExt>::Scalar>,
+      FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::setup(&circuit_primary, &circuit_secondary);
 
     let num_steps = 3;
 
     // produce non-deterministic advice
     let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
-    let z0_secondary = vec![<G2 as GroupExt>::Scalar::ZERO];
+    let z0_secondary = vec![<G2 as Group>::Scalar::ZERO];
 
     // produce a recursive SNARK
     let mut recursive_snark: RecursiveSNARK<
       G1,
       G2,
-      FifthRootCheckingCircuit<<G1 as GroupExt>::Scalar>,
-      TrivialCircuit<<G2 as GroupExt>::Scalar>,
+      FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     > = RecursiveSNARK::<
       G1,
       G2,
-      FifthRootCheckingCircuit<<G1 as GroupExt>::Scalar>,
-      TrivialCircuit<<G2 as GroupExt>::Scalar>,
+      FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
+      TrivialCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &roots[0],
@@ -1427,18 +1419,18 @@ mod tests {
 
   fn test_ivc_base_with<G1, G2>()
   where
-    G1: GroupExt<Base = <G2 as GroupExt>::Scalar>,
-    G2: GroupExt<Base = <G1 as GroupExt>::Scalar>,
+    G1: GroupExt<Base = <G2 as Group>::Scalar>,
+    G2: GroupExt<Base = <G1 as Group>::Scalar>,
   {
-    let test_circuit1 = TrivialCircuit::<<G1 as GroupExt>::Scalar>::default();
-    let test_circuit2 = CubicCircuit::<<G2 as GroupExt>::Scalar>::default();
+    let test_circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+    let test_circuit2 = CubicCircuit::<<G2 as Group>::Scalar>::default();
 
     // produce public parameters
     let pp = PublicParams::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::setup(&test_circuit1, &test_circuit2);
 
     let num_steps = 1;
@@ -1447,14 +1439,14 @@ mod tests {
     let mut recursive_snark = RecursiveSNARK::<
       G1,
       G2,
-      TrivialCircuit<<G1 as GroupExt>::Scalar>,
-      CubicCircuit<<G2 as GroupExt>::Scalar>,
+      TrivialCircuit<<G1 as Group>::Scalar>,
+      CubicCircuit<<G2 as Group>::Scalar>,
     >::new(
       &pp,
       &test_circuit1,
       &test_circuit2,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     )
     .unwrap();
 
@@ -1467,15 +1459,15 @@ mod tests {
     let res = recursive_snark.verify(
       &pp,
       num_steps,
-      &[<G1 as GroupExt>::Scalar::ONE],
-      &[<G2 as GroupExt>::Scalar::ZERO],
+      &[<G1 as Group>::Scalar::ONE],
+      &[<G2 as Group>::Scalar::ZERO],
     );
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
 
-    assert_eq!(zn_primary, vec![<G1 as GroupExt>::Scalar::ONE]);
-    assert_eq!(zn_secondary, vec![<G2 as GroupExt>::Scalar::from(5u64)]);
+    assert_eq!(zn_primary, vec![<G1 as Group>::Scalar::ONE]);
+    assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(5u64)]);
   }
 
   #[test]
