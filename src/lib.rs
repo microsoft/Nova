@@ -445,24 +445,23 @@ where
     z0_secondary: &[G2::Scalar],
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
     // number of steps cannot be zero
-    if num_steps == 0 {
-      return Err(NovaError::ProofVerifyError);
-    }
+    let is_num_steps_zero = num_steps == 0;
 
     // check if the provided proof has executed num_steps
-    if self.i != num_steps {
-      return Err(NovaError::ProofVerifyError);
-    }
+    let is_num_steps_not_match = self.i != num_steps;
 
     // check if the initial inputs match
-    if self.z0_primary != z0_primary || self.z0_secondary != z0_secondary {
-      return Err(NovaError::ProofVerifyError);
-    }
+    let is_inputs_not_match = self.z0_primary != z0_primary || self.z0_secondary != z0_secondary;
 
     // check if the (relaxed) R1CS instances have two public outputs
-    if self.l_u_secondary.X.len() != 2
+    let is_instance_has_two_outpus = self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
-      || self.r_U_secondary.X.len() != 2
+      || self.r_U_secondary.X.len() != 2;
+
+    if is_num_steps_zero
+      || is_num_steps_not_match
+      || is_inputs_not_match
+      || is_instance_has_two_outpus
     {
       return Err(NovaError::ProofVerifyError);
     }
