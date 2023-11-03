@@ -22,7 +22,7 @@ pub struct CommitmentKey<G: Group> {
 }
 
 impl<G: Group> Len for CommitmentKey<G> {
-  fn len(&self) -> usize {
+  fn length(&self) -> usize {
     self.ck.len()
   }
 }

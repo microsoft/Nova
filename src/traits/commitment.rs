@@ -76,7 +76,7 @@ pub trait CommitmentTrait<G: Group>:
 /// Note this does not impose any memory representation contraints on the structure.
 pub trait Len {
   /// Returns the length of the structure.
-  fn len(&self) -> usize;
+  fn length(&self) -> usize;
 }
 
 /// A trait that ties different pieces of the commitment generation together
