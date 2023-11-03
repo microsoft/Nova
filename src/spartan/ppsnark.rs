@@ -209,11 +209,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     Vec<G::Scalar>,
   ) {
     let mem_row = PowPolynomial::new(r_x, self.N.log_2()).evals();
-    let mem_col = {
-      let mut v = z.to_vec();
-      v.resize(self.N, G::Scalar::ZERO);
-      v
-    };
+    let mem_col = padded(z, self.N, &G::Scalar::ZERO);
 
     let (L_row, L_col) = {
       let mut L_row = vec![mem_row[0]; self.N]; // we place mem_row[0] since resized row is appended with 0s
