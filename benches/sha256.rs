@@ -155,7 +155,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
 
     // Produce public parameters
     let ttc = TrivialCircuit::default();
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(&circuit_primary, &ttc, None, None);
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(&circuit_primary, &ttc, &(|_| 0), &(|_| 0));
 
     let circuit_secondary = TrivialCircuit::default();
     let z0_primary = vec![<G1 as Group>::Scalar::from(2u64)];

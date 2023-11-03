@@ -78,7 +78,7 @@ pub struct RelaxedR1CSInstance<G: Group> {
   pub(crate) u: G::Scalar,
 }
 
-pub type CommitmentKeyHint<G> = Box<dyn Fn(&R1CSShape<G>) -> usize>;
+pub type CommitmentKeyHint<G> = dyn Fn(&R1CSShape<G>) -> usize;
 
 impl<G: Group> R1CS<G> {
   /// Generates public parameters for a Rank-1 Constraint System (R1CS).
@@ -89,17 +89,16 @@ impl<G: Group> R1CS<G> {
   /// # Arguments
   ///
   /// * `S`: The shape of the R1CS matrices.
-  /// * `commitment_key_hint`: An optional function that provides a floor for the number of
-  ///   generators. A good function to provide is the commitment_key_floor field in the trait `RelaxedR1CSSNARKTrait`.
-  ///   If no floot function is provided, the default number of generators will be max(S.num_cons, S.num_vars).
+  /// * `commitment_key_hint`: A function that provides a floor for the number of generators. A good function
+  ///   to provide is the commitment_key_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
   pub fn commitment_key(
     S: &R1CSShape<G>,
-    commitment_key_floor: Option<CommitmentKeyHint<G>>,
+    commitment_key_floor: &CommitmentKeyHint<G>,
   ) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
-    let generators_hint = commitment_key_floor.map(|f| f(S)).unwrap_or(0);
+    let generators_hint = commitment_key_floor(S);
     G::CE::setup(b"ck", max(max(num_cons, num_vars), generators_hint))
   }
 }

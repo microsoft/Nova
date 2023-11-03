@@ -30,8 +30,8 @@ fn bench_compute_digest(c: &mut Criterion) {
       PublicParams::<G1, G2, C1, C2>::setup(
         black_box(&C1::new(10)),
         black_box(&C2::default()),
-        black_box(None),
-        black_box(None),
+        black_box(&(|_| 0)),
+        black_box(&(|_| 0)),
       )
     })
   });
