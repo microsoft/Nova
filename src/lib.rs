@@ -41,7 +41,9 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
+use r1cs::{
+  CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
+};
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit,
@@ -93,8 +95,51 @@ where
   C1: StepCircuit<G1::Scalar>,
   C2: StepCircuit<G2::Scalar>,
 {
-  /// Create a new `PublicParams`
-  pub fn setup(c_primary: &C1, c_secondary: &C2) -> Self {
+  /// Creates a new `PublicParams` for a pair of circuits `C1` and `C2`.
+  ///
+  /// # Note
+  ///
+  /// Some SNARKs, like variants of Spartan, use computation commitments that require
+  /// larger sizes for some parameters. These SNARKs provide a hint for these values by
+  /// implementing `RelaxedR1CSSNARKTrait::commitment_key_floor()`, which can be passed to this function.
+  /// If you're not using such a SNARK, pass `None` instead.
+  ///
+  /// # Arguments
+  ///
+  /// * `c_primary`: The primary circuit of type `C1`.
+  /// * `c_secondary`: The secondary circuit of type `C2`.
+  /// * `optfn1`: An optional `CommitmentKeyHint` for `G1`, which is a function that provides a hint
+  ///   for the number of generators required in the commitment scheme for the primary circuit.
+  /// * `optfn2`: An optional `CommitmentKeyHint` for `G2`, similar to `optfn1`, but for the secondary circuit.
+  ///
+  /// # Example
+  ///
+  /// ```rust
+  /// # use pasta_curves::{vesta, pallas};
+  /// # use nova_snark::spartan::ppsnark::RelaxedR1CSSNARK;
+  /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
+  /// # use nova_snark::traits::{circuit::TrivialCircuit, Group, snark::RelaxedR1CSSNARKTrait};
+  /// use nova_snark::PublicParams;
+  ///
+  /// type G1 = pallas::Point;
+  /// type G2 = vesta::Point;
+  /// type EE<G> = EvaluationEngine<G>;
+  /// type SPrime<G> = RelaxedR1CSSNARK<G, EE<G>>;
+  ///
+  /// let circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
+  /// let circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
+  /// // Only relevant for a SNARK using computational commitments, pass None otherwise.
+  /// let pp_hint1 = Some(SPrime::<G1>::commitment_key_floor());
+  /// let pp_hint2 = Some(SPrime::<G2>::commitment_key_floor());
+  ///
+  /// let pp = PublicParams::setup(&circuit1, &circuit2, pp_hint1, pp_hint2);
+  /// ```
+  pub fn setup(
+    c_primary: &C1,
+    c_secondary: &C2,
+    optfn1: Option<CommitmentKeyHint<G1>>,
+    optfn2: Option<CommitmentKeyHint<G2>>,
+  ) -> Self {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -119,7 +164,7 @@ where
     );
     let mut cs: ShapeCS<G1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape();
+    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape(ck_hint1);
 
     // Initialize ck for the secondary
     let circuit_secondary: NovaAugmentedCircuit<'_, G1, C2> = NovaAugmentedCircuit::new(
@@ -130,7 +175,7 @@ where
     );
     let mut cs: ShapeCS<G2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape();
+    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape(ck_hint2);
 
     PublicParams {
       F_arity_primary,
@@ -815,6 +860,7 @@ type CE<G> = <G as Group>::CE;
 #[cfg(test)]
 mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
+  use crate::provider::pedersen::CommitmentKeyExtTrait;
   use crate::provider::secp_secq::{secp256k1, secq256k1};
   use crate::traits::evaluation::EvaluationEngineTrait;
   use core::fmt::Write;
@@ -889,8 +935,14 @@ mod tests {
     G2: Group<Base = <G1 as Group>::Scalar>,
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
+    // required to use the IPA in the initialization of the commitment key hints below
+    <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
+    <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
-    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
+    // this tests public parameters with a size specifically intended for a spark-compressed SNARK
+    let pp_hint1 = Some(SPrime::<G1, EE<G1>>::commitment_key_floor());
+    let pp_hint2 = Some(SPrime::<G2, EE<G2>>::commitment_key_floor());
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2, pp_hint1, pp_hint2);
 
     let digest_str = pp
       .digest()
@@ -969,7 +1021,7 @@ mod tests {
       G2,
       TrivialCircuit<<G1 as Group>::Scalar>,
       TrivialCircuit<<G2 as Group>::Scalar>,
-    >::setup(&test_circuit1, &test_circuit2);
+    >::setup(&test_circuit1, &test_circuit2, None, None);
 
     let num_steps = 1;
 
@@ -1021,7 +1073,7 @@ mod tests {
       G2,
       TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(&circuit_primary, &circuit_secondary);
+    >::setup(&circuit_primary, &circuit_secondary, None, None);
 
     let num_steps = 3;
 
@@ -1101,7 +1153,7 @@ mod tests {
       G2,
       TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(&circuit_primary, &circuit_secondary);
+    >::setup(&circuit_primary, &circuit_secondary, None, None);
 
     let num_steps = 3;
 
@@ -1184,13 +1236,18 @@ mod tests {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
-    // produce public parameters
+    // produce public parameters, which we'll use with a spark-compressed SNARK
     let pp = PublicParams::<
       G1,
       G2,
       TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(&circuit_primary, &circuit_secondary);
+    >::setup(
+      &circuit_primary,
+      &circuit_secondary,
+      Some(SPrime::<G1, E1>::commitment_key_floor()),
+      Some(SPrime::<G2, E2>::commitment_key_floor()),
+    );
 
     let num_steps = 3;
 
@@ -1354,7 +1411,7 @@ mod tests {
       G2,
       FifthRootCheckingCircuit<<G1 as Group>::Scalar>,
       TrivialCircuit<<G2 as Group>::Scalar>,
-    >::setup(&circuit_primary, &circuit_secondary);
+    >::setup(&circuit_primary, &circuit_secondary, None, None);
 
     let num_steps = 3;
 
@@ -1429,7 +1486,7 @@ mod tests {
       G2,
       TrivialCircuit<<G1 as Group>::Scalar>,
       CubicCircuit<<G2 as Group>::Scalar>,
-    >::setup(&test_circuit1, &test_circuit2);
+    >::setup(&test_circuit1, &test_circuit2, None, None);
 
     let num_steps = 1;
 

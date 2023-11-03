@@ -7,6 +7,7 @@ use ff::PrimeField;
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
+    snark::RelaxedR1CSSNARKTrait,
     Group,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
@@ -65,7 +66,12 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+      &c_primary,
+      &c_secondary,
+      Some(S1::commitment_key_floor()),
+      Some(S2::commitment_key_floor()),
+    );
 
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
@@ -147,8 +153,12 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(&c_primary, &c_secondary);
-
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+      &c_primary,
+      &c_secondary,
+      Some(SS1::commitment_key_floor()),
+      Some(SS2::commitment_key_floor()),
+    );
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, SS1, SS2>::setup(&pp).unwrap();
 

@@ -5,7 +5,7 @@
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
 use crate::{
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
+  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
   traits::Group,
   CommitmentKey,
 };
@@ -25,7 +25,9 @@ pub trait NovaWitness<G: Group> {
 /// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
 pub trait NovaShape<G: Group> {
   /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
-  fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>);
+  /// Optionally, a `CommitmentKeyHint` can be provided to help guide the
+  /// construction of the `CommitmentKey`. This parameter is documented in `r1cs::R1CS::commitment_key`.
+  fn r1cs_shape(&self, optfn: Option<CommitmentKeyHint<G>>) -> (R1CSShape<G>, CommitmentKey<G>);
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
@@ -51,7 +53,10 @@ macro_rules! impl_nova_shape {
     where
       G::Scalar: PrimeField,
     {
-      fn r1cs_shape(&self) -> (R1CSShape<G>, CommitmentKey<G>) {
+      fn r1cs_shape(
+        &self,
+        optfn: Option<CommitmentKeyHint<G>>,
+      ) -> (R1CSShape<G>, CommitmentKey<G>) {
         let mut A = SparseMatrix::<G::Scalar>::empty();
         let mut B = SparseMatrix::<G::Scalar>::empty();
         let mut C = SparseMatrix::<G::Scalar>::empty();
@@ -79,7 +84,7 @@ macro_rules! impl_nova_shape {
 
         // Don't count One as an input for shape's purposes.
         let S = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C).unwrap();
-        let ck = R1CS::<G>::commitment_key(&S);
+        let ck = R1CS::<G>::commitment_key(&S, optfn);
 
         (S, ck)
       }

@@ -2,7 +2,7 @@
 use crate::{
   errors::NovaError,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, CompressedGroup, Group, ROTrait, TranscriptReprTrait,
   },
 };
@@ -19,6 +19,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitmentKey<G: Group> {
   ck: Vec<G::PreprocessedGroupElement>,
+}
+
+impl<G: Group> Len for CommitmentKey<G> {
+  fn len(&self) -> usize {
+    self.ck.len()
+  }
 }
 
 /// A type that holds a commitment

@@ -19,7 +19,7 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait},
+    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Group, TranscriptEngineTrait, TranscriptReprTrait,
@@ -895,10 +895,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
   type ProverKey = ProverKey<G, EE>;
   type VerifierKey = VerifierKey<G, EE>;
 
+  fn commitment_key_floor() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
+    Box::new(|shape: &R1CSShape<G>| -> usize {
+      // the commitment key should be large enough to commit to the R1CS matrices
+      shape.A.len() + shape.B.len() + shape.C.len()
+    })
+  }
+
   fn setup(
     ck: &CommitmentKey<G>,
     S: &R1CSShape<G>,
   ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
+    // check the provided commitment key meets minimal requirements
+    assert!(ck.len() >= Self::commitment_key_floor()(S));
     let (pk_ee, vk_ee) = EE::setup(ck);
 
     // pad the R1CS matrices
