@@ -6,6 +6,7 @@ use ff::PrimeField;
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
+    snark::default_commitment_key_hint,
     Group,
   },
   PublicParams,
@@ -30,8 +31,8 @@ fn bench_compute_digest(c: &mut Criterion) {
       PublicParams::<G1, G2, C1, C2>::setup(
         black_box(&C1::new(10)),
         black_box(&C2::default()),
-        black_box(&(|_| 0)),
-        black_box(&(|_| 0)),
+        black_box(&*default_commitment_key_hint()),
+        black_box(&*default_commitment_key_hint()),
       )
     })
   });

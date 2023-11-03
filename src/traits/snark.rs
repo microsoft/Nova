@@ -8,6 +8,15 @@ use crate::{
 
 use serde::{Deserialize, Serialize};
 
+/// Public parameter creation takes a size hint. This size hint carries the particular requirements of
+/// the final compressing SNARK the user expected to use with these public parameters, and the below
+/// is a sensible default, which is to not require any more bases then the usual (maximum of the number of
+/// variables and constraints of the involved R1CS circuit).
+pub fn default_commitment_key_hint<G: Group>() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
+  // The default is to not put an additional floor on the size of the commitment key
+  Box::new(|_shape: &R1CSShape<G>| 0)
+}
+
 /// A trait that defines the behavior of a `zkSNARK`
 pub trait RelaxedR1CSSNARKTrait<G: Group>:
   Send + Sync + Serialize + for<'de> Deserialize<'de>
@@ -24,7 +33,7 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   /// be at least as large as this hint.
   fn commitment_key_floor() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
     // The default is to not put an additional floor on the size of the commitment key
-    Box::new(|_shape: &R1CSShape<G>| 0)
+    default_commitment_key_hint()
   }
 
   /// Produces the keys for the prover and the verifier
