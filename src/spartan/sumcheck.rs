@@ -175,8 +175,8 @@ impl<G: Group> SumcheckProof<G> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
-      // bound all tables to the verifier's challenege
-      let _ = poly_A_vec
+      // bound all tables to the verifier's challenge
+      poly_A_vec
         .par_iter_mut()
         .zip(poly_B_vec.par_iter_mut())
         .for_each(|(poly_A, poly_B)| {

@@ -136,10 +136,9 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
       let mut ts = vec![0usize; num_cells];
 
       assert!(num_ops >= addr_trace.len());
-      for i in 0..addr_trace.len() {
-        let addr = addr_trace[i];
-        assert!(addr < num_cells);
-        ts[addr] = ts[addr] + 1;
+      for addr in addr_trace {
+        assert!(*addr < num_cells);
+        ts[*addr] += 1;
       }
       ts
     };
@@ -363,8 +362,8 @@ impl<G: Group> LookupSumcheckInstance<G> {
       ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)),
       ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)),
     ) = rayon::join(
-      || helper(&T_row, &W_row, &ts_row, &r),
-      || helper(&T_col, &W_col, &ts_col, &r),
+      || helper(&T_row, &W_row, &ts_row, r),
+      || helper(&T_col, &W_col, &ts_col, r),
     );
 
     let t_plus_r_inv_row = t_plus_r_inv_row?;
@@ -674,7 +673,7 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
      -> G::Scalar { *poly_A_comp * *poly_B_comp * *poly_C_comp };
 
     let (eval_point_0, eval_point_2, eval_point_3) =
-      SumcheckProof::<G>::compute_eval_points_cubic(&poly_A, &poly_B, &poly_C, &comb_func);
+      SumcheckProof::<G>::compute_eval_points_cubic(poly_A, poly_B, poly_C, &comb_func);
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -806,8 +805,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
     let claims = mem
       .initial_claims()
       .into_iter()
-      .chain(outer.initial_claims().into_iter())
-      .chain(inner.initial_claims().into_iter())
+      .chain(outer.initial_claims())
+      .chain(inner.initial_claims())
       .collect::<Vec<G::Scalar>>();
 
     let s = transcript.squeeze(b"r")?;
