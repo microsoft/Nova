@@ -2,6 +2,7 @@
 //! sparse multilinear polynomials involved in Spartan's sum-check protocol, thereby providing a preprocessing SNARK
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
+//! This code includes experimental optimizations to reduce runtimes and proof sizes.
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -209,7 +210,7 @@ impl<G: Group> R1CSShapeSparkRepr<G> {
     Vec<G::Scalar>,
   ) {
     let mem_row = PowPolynomial::new(r_x, self.N.log_2()).evals();
-    let mem_col = padded(z, self.N, &G::Scalar::ZERO);
+    let mem_col = padded::<G>(z, self.N, &G::Scalar::ZERO);
 
     let (L_row, L_col) = {
       let mut L_row = vec![mem_row[0]; self.N]; // we place mem_row[0] since resized row is appended with 0s

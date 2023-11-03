@@ -8,14 +8,14 @@
 pub mod direct;
 pub(crate) mod math;
 pub mod polys;
+pub mod ppsnark;
 pub mod snark;
 mod sumcheck;
 
-pub mod ppsnark;
-use polys::multilinear::SparsePolynomial;
-
 use crate::{traits::Group, Commitment};
 use ff::Field;
+use polys::multilinear::SparsePolynomial;
+use rayon::{iter::IntoParallelRefIterator, prelude::*};
 
 fn powers<G: Group>(s: &G::Scalar, n: usize) -> Vec<G::Scalar> {
   assert!(n >= 1);
@@ -59,14 +59,29 @@ impl<G: Group> PolyEvalWitness<G> {
     PolyEvalWitness { p }
   }
 
+  // This method panics unless all vectors in p_vec are of the same length
   fn batch(p_vec: &[&Vec<G::Scalar>], s: &G::Scalar) -> PolyEvalWitness<G> {
+    p_vec
+      .iter()
+      .for_each(|p| assert_eq!(p.len(), p_vec[0].len()));
+
     let powers_of_s = powers::<G>(s, p_vec.len());
-    let mut p = vec![G::Scalar::ZERO; p_vec[0].len()];
-    for i in 0..p_vec.len() {
-      for (j, item) in p.iter_mut().enumerate().take(p_vec[i].len()) {
-        *item += p_vec[i][j] * powers_of_s[i]
-      }
-    }
+
+    let p = p_vec
+      .par_iter()
+      .zip(powers_of_s.par_iter())
+      .map(|(v, &weight)| {
+        // compute the weighted sum for each vector
+        v.iter().map(|&x| x * weight).collect::<Vec<G::Scalar>>()
+      })
+      .reduce(
+        || vec![G::Scalar::ZERO; p_vec[0].len()],
+        |acc, v| {
+          // perform vector addition to combine the weighted vectors
+          acc.into_iter().zip(v).map(|(x, y)| x + y).collect()
+        },
+      );
+
     PolyEvalWitness { p }
   }
 }
@@ -102,15 +117,15 @@ impl<G: Group> PolyEvalInstance<G> {
   ) -> PolyEvalInstance<G> {
     let powers_of_s = powers::<G>(s, c_vec.len());
     let e = e_vec
-      .iter()
-      .zip(powers_of_s.iter())
+      .par_iter()
+      .zip(powers_of_s.par_iter())
       .map(|(e, p)| *e * p)
       .sum();
     let c = c_vec
-      .iter()
-      .zip(powers_of_s.iter())
+      .par_iter()
+      .zip(powers_of_s.par_iter())
       .map(|(c, p)| *c * *p)
-      .fold(Commitment::<G>::default(), |acc, item| acc + item);
+      .reduce(Commitment::<G>::default, |acc, item| acc + item);
 
     PolyEvalInstance {
       c,
