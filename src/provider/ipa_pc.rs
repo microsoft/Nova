@@ -318,7 +318,7 @@ where
 
       // we can compute an inversion only if acc is non-zero
       if acc == G::Scalar::ZERO {
-        return Err(NovaError::InvalidInputLength);
+        return Err(NovaError::InternalError);
       }
 
       // compute the inverse once for all entries

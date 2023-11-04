@@ -225,22 +225,25 @@ mod tests {
     type G = pasta_curves::pallas::Point;
     type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
     type S = crate::spartan::snark::RelaxedR1CSSNARK<G, EE>;
-    type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G, EE>;
     test_direct_snark_with::<G, S>();
+
+    type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G, EE>;
     test_direct_snark_with::<G, Spp>();
 
     type G2 = bn256::Point;
     type EE2 = crate::provider::ipa_pc::EvaluationEngine<G2>;
     type S2 = crate::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
-    type S2pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
     test_direct_snark_with::<G2, S2>();
+
+    type S2pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
     test_direct_snark_with::<G2, S2pp>();
 
     type G3 = secp256k1::Point;
     type EE3 = crate::provider::ipa_pc::EvaluationEngine<G3>;
     type S3 = crate::spartan::snark::RelaxedR1CSSNARK<G3, EE3>;
-    type S3pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G3, EE3>;
     test_direct_snark_with::<G3, S3>();
+
+    type S3pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G3, EE3>;
     test_direct_snark_with::<G3, S3pp>();
   }
 
