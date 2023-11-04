@@ -62,7 +62,7 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_quadratic<F>(
+  pub(in crate::spartan) fn compute_eval_points_quad<F>(
     poly_A: &MultilinearPolynomial<G::Scalar>,
     poly_B: &MultilinearPolynomial<G::Scalar>,
     comb_func: &F,
@@ -106,7 +106,7 @@ impl<G: Group> SumcheckProof<G> {
     for _ in 0..num_rounds {
       let poly = {
         let (eval_point_0, eval_point_2) =
-          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
+          Self::compute_eval_points_quad(poly_A, poly_B, &comb_func);
 
         let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
         UniPoly::from_evals(&evals)
@@ -124,8 +124,10 @@ impl<G: Group> SumcheckProof<G> {
       claim_per_round = poly.evaluate(&r_i);
 
       // bound all tables to the verifier's challenege
-      poly_A.bound_poly_var_top(&r_i);
-      poly_B.bound_poly_var_top(&r_i);
+      rayon::join(
+        || poly_A.bound_poly_var_top(&r_i),
+        || poly_B.bound_poly_var_top(&r_i),
+      );
     }
 
     Ok((
@@ -153,14 +155,12 @@ impl<G: Group> SumcheckProof<G> {
     let mut r: Vec<G::Scalar> = Vec::new();
     let mut quad_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
 
-    for _j in 0..num_rounds {
-      let mut evals: Vec<(G::Scalar, G::Scalar)> = Vec::new();
-
-      for (poly_A, poly_B) in poly_A_vec.iter().zip(poly_B_vec.iter()) {
-        let (eval_point_0, eval_point_2) =
-          Self::compute_eval_points_quadratic(poly_A, poly_B, &comb_func);
-        evals.push((eval_point_0, eval_point_2));
-      }
+    for _ in 0..num_rounds {
+      let evals: Vec<(G::Scalar, G::Scalar)> = poly_A_vec
+        .par_iter()
+        .zip(poly_B_vec.par_iter())
+        .map(|(poly_A, poly_B)| Self::compute_eval_points_quad(poly_A, poly_B, &comb_func))
+        .collect();
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
       let evals_combined_2 = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
@@ -175,11 +175,16 @@ impl<G: Group> SumcheckProof<G> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
-      // bound all tables to the verifier's challenege
-      for (poly_A, poly_B) in poly_A_vec.iter_mut().zip(poly_B_vec.iter_mut()) {
-        poly_A.bound_poly_var_top(&r_i);
-        poly_B.bound_poly_var_top(&r_i);
-      }
+      // bound all tables to the verifier's challenge
+      poly_A_vec
+        .par_iter_mut()
+        .zip(poly_B_vec.par_iter_mut())
+        .for_each(|(poly_A, poly_B)| {
+          let _ = rayon::join(
+            || poly_A.bound_poly_var_top(&r_i),
+            || poly_B.bound_poly_var_top(&r_i),
+          );
+        });
 
       e = poly.evaluate(&r_i);
       quad_polys.push(poly.compress());
@@ -194,6 +199,50 @@ impl<G: Group> SumcheckProof<G> {
 
   #[inline]
   pub(in crate::spartan) fn compute_eval_points_cubic<F>(
+    poly_A: &MultilinearPolynomial<G::Scalar>,
+    poly_B: &MultilinearPolynomial<G::Scalar>,
+    poly_C: &MultilinearPolynomial<G::Scalar>,
+    comb_func: &F,
+  ) -> (G::Scalar, G::Scalar, G::Scalar)
+  where
+    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+  {
+    let len = poly_A.len() / 2;
+    (0..len)
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: bound_func is A(low)
+        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i]);
+
+        // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+        let eval_point_2 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+        );
+
+        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+        let eval_point_3 = comb_func(
+          &poly_A_bound_point,
+          &poly_B_bound_point,
+          &poly_C_bound_point,
+        );
+        (eval_point_0, eval_point_2, eval_point_3)
+      })
+      .reduce(
+        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+      )
+  }
+
+  #[inline]
+  pub(in crate::spartan) fn compute_eval_points_cubic_with_additive_term<F>(
     poly_A: &MultilinearPolynomial<G::Scalar>,
     poly_B: &MultilinearPolynomial<G::Scalar>,
     poly_C: &MultilinearPolynomial<G::Scalar>,
@@ -262,7 +311,9 @@ impl<G: Group> SumcheckProof<G> {
       let poly = {
         // Make an iterator returning the contributions to the evaluations
         let (eval_point_0, eval_point_2, eval_point_3) =
-          Self::compute_eval_points_cubic(poly_A, poly_B, poly_C, poly_D, &comb_func);
+          Self::compute_eval_points_cubic_with_additive_term(
+            poly_A, poly_B, poly_C, poly_D, &comb_func,
+          );
 
         let evals = vec![
           eval_point_0,
@@ -284,11 +335,21 @@ impl<G: Group> SumcheckProof<G> {
       // Set up next round
       claim_per_round = poly.evaluate(&r_i);
 
-      // bound all tables to the verifier's challenege
-      poly_A.bound_poly_var_top(&r_i);
-      poly_B.bound_poly_var_top(&r_i);
-      poly_C.bound_poly_var_top(&r_i);
-      poly_D.bound_poly_var_top(&r_i);
+      // bound all tables to the verifier's challenge
+      rayon::join(
+        || {
+          rayon::join(
+            || poly_A.bound_poly_var_top(&r_i),
+            || poly_B.bound_poly_var_top(&r_i),
+          )
+        },
+        || {
+          rayon::join(
+            || poly_C.bound_poly_var_top(&r_i),
+            || poly_D.bound_poly_var_top(&r_i),
+          )
+        },
+      );
     }
 
     Ok((
