@@ -541,19 +541,21 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
   }
 
   fn bound(&mut self, r: &G::Scalar) {
-    self.poly_eq.bound_poly_var_top(r);
-
-    self.t_plus_r_row.bound_poly_var_top(r);
-    self.t_plus_r_inv_row.bound_poly_var_top(r);
-    self.w_plus_r_row.bound_poly_var_top(r);
-    self.w_plus_r_inv_row.bound_poly_var_top(r);
-    self.ts_row.bound_poly_var_top(r);
-
-    self.t_plus_r_col.bound_poly_var_top(r);
-    self.t_plus_r_inv_col.bound_poly_var_top(r);
-    self.w_plus_r_col.bound_poly_var_top(r);
-    self.w_plus_r_inv_col.bound_poly_var_top(r);
-    self.ts_col.bound_poly_var_top(r);
+    [
+      &mut self.t_plus_r_row,
+      &mut self.t_plus_r_inv_row,
+      &mut self.w_plus_r_row,
+      &mut self.w_plus_r_inv_row,
+      &mut self.ts_row,
+      &mut self.t_plus_r_col,
+      &mut self.t_plus_r_inv_col,
+      &mut self.w_plus_r_col,
+      &mut self.w_plus_r_inv_col,
+      &mut self.ts_col,
+      &mut self.poly_eq,
+    ]
+    .par_iter_mut()
+    .for_each(|poly| poly.bound_poly_var_top(r));
   }
 
   fn final_claims(&self) -> Vec<Vec<G::Scalar>> {
@@ -619,20 +621,14 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
   }
 
   fn bound(&mut self, r: &G::Scalar) {
-    rayon::join(
-      || {
-        rayon::join(
-          || self.poly_tau.bound_poly_var_top(r),
-          || self.poly_Az.bound_poly_var_top(r),
-        )
-      },
-      || {
-        rayon::join(
-          || self.poly_Bz.bound_poly_var_top(r),
-          || self.poly_uCz_E.bound_poly_var_top(r),
-        )
-      },
-    );
+    [
+      &mut self.poly_tau,
+      &mut self.poly_Az,
+      &mut self.poly_Bz,
+      &mut self.poly_uCz_E,
+    ]
+    .par_iter_mut()
+    .for_each(|poly| poly.bound_poly_var_top(r));
   }
 
   fn final_claims(&self) -> Vec<Vec<G::Scalar>> {
@@ -676,15 +672,13 @@ impl<G: Group> SumcheckEngine<G> for InnerSumcheckInstance<G> {
   }
 
   fn bound(&mut self, r: &G::Scalar) {
-    rayon::join(
-      || self.poly_L_row.bound_poly_var_top(r),
-      || {
-        rayon::join(
-          || self.poly_L_col.bound_poly_var_top(r),
-          || self.poly_val.bound_poly_var_top(r),
-        )
-      },
-    );
+    [
+      &mut self.poly_L_row,
+      &mut self.poly_L_col,
+      &mut self.poly_val,
+    ]
+    .par_iter_mut()
+    .for_each(|poly| poly.bound_poly_var_top(r));
   }
 
   fn final_claims(&self) -> Vec<Vec<G::Scalar>> {
@@ -964,10 +958,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
-    // number of rounds of sum-check #1
-    let num_rounds_sat = pk.S_repr.N.log_2();
+    // number of rounds of sum-check
+    let num_rounds_sc = pk.S_repr.N.log_2();
     let tau = transcript.squeeze(b"t")?;
-    let tau_coords = PowPolynomial::new(&tau, num_rounds_sat).coordinates();
+    let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
     let (Az, Bz, Cz, W, E) = {
@@ -1021,7 +1015,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     // a sum-check instance to prove the first claim
     let mut outer_sc_inst = OuterSumcheckInstance {
-      poly_tau: MultilinearPolynomial::new(PowPolynomial::new(&tau, num_rounds_sat).evals()),
+      poly_tau: MultilinearPolynomial::new(PowPolynomial::new(&tau, num_rounds_sc).evals()),
       poly_Az: MultilinearPolynomial::new(Az.clone()),
       poly_Bz: MultilinearPolynomial::new(Bz.clone()),
       poly_uCz_E: {
@@ -1267,9 +1261,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
-    let num_rounds_sat = vk.S_comm.N.log_2();
+    let num_rounds_sc = vk.S_comm.N.log_2();
     let tau = transcript.squeeze(b"t")?;
-    let tau_coords = PowPolynomial::new(&tau, num_rounds_sat).coordinates();
+    let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
 
     transcript.absorb(
       b"e",
@@ -1321,18 +1315,18 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let claim = coeffs[7] * claim_inner; // rest are zeros
 
     // verify sc
-    let (claim_sat_final, rand_sc) = self.sc.verify(claim, num_rounds_sat, 3, &mut transcript)?;
+    let (claim_sc_final, rand_sc) = self.sc.verify(claim, num_rounds_sc, 3, &mut transcript)?;
 
-    // verify claim_sat_final
-    let claim_sat_final_expected = {
+    // verify claim_sc_final
+    let claim_sc_final_expected = {
       let rand_eq_bound_rand_sc = {
-        let poly_eq_coords = PowPolynomial::new(&rho, num_rounds_sat).coordinates();
+        let poly_eq_coords = PowPolynomial::new(&rho, num_rounds_sc).coordinates();
         EqPolynomial::new(poly_eq_coords).evaluate(&rand_sc)
       };
-      let taus_bound_rand_sc = PowPolynomial::new(&tau, num_rounds_sat).evaluate(&rand_sc);
+      let taus_bound_rand_sc = PowPolynomial::new(&tau, num_rounds_sc).evaluate(&rand_sc);
 
       let eval_t_plus_r_row = {
-        let eval_addr_row = IdentityPolynomial::new(num_rounds_sat).evaluate(&rand_sc);
+        let eval_addr_row = IdentityPolynomial::new(num_rounds_sc).evaluate(&rand_sc);
         let eval_val_row = taus_bound_rand_sc;
         let eval_t = eval_addr_row + gamma * eval_val_row;
         eval_t + r
@@ -1346,7 +1340,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       };
 
       let eval_t_plus_r_col = {
-        let eval_addr_col = IdentityPolynomial::new(num_rounds_sat).evaluate(&rand_sc);
+        let eval_addr_col = IdentityPolynomial::new(num_rounds_sc).evaluate(&rand_sc);
 
         // memory contents is z, so we compute eval_Z from eval_W and eval_X
         let eval_val_col = {
@@ -1419,7 +1413,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       claim_mem_final_expected + claim_outer_final_expected + claim_inner_final_expected
     };
 
-    if claim_sat_final_expected != claim_sat_final {
+    if claim_sc_final_expected != claim_sc_final {
       return Err(NovaError::InvalidSumcheckProof);
     }
 
