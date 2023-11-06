@@ -862,10 +862,16 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARK<G, EE> {
     let mut cubic_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _ in 0..num_rounds {
-      let mut evals: Vec<Vec<G::Scalar>> = Vec::new();
-      evals.extend(mem.evaluation_points());
-      evals.extend(outer.evaluation_points());
-      evals.extend(inner.evaluation_points());
+      let (evals_mem, (evals_outer, evals_inner)) = rayon::join(
+        || mem.evaluation_points(),
+        || rayon::join(|| outer.evaluation_points(), || inner.evaluation_points()),
+      );
+
+      let evals: Vec<Vec<G::Scalar>> = evals_mem
+        .into_iter()
+        .chain(evals_outer.into_iter())
+        .chain(evals_inner.into_iter())
+        .collect::<Vec<Vec<G::Scalar>>>();
       assert_eq!(evals.len(), claims.len());
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i][0] * coeffs[i]).sum();
