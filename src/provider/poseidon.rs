@@ -220,7 +220,7 @@ mod tests {
     let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
     let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
       PoseidonROCircuit::new(constants, num_absorbs);
-    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let mut cs = SatisfyingAssignment::<G>::new();
     for i in 0..num_absorbs {
       let num = G::Scalar::random(&mut csprng);
       ro.absorb(num);

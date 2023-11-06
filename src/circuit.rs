@@ -406,7 +406,7 @@ mod tests {
 
     // Execute the base case for the primary
     let zero1 = <<G2 as Group>::Base as Field>::ZERO;
-    let mut cs1: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let mut cs1 = SatisfyingAssignment::<G1>::new();
     let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(zero1), // pass zero for testing
       zero1,
@@ -425,7 +425,7 @@ mod tests {
 
     // Execute the base case for the secondary
     let zero2 = <<G1 as Group>::Base as Field>::ZERO;
-    let mut cs2: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs2 = SatisfyingAssignment::<G2>::new();
     let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G2>(zero2), // pass zero for testing
       zero2,

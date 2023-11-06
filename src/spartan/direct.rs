@@ -121,7 +121,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
 
   /// Produces a proof of satisfiability of the provided circuit
   pub fn prove(pk: &ProverKey<G, S>, sc: C, z_i: &[G::Scalar]) -> Result<Self, NovaError> {
-    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let mut cs = SatisfyingAssignment::<G>::new();
 
     let circuit: DirectCircuit<G, C> = DirectCircuit {
       z_i: Some(z_i.to_vec()),
