@@ -710,8 +710,8 @@ where
     pk: &ProverKey<G1, G2, C1, C2, S1, S2>,
     recursive_snark: &RecursiveSNARK<G1, G2, C1, C2>,
   ) -> Result<Self, NovaError> {
-    // fold the secondary circuit's instance
-    let res_secondary = NIFS::prove(
+    // fold the secondary circuit's instance with its running instance
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<G1>(pp.digest()),
@@ -720,9 +720,7 @@ where
       &recursive_snark.r_W_secondary,
       &recursive_snark.l_u_secondary,
       &recursive_snark.l_w_secondary,
-    );
-
-    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = res_secondary?;
+    )?;
 
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (r_W_snark_primary, f_W_snark_secondary) = rayon::join(
@@ -771,7 +769,7 @@ where
     z0_primary: &[G1::Scalar],
     z0_secondary: &[G2::Scalar],
   ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
-    // number of steps cannot be zero
+    // the number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
     }
@@ -826,7 +824,7 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    // fold the running instance and last instance to get a folded instance
+    // fold the secondary's running instance with the last instance to get a folded instance
     let f_U_secondary = self.nifs_secondary.verify(
       &vk.ro_consts_secondary,
       &scalar_as_base::<G1>(vk.pp_digest),
@@ -834,7 +832,8 @@ where
       &self.l_u_secondary,
     )?;
 
-    // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
+    // check the satisfiability of the folded instances using
+    // SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
       || {
         self
