@@ -255,7 +255,7 @@ pub trait SumcheckEngine<G: Group>: Send + Sync {
   fn final_claims(&self) -> Vec<Vec<G::Scalar>>;
 }
 
-struct LookupSumcheckInstance<G: Group> {
+struct MemorySumcheckInstance<G: Group> {
   // row
   w_plus_r_row: MultilinearPolynomial<G::Scalar>,
   t_plus_r_row: MultilinearPolynomial<G::Scalar>,
@@ -272,9 +272,12 @@ struct LookupSumcheckInstance<G: Group> {
 
   // eq
   poly_eq: MultilinearPolynomial<G::Scalar>,
+
+  // zero polynomial
+  poly_zero: MultilinearPolynomial<G::Scalar>,
 }
 
-impl<G: Group> LookupSumcheckInstance<G> {
+impl<G: Group> MemorySumcheckInstance<G> {
   pub fn new(
     ck: &CommitmentKey<G>,
     r: &G::Scalar,
@@ -415,6 +418,8 @@ impl<G: Group> LookupSumcheckInstance<G> {
       w_plus_r_inv_col.clone(),
     ];
 
+    let zero = vec![G::Scalar::ZERO; t_plus_r_inv_row.len()];
+
     Ok((
       Self {
         w_plus_r_row: MultilinearPolynomial::new(w_plus_r_row?),
@@ -428,6 +433,7 @@ impl<G: Group> LookupSumcheckInstance<G> {
         w_plus_r_inv_col: MultilinearPolynomial::new(w_plus_r_inv_col),
         ts_col: MultilinearPolynomial::new(ts_col),
         poly_eq,
+        poly_zero: MultilinearPolynomial::new(zero),
       },
       comm_vec,
       poly_vec,
@@ -435,7 +441,7 @@ impl<G: Group> LookupSumcheckInstance<G> {
   }
 }
 
-impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
+impl<G: Group> SumcheckEngine<G> for MemorySumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
     vec![G::Scalar::ZERO; 6]
   }
@@ -456,8 +462,6 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<G::Scalar>> {
-    let poly_zero = MultilinearPolynomial::new(vec![G::Scalar::ZERO; self.w_plus_r_row.len()]);
-
     let comb_func = |poly_A_comp: &G::Scalar,
                      poly_B_comp: &G::Scalar,
                      _poly_C_comp: &G::Scalar|
@@ -482,7 +486,7 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
       SumcheckProof::<G>::compute_eval_points_cubic(
         &self.t_plus_r_inv_row,
         &self.w_plus_r_inv_row,
-        &poly_zero,
+        &self.poly_zero,
         &comb_func,
       );
 
@@ -490,7 +494,7 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
       SumcheckProof::<G>::compute_eval_points_cubic(
         &self.t_plus_r_inv_col,
         &self.w_plus_r_inv_col,
-        &poly_zero,
+        &self.poly_zero,
         &comb_func,
       );
 
@@ -508,7 +512,7 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
         &self.poly_eq,
         &self.w_plus_r_inv_row,
         &self.w_plus_r_row,
-        &poly_zero,
+        &self.poly_zero,
         &comb_func2,
       );
 
@@ -526,7 +530,7 @@ impl<G: Group> SumcheckEngine<G> for LookupSumcheckInstance<G> {
         &self.poly_eq,
         &self.w_plus_r_inv_col,
         &self.w_plus_r_col,
-        &poly_zero,
+        &self.poly_zero,
         &comb_func2,
       );
 
@@ -580,11 +584,38 @@ struct OuterSumcheckInstance<G: Group> {
   poly_Az: MultilinearPolynomial<G::Scalar>,
   poly_Bz: MultilinearPolynomial<G::Scalar>,
   poly_uCz_E: MultilinearPolynomial<G::Scalar>,
+
+  poly_Mz: MultilinearPolynomial<G::Scalar>,
+  eval_Mz_at_tau: G::Scalar,
+
+  poly_zero: MultilinearPolynomial<G::Scalar>,
+}
+
+impl<G: Group> OuterSumcheckInstance<G> {
+  pub fn new(
+    tau: Vec<G::Scalar>,
+    Az: Vec<G::Scalar>,
+    Bz: Vec<G::Scalar>,
+    uCz_E: Vec<G::Scalar>,
+    Mz: Vec<G::Scalar>,
+    eval_Mz_at_tau: &G::Scalar,
+  ) -> Self {
+    let zero = vec![G::Scalar::ZERO; tau.len()];
+    Self {
+      poly_tau: MultilinearPolynomial::new(tau),
+      poly_Az: MultilinearPolynomial::new(Az),
+      poly_Bz: MultilinearPolynomial::new(Bz),
+      poly_uCz_E: MultilinearPolynomial::new(uCz_E),
+      poly_Mz: MultilinearPolynomial::new(Mz),
+      eval_Mz_at_tau: *eval_Mz_at_tau,
+      poly_zero: MultilinearPolynomial::new(zero),
+    }
+  }
 }
 
 impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
   fn initial_claims(&self) -> Vec<G::Scalar> {
-    vec![G::Scalar::ZERO]
+    vec![G::Scalar::ZERO, self.eval_Mz_at_tau]
   }
 
   fn degree(&self) -> usize {
@@ -595,16 +626,11 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
     assert_eq!(self.poly_tau.len(), self.poly_Az.len());
     assert_eq!(self.poly_tau.len(), self.poly_Bz.len());
     assert_eq!(self.poly_tau.len(), self.poly_uCz_E.len());
+    assert_eq!(self.poly_tau.len(), self.poly_Mz.len());
     self.poly_tau.len()
   }
 
   fn evaluation_points(&self) -> Vec<Vec<G::Scalar>> {
-    let (poly_A, poly_B, poly_C, poly_D) = (
-      &self.poly_tau,
-      &self.poly_Az,
-      &self.poly_Bz,
-      &self.poly_uCz_E,
-    );
     let comb_func =
       |poly_A_comp: &G::Scalar,
        poly_B_comp: &G::Scalar,
@@ -612,12 +638,32 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
        poly_D_comp: &G::Scalar|
        -> G::Scalar { *poly_A_comp * (*poly_B_comp * *poly_C_comp - *poly_D_comp) };
 
-    let (eval_point_0, eval_point_2, eval_point_3) =
+    let (eval_point_h_0, eval_point_h_2, eval_point_h_3) =
       SumcheckProof::<G>::compute_eval_points_cubic_with_additive_term(
-        poly_A, poly_B, poly_C, poly_D, &comb_func,
+        &self.poly_tau,
+        &self.poly_Az,
+        &self.poly_Bz,
+        &self.poly_uCz_E,
+        &comb_func,
       );
 
-    vec![vec![eval_point_0, eval_point_2, eval_point_3]]
+    let comb_func2 = |poly_A_comp: &G::Scalar,
+                      poly_B_comp: &G::Scalar,
+                      _poly_C_comp: &G::Scalar|
+     -> G::Scalar { *poly_A_comp * *poly_B_comp };
+
+    let (eval_point_e_0, eval_point_e_2, eval_point_e_3) =
+      SumcheckProof::<G>::compute_eval_points_cubic(
+        &self.poly_tau,
+        &self.poly_Mz,
+        &self.poly_zero,
+        &comb_func2,
+      );
+
+    vec![
+      vec![eval_point_h_0, eval_point_h_2, eval_point_h_3],
+      vec![eval_point_e_0, eval_point_e_2, eval_point_e_3],
+    ]
   }
 
   fn bound(&mut self, r: &G::Scalar) {
@@ -626,6 +672,7 @@ impl<G: Group> SumcheckEngine<G> for OuterSumcheckInstance<G> {
       &mut self.poly_Az,
       &mut self.poly_Bz,
       &mut self.poly_uCz_E,
+      &mut self.poly_Mz,
     ]
     .par_iter_mut()
     .for_each(|poly| poly.bound_poly_var_top(r));
@@ -937,9 +984,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let W = W.pad(&S); // pad the witness
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
 
-    // a list of polynomial evaluation claims that will be batched
-    let mut w_u_vec = Vec::new();
-
     // append the verifier key (which includes commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"U", U);
@@ -996,7 +1040,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     // absorb commitments to L_row and L_col in the transcript
     transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
 
-    // add claims about Az, Bz, and Cz to be checked later
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau
     let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
@@ -1006,25 +1049,23 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let c = transcript.squeeze(b"c")?;
     let w: PolyEvalWitness<G> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<G> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
-    w_u_vec.push((w, u));
 
     // we now need to prove three claims
-    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x))
-    // (2) eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + r * val_B(y) + r^2 * val_C(y)) * L_col(y)
+    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
+    // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
     // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
 
     // a sum-check instance to prove the first claim
-    let mut outer_sc_inst = OuterSumcheckInstance {
-      poly_tau: MultilinearPolynomial::new(PowPolynomial::new(&tau, num_rounds_sc).evals()),
-      poly_Az: MultilinearPolynomial::new(Az.clone()),
-      poly_Bz: MultilinearPolynomial::new(Bz.clone()),
-      poly_uCz_E: {
-        let uCz_E = (0..Cz.len())
-          .map(|i| U.u * Cz[i] + E[i])
-          .collect::<Vec<G::Scalar>>();
-        MultilinearPolynomial::new(uCz_E)
-      },
-    };
+    let mut outer_sc_inst = OuterSumcheckInstance::new(
+      PowPolynomial::new(&tau, num_rounds_sc).evals(),
+      Az.clone(),
+      Bz.clone(),
+      (0..Cz.len())
+        .map(|i| U.u * Cz[i] + E[i])
+        .collect::<Vec<G::Scalar>>(),
+      w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
+      &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
+    );
 
     // a sum-check instance to prove the second claim
     let val = pk
@@ -1073,7 +1114,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     );
 
     let r = transcript.squeeze(b"r")?;
-    let (mut mem_sc_inst, comm_lookup, polys_lookup) = LookupSumcheckInstance::new(
+    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = MemorySumcheckInstance::new(
       ck,
       &r,
       T_row,
@@ -1160,13 +1201,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       pk.S_comm.comm_val_A,
       pk.S_comm.comm_val_B,
       pk.S_comm.comm_val_C,
-      comm_lookup[0],
+      comm_mem_oracles[0],
       pk.S_comm.comm_row,
-      comm_lookup[1],
+      comm_mem_oracles[1],
       pk.S_comm.comm_ts_row,
-      comm_lookup[2],
+      comm_mem_oracles[2],
       pk.S_comm.comm_col,
-      comm_lookup[3],
+      comm_mem_oracles[3],
       pk.S_comm.comm_ts_col,
     ];
     let poly_vec = [
@@ -1180,13 +1221,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       &pk.S_repr.val_A,
       &pk.S_repr.val_B,
       &pk.S_repr.val_C,
-      polys_lookup[0].as_ref(),
+      mem_oracles[0].as_ref(),
       &pk.S_repr.row,
-      polys_lookup[1].as_ref(),
+      mem_oracles[1].as_ref(),
       &pk.S_repr.ts_row,
-      polys_lookup[2].as_ref(),
+      mem_oracles[2].as_ref(),
       &pk.S_repr.col,
-      polys_lookup[3].as_ref(),
+      mem_oracles[3].as_ref(),
       &pk.S_repr.ts_col,
     ];
     transcript.absorb(b"e", &eval_vec.as_slice()); // comm_vec is already in the transcript
@@ -1203,10 +1244,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
       comm_L_row: comm_L_row.compress(),
       comm_L_col: comm_L_col.compress(),
 
-      comm_t_plus_r_inv_row: comm_lookup[0].compress(),
-      comm_w_plus_r_inv_row: comm_lookup[1].compress(),
-      comm_t_plus_r_inv_col: comm_lookup[2].compress(),
-      comm_w_plus_r_inv_col: comm_lookup[3].compress(),
+      comm_t_plus_r_inv_row: comm_mem_oracles[0].compress(),
+      comm_w_plus_r_inv_row: comm_mem_oracles[1].compress(),
+      comm_t_plus_r_inv_col: comm_mem_oracles[2].compress(),
+      comm_w_plus_r_inv_col: comm_mem_oracles[3].compress(),
 
       eval_Az_at_tau,
       eval_Bz_at_tau,
@@ -1243,7 +1284,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
     let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
-    let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest());
@@ -1288,9 +1328,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
     transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
-    let u = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
-    let claim_inner = u.e;
-    u_vec.push(u);
+    let u: PolyEvalInstance<G> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
+    let claim = u.e;
 
     let gamma = transcript.squeeze(b"g")?;
 
@@ -1309,10 +1348,10 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     let rho = transcript.squeeze(b"r")?;
 
-    let num_claims = 8;
+    let num_claims = 9;
     let s = transcript.squeeze(b"r")?;
     let coeffs = powers::<G>(&s, num_claims);
-    let claim = coeffs[7] * claim_inner; // rest are zeros
+    let claim = (coeffs[7] + coeffs[8]) * claim; // rest are zeros
 
     // verify sc
     let (claim_sc_final, rand_sc) = self.sc.verify(claim, num_rounds_sc, 3, &mut transcript)?;
@@ -1404,8 +1443,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
       let claim_outer_final_expected = coeffs[6]
         * taus_bound_rand_sc
-        * (self.eval_Az * self.eval_Bz - U.u * self.eval_Cz - self.eval_E);
-      let claim_inner_final_expected = coeffs[7]
+        * (self.eval_Az * self.eval_Bz - U.u * self.eval_Cz - self.eval_E)
+        + coeffs[7] * taus_bound_rand_sc * (self.eval_Az + c * self.eval_Bz + c * c * self.eval_Cz);
+      let claim_inner_final_expected = coeffs[8]
         * self.eval_L_row
         * self.eval_L_col
         * (self.eval_val_A + c * self.eval_val_B + c * c * self.eval_val_C);
