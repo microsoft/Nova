@@ -1054,77 +1054,86 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
     // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
     // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
-
-    // a sum-check instance to prove the first claim
-    let mut outer_sc_inst = OuterSumcheckInstance::new(
-      PowPolynomial::new(&tau, num_rounds_sc).evals(),
-      Az.clone(),
-      Bz.clone(),
-      (0..Cz.len())
-        .map(|i| U.u * Cz[i] + E[i])
-        .collect::<Vec<G::Scalar>>(),
-      w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
-      &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
-    );
-
-    // a sum-check instance to prove the second claim
-    let val = pk
-      .S_repr
-      .val_A
-      .iter()
-      .zip(pk.S_repr.val_B.iter())
-      .zip(pk.S_repr.val_C.iter())
-      .map(|((v_a, v_b), v_c)| *v_a + c * *v_b + c * c * *v_c)
-      .collect::<Vec<G::Scalar>>();
-    let mut inner_sc_inst = InnerSumcheckInstance {
-      claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
-      poly_L_row: MultilinearPolynomial::new(L_row.clone()),
-      poly_L_col: MultilinearPolynomial::new(L_col.clone()),
-      poly_val: MultilinearPolynomial::new(val),
-    };
-
-    // a third sum-check instance to prove the read-only memory claim
-    // we now need to prove that L_row and L_col are well-formed
     let gamma = transcript.squeeze(b"g")?;
+    let r = transcript.squeeze(b"r")?;
 
-    // hash the tuples of (addr,val) memory contents and read responses into a single field element using `hash_func`
-    let hash_func_vec = |mem: &[G::Scalar],
-                         addr: &[G::Scalar],
-                         lookups: &[G::Scalar]|
-     -> (Vec<G::Scalar>, Vec<G::Scalar>) {
-      let hash_func = |addr: &G::Scalar, val: &G::Scalar| -> G::Scalar { *val * gamma + *addr };
-      assert_eq!(addr.len(), lookups.len());
-      rayon::join(
-        || {
-          (0..mem.len())
-            .map(|i| hash_func(&G::Scalar::from(i as u64), &mem[i]))
-            .collect::<Vec<G::Scalar>>()
-        },
-        || {
-          (0..addr.len())
-            .map(|i| hash_func(&addr[i], &lookups[i]))
-            .collect::<Vec<G::Scalar>>()
-        },
-      )
-    };
+    let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
+      || {
+        // a sum-check instance to prove the first claim
+        let outer_sc_inst = OuterSumcheckInstance::new(
+          PowPolynomial::new(&tau, num_rounds_sc).evals(),
+          Az.clone(),
+          Bz.clone(),
+          (0..Cz.len())
+            .map(|i| U.u * Cz[i] + E[i])
+            .collect::<Vec<G::Scalar>>(),
+          w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
+          &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
+        );
 
-    let ((T_row, W_row), (T_col, W_col)) = rayon::join(
-      || hash_func_vec(&mem_row, &pk.S_repr.row, &L_row),
-      || hash_func_vec(&mem_col, &pk.S_repr.col, &L_col),
+        // a sum-check instance to prove the second claim
+        let val = pk
+          .S_repr
+          .val_A
+          .par_iter()
+          .zip(pk.S_repr.val_B.par_iter())
+          .zip(pk.S_repr.val_C.par_iter())
+          .map(|((v_a, v_b), v_c)| *v_a + c * *v_b + c * c * *v_c)
+          .collect::<Vec<G::Scalar>>();
+        let inner_sc_inst = InnerSumcheckInstance {
+          claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
+          poly_L_row: MultilinearPolynomial::new(L_row.clone()),
+          poly_L_col: MultilinearPolynomial::new(L_col.clone()),
+          poly_val: MultilinearPolynomial::new(val),
+        };
+
+        (outer_sc_inst, inner_sc_inst)
+      },
+      || {
+        // a third sum-check instance to prove the read-only memory claim
+        // we now need to prove that L_row and L_col are well-formed
+
+        // hash the tuples of (addr,val) memory contents and read responses into a single field element using `hash_func`
+        let hash_func_vec = |mem: &[G::Scalar],
+                             addr: &[G::Scalar],
+                             lookups: &[G::Scalar]|
+         -> (Vec<G::Scalar>, Vec<G::Scalar>) {
+          let hash_func = |addr: &G::Scalar, val: &G::Scalar| -> G::Scalar { *val * gamma + *addr };
+          assert_eq!(addr.len(), lookups.len());
+          rayon::join(
+            || {
+              (0..mem.len())
+                .map(|i| hash_func(&G::Scalar::from(i as u64), &mem[i]))
+                .collect::<Vec<G::Scalar>>()
+            },
+            || {
+              (0..addr.len())
+                .map(|i| hash_func(&addr[i], &lookups[i]))
+                .collect::<Vec<G::Scalar>>()
+            },
+          )
+        };
+
+        let ((T_row, W_row), (T_col, W_col)) = rayon::join(
+          || hash_func_vec(&mem_row, &pk.S_repr.row, &L_row),
+          || hash_func_vec(&mem_col, &pk.S_repr.col, &L_col),
+        );
+
+        MemorySumcheckInstance::new(
+          ck,
+          &r,
+          T_row,
+          W_row,
+          pk.S_repr.ts_row.clone(),
+          T_col,
+          W_col,
+          pk.S_repr.ts_col.clone(),
+          &mut transcript,
+        )
+      },
     );
 
-    let r = transcript.squeeze(b"r")?;
-    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = MemorySumcheckInstance::new(
-      ck,
-      &r,
-      T_row,
-      W_row,
-      pk.S_repr.ts_row.clone(),
-      T_col,
-      W_col,
-      pk.S_repr.ts_col.clone(),
-      &mut transcript,
-    )?;
+    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
 
     let (sc, rand_sc, claims_mem, claims_outer, claims_inner) = Self::prove_helper(
       &mut mem_sc_inst,
