@@ -246,8 +246,7 @@ where
   i: usize,
   zi_primary: Vec<G1::Scalar>,
   zi_secondary: Vec<G2::Scalar>,
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
+  _p: PhantomData<(C1, C2)>,
 }
 
 impl<G1, G2, C1, C2> RecursiveSNARK<G1, G2, C1, C2>
@@ -365,8 +364,7 @@ where
       i: 0,
       zi_primary,
       zi_secondary,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
+      _p: Default::default(),
     })
   }
 
@@ -606,8 +604,7 @@ where
 {
   pk_primary: S1::ProverKey,
   pk_secondary: S2::ProverKey,
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
+  _p: PhantomData<(C1, C2)>,
 }
 
 /// A type that holds the verifier key for `CompressedSNARK`
@@ -629,8 +626,7 @@ where
   pp_digest: G1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
+  _p: PhantomData<(C1, C2)>,
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
@@ -656,8 +652,7 @@ where
   zn_primary: Vec<G1::Scalar>,
   zn_secondary: Vec<G2::Scalar>,
 
-  _p_c1: PhantomData<C1>,
-  _p_c2: PhantomData<C2>,
+  _p: PhantomData<(C1, C2)>,
 }
 
 impl<G1, G2, C1, C2, S1, S2> CompressedSNARK<G1, G2, C1, C2, S1, S2>
@@ -685,8 +680,7 @@ where
     let pk = ProverKey {
       pk_primary,
       pk_secondary,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
+      _p: Default::default(),
     };
 
     let vk = VerifierKey {
@@ -697,8 +691,7 @@ where
       pp_digest: pp.digest(),
       vk_primary,
       vk_secondary,
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
+      _p: Default::default(),
     };
 
     Ok((pk, vk))
@@ -756,8 +749,7 @@ where
       zn_primary: recursive_snark.zi_primary.clone(),
       zn_secondary: recursive_snark.zi_secondary.clone(),
 
-      _p_c1: Default::default(),
-      _p_c2: Default::default(),
+      _p: Default::default(),
     })
   }
 
