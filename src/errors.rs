@@ -59,4 +59,7 @@ pub enum NovaError {
   /// returned when there is an error creating a digest
   #[error("DigestError")]
   DigestError,
+  /// returned when the prover cannot prove the provided statement due to completeness error
+  #[error("InternalError")]
+  InternalError,
 }

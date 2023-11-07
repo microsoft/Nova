@@ -320,7 +320,7 @@ where
       // return error if acc is zero
       acc = match Option::from(acc.invert()) {
         Some(inv) => inv,
-        None => return Err(NovaError::InvalidInputLength)
+        None => return Err(NovaError::InternalError),
       };
 
       // compute the inverse once for all entries

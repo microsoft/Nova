@@ -1234,7 +1234,6 @@ mod tests {
     assert_eq!(zn_secondary, vec![<G2 as Group>::Scalar::from(2460515u64)]);
 
     // run the compressed snark with Spark compiler
-
     // produce the prover and verifier keys for compressed snark
     let (pk, vk) =
       CompressedSNARK::<_, _, _, _, SPrime<G1, E1>, SPrime<G2, E2>>::setup(&pp).unwrap();
