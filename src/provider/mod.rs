@@ -262,28 +262,41 @@ macro_rules! impl_traits {
 
 #[cfg(test)]
 mod tests {
-  use group::{ff::Field, Group};
-  use rand_core::OsRng;
-
   use super::cpu_best_multiexp;
 
-  type F = pasta_curves::pallas::Scalar;
-  type G = pasta_curves::pallas::Point;
-  type A = pasta_curves::pallas::Affine;
+  use crate::provider::{
+    bn256_grumpkin::{bn256, grumpkin},
+    secp_secq::{secp256k1, secq256k1},
+  };
+  use group::{ff::Field, Group};
+  use halo2curves::CurveAffine;
+  use pasta_curves::{pallas, vesta};
+  use rand_core::OsRng;
 
-  #[test]
-  fn msm_test() {
+  fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
     let n = 8;
     let coeffs = (0..n).map(|_| F::random(OsRng)).collect::<Vec<_>>();
     let bases = (0..n)
-      .map(|_| A::from(G::random(OsRng)))
+      .map(|_| A::from(A::generator() * F::random(OsRng)))
       .collect::<Vec<_>>();
     let naive = coeffs
       .iter()
       .zip(bases.iter())
-      .fold(G::identity(), |acc, (coeff, base)| acc + base * coeff);
+      .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
+        acc + *base * coeff
+      });
     let msm = cpu_best_multiexp(&coeffs, &bases);
 
     assert_eq!(naive, msm)
+  }
+
+  #[test]
+  fn test_msm() {
+    test_msm_with::<pallas::Scalar, pallas::Affine>();
+    test_msm_with::<vesta::Scalar, vesta::Affine>();
+    test_msm_with::<bn256::Scalar, bn256::Affine>();
+    test_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
+    test_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
+    test_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
   }
 }
