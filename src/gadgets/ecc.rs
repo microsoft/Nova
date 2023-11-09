@@ -1006,7 +1006,7 @@ mod tests {
     let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
-    let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs = SatisfyingAssignment::<G2>::new();
     let (a, e, s) = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
@@ -1062,7 +1062,7 @@ mod tests {
     let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
-    let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs = SatisfyingAssignment::<G2>::new();
     let (a, e) = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let a_p: Point<G1> = Point::new(
@@ -1122,7 +1122,7 @@ mod tests {
     let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
-    let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs = SatisfyingAssignment::<G2>::new();
     let e = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add negation"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let e_p: Point<G1> = Point::new(

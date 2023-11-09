@@ -270,7 +270,7 @@ where
     }
 
     // base case for the primary
-    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let mut cs_primary = SatisfyingAssignment::<G1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::ZERO,
@@ -297,7 +297,7 @@ where
       .expect("Nova error unsat");
 
     // base case for the secondary
-    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs_secondary = SatisfyingAssignment::<G2>::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
       G2::Scalar::ZERO,
@@ -397,7 +397,7 @@ where
     )
     .expect("Unable to fold secondary");
 
-    let mut cs_primary: SatisfyingAssignment<G1> = SatisfyingAssignment::new();
+    let mut cs_primary = SatisfyingAssignment::<G1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<G1>(pp.digest()),
       G1::Scalar::from(self.i as u64),
@@ -436,7 +436,7 @@ where
     )
     .expect("Unable to fold primary");
 
-    let mut cs_secondary: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
+    let mut cs_secondary = SatisfyingAssignment::<G2>::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
       G2::Scalar::from(self.i as u64),
