@@ -287,69 +287,18 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     let (w_vec, u_vec): (Vec<PolyEvalWitness<E>>, Vec<PolyEvalInstance<E>>) =
       w_u_vec.into_iter().unzip();
-    let w_vec_padded = PolyEvalWitness::pad(&w_vec); // pad the polynomials to be of the same size
-    let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
-    // generate a challenge
-    let rho = transcript.squeeze(b"r")?;
-    let num_claims = w_vec_padded.len();
-    let powers_of_rho = powers::<E>(&rho, num_claims);
-    let claim_batch_joint = u_vec_padded
-      .iter()
-      .zip(powers_of_rho.iter())
-      .map(|(u, p)| u.e * p)
-      .sum();
-
-    let mut polys_left: Vec<MultilinearPolynomial<E::Scalar>> = w_vec_padded
-      .iter()
-      .map(|w| MultilinearPolynomial::new(w.p.clone()))
-      .collect();
-    let mut polys_right: Vec<MultilinearPolynomial<E::Scalar>> = u_vec_padded
-      .iter()
-      .map(|u| MultilinearPolynomial::new(EqPolynomial::new(u.x.clone()).evals()))
-      .collect();
-
-    let num_rounds_z = u_vec_padded[0].x.len();
-    let comb_func = |poly_A_comp: &E::Scalar, poly_B_comp: &E::Scalar| -> E::Scalar {
-      *poly_A_comp * *poly_B_comp
-    };
-    let (sc_proof_batch, r_z, claims_batch) = SumcheckProof::prove_quad_batch(
-      &claim_batch_joint,
-      num_rounds_z,
-      &mut polys_left,
-      &mut polys_right,
-      &powers_of_rho,
-      comb_func,
-      &mut transcript,
-    )?;
-
-    let (claims_batch_left, _): (Vec<E::Scalar>, Vec<E::Scalar>) = claims_batch;
-
-    transcript.absorb(b"l", &claims_batch_left.as_slice());
-
-    // we now combine evaluation claims at the same point rz into one
-    let gamma = transcript.squeeze(b"g")?;
-    let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
-    let comm_joint = u_vec_padded
-      .iter()
-      .zip(powers_of_gamma.iter())
-      .map(|(u, g_i)| u.c * *g_i)
-      .fold(Commitment::<E>::default(), |acc, item| acc + item);
-    let poly_joint = PolyEvalWitness::weighted_sum(&w_vec_padded, &powers_of_gamma);
-    let eval_joint = claims_batch_left
-      .iter()
-      .zip(powers_of_gamma.iter())
-      .map(|(e, g_i)| *e * *g_i)
-      .sum();
+    let (batched_u, batched_w, sc_proof_batch, claims_batch_left) =
+      batch_eval_prove(u_vec, w_vec, &mut transcript)?;
 
     let eval_arg = EE::prove(
       ck,
       &pk.pk_ee,
       &mut transcript,
-      &comm_joint,
-      &poly_joint.p,
-      &r_z,
-      &eval_joint,
+      &batched_u.c,
+      &batched_w.p,
+      &batched_u.x,
+      &batched_u.e,
     )?;
 
     Ok(RelaxedR1CSSNARK {
@@ -484,70 +433,175 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       },
     ];
 
-    let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
-
-    // generate a challenge
-    let rho = transcript.squeeze(b"r")?;
-    let num_claims = u_vec.len();
-    let powers_of_rho = powers::<E>(&rho, num_claims);
-    let claim_batch_joint = u_vec
-      .iter()
-      .zip(powers_of_rho.iter())
-      .map(|(u, p)| u.e * p)
-      .sum();
-
-    let num_rounds_z = u_vec_padded[0].x.len();
-    let (claim_batch_final, r_z) =
-      self
-        .sc_proof_batch
-        .verify(claim_batch_joint, num_rounds_z, 2, &mut transcript)?;
-
-    let claim_batch_final_expected = {
-      let poly_rz = EqPolynomial::new(r_z.clone());
-      let evals = u_vec_padded
-        .iter()
-        .map(|u| poly_rz.evaluate(&u.x))
-        .collect::<Vec<E::Scalar>>();
-
-      evals
-        .iter()
-        .zip(self.evals_batch.iter())
-        .zip(powers_of_rho.iter())
-        .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
-        .sum()
-    };
-
-    if claim_batch_final != claim_batch_final_expected {
-      return Err(NovaError::InvalidSumcheckProof);
-    }
-
-    transcript.absorb(b"l", &self.evals_batch.as_slice());
-
-    // we now combine evaluation claims at the same point rz into one
-    let gamma = transcript.squeeze(b"g")?;
-    let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
-    let comm_joint = u_vec_padded
-      .iter()
-      .zip(powers_of_gamma.iter())
-      .map(|(u, g_i)| u.c * *g_i)
-      .fold(Commitment::<E>::default(), |acc, item| acc + item);
-    let eval_joint = self
-      .evals_batch
-      .iter()
-      .zip(powers_of_gamma.iter())
-      .map(|(e, g_i)| *e * *g_i)
-      .sum();
+    let batched_u = batch_eval_verify(
+      u_vec,
+      &mut transcript,
+      &self.sc_proof_batch,
+      &self.evals_batch,
+    )?;
 
     // verify
     EE::verify(
       &vk.vk_ee,
       &mut transcript,
-      &comm_joint,
-      &r_z,
-      &eval_joint,
+      &batched_u.c,
+      &batched_u.x,
+      &batched_u.e,
       &self.eval_arg,
     )?;
 
     Ok(())
   }
+}
+
+/// Proves a batch of polynomial evaluation claims using Sumcheck
+/// reducing them to a single claim at the same point.
+fn batch_eval_prove<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  w_vec: Vec<PolyEvalWitness<E>>,
+  transcript: &mut E::TE,
+) -> Result<
+  (
+    PolyEvalInstance<E>,
+    PolyEvalWitness<E>,
+    SumcheckProof<E>,
+    Vec<E::Scalar>,
+  ),
+  NovaError,
+> {
+  assert_eq!(u_vec.len(), w_vec.len());
+
+  let w_vec_padded = PolyEvalWitness::pad(&w_vec); // pad the polynomials to be of the same size
+  let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
+
+  // generate a challenge
+  let rho = transcript.squeeze(b"r")?;
+  let num_claims = w_vec_padded.len();
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+  let claim_batch_joint = u_vec_padded
+    .iter()
+    .zip(powers_of_rho.iter())
+    .map(|(u, p)| u.e * p)
+    .sum();
+
+  let mut polys_left: Vec<MultilinearPolynomial<E::Scalar>> = w_vec_padded
+    .iter()
+    .map(|w| MultilinearPolynomial::new(w.p.clone()))
+    .collect();
+  let mut polys_right: Vec<MultilinearPolynomial<E::Scalar>> = u_vec_padded
+    .iter()
+    .map(|u| MultilinearPolynomial::new(EqPolynomial::new(u.x.clone()).evals()))
+    .collect();
+
+  let num_rounds_z = u_vec_padded[0].x.len();
+  let comb_func =
+    |poly_A_comp: &E::Scalar, poly_B_comp: &E::Scalar| -> E::Scalar { *poly_A_comp * *poly_B_comp };
+  let (sc_proof_batch, r_z, claims_batch) = SumcheckProof::prove_quad_batch(
+    &claim_batch_joint,
+    num_rounds_z,
+    &mut polys_left,
+    &mut polys_right,
+    &powers_of_rho,
+    comb_func,
+    transcript,
+  )?;
+
+  let (claims_batch_left, _): (Vec<E::Scalar>, Vec<E::Scalar>) = claims_batch;
+
+  transcript.absorb(b"l", &claims_batch_left.as_slice());
+
+  // we now combine evaluation claims at the same point rz into one
+  let gamma = transcript.squeeze(b"g")?;
+  let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
+  let comm_joint = u_vec_padded
+    .iter()
+    .zip(powers_of_gamma.iter())
+    .map(|(u, g_i)| u.c * *g_i)
+    .fold(Commitment::<E>::default(), |acc, item| acc + item);
+  let poly_joint = PolyEvalWitness::weighted_sum(&w_vec_padded, &powers_of_gamma);
+  let eval_joint = claims_batch_left
+    .iter()
+    .zip(powers_of_gamma.iter())
+    .map(|(e, g_i)| *e * *g_i)
+    .sum();
+
+  Ok((
+    PolyEvalInstance::<E> {
+      c: comm_joint,
+      x: r_z,
+      e: eval_joint,
+    },
+    poly_joint,
+    sc_proof_batch,
+    claims_batch_left,
+  ))
+}
+
+/// Verifies a batch of polynomial evaluation claims using Sumcheck
+/// reducing them to a single claim at the same point.
+fn batch_eval_verify<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  transcript: &mut E::TE,
+  sc_proof_batch: &SumcheckProof<E>,
+  evals_batch: &[E::Scalar],
+) -> Result<PolyEvalInstance<E>, NovaError> {
+  assert_eq!(evals_batch.len(), evals_batch.len());
+
+  let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
+
+  // generate a challenge
+  let rho = transcript.squeeze(b"r")?;
+  let num_claims = u_vec.len();
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+  let claim_batch_joint = u_vec
+    .iter()
+    .zip(powers_of_rho.iter())
+    .map(|(u, p)| u.e * p)
+    .sum();
+
+  let num_rounds_z = u_vec_padded[0].x.len();
+
+  let (claim_batch_final, r_z) =
+    sc_proof_batch.verify(claim_batch_joint, num_rounds_z, 2, transcript)?;
+
+  let claim_batch_final_expected = {
+    let poly_rz = EqPolynomial::new(r_z.clone());
+    let evals = u_vec_padded
+      .iter()
+      .map(|u| poly_rz.evaluate(&u.x))
+      .collect::<Vec<E::Scalar>>();
+
+    evals
+      .iter()
+      .zip(evals_batch.iter())
+      .zip(powers_of_rho.iter())
+      .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
+      .sum()
+  };
+
+  if claim_batch_final != claim_batch_final_expected {
+    return Err(NovaError::InvalidSumcheckProof);
+  }
+
+  transcript.absorb(b"l", &evals_batch);
+
+  // we now combine evaluation claims at the same point rz into one
+  let gamma = transcript.squeeze(b"g")?;
+  let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
+  let comm_joint = u_vec_padded
+    .iter()
+    .zip(powers_of_gamma.iter())
+    .map(|(u, g_i)| u.c * *g_i)
+    .fold(Commitment::<E>::default(), |acc, item| acc + item);
+  let eval_joint = evals_batch
+    .iter()
+    .zip(powers_of_gamma.iter())
+    .map(|(e, g_i)| *e * *g_i)
+    .sum();
+
+  Ok(PolyEvalInstance::<E> {
+    c: comm_joint,
+    x: r_z,
+    e: eval_joint,
+  })
 }
