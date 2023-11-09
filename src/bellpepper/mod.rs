@@ -15,7 +15,7 @@ mod tests {
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
-    traits::Group,
+    traits::{snark::default_commitment_key_hint, Group},
   };
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
   use ff::PrimeField;
@@ -47,7 +47,7 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<G> = ShapeCS::new();
     synthesize_alloc_bit(&mut cs);
-    let (shape, ck) = cs.r1cs_shape();
+    let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Now get the assignment
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();

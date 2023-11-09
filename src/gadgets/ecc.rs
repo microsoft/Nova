@@ -748,13 +748,16 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellpepper::{
-    r1cs::{NovaShape, NovaWitness},
-    {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
-  };
   use crate::provider::{
     bn256_grumpkin::{bn256, grumpkin},
     secp_secq::{secp256k1, secq256k1},
+  };
+  use crate::{
+    bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
+    },
+    traits::snark::default_commitment_key_hint,
   };
   use ff::{Field, PrimeFieldBits};
   use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
@@ -1000,7 +1003,7 @@ mod tests {
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
-    let (shape, ck) = cs.r1cs_shape();
+    let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -1056,7 +1059,7 @@ mod tests {
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
-    let (shape, ck) = cs.r1cs_shape();
+    let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
@@ -1116,7 +1119,7 @@ mod tests {
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
-    let (shape, ck) = cs.r1cs_shape();
+    let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
 
     // Then the satisfying assignment
     let mut cs: SatisfyingAssignment<G2> = SatisfyingAssignment::new();
