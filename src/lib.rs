@@ -131,11 +131,12 @@ where
   ///
   /// let circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
   /// let circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
-  /// // Only relevant for a SNARK using computational commitments, pass &(|_| 0) otherwise.
-  /// let pp_hint1 = &*SPrime::<G1>::commitment_key_floor();
-  /// let pp_hint2 = &*SPrime::<G2>::commitment_key_floor();
+  /// // Only relevant for a SNARK using computational commitments, pass &(|_| 0)
+  /// // or &*nova_snark::traits::snark::default_commitment_key_hint() otherwise.
+  /// let ck_hint1 = &*SPrime::<G1>::commitment_key_floor();
+  /// let ck_hint2 = &*SPrime::<G2>::commitment_key_floor();
   ///
-  /// let pp = PublicParams::setup(&circuit1, &circuit2, pp_hint1, pp_hint2);
+  /// let pp = PublicParams::setup(&circuit1, &circuit2, ck_hint1, ck_hint2);
   /// ```
   pub fn setup(
     c_primary: &C1,
@@ -944,9 +945,9 @@ mod tests {
     <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
     // this tests public parameters with a size specifically intended for a spark-compressed SNARK
-    let pp_hint1 = &*SPrime::<G1, EE<G1>>::commitment_key_floor();
-    let pp_hint2 = &*SPrime::<G2, EE<G2>>::commitment_key_floor();
-    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2, pp_hint1, pp_hint2);
+    let ck_hint1 = &*SPrime::<G1, EE<G1>>::commitment_key_floor();
+    let ck_hint2 = &*SPrime::<G2, EE<G2>>::commitment_key_floor();
+    let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2);
 
     let digest_str = pp
       .digest()

@@ -98,8 +98,8 @@ impl<G: Group> R1CS<G> {
   ) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
-    let generators_hint = commitment_key_floor(S);
-    G::CE::setup(b"ck", max(max(num_cons, num_vars), generators_hint))
+    let ck_hint = commitment_key_floor(S);
+    G::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 }
 

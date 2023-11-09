@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors returned by Nova
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[non_exhaustive]
 pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range
   #[error("InvalidIndex")]
@@ -26,6 +27,9 @@ pub enum NovaError {
   /// returned if proof verification fails
   #[error("ProofVerifyError")]
   ProofVerifyError,
+  /// returned if the provided commitment key is not of sufficient length
+  #[error("InvalidCommitmentKeyLength")]
+  InvalidCommitmentKeyLength,
   /// returned if the provided number of steps is zero
   #[error("InvalidNumSteps")]
   InvalidNumSteps,
