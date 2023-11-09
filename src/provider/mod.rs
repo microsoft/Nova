@@ -19,8 +19,6 @@ use rayon::{current_num_threads, prelude::*};
 /// Native implementation of fast multiexp
 /// Adapted from zcash/halo2
 fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-  let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
-
   let c = if bases.len() < 4 {
     1
   } else if bases.len() < 32 {
@@ -50,64 +48,57 @@ fn cpu_multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::
   }
 
   let segments = (256 / c) + 1;
-  let mut acc = C::Curve::identity();
 
-  for current_segment in (0..segments).rev() {
-    for _ in 0..c {
-      acc = acc.double();
-    }
+  (0..segments)
+    .rev()
+    .fold(C::Curve::identity(), |mut acc, segment| {
+      (0..c).for_each(|_| acc = acc.double());
 
-    #[derive(Clone, Copy)]
-    enum Bucket<C: CurveAffine> {
-      None,
-      Affine(C),
-      Projective(C::Curve),
-    }
+      #[derive(Clone, Copy)]
+      enum Bucket<C: CurveAffine> {
+        None,
+        Affine(C),
+        Projective(C::Curve),
+      }
 
-    impl<C: CurveAffine> Bucket<C> {
-      fn add_assign(&mut self, other: &C) {
-        *self = match *self {
-          Bucket::None => Bucket::Affine(*other),
-          Bucket::Affine(a) => Bucket::Projective(a + *other),
-          Bucket::Projective(mut a) => {
-            a += *other;
-            Bucket::Projective(a)
+      impl<C: CurveAffine> Bucket<C> {
+        fn add_assign(&mut self, other: &C) {
+          *self = match *self {
+            Bucket::None => Bucket::Affine(*other),
+            Bucket::Affine(a) => Bucket::Projective(a + *other),
+            Bucket::Projective(a) => Bucket::Projective(a + other),
+          }
+        }
+
+        fn add(self, other: C::Curve) -> C::Curve {
+          match self {
+            Bucket::None => other,
+            Bucket::Affine(a) => other + a,
+            Bucket::Projective(a) => other + a,
           }
         }
       }
 
-      fn add(self, mut other: C::Curve) -> C::Curve {
-        match self {
-          Bucket::None => other,
-          Bucket::Affine(a) => {
-            other += a;
-            other
-          }
-          Bucket::Projective(a) => other + a,
+      let mut buckets = vec![Bucket::None; (1 << c) - 1];
+
+      for (coeff, base) in coeffs.iter().zip(bases.iter()) {
+        let coeff = get_at::<C::Scalar>(segment, c, &coeff.to_repr());
+        if coeff != 0 {
+          buckets[coeff - 1].add_assign(base);
         }
       }
-    }
 
-    let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
-
-    for (coeff, base) in coeffs.iter().zip(bases.iter()) {
-      let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
-      if coeff != 0 {
-        buckets[coeff - 1].add_assign(base);
+      // Summation by parts
+      // e.g. 3a + 2b + 1c = a +
+      //                    (a) + b +
+      //                    ((a) + b) + c
+      let mut running_sum = C::Curve::identity();
+      for exp in buckets.into_iter().rev() {
+        running_sum = exp.add(running_sum);
+        acc += &running_sum;
       }
-    }
-
-    // Summation by parts
-    // e.g. 3a + 2b + 1c = a +
-    //                    (a) + b +
-    //                    ((a) + b) + c
-    let mut running_sum = C::Curve::identity();
-    for exp in buckets.into_iter().rev() {
-      running_sum = exp.add(running_sum);
-      acc += &running_sum;
-    }
-  }
-  acc
+      acc
+    })
 }
 
 /// Performs a multi-exponentiation operation without GPU acceleration.
@@ -267,4 +258,45 @@ macro_rules! impl_traits {
       }
     }
   };
+}
+
+#[cfg(test)]
+mod tests {
+  use super::cpu_best_multiexp;
+
+  use crate::provider::{
+    bn256_grumpkin::{bn256, grumpkin},
+    secp_secq::{secp256k1, secq256k1},
+  };
+  use group::{ff::Field, Group};
+  use halo2curves::CurveAffine;
+  use pasta_curves::{pallas, vesta};
+  use rand_core::OsRng;
+
+  fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
+    let n = 8;
+    let coeffs = (0..n).map(|_| F::random(OsRng)).collect::<Vec<_>>();
+    let bases = (0..n)
+      .map(|_| A::from(A::generator() * F::random(OsRng)))
+      .collect::<Vec<_>>();
+    let naive = coeffs
+      .iter()
+      .zip(bases.iter())
+      .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
+        acc + *base * coeff
+      });
+    let msm = cpu_best_multiexp(&coeffs, &bases);
+
+    assert_eq!(naive, msm)
+  }
+
+  #[test]
+  fn test_msm() {
+    test_msm_with::<pallas::Scalar, pallas::Affine>();
+    test_msm_with::<vesta::Scalar, vesta::Affine>();
+    test_msm_with::<bn256::Scalar, bn256::Affine>();
+    test_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
+    test_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
+    test_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
+  }
 }

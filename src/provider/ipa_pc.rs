@@ -317,18 +317,17 @@ where
         acc *= v[i];
       }
 
-      // we can compute an inversion only if acc is non-zero
-      if acc == G::Scalar::ZERO {
-        return Err(NovaError::InternalError);
-      }
+      // return error if acc is zero
+      acc = match Option::from(acc.invert()) {
+        Some(inv) => inv,
+        None => return Err(NovaError::InternalError),
+      };
 
       // compute the inverse once for all entries
-      acc = acc.invert().unwrap();
-
       let mut inv = vec![G::Scalar::ZERO; v.len()];
-      for i in 0..v.len() {
-        let tmp = acc * v[v.len() - 1 - i];
-        inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+      for i in (0..v.len()).rev() {
+        let tmp = acc * v[i];
+        inv[i] = products[i] * acc;
         acc = tmp;
       }
 
