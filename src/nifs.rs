@@ -113,9 +113,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    r1cs::SparseMatrix, r1cs::R1CS, traits::snark::default_commitment_key_hint, traits::Group,
-  };
+  use crate::{r1cs::SparseMatrix, r1cs::R1CS, traits::snark::default_ck_hint, traits::Group};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -168,7 +166,7 @@ mod tests {
     // First create the shape
     let mut cs: TestShapeCS<G> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
-    let (shape, ck) = cs.r1cs_shape(&*default_commitment_key_hint());
+    let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
@@ -329,7 +327,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<G>::commitment_key(&S, &*default_commitment_key_hint());
+    let ck = R1CS::<G>::commitment_key(&S, &*default_ck_hint());
     let ro_consts =
       <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 

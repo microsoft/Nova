@@ -103,9 +103,9 @@ where
   ///
   /// Some final compressing SNARKs, like variants of Spartan, use computation commitments that require
   /// larger sizes for these parameters. These SNARKs provide a hint for these values by
-  /// implementing `RelaxedR1CSSNARKTrait::commitment_key_floor()`, which can be passed to this function.
+  /// implementing `RelaxedR1CSSNARKTrait::ck_floor()`, which can be passed to this function.
   ///
-  /// If you're not using such a SNARK, pass `nova_snark::traits::snark::default_commitment_key_hint()` instead.
+  /// If you're not using such a SNARK, pass `nova_snark::traits::snark::default_ck_hint()` instead.
   ///
   /// # Arguments
   ///
@@ -132,9 +132,9 @@ where
   /// let circuit1 = TrivialCircuit::<<G1 as Group>::Scalar>::default();
   /// let circuit2 = TrivialCircuit::<<G2 as Group>::Scalar>::default();
   /// // Only relevant for a SNARK using computational commitments, pass &(|_| 0)
-  /// // or &*nova_snark::traits::snark::default_commitment_key_hint() otherwise.
-  /// let ck_hint1 = &*SPrime::<G1>::commitment_key_floor();
-  /// let ck_hint2 = &*SPrime::<G2>::commitment_key_floor();
+  /// // or &*nova_snark::traits::snark::default_ck_hint() otherwise.
+  /// let ck_hint1 = &*SPrime::<G1>::ck_floor();
+  /// let ck_hint2 = &*SPrime::<G2>::ck_floor();
   ///
   /// let pp = PublicParams::setup(&circuit1, &circuit2, ck_hint1, ck_hint2);
   /// ```
@@ -857,7 +857,7 @@ mod tests {
   use crate::provider::pedersen::CommitmentKeyExtTrait;
   use crate::provider::secp_secq::{secp256k1, secq256k1};
   use crate::traits::evaluation::EvaluationEngineTrait;
-  use crate::traits::snark::default_commitment_key_hint;
+  use crate::traits::snark::default_ck_hint;
   use core::fmt::Write;
 
   use super::*;
@@ -935,8 +935,8 @@ mod tests {
     <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
   {
     // this tests public parameters with a size specifically intended for a spark-compressed SNARK
-    let ck_hint1 = &*SPrime::<G1, EE<G1>>::commitment_key_floor();
-    let ck_hint2 = &*SPrime::<G2, EE<G2>>::commitment_key_floor();
+    let ck_hint1 = &*SPrime::<G1, EE<G1>>::ck_floor();
+    let ck_hint2 = &*SPrime::<G2, EE<G2>>::ck_floor();
     let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2);
 
     let digest_str = pp
@@ -1019,8 +1019,8 @@ mod tests {
     >::setup(
       &test_circuit1,
       &test_circuit2,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let num_steps = 1;
@@ -1076,8 +1076,8 @@ mod tests {
     >::setup(
       &circuit_primary,
       &circuit_secondary,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let num_steps = 3;
@@ -1161,8 +1161,8 @@ mod tests {
     >::setup(
       &circuit_primary,
       &circuit_secondary,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let num_steps = 3;
@@ -1255,8 +1255,8 @@ mod tests {
     >::setup(
       &circuit_primary,
       &circuit_secondary,
-      &*SPrime::<G1, E1>::commitment_key_floor(),
-      &*SPrime::<G2, E2>::commitment_key_floor(),
+      &*SPrime::<G1, E1>::ck_floor(),
+      &*SPrime::<G2, E2>::ck_floor(),
     );
 
     let num_steps = 3;
@@ -1423,8 +1423,8 @@ mod tests {
     >::setup(
       &circuit_primary,
       &circuit_secondary,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let num_steps = 3;
@@ -1503,8 +1503,8 @@ mod tests {
     >::setup(
       &test_circuit1,
       &test_circuit2,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let num_steps = 1;

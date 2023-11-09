@@ -69,8 +69,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let pp = PublicParams::<G1, G2, C1, C2>::setup(
       &c_primary,
       &c_secondary,
-      &*S1::commitment_key_floor(),
-      &*S2::commitment_key_floor(),
+      &*S1::ck_floor(),
+      &*S2::ck_floor(),
     );
 
     // Produce prover and verifier keys for CompressedSNARK
@@ -156,8 +156,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     let pp = PublicParams::<G1, G2, C1, C2>::setup(
       &c_primary,
       &c_secondary,
-      &*SS1::commitment_key_floor(),
-      &*SS2::commitment_key_floor(),
+      &*SS1::ck_floor(),
+      &*SS2::ck_floor(),
     );
     // Produce prover and verifier keys for CompressedSNARK
     let (pk, vk) = CompressedSNARK::<_, _, _, _, SS1, SS2>::setup(&pp).unwrap();

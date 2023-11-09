@@ -90,15 +90,12 @@ impl<G: Group> R1CS<G> {
   ///
   /// * `S`: The shape of the R1CS matrices.
   /// * `commitment_key_hint`: A function that provides a floor for the number of generators. A good function
-  ///   to provide is the commitment_key_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
+  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
-  pub fn commitment_key(
-    S: &R1CSShape<G>,
-    commitment_key_floor: &CommitmentKeyHint<G>,
-  ) -> CommitmentKey<G> {
+  pub fn commitment_key(S: &R1CSShape<G>, ck_floor: &CommitmentKeyHint<G>) -> CommitmentKey<G> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
-    let ck_hint = commitment_key_floor(S);
+    let ck_hint = ck_floor(S);
     G::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 }
