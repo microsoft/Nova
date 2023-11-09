@@ -1,5 +1,5 @@
-//! There are two Verification Circuits. The primary and the secondary.
-//! Each of them is over a curve in a 2-cycle of curves.
+//! There are two augmented circuits: the primary and the secondary.
+//! Each of them is over a curve in a 2-cycle of elliptic curves.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance

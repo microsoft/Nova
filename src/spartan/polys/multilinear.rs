@@ -57,13 +57,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
-  /// Checks if the multilinear polynomial is empty.
-  ///
-  /// This method returns true if the polynomial has no evaluations, and false otherwise.
-  pub fn is_empty(&self) -> bool {
-    self.Z.is_empty()
-  }
-
   /// Bounds the polynomial's top variable using the given scalar.
   ///
   /// This operation modifies the polynomial in-place.
@@ -107,15 +100,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
       .zip(Z.into_par_iter())
       .map(|(a, b)| a * b)
       .sum()
-  }
-
-  /// Multiplies the polynomial by a scalar.
-  pub fn scalar_mul(&self, scalar: &Scalar) -> Self {
-    let mut new_poly = self.clone();
-    for z in &mut new_poly.Z {
-      *z *= scalar;
-    }
-    new_poly
   }
 }
 
@@ -268,26 +252,11 @@ mod tests {
     assert_eq!(mlp3.Z, vec![F::from(10); 4]);
   }
 
-  fn test_mlp_scalar_mul_with<F: PrimeField>() {
-    let mlp = make_mlp(4, F::from(3));
-
-    let mlp2 = mlp.scalar_mul(&F::from(2));
-
-    assert_eq!(mlp2.Z, vec![F::from(6); 4]);
-  }
-
   #[test]
   fn test_mlp_add() {
     test_mlp_add_with::<Fp>();
     test_mlp_add_with::<bn256::Scalar>();
     test_mlp_add_with::<secp256k1::Scalar>();
-  }
-
-  #[test]
-  fn test_mlp_scalar_mul() {
-    test_mlp_scalar_mul_with::<Fp>();
-    test_mlp_scalar_mul_with::<bn256::Scalar>();
-    test_mlp_scalar_mul_with::<secp256k1::Scalar>();
   }
 
   fn test_evaluation_with<F: PrimeField>() {
