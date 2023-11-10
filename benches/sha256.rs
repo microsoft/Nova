@@ -17,7 +17,7 @@ use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
-    snark::default_commitment_key_hint,
+    snark::default_ck_hint,
     Group,
   },
   PublicParams, RecursiveSNARK,
@@ -159,8 +159,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let pp = PublicParams::<G1, G2, C1, C2>::setup(
       &circuit_primary,
       &ttc,
-      &*default_commitment_key_hint(),
-      &*default_commitment_key_hint(),
+      &*default_ck_hint(),
+      &*default_ck_hint(),
     );
 
     let circuit_secondary = TrivialCircuit::default();

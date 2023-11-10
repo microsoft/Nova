@@ -1,5 +1,5 @@
-//! There are two Verification Circuits. The primary and the secondary.
-//! Each of them is over a curve in a 2-cycle of curves.
+//! There are two augmented circuits: the primary and the secondary.
+//! Each of them is over a curve in a 2-cycle of elliptic curves.
 //! We have two running instances. Each circuit takes as input 2 hashes: one for each
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
@@ -367,7 +367,7 @@ mod tests {
 
   use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use crate::provider;
-  use crate::traits::snark::default_commitment_key_hint;
+  use crate::traits::snark::default_ck_hint;
   use crate::{
     bellpepper::r1cs::{NovaShape, NovaWitness},
     gadgets::utils::scalar_as_base,
@@ -393,7 +393,7 @@ mod tests {
       NovaAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
     let mut cs: TestShapeCS<G1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let (shape1, ck1) = cs.r1cs_shape(&*default_commitment_key_hint());
+    let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     let tc2 = TrivialCircuit::default();
@@ -402,7 +402,7 @@ mod tests {
       NovaAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
     let mut cs: TestShapeCS<G2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let (shape2, ck2) = cs.r1cs_shape(&*default_commitment_key_hint());
+    let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary

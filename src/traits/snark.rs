@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// the final compressing SNARK the user expected to use with these public parameters, and the below
 /// is a sensible default, which is to not require any more bases then the usual (maximum of the number of
 /// variables and constraints of the involved R1CS circuit).
-pub fn default_commitment_key_hint<G: Group>() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
+pub fn default_ck_hint<G: Group>() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
   // The default is to not put an additional floor on the size of the commitment key
   Box::new(|_shape: &R1CSShape<G>| 0)
 }
@@ -31,9 +31,9 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
   /// a minimum sizing cue for the commitment key used by this SNARK
   /// implementation. The commitment key passed in setup should then
   /// be at least as large as this hint.
-  fn commitment_key_floor() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
+  fn ck_floor() -> Box<dyn for<'a> Fn(&'a R1CSShape<G>) -> usize> {
     // The default is to not put an additional floor on the size of the commitment key
-    default_commitment_key_hint()
+    default_ck_hint()
   }
 
   /// Produces the keys for the prover and the verifier
