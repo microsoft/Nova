@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.30.1"
+version = "0.31.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "Recursive zkSNARKs without trusted setup"
