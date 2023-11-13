@@ -89,7 +89,7 @@ impl<G: Group> R1CS<G> {
   /// # Arguments
   ///
   /// * `S`: The shape of the R1CS matrices.
-  /// * `commitment_key_hint`: A function that provides a floor for the number of generators. A good function
+  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
   ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
   pub fn commitment_key(S: &R1CSShape<G>, ck_floor: &CommitmentKeyHint<G>) -> CommitmentKey<G> {

@@ -33,11 +33,11 @@ impl<G: Group> AllocatedR1CSInstance<G> {
     mut cs: CS,
     u: Option<&R1CSInstance<G>>,
   ) -> Result<Self, SynthesisError> {
-    // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
       u.map(|u| u.comm_W.to_coordinates()),
     )?;
+    W.check_on_curve(cs.namespace(|| "check W on curve"))?;
 
     let X0 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
     let X1 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
@@ -76,11 +76,13 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       cs.namespace(|| "allocate W"),
       inst.map(|inst| inst.comm_W.to_coordinates()),
     )?;
+    W.check_on_curve(cs.namespace(|| "check W on curve"))?;
 
     let E = AllocatedPoint::alloc(
       cs.namespace(|| "allocate E"),
       inst.map(|inst| inst.comm_E.to_coordinates()),
     )?;
+    E.check_on_curve(cs.namespace(|| "check E on curve"))?;
 
     // u << |G::Base| despite the fact that u is a scalar.
     // So we parse all of its bytes as a G::Base element

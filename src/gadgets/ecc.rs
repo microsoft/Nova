@@ -63,6 +63,52 @@ where
     Ok(AllocatedPoint { x, y, is_infinity })
   }
 
+  /// checks if `self` is on the curve or if it is infinity
+  pub fn check_on_curve<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
+  where
+    CS: ConstraintSystem<G::Base>,
+  {
+    // check that (x,y) is on the curve if it is not infinity
+    // we will check that (1- is_infinity) * y^2 = (1-is_infinity) * (x^3 + Ax + B)
+    // note that is_infinity is already restricted to be in the set {0, 1}
+    let y_square = self.y.square(cs.namespace(|| "y_square"))?;
+    let x_square = self.x.square(cs.namespace(|| "x_square"))?;
+    let x_cube = self.x.mul(cs.namespace(|| "x_cube"), &x_square)?;
+
+    let rhs = AllocatedNum::alloc(cs.namespace(|| "rhs"), || {
+      if *self.is_infinity.get_value().get()? == G::Base::ONE {
+        Ok(G::Base::ZERO)
+      } else {
+        Ok(
+          *x_cube.get_value().get()?
+            + *self.x.get_value().get()? * G::get_curve_params().0
+            + G::get_curve_params().1,
+        )
+      }
+    })?;
+
+    cs.enforce(
+      || "rhs = (1-is_infinity) * (x^3 + Ax + B)",
+      |lc| {
+        lc + x_cube.get_variable()
+          + (G::get_curve_params().0, self.x.get_variable())
+          + (G::get_curve_params().1, CS::one())
+      },
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc + rhs.get_variable(),
+    );
+
+    // check that (1-infinity) * y_square = rhs
+    cs.enforce(
+      || "check that y_square * (1 - is_infinity) = rhs",
+      |lc| lc + y_square.get_variable(),
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc + rhs.get_variable(),
+    );
+
+    Ok(())
+  }
+
   /// Allocates a default point on the curve.
   pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
   where
