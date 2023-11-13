@@ -109,7 +109,7 @@ where
     Ok(())
   }
 
-  /// Allocates a default point on the curve.
+  /// Allocates a default point on the curve, set to the identity point.
   pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<G::Base>,

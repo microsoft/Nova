@@ -453,7 +453,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      &params1, &params2, ro_consts1, ro_consts2, 9835, 10367,
+      &params1, &params2, ro_consts1, ro_consts2, 9825, 10357,
     );
   }
 
@@ -469,7 +469,7 @@ mod tests {
     test_recursive_circuit_with::<
       provider::bn256_grumpkin::bn256::Point,
       provider::bn256_grumpkin::grumpkin::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 10003, 10556);
+    >(&params1, &params2, ro_consts1, ro_consts2, 9993, 10546);
   }
 
   #[test]
@@ -484,6 +484,6 @@ mod tests {
     test_recursive_circuit_with::<
       provider::secp_secq::secp256k1::Point,
       provider::secp_secq::secq256k1::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 10282, 10979);
+    >(&params1, &params2, ro_consts1, ro_consts2, 10272, 10969);
   }
 }
