@@ -962,13 +962,13 @@ mod tests {
     test_pp_digest_with::<G1, G2, _, _>(
       &trivial_circuit1,
       &trivial_circuit2,
-      "117ac6f33d66d377346e420f0d8caa09f8f4ec7db0c336dcc65995bf3058bf01",
+      "cb581e2d5c4b2ef2ddbe2d6849e0da810352f59bcdaca51476dcf9e16072f100",
     );
 
     test_pp_digest_with::<G1, G2, _, _>(
       &cubic_circuit1,
       &trivial_circuit2,
-      "583c9964e180332e63a59450870a72b4cbf663ce0d274ac5bd0d052d4cd92903",
+      "3cc29bb864910463e0501bac84cdefc1d4327e9c2ef5b0fd6d45ad1741f1a401",
     );
 
     let trivial_circuit1_grumpkin = TrivialCircuit::<<bn256::Point as Group>::Scalar>::default();
@@ -978,12 +978,12 @@ mod tests {
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "fb6805b7197f41ae2af71dc0130d4bfd1d28fa63b8221741b597dfbb2e48d603",
+      "c26cc841d42c19bf98bc2482e66cd30903922f2a923927b85d66f375a821f101",
     );
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "684b2f7151031a79310f6fb553ab1480e290d73731fa34e74c27e004d589f102",
+      "4c484cab71e93dda69b420beb7276af969c2034a7ffb0ea8e6964e96a7e5a901",
     );
 
     let trivial_circuit1_secp = TrivialCircuit::<<secp256k1::Point as Group>::Scalar>::default();
@@ -993,12 +993,12 @@ mod tests {
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
       &trivial_circuit1_secp,
       &trivial_circuit2_secp,
-      "dbffd48ae0d05f3aeb217e971fbf3b2b7a759668221f6d6cb9032cfa0445aa01",
+      "b794d655fb39891eaf530ca3be1ec2a5ac97f72a0d07c45dbb84529d8a611502",
     );
     test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
       &cubic_circuit1_secp,
       &trivial_circuit2_secp,
-      "24e4e8044310e3167196276cc66b4f71b5d0e3e57701dddb17695ae968fba802",
+      "50e6acf363c31c2ac1c9c646b4494cb21aae6cb648c7b0d4c95015c811fba302",
     );
   }
 

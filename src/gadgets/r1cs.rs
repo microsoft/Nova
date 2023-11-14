@@ -33,11 +33,11 @@ impl<G: Group> AllocatedR1CSInstance<G> {
     mut cs: CS,
     u: Option<&R1CSInstance<G>>,
   ) -> Result<Self, SynthesisError> {
-    // Check that the incoming instance has exactly 2 io
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
       u.map(|u| u.comm_W.to_coordinates()),
     )?;
+    W.check_on_curve(cs.namespace(|| "check W on curve"))?;
 
     let X0 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
     let X1 = alloc_scalar_as_base::<G, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
@@ -72,6 +72,9 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
+    // We do not need to check that W or E are well-formed (e.g., on the curve) as we do a hash check
+    // in the Nova augmented circuit, which ensures that the relaxed instance
+    // came from a prior iteration of Nova.
     let W = AllocatedPoint::alloc(
       cs.namespace(|| "allocate W"),
       inst.map(|inst| inst.comm_W.to_coordinates()),
@@ -116,6 +119,9 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
 
     let u = W.x.clone(); // In the default case, W.x = u = 0
 
+    // X0 and X1 are allocated and in the honest prover case set to zero
+    // If the prover is malicious, it can set to arbitrary values, but the resulting
+    // relaxed R1CS instance with the the checked default values of W, E, and u must still be satisfying
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&G::Scalar::ZERO)),
@@ -141,7 +147,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
-    let E = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
+    let E = AllocatedPoint::default(cs.namespace(|| "allocate default E"))?;
 
     let u = alloc_one(cs.namespace(|| "one"));
 

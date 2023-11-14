@@ -172,6 +172,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
         .as_ref()
         .and_then(|inputs| inputs.T.map(|T| T.to_coordinates())),
     )?;
+    T.check_on_curve(cs.namespace(|| "check T on curve"))?;
 
     Ok((params, i, z_0, z_i, U, u, T))
   }
@@ -452,7 +453,7 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<PastaG1, PastaG2>(
-      &params1, &params2, ro_consts1, ro_consts2, 9815, 10347,
+      &params1, &params2, ro_consts1, ro_consts2, 9825, 10357,
     );
   }
 
@@ -468,7 +469,7 @@ mod tests {
     test_recursive_circuit_with::<
       provider::bn256_grumpkin::bn256::Point,
       provider::bn256_grumpkin::grumpkin::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 9983, 10536);
+    >(&params1, &params2, ro_consts1, ro_consts2, 9993, 10546);
   }
 
   #[test]
@@ -483,6 +484,6 @@ mod tests {
     test_recursive_circuit_with::<
       provider::secp_secq::secp256k1::Point,
       provider::secp_secq::secq256k1::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 10262, 10959);
+    >(&params1, &params2, ro_consts1, ro_consts2, 10272, 10969);
   }
 }
