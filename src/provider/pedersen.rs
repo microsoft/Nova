@@ -1,6 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
+  provider::{CompressedGroup, GroupExt},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait,
@@ -55,7 +56,7 @@ impl<G: GroupExt> CommitmentTrait<G> for Commitment<G> {
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = c.comm.decompress();
+    let comm = <G as GroupExt>::CompressedGroupElement::decompress(&c.comm);
     if comm.is_none() {
       return Err(NovaError::DecompressionError);
     }
@@ -205,56 +206,6 @@ impl<G: GroupExt> CommitmentEngineTrait<G> for CommitmentEngine<G> {
       comm: G::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
   }
-}
-
-/// Represents a compressed version of a group element
-pub trait CompressedGroup:
-  Clone
-  + Copy
-  + Debug
-  + Eq
-  + Send
-  + Sync
-  + TranscriptReprTrait<Self::GroupElement>
-  + Serialize
-  + for<'de> Deserialize<'de>
-  + 'static
-{
-  /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
-
-  /// Decompresses the compressed group element
-  fn decompress(&self) -> Option<Self::GroupElement>;
-}
-
-/// A trait that defines extensions to the Group trait
-pub trait GroupExt: Group {
-  /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
-
-  /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
-
-  /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self;
-
-  /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
-
-  /// Compresses the group element
-  fn compress(&self) -> Self::CompressedGroupElement;
-
-  /// Produces a preprocessed element
-  fn preprocessed(&self) -> Self::PreprocessedGroupElement;
-
-  /// Returns an element that is the additive identity of the group
-  fn zero() -> Self;
-
-  /// Returns the affine coordinates (x, y, infinty) for the point
-  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion

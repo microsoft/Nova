@@ -6,11 +6,15 @@ use crate::{
 };
 use core::{
   fmt::Debug,
-  ops::{Add, AddAssign},
+  ops::{Add, AddAssign, Mul, MulAssign},
 };
 use serde::{Deserialize, Serialize};
 
-use super::ScalarMul;
+/// A helper trait for types implementing scalar multiplication.
+pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
+
+impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
+{}
 
 /// Defines basic operations on commitments
 pub trait CommitmentOps<Rhs = Self, Output = Self>:

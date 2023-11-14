@@ -4,8 +4,9 @@ use crate::{
   provider::{
     cpu_best_multiexp,
     keccak::Keccak256Transcript,
-    pedersen::{CommitmentEngine, CompressedGroup, GroupExt},
+    pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
+    CompressedGroup, GroupExt,
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };

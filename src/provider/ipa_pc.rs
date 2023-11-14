@@ -1,7 +1,7 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
 use crate::{
   errors::NovaError,
-  provider::pedersen::{CommitmentKeyExtTrait, GroupExt},
+  provider::{pedersen::CommitmentKeyExtTrait, GroupExt},
   spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},

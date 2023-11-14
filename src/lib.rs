@@ -856,8 +856,9 @@ mod tests {
   use crate::{
     provider::{
       bn256_grumpkin::{bn256, grumpkin},
-      pedersen::{CommitmentKeyExtTrait, GroupExt},
+      pedersen::CommitmentKeyExtTrait,
       secp_secq::{secp256k1, secq256k1},
+      GroupExt,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
