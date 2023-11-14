@@ -41,12 +41,6 @@ pub trait Group:
     + Serialize
     + for<'de> Deserialize<'de>;
 
-  /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
-
-  /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
-
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
   type RO: ROTrait<Self::Base, Self::Scalar>;
@@ -60,52 +54,8 @@ pub trait Group:
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
 
-  /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self;
-
-  /// Compresses the group element
-  fn compress(&self) -> Self::CompressedGroupElement;
-
-  /// Produces a preprocessed element
-  fn preprocessed(&self) -> Self::PreprocessedGroupElement;
-
-  /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
-
-  /// Returns the affine coordinates (x, y, infinty) for the point
-  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
-
-  /// Returns an element that is the additive identity of the group
-  fn zero() -> Self;
-
-  /// Returns the generator of the group
-  fn get_generator() -> Self;
-
   /// Returns A, B, and the order of the group as a big integer
   fn get_curve_params() -> (Self::Base, Self::Base, BigInt);
-}
-
-/// Represents a compressed version of a group element
-pub trait CompressedGroup:
-  Clone
-  + Copy
-  + Debug
-  + Eq
-  + Send
-  + Sync
-  + TranscriptReprTrait<Self::GroupElement>
-  + Serialize
-  + for<'de> Deserialize<'de>
-  + 'static
-{
-  /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
-
-  /// Decompresses the compressed group element
-  fn decompress(&self) -> Option<Self::GroupElement>;
 }
 
 /// A helper trait to absorb different objects in RO

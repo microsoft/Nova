@@ -140,12 +140,23 @@ macro_rules! impl_traits {
     impl Group for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
-      type CompressedGroupElement = $name_compressed;
-      type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
+
+      fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
+        let A = $name::Point::a();
+        let B = $name::Point::b();
+        let order = BigInt::from_str_radix($order_str, 16).unwrap();
+
+        (A, B, order)
+      }
+    }
+
+    impl GroupExt for $name::Point {
+      type CompressedGroupElement = $name_compressed;
+      type PreprocessedGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
@@ -208,32 +219,20 @@ macro_rules! impl_traits {
         }
       }
 
+      fn zero() -> Self {
+        $name::Point::identity()
+      }
+
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
         // see: grumpkin implementation at src/provider/bn256_grumpkin.rs
         let coordinates = self.to_affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1
-          && (Self::PreprocessedGroupElement::identity() != self.to_affine())
+          && ($name_curve_affine::identity() != self.to_affine())
         {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
         }
-      }
-
-      fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
-        let A = $name::Point::a();
-        let B = $name::Point::b();
-        let order = BigInt::from_str_radix($order_str, 16).unwrap();
-
-        (A, B, order)
-      }
-
-      fn zero() -> Self {
-        $name::Point::identity()
-      }
-
-      fn get_generator() -> Self {
-        $name::Point::generator()
       }
     }
 

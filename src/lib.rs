@@ -853,11 +853,14 @@ type CE<G> = <G as Group>::CE;
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::bn256_grumpkin::{bn256, grumpkin};
-  use crate::provider::pedersen::CommitmentKeyExtTrait;
-  use crate::provider::secp_secq::{secp256k1, secq256k1};
-  use crate::traits::evaluation::EvaluationEngineTrait;
-  use crate::traits::snark::default_ck_hint;
+  use crate::{
+    provider::{
+      bn256_grumpkin::{bn256, grumpkin},
+      pedersen::{CommitmentKeyExtTrait, GroupExt},
+      secp_secq::{secp256k1, secq256k1},
+    },
+    traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
+  };
   use core::fmt::Write;
 
   use super::*;
@@ -926,8 +929,8 @@ mod tests {
 
   fn test_pp_digest_with<G1, G2, T1, T2>(circuit1: &T1, circuit2: &T2, expected: &str)
   where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    G1: Group<Base = <G2 as Group>::Scalar> + GroupExt,
+    G2: Group<Base = <G1 as Group>::Scalar> + GroupExt,
     T1: StepCircuit<G1::Scalar>,
     T2: StepCircuit<G2::Scalar>,
     // required to use the IPA in the initialization of the commitment key hints below
