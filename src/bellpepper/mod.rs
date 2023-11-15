@@ -15,7 +15,7 @@ mod tests {
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
-    traits::{snark::default_ck_hint, Group},
+    traits::{snark::default_ck_hint, Engine},
   };
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
   use ff::PrimeField;
@@ -40,17 +40,17 @@ mod tests {
     );
   }
 
-  fn test_alloc_bit_with<G>()
+  fn test_alloc_bit_with<E>()
   where
-    G: Group,
+    E: Engine,
   {
     // First create the shape
-    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let mut cs: ShapeCS<E> = ShapeCS::new();
     synthesize_alloc_bit(&mut cs);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Now get the assignment
-    let mut cs = SatisfyingAssignment::<G>::new();
+    let mut cs = SatisfyingAssignment::<E>::new();
     synthesize_alloc_bit(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 

@@ -6,13 +6,13 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, GroupExt,
+    CompressedGroup, EngineExt,
   },
-  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
+use group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding};
 use num_bigint::BigInt;
 use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
@@ -85,7 +85,7 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let ck_par = <G as GroupExt>::from_label(label, n);
+      let ck_par = <E as EngineExt>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);

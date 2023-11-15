@@ -6,7 +6,7 @@ use std::{
   collections::{BTreeMap, HashMap},
 };
 
-use crate::traits::Group;
+use crate::traits::Engine;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use core::fmt::Write;
 use ff::{Field, PrimeField};
@@ -48,17 +48,17 @@ impl Ord for OrderedVariable {
 }
 
 /// `TestShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct TestShapeCS<G: Group>
+pub struct TestShapeCS<E: Engine>
 where
-  G::Scalar: PrimeField + Field,
+  E::Scalar: PrimeField + Field,
 {
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
   /// All constraints added to the `TestShapeCS`.
   pub constraints: Vec<(
-    LinearCombination<G::Scalar>,
-    LinearCombination<G::Scalar>,
-    LinearCombination<G::Scalar>,
+    LinearCombination<E::Scalar>,
+    LinearCombination<E::Scalar>,
+    LinearCombination<E::Scalar>,
     String,
   )>,
   inputs: Vec<String>,
@@ -91,9 +91,9 @@ fn proc_lc<Scalar: PrimeField>(
   map
 }
 
-impl<G: Group> TestShapeCS<G>
+impl<E: Engine> TestShapeCS<E>
 where
-  G::Scalar: PrimeField,
+  E::Scalar: PrimeField,
 {
   #[allow(unused)]
   /// Create a new, default `TestShapeCS`,
@@ -144,16 +144,16 @@ where
       writeln!(s, "INPUT {}", &input).unwrap()
     }
 
-    let negone = -<G::Scalar>::ONE;
+    let negone = -<E::Scalar>::ONE;
 
-    let powers_of_two = (0..G::Scalar::NUM_BITS)
-      .map(|i| G::Scalar::from(2u64).pow_vartime([u64::from(i)]))
+    let powers_of_two = (0..E::Scalar::NUM_BITS)
+      .map(|i| E::Scalar::from(2u64).pow_vartime([u64::from(i)]))
       .collect::<Vec<_>>();
 
-    let pp = |s: &mut String, lc: &LinearCombination<G::Scalar>| {
+    let pp = |s: &mut String, lc: &LinearCombination<E::Scalar>| {
       s.push('(');
       let mut is_first = true;
-      for (var, coeff) in proc_lc::<G::Scalar>(lc) {
+      for (var, coeff) in proc_lc::<E::Scalar>(lc) {
         if coeff == negone {
           s.push_str(" - ")
         } else if !is_first {
@@ -161,7 +161,7 @@ where
         }
         is_first = false;
 
-        if coeff != <G::Scalar>::ONE && coeff != negone {
+        if coeff != <E::Scalar>::ONE && coeff != negone {
           for (i, x) in powers_of_two.iter().enumerate() {
             if x == &coeff {
               write!(s, "2^{i} . ").unwrap();
@@ -216,13 +216,13 @@ where
   }
 }
 
-impl<G: Group> Default for TestShapeCS<G>
+impl<E: Engine> Default for TestShapeCS<E>
 where
-  G::Scalar: PrimeField,
+  E::Scalar: PrimeField,
 {
   fn default() -> Self {
     let mut map = HashMap::new();
-    map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<G>::one()));
+    map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<E>::one()));
     TestShapeCS {
       named_objects: map,
       current_namespace: vec![],
@@ -233,15 +233,15 @@ where
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for TestShapeCS<G>
+impl<E: Engine> ConstraintSystem<E::Scalar> for TestShapeCS<E>
 where
-  G::Scalar: PrimeField,
+  E::Scalar: PrimeField,
 {
   type Root = Self;
 
   fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -253,7 +253,7 @@ where
 
   fn alloc_input<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -267,9 +267,9 @@ where
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
-    LA: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
+    LA: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
+    LB: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
+    LC: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
   {
     let path = compute_path(&self.current_namespace, &annotation().into());
     let index = self.constraints.len();

@@ -1,9 +1,9 @@
 //! This module implements Nova's traits using the following configuration:
 //! `CommitmentEngine` with Pedersen's commitments
-//! `Group` with pasta curves and BN256/Grumpkin
+//! `Engine` with pasta curves and BN256/Grumpkin
 //! `RO` traits with Poseidon
 //! `EvaluationEngine` with an IPA-based polynomial evaluation argument
-use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
+use crate::traits::{commitment::ScalarMul, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
@@ -24,7 +24,7 @@ pub trait CompressedGroup:
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
+  type GroupElement: Engine;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
@@ -49,15 +49,15 @@ impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
-/// A trait that defines extensions to the Group trait
-pub trait GroupExt:
-  Group
+/// A trait that defines extensions to the Engine trait
+pub trait EngineExt:
+  Engine
   + Serialize
   + for<'de> Deserialize<'de>
   + GroupOps
   + GroupOpsOwned
-  + ScalarMul<<Self as Group>::Scalar>
-  + ScalarMulOwned<<Self as Group>::Scalar>
+  + ScalarMul<<Self as Engine>::Scalar>
+  + ScalarMulOwned<<Self as Engine>::Scalar>
 {
   /// A type representing the compressed version of the group element
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
@@ -96,7 +96,7 @@ pub mod poseidon;
 pub mod secp_secq;
 
 use ff::PrimeField;
-use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};
+use pasta_curves::{self, arithmetic::CurveAffine, group::Group};
 use rayon::{current_num_threads, prelude::*};
 
 /// Native implementation of fast multiexp
@@ -221,7 +221,7 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Group for $name::Point {
+    impl Engine for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
@@ -239,7 +239,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl GroupExt for $name::Point {
+    impl EngineExt for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
@@ -328,7 +328,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
+    impl<E: Engine> TranscriptReprTrait<E> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.as_ref().to_vec()
       }
@@ -342,7 +342,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+    impl<E: Engine> TranscriptReprTrait<E> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_repr().to_vec()
       }
@@ -358,7 +358,7 @@ mod tests {
     bn256_grumpkin::{bn256, grumpkin},
     secp_secq::{secp256k1, secq256k1},
   };
-  use group::{ff::Field, Group};
+  use group::{ff::Field, Engine};
   use halo2curves::CurveAffine;
   use pasta_curves::{pallas, vesta};
   use rand_core::OsRng;

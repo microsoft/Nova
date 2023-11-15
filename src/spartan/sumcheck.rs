@@ -3,31 +3,31 @@ use crate::spartan::polys::{
   multilinear::MultilinearPolynomial,
   univariate::{CompressedUniPoly, UniPoly},
 };
-use crate::traits::{Group, TranscriptEngineTrait};
+use crate::traits::{Engine, TranscriptEngineTrait};
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub(crate) struct SumcheckProof<G: Group> {
-  compressed_polys: Vec<CompressedUniPoly<G::Scalar>>,
+pub(crate) struct SumcheckProof<E: Engine> {
+  compressed_polys: Vec<CompressedUniPoly<E::Scalar>>,
 }
 
-impl<G: Group> SumcheckProof<G> {
-  pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
+impl<E: Engine> SumcheckProof<E> {
+  pub fn new(compressed_polys: Vec<CompressedUniPoly<E::Scalar>>) -> Self {
     Self { compressed_polys }
   }
 
   pub fn verify(
     &self,
-    claim: G::Scalar,
+    claim: E::Scalar,
     num_rounds: usize,
     degree_bound: usize,
-    transcript: &mut G::TE,
-  ) -> Result<(G::Scalar, Vec<G::Scalar>), NovaError> {
+    transcript: &mut E::TE,
+  ) -> Result<(E::Scalar, Vec<E::Scalar>), NovaError> {
     let mut e = claim;
-    let mut r: Vec<G::Scalar> = Vec::new();
+    let mut r: Vec<E::Scalar> = Vec::new();
 
     // verify that there is a univariate polynomial for each round
     if self.compressed_polys.len() != num_rounds {
@@ -63,12 +63,12 @@ impl<G: Group> SumcheckProof<G> {
 
   #[inline]
   pub(in crate::spartan) fn compute_eval_points_quad<F>(
-    poly_A: &MultilinearPolynomial<G::Scalar>,
-    poly_B: &MultilinearPolynomial<G::Scalar>,
+    poly_A: &MultilinearPolynomial<E::Scalar>,
+    poly_B: &MultilinearPolynomial<E::Scalar>,
     comb_func: &F,
-  ) -> (G::Scalar, G::Scalar)
+  ) -> (E::Scalar, E::Scalar)
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
     (0..len)
@@ -84,24 +84,24 @@ impl<G: Group> SumcheckProof<G> {
         (eval_point_0, eval_point_2)
       })
       .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO),
+        || (E::Scalar::ZERO, E::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1),
       )
   }
 
   pub fn prove_quad<F>(
-    claim: &G::Scalar,
+    claim: &E::Scalar,
     num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<G::Scalar>,
-    poly_B: &mut MultilinearPolynomial<G::Scalar>,
+    poly_A: &mut MultilinearPolynomial<E::Scalar>,
+    poly_B: &mut MultilinearPolynomial<E::Scalar>,
     comb_func: F,
-    transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
-    let mut r: Vec<G::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
+    let mut r: Vec<E::Scalar> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
@@ -140,23 +140,23 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   pub fn prove_quad_batch<F>(
-    claim: &G::Scalar,
+    claim: &E::Scalar,
     num_rounds: usize,
-    poly_A_vec: &mut Vec<MultilinearPolynomial<G::Scalar>>,
-    poly_B_vec: &mut Vec<MultilinearPolynomial<G::Scalar>>,
-    coeffs: &[G::Scalar],
+    poly_A_vec: &mut Vec<MultilinearPolynomial<E::Scalar>>,
+    poly_B_vec: &mut Vec<MultilinearPolynomial<E::Scalar>>,
+    coeffs: &[E::Scalar],
     comb_func: F,
-    transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, (Vec<G::Scalar>, Vec<G::Scalar>)), NovaError>
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, (Vec<E::Scalar>, Vec<E::Scalar>)), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let mut e = *claim;
-    let mut r: Vec<G::Scalar> = Vec::new();
-    let mut quad_polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
+    let mut r: Vec<E::Scalar> = Vec::new();
+    let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
 
     for _ in 0..num_rounds {
-      let evals: Vec<(G::Scalar, G::Scalar)> = poly_A_vec
+      let evals: Vec<(E::Scalar, E::Scalar)> = poly_A_vec
         .par_iter()
         .zip(poly_B_vec.par_iter())
         .map(|(poly_A, poly_B)| Self::compute_eval_points_quad(poly_A, poly_B, &comb_func))
@@ -199,13 +199,13 @@ impl<G: Group> SumcheckProof<G> {
 
   #[inline]
   pub(in crate::spartan) fn compute_eval_points_cubic<F>(
-    poly_A: &MultilinearPolynomial<G::Scalar>,
-    poly_B: &MultilinearPolynomial<G::Scalar>,
-    poly_C: &MultilinearPolynomial<G::Scalar>,
+    poly_A: &MultilinearPolynomial<E::Scalar>,
+    poly_B: &MultilinearPolynomial<E::Scalar>,
+    poly_C: &MultilinearPolynomial<E::Scalar>,
     comb_func: &F,
-  ) -> (G::Scalar, G::Scalar, G::Scalar)
+  ) -> (E::Scalar, E::Scalar, E::Scalar)
   where
-    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
     (0..len)
@@ -236,21 +236,21 @@ impl<G: Group> SumcheckProof<G> {
         (eval_point_0, eval_point_2, eval_point_3)
       })
       .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       )
   }
 
   #[inline]
   pub(in crate::spartan) fn compute_eval_points_cubic_with_additive_term<F>(
-    poly_A: &MultilinearPolynomial<G::Scalar>,
-    poly_B: &MultilinearPolynomial<G::Scalar>,
-    poly_C: &MultilinearPolynomial<G::Scalar>,
-    poly_D: &MultilinearPolynomial<G::Scalar>,
+    poly_A: &MultilinearPolynomial<E::Scalar>,
+    poly_B: &MultilinearPolynomial<E::Scalar>,
+    poly_C: &MultilinearPolynomial<E::Scalar>,
+    poly_D: &MultilinearPolynomial<E::Scalar>,
     comb_func: &F,
-  ) -> (G::Scalar, G::Scalar, G::Scalar)
+  ) -> (E::Scalar, E::Scalar, E::Scalar)
   where
-    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
     (0..len)
@@ -285,26 +285,26 @@ impl<G: Group> SumcheckProof<G> {
         (eval_point_0, eval_point_2, eval_point_3)
       })
       .reduce(
-        || (G::Scalar::ZERO, G::Scalar::ZERO, G::Scalar::ZERO),
+        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       )
   }
 
   pub fn prove_cubic_with_additive_term<F>(
-    claim: &G::Scalar,
+    claim: &E::Scalar,
     num_rounds: usize,
-    poly_A: &mut MultilinearPolynomial<G::Scalar>,
-    poly_B: &mut MultilinearPolynomial<G::Scalar>,
-    poly_C: &mut MultilinearPolynomial<G::Scalar>,
-    poly_D: &mut MultilinearPolynomial<G::Scalar>,
+    poly_A: &mut MultilinearPolynomial<E::Scalar>,
+    poly_B: &mut MultilinearPolynomial<E::Scalar>,
+    poly_C: &mut MultilinearPolynomial<E::Scalar>,
+    poly_D: &mut MultilinearPolynomial<E::Scalar>,
     comb_func: F,
-    transcript: &mut G::TE,
-  ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
   where
-    F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,
+    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
-    let mut r: Vec<G::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<G::Scalar>> = Vec::new();
+    let mut r: Vec<E::Scalar> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
 
     for _ in 0..num_rounds {

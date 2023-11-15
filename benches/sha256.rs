@@ -18,7 +18,7 @@ use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
-    Group,
+    Engine,
   },
   PublicParams, RecursiveSNARK,
 };
@@ -120,8 +120,8 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
   }
 }
 
-type C1 = Sha256Circuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = Sha256Circuit<<E1 as Engine>::Scalar>;
+type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
 criterion_group! {
 name = recursive_snark;
@@ -156,7 +156,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
 
     // Produce public parameters
     let ttc = TrivialCircuit::default();
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+    let pp = PublicParams::<E1, E2, C1, C2>::setup(
       &circuit_primary,
       &ttc,
       &*default_ck_hint(),
@@ -164,8 +164,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
     );
 
     let circuit_secondary = TrivialCircuit::default();
-    let z0_primary = vec![<G1 as Group>::Scalar::from(2u64)];
-    let z0_secondary = vec![<G2 as Group>::Scalar::from(2u64)];
+    let z0_primary = vec![<E1 as Engine>::Scalar::from(2u64)];
+    let z0_secondary = vec![<E2 as Engine>::Scalar::from(2u64)];
 
     group.bench_function("Prove", |b| {
       b.iter(|| {

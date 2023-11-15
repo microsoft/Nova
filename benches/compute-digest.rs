@@ -7,15 +7,15 @@ use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
-    Group,
+    Engine,
   },
   PublicParams,
 };
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
+type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
 criterion_group! {
 name = compute_digest;
@@ -28,7 +28,7 @@ criterion_main!(compute_digest);
 fn bench_compute_digest(c: &mut Criterion) {
   c.bench_function("compute_digest", |b| {
     b.iter(|| {
-      PublicParams::<G1, G2, C1, C2>::setup(
+      PublicParams::<E1, E2, C1, C2>::setup(
         black_box(&C1::new(10)),
         black_box(&C2::default()),
         black_box(&*default_ck_hint()),

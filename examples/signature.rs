@@ -6,52 +6,52 @@ use ff::{
   derive::byteorder::{ByteOrder, LittleEndian},
   Field, PrimeField, PrimeFieldBits,
 };
-use nova_snark::{gadgets::ecc::AllocatedPoint, traits::Group as NovaGroup};
+use nova_snark::{gadgets::ecc::AllocatedPoint, traits::Engine as NovaGroup};
 use num_bigint::BigUint;
 use pasta_curves::{
   arithmetic::CurveAffine,
-  group::{Curve, Group},
+  group::{Curve, Engine},
 };
 use rand::{rngs::OsRng, RngCore};
 use sha3::{Digest, Sha3_512};
 
 #[derive(Debug, Clone, Copy)]
-pub struct SecretKey<G: Group>(G::Scalar);
+pub struct SecretKey<E: Engine>(E::Scalar);
 
-impl<G> SecretKey<G>
+impl<E> SecretKey<E>
 where
-  G: Group,
+  E: Engine,
 {
   pub fn random(mut rng: impl RngCore) -> Self {
-    let secret = G::Scalar::random(&mut rng);
+    let secret = E::Scalar::random(&mut rng);
     Self(secret)
   }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct PublicKey<G: Group>(G);
+pub struct PublicKey<E: Engine>(G);
 
-impl<G> PublicKey<G>
+impl<E> PublicKey<E>
 where
-  G: Group,
+  E: Engine,
 {
-  pub fn from_secret_key(s: &SecretKey<G>) -> Self {
-    let point = G::generator() * s.0;
+  pub fn from_secret_key(s: &SecretKey<E>) -> Self {
+    let point = E::generator() * s.0;
     Self(point)
   }
 }
 
 #[derive(Clone)]
-pub struct Signature<G: Group> {
+pub struct Signature<E: Engine> {
   pub r: G,
-  pub s: G::Scalar,
+  pub s: E::Scalar,
 }
 
-impl<G> SecretKey<G>
+impl<E> SecretKey<E>
 where
-  G: Group,
+  E: Engine,
 {
-  pub fn sign(self, c: G::Scalar, mut rng: impl RngCore) -> Signature<G> {
+  pub fn sign(self, c: E::Scalar, mut rng: impl RngCore) -> Signature<E> {
     // T
     let mut t = [0u8; 80];
     rng.fill_bytes(&mut t[..]);
@@ -60,7 +60,7 @@ where
     let h = Self::hash_to_scalar(b"Nova_Ecdsa_Hash", &t[..], c.to_repr().as_mut());
 
     // R = [h]G
-    let r = G::generator().mul(h);
+    let r = E::generator().mul(h);
 
     // s = h + c * sk
     let mut s = c;
@@ -71,8 +71,8 @@ where
     Signature { r, s }
   }
 
-  fn mul_bits<B: AsRef<[u64]>>(s: &G::Scalar, bits: BitIterator<B>) -> G::Scalar {
-    let mut x = G::Scalar::ZERO;
+  fn mul_bits<B: AsRef<[u64]>>(s: &E::Scalar, bits: BitIterator<B>) -> E::Scalar {
+    let mut x = E::Scalar::ZERO;
     for bit in bits {
       x = x.double();
 
@@ -83,21 +83,21 @@ where
     x
   }
 
-  fn to_uniform(digest: &[u8]) -> G::Scalar {
+  fn to_uniform(digest: &[u8]) -> E::Scalar {
     assert_eq!(digest.len(), 64);
     let mut bits: [u64; 8] = [0; 8];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
+    Self::mul_bits(&E::Scalar::ONE, BitIterator::new(bits))
   }
 
-  pub fn to_uniform_32(digest: &[u8]) -> G::Scalar {
+  pub fn to_uniform_32(digest: &[u8]) -> E::Scalar {
     assert_eq!(digest.len(), 32);
     let mut bits: [u64; 4] = [0; 4];
     LittleEndian::read_u64_into(digest, &mut bits);
-    Self::mul_bits(&G::Scalar::ONE, BitIterator::new(bits))
+    Self::mul_bits(&E::Scalar::ONE, BitIterator::new(bits))
   }
 
-  pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> G::Scalar {
+  pub fn hash_to_scalar(persona: &[u8], a: &[u8], b: &[u8]) -> E::Scalar {
     let mut hasher = Sha3_512::new();
     hasher.update(persona);
     hasher.update(a);
@@ -107,20 +107,20 @@ where
   }
 }
 
-impl<G> PublicKey<G>
+impl<E> PublicKey<E>
 where
-  G: Group,
-  G::Scalar: PrimeFieldBits,
+  E: Engine,
+  E::Scalar: PrimeFieldBits,
 {
-  pub fn verify(&self, c: G::Scalar, signature: &Signature<G>) -> bool {
+  pub fn verify(&self, c: E::Scalar, signature: &Signature<E>) -> bool {
     let modulus = Self::modulus_as_scalar();
     let order_check_pk = self.0.mul(modulus);
-    if !order_check_pk.eq(&G::identity()) {
+    if !order_check_pk.eq(&E::identity()) {
       return false;
     }
 
     let order_check_r = signature.r.mul(modulus);
-    if !order_check_r.eq(&G::identity()) {
+    if !order_check_r.eq(&E::identity()) {
       return false;
     }
 
@@ -129,19 +129,19 @@ where
       .0
       .mul(c)
       .add(&signature.r)
-      .add(G::generator().mul(signature.s).neg())
-      .eq(&G::identity())
+      .add(E::generator().mul(signature.s).neg())
+      .eq(&E::identity())
   }
 
-  fn modulus_as_scalar() -> G::Scalar {
-    let mut bits = G::Scalar::char_le_bits().to_bitvec();
+  fn modulus_as_scalar() -> E::Scalar {
+    let mut bits = E::Scalar::char_le_bits().to_bitvec();
     let mut acc = BigUint::new(Vec::<u32>::new());
     while let Some(b) = bits.pop() {
       acc <<= 1_i32;
       acc += u8::from(b);
     }
     let modulus = acc.to_str_radix(10);
-    G::Scalar::from_str_vartime(&modulus).unwrap()
+    E::Scalar::from_str_vartime(&modulus).unwrap()
   }
 }
 
@@ -190,21 +190,21 @@ pub fn synthesize_bits<F: PrimeField, CS: ConstraintSystem<F>>(
     .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
 }
 
-pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
+pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<E::Base>>(
   cs: &mut CS,
-  pk: &AllocatedPoint<G>,
-  r: &AllocatedPoint<G>,
+  pk: &AllocatedPoint<E>,
+  r: &AllocatedPoint<E>,
   s_bits: &[AllocatedBit],
   c_bits: &[AllocatedBit],
 ) -> Result<(), SynthesisError> {
-  let g = AllocatedPoint::<G>::alloc(
+  let g = AllocatedPoint::<E>::alloc(
     cs.namespace(|| "g"),
     Some((
-      G::Base::from_str_vartime(
+      E::Base::from_str_vartime(
         "28948022309329048855892746252171976963363056481941647379679742748393362948096",
       )
       .unwrap(),
-      G::Base::from_str_vartime("2").unwrap(),
+      E::Base::from_str_vartime("2").unwrap(),
       false,
     )),
   )
@@ -216,7 +216,7 @@ pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
     |lc| lc + CS::one(),
     |lc| {
       lc + (
-        G::Base::from_str_vartime(
+        E::Base::from_str_vartime(
           "28948022309329048855892746252171976963363056481941647379679742748393362948096",
         )
         .unwrap(),
@@ -229,7 +229,7 @@ pub fn verify_signature<G: NovaGroup, CS: ConstraintSystem<G::Base>>(
     || "gy is vesta curve",
     |lc| lc + g.get_coordinates().1.get_variable(),
     |lc| lc + CS::one(),
-    |lc| lc + (G::Base::from_str_vartime("2").unwrap(), CS::one()),
+    |lc| lc + (E::Base::from_str_vartime("2").unwrap(), CS::one()),
   );
 
   let sg = g.scalar_mul(cs.namespace(|| "[s]G"), s_bits)?;
@@ -260,15 +260,15 @@ type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
 
 fn main() {
-  let mut cs = TestConstraintSystem::<<G1 as Group>::Scalar>::new();
+  let mut cs = TestConstraintSystem::<<E1 as Engine>::Scalar>::new();
   assert!(cs.is_satisfied());
   assert_eq!(cs.num_constraints(), 0);
 
-  let sk = SecretKey::<G2>::random(&mut OsRng);
+  let sk = SecretKey::<E2>::random(&mut OsRng);
   let pk = PublicKey::from_secret_key(&sk);
 
   // generate a random message to sign
-  let c = <G2 as Group>::Scalar::random(&mut OsRng);
+  let c = <E2 as Engine>::Scalar::random(&mut OsRng);
 
   // sign and verify
   let signature = sk.sign(c, &mut OsRng);
@@ -279,7 +279,7 @@ fn main() {
   let pk = {
     let pkxy = pk.0.to_affine().coordinates().unwrap();
 
-    AllocatedPoint::<G2>::alloc(
+    AllocatedPoint::<E2>::alloc(
       cs.namespace(|| "pub key"),
       Some((*pkxy.x(), *pkxy.y(), false)),
     )

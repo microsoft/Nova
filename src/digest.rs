@@ -85,20 +85,20 @@ mod tests {
   use pasta_curves::pallas;
   use serde::{Deserialize, Serialize};
 
-  use crate::traits::Group;
+  use crate::traits::Engine;
 
   use super::{DigestComputer, SimpleDigestible};
 
   #[derive(Serialize, Deserialize)]
-  struct S<G: Group> {
+  struct S<E: Engine> {
     i: usize,
     #[serde(skip, default = "OnceCell::new")]
-    digest: OnceCell<G::Scalar>,
+    digest: OnceCell<E::Scalar>,
   }
 
-  impl<G: Group> SimpleDigestible for S<G> {}
+  impl<E: Engine> SimpleDigestible for S<E> {}
 
-  impl<G: Group> S<G> {
+  impl<E: Engine> S<E> {
     fn new(i: usize) -> Self {
       S {
         i,
@@ -106,7 +106,7 @@ mod tests {
       }
     }
 
-    fn digest(&self) -> G::Scalar {
+    fn digest(&self) -> E::Scalar {
       self
         .digest
         .get_or_try_init(|| DigestComputer::new(self).digest())
@@ -119,19 +119,19 @@ mod tests {
 
   #[test]
   fn test_digest_field_not_ingested_in_computation() {
-    let s1 = S::<G>::new(42);
+    let s1 = S::<E>::new(42);
 
     // let's set up a struct with a weird digest field to make sure the digest computation does not depend of it
     let oc = OnceCell::new();
-    oc.set(<G as Group>::Scalar::ONE).unwrap();
+    oc.set(<E as Engine>::Scalar::ONE).unwrap();
 
-    let s2: S<G> = S { i: 42, digest: oc };
+    let s2: S<E> = S { i: 42, digest: oc };
 
     assert_eq!(
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s1)
+      DigestComputer::<<E as Engine>::Scalar, _>::new(&s1)
         .digest()
         .unwrap(),
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
+      DigestComputer::<<E as Engine>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -140,7 +140,7 @@ mod tests {
     // equality will not result in `s1.digest() == s2.digest`
     assert_ne!(
       s2.digest(),
-      DigestComputer::<<G as Group>::Scalar, _>::new(&s2)
+      DigestComputer::<<E as Engine>::Scalar, _>::new(&s2)
         .digest()
         .unwrap()
     );
@@ -148,19 +148,19 @@ mod tests {
 
   #[test]
   fn test_digest_impervious_to_serialization() {
-    let good_s = S::<G>::new(42);
+    let good_s = S::<E>::new(42);
 
     // let's set up a struct with a weird digest field to confuse deserializers
     let oc = OnceCell::new();
-    oc.set(<G as Group>::Scalar::ONE).unwrap();
+    oc.set(<E as Engine>::Scalar::ONE).unwrap();
 
-    let bad_s: S<G> = S { i: 42, digest: oc };
+    let bad_s: S<E> = S { i: 42, digest: oc };
     // this justifies the adjective "bad"
     assert_ne!(good_s.digest(), bad_s.digest());
 
     let naughty_bytes = bincode::serialize(&bad_s).unwrap();
 
-    let retrieved_s: S<G> = bincode::deserialize(&naughty_bytes).unwrap();
+    let retrieved_s: S<E> = bincode::deserialize(&naughty_bytes).unwrap();
     assert_eq!(good_s.digest(), retrieved_s.digest())
   }
 }

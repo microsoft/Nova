@@ -6,42 +6,42 @@ use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::Test
 use crate::{
   errors::NovaError,
   r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
-  traits::Group,
+  traits::Engine,
   CommitmentKey,
 };
 use bellpepper_core::{Index, LinearCombination};
 use ff::PrimeField;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
-pub trait NovaWitness<G: Group> {
+pub trait NovaWitness<E: Engine> {
   /// Return an instance and witness, given a shape and ck.
   fn r1cs_instance_and_witness(
     &self,
-    shape: &R1CSShape<G>,
-    ck: &CommitmentKey<G>,
-  ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError>;
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
 }
 
 /// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
-pub trait NovaShape<G: Group> {
+pub trait NovaShape<E: Engine> {
   /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
   /// A `CommitmentKeyHint` should be provided to help guide the construction of the `CommitmentKey`.
   /// This parameter is documented in `r1cs::R1CS::commitment_key`.
-  fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<G>) -> (R1CSShape<G>, CommitmentKey<G>);
+  fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>);
 }
 
-impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
+impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
   fn r1cs_instance_and_witness(
     &self,
-    shape: &R1CSShape<G>,
-    ck: &CommitmentKey<G>,
-  ) -> Result<(R1CSInstance<G>, R1CSWitness<G>), NovaError> {
-    let W = R1CSWitness::<G>::new(shape, self.aux_assignment())?;
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
+    let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
     let X = &self.input_assignment()[1..];
 
     let comm_W = W.commit(ck);
 
-    let instance = R1CSInstance::<G>::new(shape, &comm_W, X)?;
+    let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
 
     Ok((instance, W))
   }
@@ -49,14 +49,14 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
 
 macro_rules! impl_nova_shape {
   ( $name:ident) => {
-    impl<G: Group> NovaShape<G> for $name<G>
+    impl<E: Engine> NovaShape<E> for $name<E>
     where
-      G::Scalar: PrimeField,
+      E::Scalar: PrimeField,
     {
-      fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<G>) -> (R1CSShape<G>, CommitmentKey<G>) {
-        let mut A = SparseMatrix::<G::Scalar>::empty();
-        let mut B = SparseMatrix::<G::Scalar>::empty();
-        let mut C = SparseMatrix::<G::Scalar>::empty();
+      fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>) {
+        let mut A = SparseMatrix::<E::Scalar>::empty();
+        let mut B = SparseMatrix::<E::Scalar>::empty();
+        let mut C = SparseMatrix::<E::Scalar>::empty();
 
         let mut num_cons_added = 0;
         let mut X = (&mut A, &mut B, &mut C, &mut num_cons_added);
@@ -81,7 +81,7 @@ macro_rules! impl_nova_shape {
 
         // Don't count One as an input for shape's purposes.
         let S = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C).unwrap();
-        let ck = R1CS::<G>::commitment_key(&S, ck_hint);
+        let ck = R1CS::<E>::commitment_key(&S, ck_hint);
 
         (S, ck)
       }

@@ -5,9 +5,9 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, GroupExt,
+    CompressedGroup, EngineExt,
   },
-  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -16,7 +16,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
+  group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;
@@ -59,7 +59,7 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Group for $name::Point {
+    impl Engine for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
@@ -77,7 +77,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl GroupExt for $name::Point {
+    impl EngineExt for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
@@ -176,7 +176,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
+    impl<E: Engine> TranscriptReprTrait<E> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.repr.to_vec()
       }
@@ -190,7 +190,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+    impl<E: Engine> TranscriptReprTrait<E> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_repr().to_vec()
       }
@@ -241,7 +241,7 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let ck_par = <G as GroupExt>::from_label(label, n);
+      let ck_par = <E as EngineExt>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);

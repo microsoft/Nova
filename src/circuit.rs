@@ -15,7 +15,7 @@ use crate::{
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit,
+    circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
   },
   Commitment,
 };
@@ -47,26 +47,26 @@ impl NovaAugmentedCircuitParams {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NovaAugmentedCircuitInputs<G: Group> {
-  params: G::Scalar,
-  i: G::Base,
-  z0: Vec<G::Base>,
-  zi: Option<Vec<G::Base>>,
-  U: Option<RelaxedR1CSInstance<G>>,
-  u: Option<R1CSInstance<G>>,
-  T: Option<Commitment<G>>,
+pub struct NovaAugmentedCircuitInputs<E: Engine> {
+  params: E::Scalar,
+  i: E::Base,
+  z0: Vec<E::Base>,
+  zi: Option<Vec<E::Base>>,
+  U: Option<RelaxedR1CSInstance<E>>,
+  u: Option<R1CSInstance<E>>,
+  T: Option<Commitment<E>>,
 }
 
-impl<G: Group> NovaAugmentedCircuitInputs<G> {
+impl<E: Engine> NovaAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
-    params: G::Scalar,
-    i: G::Base,
-    z0: Vec<G::Base>,
-    zi: Option<Vec<G::Base>>,
-    U: Option<RelaxedR1CSInstance<G>>,
-    u: Option<R1CSInstance<G>>,
-    T: Option<Commitment<G>>,
+    params: E::Scalar,
+    i: E::Base,
+    z0: Vec<E::Base>,
+    zi: Option<Vec<E::Base>>,
+    U: Option<RelaxedR1CSInstance<E>>,
+    u: Option<R1CSInstance<E>>,
+    T: Option<Commitment<E>>,
   ) -> Self {
     Self {
       params,
@@ -82,20 +82,20 @@ impl<G: Group> NovaAugmentedCircuitInputs<G> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaAugmentedCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
+pub struct NovaAugmentedCircuit<'a, E: Engine, SC: StepCircuit<E::Base>> {
   params: &'a NovaAugmentedCircuitParams,
-  ro_consts: ROConstantsCircuit<G>,
-  inputs: Option<NovaAugmentedCircuitInputs<G>>,
+  ro_consts: ROConstantsCircuit<E>,
+  inputs: Option<NovaAugmentedCircuitInputs<E>>,
   step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
+impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
     params: &'a NovaAugmentedCircuitParams,
-    inputs: Option<NovaAugmentedCircuitInputs<G>>,
+    inputs: Option<NovaAugmentedCircuitInputs<E>>,
     step_circuit: &'a SC,
-    ro_consts: ROConstantsCircuit<G>,
+    ro_consts: ROConstantsCircuit<E>,
   ) -> Self {
     Self {
       params,
@@ -106,24 +106,24 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 
   /// Allocate all witnesses and return
-  fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn alloc_witness<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
     arity: usize,
   ) -> Result<
     (
-      AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
-      Vec<AllocatedNum<G::Base>>,
-      Vec<AllocatedNum<G::Base>>,
-      AllocatedRelaxedR1CSInstance<G>,
-      AllocatedR1CSInstance<G>,
-      AllocatedPoint<G>,
+      AllocatedNum<E::Base>,
+      AllocatedNum<E::Base>,
+      Vec<AllocatedNum<E::Base>>,
+      Vec<AllocatedNum<E::Base>>,
+      AllocatedRelaxedR1CSInstance<E>,
+      AllocatedR1CSInstance<E>,
+      AllocatedPoint<E>,
     ),
     SynthesisError,
   > {
     // Allocate the params
-    let params = alloc_scalar_as_base::<G, _>(
+    let params = alloc_scalar_as_base::<E, _>(
       cs.namespace(|| "params"),
       self.inputs.as_ref().map(|inputs| inputs.params),
     )?;
@@ -138,20 +138,20 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
           Ok(self.inputs.get()?.z0[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-    let zero = vec![G::Base::ZERO; arity];
+    let zero = vec![E::Base::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
           Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
     // Allocate the running instance
-    let U: AllocatedRelaxedR1CSInstance<G> = AllocatedRelaxedR1CSInstance::alloc(
+    let U: AllocatedRelaxedR1CSInstance<E> = AllocatedRelaxedR1CSInstance::alloc(
       cs.namespace(|| "Allocate U"),
       self.inputs.as_ref().and_then(|inputs| inputs.U.as_ref()),
       self.params.limb_width,
@@ -178,12 +178,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 
   /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-  fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    u: AllocatedR1CSInstance<G>,
-  ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
-    let U_default: AllocatedRelaxedR1CSInstance<G> = if self.params.is_primary_circuit {
+    u: AllocatedR1CSInstance<E>,
+  ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
+    let U_default: AllocatedRelaxedR1CSInstance<E> = if self.params.is_primary_circuit {
       // The primary circuit just returns the default R1CS instance
       AllocatedRelaxedR1CSInstance::default(
         cs.namespace(|| "Allocate U_default"),
@@ -204,20 +204,20 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 
   /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
-  fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    params: &AllocatedNum<G::Base>,
-    i: &AllocatedNum<G::Base>,
-    z_0: &[AllocatedNum<G::Base>],
-    z_i: &[AllocatedNum<G::Base>],
-    U: &AllocatedRelaxedR1CSInstance<G>,
-    u: &AllocatedR1CSInstance<G>,
-    T: &AllocatedPoint<G>,
+    params: &AllocatedNum<E::Base>,
+    i: &AllocatedNum<E::Base>,
+    z_0: &[AllocatedNum<E::Base>],
+    z_i: &[AllocatedNum<E::Base>],
+    U: &AllocatedRelaxedR1CSInstance<E>,
+    u: &AllocatedR1CSInstance<E>,
+    T: &AllocatedPoint<E>,
     arity: usize,
-  ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
+  ) -> Result<(AllocatedRelaxedR1CSInstance<E>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(
+    let mut ro = E::ROCircuit::new(
       self.ro_consts.clone(),
       NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
     );
@@ -254,12 +254,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
   }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
+impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn synthesize<CS: ConstraintSystem<<E as Engine>::Base>>(
     self,
     cs: &mut CS,
-  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
+  ) -> Result<Vec<AllocatedNum<E::Base>>, SynthesisError> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
@@ -309,7 +309,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
-      Ok(*i.get_value().get()? + G::Base::ONE)
+      Ok(*i.get_value().get()? + E::Base::ONE)
     })?;
     cs.enforce(
       || "check i + 1",
@@ -337,7 +337,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = E::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
     ro.absorb(&params);
     ro.absorb(&i_new);
     for e in &z_0 {
@@ -377,40 +377,40 @@ mod tests {
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-  fn test_recursive_circuit_with<G1, G2>(
+  fn test_recursive_circuit_with<E1, E2>(
     primary_params: &NovaAugmentedCircuitParams,
     secondary_params: &NovaAugmentedCircuitParams,
-    ro_consts1: ROConstantsCircuit<G2>,
-    ro_consts2: ROConstantsCircuit<G1>,
+    ro_consts1: ROConstantsCircuit<E2>,
+    ro_consts2: ROConstantsCircuit<E1>,
     num_constraints_primary: usize,
     num_constraints_secondary: usize,
   ) where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
   {
     let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
       NovaAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
-    let mut cs: TestShapeCS<G1> = TestShapeCS::new();
+    let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     let tc2 = TrivialCircuit::default();
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
       NovaAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
-    let mut cs: TestShapeCS<G2> = TestShapeCS::new();
+    let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary
-    let zero1 = <<G2 as Group>::Base as Field>::ZERO;
-    let mut cs1 = SatisfyingAssignment::<G1>::new();
-    let inputs1: NovaAugmentedCircuitInputs<G2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G1>(zero1), // pass zero for testing
+    let zero1 = <<E2 as Engine>::Base as Field>::ZERO;
+    let mut cs1 = SatisfyingAssignment::<E1>::new();
+    let inputs1: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
+      scalar_as_base::<E1>(zero1), // pass zero for testing
       zero1,
       vec![zero1],
       None,
@@ -418,7 +418,7 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NovaAugmentedCircuit<'_, G2, TrivialCircuit<<G2 as Group>::Base>> =
+    let circuit1: NovaAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
       NovaAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
@@ -426,10 +426,10 @@ mod tests {
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
 
     // Execute the base case for the secondary
-    let zero2 = <<G1 as Group>::Base as Field>::ZERO;
-    let mut cs2 = SatisfyingAssignment::<G2>::new();
-    let inputs2: NovaAugmentedCircuitInputs<G1> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<G2>(zero2), // pass zero for testing
+    let zero2 = <<E1 as Engine>::Base as Field>::ZERO;
+    let mut cs2 = SatisfyingAssignment::<E2>::new();
+    let inputs2: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
+      scalar_as_base::<E2>(zero2), // pass zero for testing
       zero2,
       vec![zero2],
       None,
@@ -437,7 +437,7 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit2: NovaAugmentedCircuit<'_, G1, TrivialCircuit<<G1 as Group>::Base>> =
+    let circuit2: NovaAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
       NovaAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();

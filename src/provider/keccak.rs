@@ -2,7 +2,7 @@
 use crate::traits::PrimeFieldExt;
 use crate::{
   errors::NovaError,
-  traits::{Group, TranscriptEngineTrait, TranscriptReprTrait},
+  traits::{Engine, TranscriptEngineTrait, TranscriptReprTrait},
 };
 use core::marker::PhantomData;
 use sha3::{Digest, Keccak256};
@@ -15,11 +15,11 @@ const KECCAK256_PREFIX_CHALLENGE_HI: u8 = 1;
 
 /// Provides an implementation of `TranscriptEngine`
 #[derive(Debug, Clone)]
-pub struct Keccak256Transcript<G: Group> {
+pub struct Keccak256Transcript<E: Engine> {
   round: u16,
   state: [u8; KECCAK256_STATE_SIZE],
   transcript: Keccak256,
-  _p: PhantomData<G>,
+  _p: PhantomData<E>,
 }
 
 fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
@@ -45,7 +45,7 @@ fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCA
     .unwrap()
 }
 
-impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
+impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
   fn new(label: &'static [u8]) -> Self {
     let keccak_instance = Keccak256::new();
     let input = [PERSONA_TAG, label].concat();
@@ -59,7 +59,7 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     }
   }
 
-  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError> {
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError> {
     // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
       DOM_SEP_TAG,
@@ -82,10 +82,10 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     self.transcript = Keccak256::new();
 
     // squeeze out a challenge
-    Ok(G::Scalar::from_uniform(&output))
+    Ok(E::Scalar::from_uniform(&output))
   }
 
-  fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T) {
+  fn absorb<T: TranscriptReprTrait<E>>(&mut self, label: &'static [u8], o: &T) {
     self.transcript.update(label);
     self.transcript.update(&o.to_transcript_bytes());
   }
@@ -101,35 +101,35 @@ mod tests {
   use crate::{
     provider::bn256_grumpkin::bn256,
     provider::{self, keccak::Keccak256Transcript, secp_secq},
-    traits::{Group, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
+    traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
   use ff::PrimeField;
   use rand::Rng;
   use sha3::{Digest, Keccak256};
 
-  fn test_keccak_transcript_with<G: Group>(expected_h1: &'static str, expected_h2: &'static str) {
-    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(b"test");
+  fn test_keccak_transcript_with<E: Engine>(expected_h1: &'static str, expected_h2: &'static str) {
+    let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(b"test");
 
     // two scalars
-    let s1 = <G as Group>::Scalar::from(2u64);
-    let s2 = <G as Group>::Scalar::from(5u64);
+    let s1 = <E as Engine>::Scalar::from(2u64);
+    let s2 = <E as Engine>::Scalar::from(5u64);
 
     // add the scalars to the transcript
     transcript.absorb(b"s1", &s1);
     transcript.absorb(b"s2", &s2);
 
     // make a challenge
-    let c1: <G as Group>::Scalar = transcript.squeeze(b"c1").unwrap();
+    let c1: <E as Engine>::Scalar = transcript.squeeze(b"c1").unwrap();
     assert_eq!(hex::encode(c1.to_repr().as_ref()), expected_h1);
 
     // a scalar
-    let s3 = <G as Group>::Scalar::from(128u64);
+    let s3 = <E as Engine>::Scalar::from(128u64);
 
     // add the scalar to the transcript
     transcript.absorb(b"s3", &s3);
 
     // make a challenge
-    let c2: <G as Group>::Scalar = transcript.squeeze(b"c2").unwrap();
+    let c2: <E as Engine>::Scalar = transcript.squeeze(b"c2").unwrap();
     assert_eq!(hex::encode(c2.to_repr().as_ref()), expected_h2);
   }
 
@@ -206,13 +206,13 @@ mod tests {
 
   // This test is meant to ensure compatibility between the incremental way of computing the transcript above, and
   // the former, which materialized the entirety of the input vector before calling Keccak256 on it.
-  fn test_keccak_transcript_incremental_vs_explicit_with<G: Group>() {
+  fn test_keccak_transcript_incremental_vs_explicit_with<E: Engine>() {
     let test_label = b"test";
-    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(test_label);
+    let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(test_label);
     let mut rng = rand::thread_rng();
 
     // ten scalars
-    let scalars = std::iter::from_fn(|| Some(<G as Group>::Scalar::from(rng.gen::<u64>())))
+    let scalars = std::iter::from_fn(|| Some(<E as Engine>::Scalar::from(rng.gen::<u64>())))
       .take(10)
       .collect::<Vec<_>>();
 
@@ -233,11 +233,11 @@ mod tests {
     let initial_state = compute_updated_state_for_testing(&input);
 
     // make a challenge
-    let c1: <G as Group>::Scalar = transcript.squeeze(b"c1").unwrap();
+    let c1: <E as Engine>::Scalar = transcript.squeeze(b"c1").unwrap();
 
     let c1_bytes = squeeze_for_testing(&manual_transcript[..], 0u16, initial_state, b"c1");
-    let to_hex = |g: G::Scalar| hex::encode(g.to_repr().as_ref());
-    assert_eq!(to_hex(c1), to_hex(G::Scalar::from_uniform(&c1_bytes)));
+    let to_hex = |g: E::Scalar| hex::encode(g.to_repr().as_ref());
+    assert_eq!(to_hex(c1), to_hex(E::Scalar::from_uniform(&c1_bytes)));
   }
 
   #[test]

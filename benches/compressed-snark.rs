@@ -8,7 +8,7 @@ use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
-    Group,
+    Engine,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
 };
@@ -16,16 +16,16 @@ use std::time::Duration;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
-type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
-type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
+type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
+type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G1, EE1>;
 type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
 // SNARKs with computational commitments
 type SS1 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1>;
 type SS2 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
-type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
+type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -66,7 +66,7 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+    let pp = PublicParams::<E1, E2, C1, C2>::setup(
       &c_primary,
       &c_secondary,
       &*S1::ck_floor(),
@@ -78,12 +78,12 @@ fn bench_compressed_snark(c: &mut Criterion) {
 
     // produce a recursive SNARK
     let num_steps = 3;
-    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::new(
+    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as Group>::Scalar::from(2u64)],
-      &[<G2 as Group>::Scalar::from(2u64)],
+      &[<E1 as Engine>::Scalar::from(2u64)],
+      &[<E2 as Engine>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -95,8 +95,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as Group>::Scalar::from(2u64)],
-        &[<G2 as Group>::Scalar::from(2u64)],
+        &[<E1 as Engine>::Scalar::from(2u64)],
+        &[<E2 as Engine>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -123,8 +123,8 @@ fn bench_compressed_snark(c: &mut Criterion) {
           .verify(
             black_box(&vk),
             black_box(num_steps),
-            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
+            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
@@ -153,7 +153,7 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+    let pp = PublicParams::<E1, E2, C1, C2>::setup(
       &c_primary,
       &c_secondary,
       &*SS1::ck_floor(),
@@ -164,12 +164,12 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
 
     // produce a recursive SNARK
     let num_steps = 3;
-    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::new(
+    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as Group>::Scalar::from(2u64)],
-      &[<G2 as Group>::Scalar::from(2u64)],
+      &[<E1 as Engine>::Scalar::from(2u64)],
+      &[<E2 as Engine>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -181,8 +181,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as Group>::Scalar::from(2u64)],
-        &[<G2 as Group>::Scalar::from(2u64)],
+        &[<E1 as Engine>::Scalar::from(2u64)],
+        &[<E2 as Engine>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -209,8 +209,8 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
           .verify(
             black_box(&vk),
             black_box(num_steps),
-            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
+            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
           )
           .is_ok());
       })
