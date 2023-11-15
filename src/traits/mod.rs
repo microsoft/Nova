@@ -38,8 +38,8 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
 
-  /// Returns A, B, and the order of the group as a big integer
-  fn get_curve_params() -> (Self::Base, Self::Base, BigInt);
+  /// Returns A, B, the order of the group, the size of the base field as big integers
+  fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt);
 }
 
 /// A helper trait to absorb different objects in RO
