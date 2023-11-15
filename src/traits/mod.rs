@@ -12,7 +12,7 @@ use commitment::CommitmentEngineTrait;
 
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
-pub trait Group: Clone + Debug + Send + Sync + Sized + Eq + PartialEq {
+pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
   type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
 
