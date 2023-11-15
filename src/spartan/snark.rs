@@ -471,8 +471,8 @@ fn batch_eval_prove<E: Engine>(
 > {
   assert_eq!(u_vec.len(), w_vec.len());
 
-  let w_vec_padded = PolyEvalWitness::pad(&w_vec); // pad the polynomials to be of the same size
-  let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
+  let w_vec_padded = PolyEvalWitness::pad(w_vec); // pad the polynomials to be of the same size
+  let u_vec_padded = PolyEvalInstance::pad(u_vec); // pad the evaluation points
 
   // generate a challenge
   let rho = transcript.squeeze(b"r")?;
@@ -547,13 +547,13 @@ fn batch_eval_verify<E: Engine>(
 ) -> Result<PolyEvalInstance<E>, NovaError> {
   assert_eq!(evals_batch.len(), evals_batch.len());
 
-  let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
+  let u_vec_padded = PolyEvalInstance::pad(u_vec); // pad the evaluation points
 
   // generate a challenge
   let rho = transcript.squeeze(b"r")?;
-  let num_claims = u_vec.len();
+  let num_claims: usize = u_vec_padded.len();
   let powers_of_rho = powers::<E>(&rho, num_claims);
-  let claim_batch_joint = u_vec
+  let claim_batch_joint = u_vec_padded
     .iter()
     .zip(powers_of_rho.iter())
     .map(|(u, p)| u.e * p)
