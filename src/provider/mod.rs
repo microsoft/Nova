@@ -3,6 +3,89 @@
 //! `Group` with pasta curves and BN256/Grumpkin
 //! `RO` traits with Poseidon
 //! `EvaluationEngine` with an IPA-based polynomial evaluation argument
+use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
+use core::{
+  fmt::Debug,
+  ops::{Add, AddAssign, Sub, SubAssign},
+};
+use serde::{Deserialize, Serialize};
+
+/// Represents a compressed version of a group element
+pub trait CompressedGroup:
+  Clone
+  + Copy
+  + Debug
+  + Eq
+  + Send
+  + Sync
+  + TranscriptReprTrait<Self::GroupElement>
+  + Serialize
+  + for<'de> Deserialize<'de>
+  + 'static
+{
+  /// A type that holds the decompressed version of the compressed group element
+  type GroupElement: Group;
+
+  /// Decompresses the compressed group element
+  fn decompress(&self) -> Option<Self::GroupElement>;
+}
+
+/// A helper trait for types with a group operation.
+pub trait GroupOps<Rhs = Self, Output = Self>:
+  Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+impl<T, Rhs, Output> GroupOps<Rhs, Output> for T where
+  T: Add<Rhs, Output = Output> + Sub<Rhs, Output = Output> + AddAssign<Rhs> + SubAssign<Rhs>
+{
+}
+
+/// A helper trait for references with a group operation.
+pub trait GroupOpsOwned<Rhs = Self, Output = Self>: for<'r> GroupOps<&'r Rhs, Output> {}
+impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<&'r Rhs, Output> {}
+
+/// A helper trait for references implementing group scalar multiplication.
+pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
+impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
+
+/// A trait that defines extensions to the Group trait
+pub trait GroupExt:
+  Group
+  + Serialize
+  + for<'de> Deserialize<'de>
+  + GroupOps
+  + GroupOpsOwned
+  + ScalarMul<<Self as Group>::Scalar>
+  + ScalarMulOwned<<Self as Group>::Scalar>
+{
+  /// A type representing the compressed version of the group element
+  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
+
+  /// A type representing preprocessed group element
+  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// A method to compute a multiexponentation
+  fn vartime_multiscalar_mul(
+    scalars: &[Self::Scalar],
+    bases: &[Self::PreprocessedGroupElement],
+  ) -> Self;
+
+  /// Produce a vector of group elements using a static label
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
+
+  /// Compresses the group element
+  fn compress(&self) -> Self::CompressedGroupElement;
+
+  /// Produces a preprocessed element
+  fn preprocessed(&self) -> Self::PreprocessedGroupElement;
+
+  /// Returns an element that is the additive identity of the group
+  fn zero() -> Self;
+
+  /// Returns the affine coordinates (x, y, infinty) for the point
+  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+}
 
 pub mod bn256_grumpkin;
 pub mod ipa_pc;
@@ -140,12 +223,23 @@ macro_rules! impl_traits {
     impl Group for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
-      type CompressedGroupElement = $name_compressed;
-      type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
+
+      fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
+        let A = $name::Point::a();
+        let B = $name::Point::b();
+        let order = BigInt::from_str_radix($order_str, 16).unwrap();
+
+        (A, B, order)
+      }
+    }
+
+    impl GroupExt for $name::Point {
+      type CompressedGroupElement = $name_compressed;
+      type PreprocessedGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
@@ -208,32 +302,20 @@ macro_rules! impl_traits {
         }
       }
 
+      fn zero() -> Self {
+        $name::Point::identity()
+      }
+
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
         // see: grumpkin implementation at src/provider/bn256_grumpkin.rs
         let coordinates = self.to_affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1
-          && (Self::PreprocessedGroupElement::identity() != self.to_affine())
+          && ($name_curve_affine::identity() != self.to_affine())
         {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
         }
-      }
-
-      fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
-        let A = $name::Point::a();
-        let B = $name::Point::b();
-        let order = BigInt::from_str_radix($order_str, 16).unwrap();
-
-        (A, B, order)
-      }
-
-      fn zero() -> Self {
-        $name::Point::identity()
-      }
-
-      fn get_generator() -> Self {
-        $name::Point::generator()
       }
     }
 
