@@ -39,18 +39,6 @@ pub mod secq256k1 {
   };
 }
 
-impl<G: Group> TranscriptReprTrait<G> for secp256k1::Base {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
-impl<G: Group> TranscriptReprTrait<G> for secp256k1::Scalar {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
 impl_traits!(
   secp256k1,
   Secp256k1Compressed,

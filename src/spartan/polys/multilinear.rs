@@ -60,7 +60,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Bounds the polynomial's top variable using the given scalar.
   ///
   /// This operation modifies the polynomial in-place.
-  pub fn bound_poly_var_top(&mut self, r: &Scalar) {
+  pub fn bind_poly_var_top(&mut self, r: &Scalar) {
     let n = self.len() / 2;
 
     let (left, right) = self.Z.split_at_mut(n);

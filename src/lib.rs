@@ -979,11 +979,25 @@ mod tests {
     let trivial_circuit2_grumpkin = TrivialCircuit::<<grumpkin::Point as Group>::Scalar>::default();
     let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
 
+    #[cfg(feature = "asm")]
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      &trivial_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
+      "c4ecd363a6c1473de7e0d24fc1dbb660f563556e2e13fb4614acdff04cab7701",
+    );
+    #[cfg(feature = "asm")]
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      &cubic_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
+      "4853a6463b6309f6ae76442934d0a423f51f1e10abaddd0d39bf5644ed589100",
+    );
+    #[cfg(not(feature = "asm"))]
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
       "c26cc841d42c19bf98bc2482e66cd30903922f2a923927b85d66f375a821f101",
     );
+    #[cfg(not(feature = "asm"))]
     test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,

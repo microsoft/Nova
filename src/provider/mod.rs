@@ -339,6 +339,12 @@ macro_rules! impl_traits {
         Some($name_curve::from_bytes(&self).unwrap())
       }
     }
+
+    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+      fn to_transcript_bytes(&self) -> Vec<u8> {
+        self.to_repr().to_vec()
+      }
+    }
   };
 }
 

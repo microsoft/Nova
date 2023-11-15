@@ -42,18 +42,6 @@ pub mod grumpkin {
   };
 }
 
-impl<G: Group> TranscriptReprTrait<G> for grumpkin::Base {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
-impl<G: Group> TranscriptReprTrait<G> for grumpkin::Scalar {
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.to_repr().to_vec()
-  }
-}
-
 impl_traits!(
   bn256,
   Bn256Compressed,
