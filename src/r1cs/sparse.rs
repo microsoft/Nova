@@ -165,7 +165,7 @@ mod tests {
   use crate::{r1cs::util::FWrap, traits::Engine};
 
   use super::SparseMatrix;
-  use pasta_curves::pallas::Point as G;
+  use pasta_curves::pallas::Point as E;
   use proptest::{
     prelude::*,
     strategy::{BoxedStrategy, Just, Strategy},

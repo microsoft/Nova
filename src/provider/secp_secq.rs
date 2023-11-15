@@ -60,7 +60,7 @@ impl_traits!(
 #[cfg(test)]
 mod tests {
   use super::*;
-  type G = secp256k1::Point;
+  type E = secp256k1::Point;
 
   fn from_label_serial(label: &'static [u8], n: usize) -> Vec<Secp256k1Affine> {
     let mut shake = Shake256::default();

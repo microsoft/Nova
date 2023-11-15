@@ -14,8 +14,8 @@ use nova_snark::{
 };
 use std::time::Duration;
 
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
+type E1 = pasta_curves::pallas::Point;
+type E2 = pasta_curves::vesta::Point;
 type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments

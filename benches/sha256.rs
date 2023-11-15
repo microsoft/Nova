@@ -3,8 +3,8 @@
 //! This code invokes a hand-written SHA-256 gadget from bellman/bellperson.
 //! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
 #![allow(non_snake_case)]
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
+type E1 = pasta_curves::pallas::Point;
+type E2 = pasta_curves::vesta::Point;
 use bellpepper::gadgets::{sha256::sha256, Assignment};
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},

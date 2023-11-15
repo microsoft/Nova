@@ -124,8 +124,8 @@ where
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
   /// use nova_snark::PublicParams;
   ///
-  /// type G1 = pallas::Point;
-  /// type G2 = vesta::Point;
+  /// type E1 = pallas::Point;
+  /// type E2 = vesta::Point;
   /// type EE<E> = EvaluationEngine<E>;
   /// type SPrime<E> = RelaxedR1CSSNARK<E, EE<E>>;
   ///
@@ -935,12 +935,12 @@ mod tests {
     T1: StepCircuit<E1::Scalar>,
     T2: StepCircuit<E2::Scalar>,
     // required to use the IPA in the initialization of the commitment key hints below
-    <G1::CE as CommitmentEngineTrait<E1>>::CommitmentKey: CommitmentKeyExtTrait<E1>,
-    <G2::CE as CommitmentEngineTrait<E2>>::CommitmentKey: CommitmentKeyExtTrait<E2>,
+    <E1::CE as CommitmentEngineTrait<E1>>::CommitmentKey: CommitmentKeyExtTrait<E1>,
+    <E2::CE as CommitmentEngineTrait<E2>>::CommitmentKey: CommitmentKeyExtTrait<E2>,
   {
     // this tests public parameters with a size specifically intended for a spark-compressed SNARK
-    let ck_hint1 = &*SPrime::<G1, EE<E1>>::ck_floor();
-    let ck_hint2 = &*SPrime::<G2, EE<E2>>::ck_floor();
+    let ck_hint1 = &*SPrime::<E1, EE<E1>>::ck_floor();
+    let ck_hint2 = &*SPrime::<E2, EE<E2>>::ck_floor();
     let pp = PublicParams::<E1, E2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2);
 
     let digest_str = pp
@@ -957,8 +957,8 @@ mod tests {
 
   #[test]
   fn test_pp_digest() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
     let trivial_circuit1 = TrivialCircuit::<<E1 as Engine>::Scalar>::default();
     let trivial_circuit2 = TrivialCircuit::<<E2 as Engine>::Scalar>::default();
     let cubic_circuit1 = CubicCircuit::<<E1 as Engine>::Scalar>::default();
@@ -1031,8 +1031,8 @@ mod tests {
 
     // produce public parameters
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       TrivialCircuit<<E2 as Engine>::Scalar>,
     >::setup(
@@ -1070,8 +1070,8 @@ mod tests {
 
   #[test]
   fn test_ivc_trivial() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_trivial_with::<E1, E2>();
     test_ivc_trivial_with::<bn256::Point, grumpkin::Point>();
@@ -1088,8 +1088,8 @@ mod tests {
 
     // produce public parameters
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::setup(
@@ -1103,8 +1103,8 @@ mod tests {
 
     // produce a recursive SNARK
     let mut recursive_snark = RecursiveSNARK::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::new(
@@ -1153,28 +1153,28 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with::<E1, E2>();
     test_ivc_nontrivial_with::<bn256::Point, grumpkin::Point>();
     test_ivc_nontrivial_with::<secp256k1::Point, secq256k1::Point>();
   }
 
-  fn test_ivc_nontrivial_with_compression_with<E1, E2, E1, E2>()
+  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
-    E1: EvaluationEngineTrait<E1>,
-    E2: EvaluationEngineTrait<E2>,
+    EE1: EvaluationEngineTrait<E1>,
+    EE2: EvaluationEngineTrait<E2>,
   {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::setup(
@@ -1188,8 +1188,8 @@ mod tests {
 
     // produce a recursive SNARK
     let mut recursive_snark = RecursiveSNARK::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::new(
@@ -1227,11 +1227,11 @@ mod tests {
     assert_eq!(zn_secondary, vec![<E2 as Engine>::Scalar::from(2460515u64)]);
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
     let res =
-      CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::prove(&pp, &pk, &recursive_snark);
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1247,43 +1247,43 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with_compression_with::<E1, E2, EE<_>, EE<_>>();
     test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
     test_ivc_nontrivial_with_compression_with::<secp256k1::Point, secq256k1::Point, EE<_>, EE<_>>();
   }
 
-  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, E1, E2>()
+  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
-    E1: EvaluationEngineTrait<E1>,
-    E2: EvaluationEngineTrait<E2>,
+    EE1: EvaluationEngineTrait<E1>,
+    EE2: EvaluationEngineTrait<E2>,
   {
     let circuit_primary = TrivialCircuit::default();
     let circuit_secondary = CubicCircuit::default();
 
     // produce public parameters, which we'll use with a spark-compressed SNARK
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::setup(
       &circuit_primary,
       &circuit_secondary,
-      &*SPrime::<G1, E1>::ck_floor(),
-      &*SPrime::<G2, E2>::ck_floor(),
+      &*SPrime::<E1, EE1>::ck_floor(),
+      &*SPrime::<E2, EE2>::ck_floor(),
     );
 
     let num_steps = 3;
 
     // produce a recursive SNARK
     let mut recursive_snark = RecursiveSNARK::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::new(
@@ -1323,10 +1323,10 @@ mod tests {
     // run the compressed snark with Spark compiler
     // produce the prover and verifier keys for compressed snark
     let (pk, vk) =
-      CompressedSNARK::<_, _, _, _, SPrime<G1, E1>, SPrime<G2, E2>>::setup(&pp).unwrap();
+      CompressedSNARK::<_, _, _, _, SPrime<E1, EE1>, SPrime<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, SPrime<G1, E1>, SPrime<G2, E2>>::prove(
+    let res = CompressedSNARK::<_, _, _, _, SPrime<E1, EE1>, SPrime<E2, EE2>>::prove(
       &pp,
       &pk,
       &recursive_snark,
@@ -1346,8 +1346,8 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_nontrivial_with_spark_compression_with::<E1, E2, EE<_>, EE<_>>();
     test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>(
@@ -1360,12 +1360,12 @@ mod tests {
     >();
   }
 
-  fn test_ivc_nondet_with_compression_with<E1, E2, E1, E2>()
+  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
-    E1: EvaluationEngineTrait<E1>,
-    E2: EvaluationEngineTrait<E2>,
+    EE1: EvaluationEngineTrait<E1>,
+    EE2: EvaluationEngineTrait<E2>,
   {
     // y is a non-deterministic advice representing the fifth root of the input at a step.
     #[derive(Clone, Debug)]
@@ -1435,8 +1435,8 @@ mod tests {
 
     // produce public parameters
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
       TrivialCircuit<<E2 as Engine>::Scalar>,
     >::setup(
@@ -1454,13 +1454,13 @@ mod tests {
 
     // produce a recursive SNARK
     let mut recursive_snark: RecursiveSNARK<
-      G1,
-      G2,
+      E1,
+      E2,
       FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
       TrivialCircuit<<E2 as Engine>::Scalar>,
     > = RecursiveSNARK::<
-      G1,
-      G2,
+      E1,
+      E2,
       FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
       TrivialCircuit<<E2 as Engine>::Scalar>,
     >::new(
@@ -1482,11 +1482,11 @@ mod tests {
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::setup(&pp).unwrap();
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
     let res =
-      CompressedSNARK::<_, _, _, _, S<G1, E1>, S<G2, E2>>::prove(&pp, &pk, &recursive_snark);
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1497,8 +1497,8 @@ mod tests {
 
   #[test]
   fn test_ivc_nondet_with_compression() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_nondet_with_compression_with::<E1, E2, EE<_>, EE<_>>();
     test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
@@ -1515,8 +1515,8 @@ mod tests {
 
     // produce public parameters
     let pp = PublicParams::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::setup(
@@ -1530,8 +1530,8 @@ mod tests {
 
     // produce a recursive SNARK
     let mut recursive_snark = RecursiveSNARK::<
-      G1,
-      G2,
+      E1,
+      E2,
       TrivialCircuit<<E1 as Engine>::Scalar>,
       CubicCircuit<<E2 as Engine>::Scalar>,
     >::new(
@@ -1565,8 +1565,8 @@ mod tests {
 
   #[test]
   fn test_ivc_base() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
+    type E1 = pasta_curves::pallas::Point;
+    type E2 = pasta_curves::vesta::Point;
 
     test_ivc_base_with::<E1, E2>();
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();

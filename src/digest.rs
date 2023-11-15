@@ -115,7 +115,7 @@ mod tests {
     }
   }
 
-  type G = pallas::Point;
+  type E = pallas::Point;
 
   #[test]
   fn test_digest_field_not_ingested_in_computation() {

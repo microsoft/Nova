@@ -953,10 +953,10 @@ mod tests {
     test_ecc_ops_with::<secq256k1::Affine, secq256k1::Point>();
   }
 
-  fn test_ecc_ops_with<C, G>()
+  fn test_ecc_ops_with<C, E>()
   where
-    C: CurveAffine<Base = E::Base, ScalarExt = E::Scalar>,
     E: Engine,
+    C: CurveAffine<Base = E::Base, ScalarExt = E::Scalar>,
   {
     // perform some curve arithmetic
     let a = Point::<E>::random_vartime();
@@ -1047,13 +1047,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
+    let _ = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let (a, e, s) = synthesize_smul::<G1, _>(cs.namespace(|| "synthesize"));
+    let (a, e, s) = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     let a_p: Point<E1> = Point::new(
@@ -1103,13 +1103,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
+    let _ = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let (a, e) = synthesize_add_equal::<G1, _>(cs.namespace(|| "synthesize add equal"));
+    let (a, e) = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let a_p: Point<E1> = Point::new(
       a.x.get_value().unwrap(),
@@ -1163,13 +1163,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add equal"));
+    let _ = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let e = synthesize_add_negation::<G1, _>(cs.namespace(|| "synthesize add negation"));
+    let e = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add negation"));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let e_p: Point<E1> = Point::new(
       e.x.get_value().unwrap(),

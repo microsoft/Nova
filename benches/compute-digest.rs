@@ -12,8 +12,8 @@ use nova_snark::{
   PublicParams,
 };
 
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
+type E1 = pasta_curves::pallas::Point;
+type E2 = pasta_curves::vesta::Point;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 

@@ -219,7 +219,7 @@ impl_traits!(
 #[cfg(test)]
 mod tests {
   use super::*;
-  type G = pasta_curves::pallas::Point;
+  type E = pasta_curves::pallas::Point;
 
   fn from_label_serial(label: &'static [u8], n: usize) -> Vec<EpAffine> {
     let mut shake = Shake256::default();

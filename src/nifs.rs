@@ -118,7 +118,7 @@ mod tests {
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 
-  type G = pasta_curves::pallas::Point;
+  type E = pasta_curves::pallas::Point;
 
   fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     cs: &mut CS,

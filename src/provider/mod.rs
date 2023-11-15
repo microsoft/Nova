@@ -358,7 +358,7 @@ mod tests {
     bn256_grumpkin::{bn256, grumpkin},
     secp_secq::{secp256k1, secq256k1},
   };
-  use group::{ff::Field, Engine};
+  use group::{ff::Field, Group};
   use halo2curves::CurveAffine;
   use pasta_curves::{pallas, vesta};
   use rand_core::OsRng;
