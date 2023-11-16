@@ -56,7 +56,8 @@ macro_rules! impl_traits {
     $name_compressed:ident,
     $name_curve:ident,
     $name_curve_affine:ident,
-    $order_str:literal
+    $order_str:literal,
+    $base_str:literal
   ) => {
     impl Group for $name::Point {
       type Base = $name::Base;
@@ -66,12 +67,13 @@ macro_rules! impl_traits {
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
-      fn get_curve_params() -> (Self::Base, Self::Base, BigInt) {
+      fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
         let A = $name::Point::a();
         let B = $name::Point::b();
         let order = BigInt::from_str_radix($order_str, 16).unwrap();
+        let base = BigInt::from_str_radix($base_str, 16).unwrap();
 
-        (A, B, order)
+        (A, B, order, base)
       }
     }
 
@@ -201,7 +203,8 @@ impl_traits!(
   PallasCompressedElementWrapper,
   Ep,
   EpAffine,
-  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001"
+  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
+  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
 );
 
 impl_traits!(
@@ -209,7 +212,8 @@ impl_traits!(
   VestaCompressedElementWrapper,
   Eq,
   EqAffine,
-  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001"
+  "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
+  "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001"
 );
 
 #[cfg(test)]

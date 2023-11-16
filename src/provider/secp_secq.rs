@@ -44,7 +44,8 @@ impl_traits!(
   Secp256k1Compressed,
   Secp256k1,
   Secp256k1Affine,
-  "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
+  "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
 );
 
 impl_traits!(
@@ -52,7 +53,8 @@ impl_traits!(
   Secq256k1Compressed,
   Secq256k1,
   Secq256k1Affine,
-  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
+  "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
+  "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
 );
 
 #[cfg(test)]
