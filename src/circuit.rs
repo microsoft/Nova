@@ -362,18 +362,21 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::bellpepper::{solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
-  type PastaG1 = pasta_curves::pallas::Point;
-  type PastaG2 = pasta_curves::vesta::Point;
-
-  use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
-  use crate::provider;
-  use crate::traits::snark::default_ck_hint;
   use crate::{
-    bellpepper::r1cs::{NovaShape, NovaWitness},
+    bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      solver::SatisfyingAssignment,
+      test_shape_cs::TestShapeCS,
+    },
+    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
     gadgets::utils::scalar_as_base,
-    provider::poseidon::PoseidonConstantsCircuit,
-    traits::circuit::TrivialCircuit,
+    provider::{
+      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
+      pasta::{PallasEngine, VestaEngine},
+      poseidon::PoseidonConstantsCircuit,
+      secp_secq::{Secp256k1Engine, Secq256k1Engine},
+    },
+    traits::{circuit::TrivialCircuit, snark::default_ck_hint},
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
@@ -449,10 +452,10 @@ mod tests {
   fn test_recursive_circuit_pasta() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<PastaG2> = PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<PastaG1> = PoseidonConstantsCircuit::default();
+    let ro_consts1: ROConstantsCircuit<VestaEngine> = PoseidonConstantsCircuit::default();
+    let ro_consts2: ROConstantsCircuit<PallasEngine> = PoseidonConstantsCircuit::default();
 
-    test_recursive_circuit_with::<PastaG1, PastaG2>(
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(
       &params1, &params2, ro_consts1, ro_consts2, 9825, 10357,
     );
   }
@@ -461,29 +464,23 @@ mod tests {
   fn test_recursive_circuit_grumpkin() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<provider::bn256_grumpkin::grumpkin::Point> =
-      PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<provider::bn256_grumpkin::bn256::Point> =
-      PoseidonConstantsCircuit::default();
+    let ro_consts1: ROConstantsCircuit<GrumpkinEngine> = PoseidonConstantsCircuit::default();
+    let ro_consts2: ROConstantsCircuit<Bn256Engine> = PoseidonConstantsCircuit::default();
 
-    test_recursive_circuit_with::<
-      provider::bn256_grumpkin::bn256::Point,
-      provider::bn256_grumpkin::grumpkin::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 9993, 10546);
+    test_recursive_circuit_with::<Bn256Engine, GrumpkinEngine>(
+      &params1, &params2, ro_consts1, ro_consts2, 9993, 10546,
+    );
   }
 
   #[test]
   fn test_recursive_circuit_secp() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<provider::secp_secq::secq256k1::Point> =
-      PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<provider::secp_secq::secp256k1::Point> =
-      PoseidonConstantsCircuit::default();
+    let ro_consts1: ROConstantsCircuit<Secq256k1Engine> = PoseidonConstantsCircuit::default();
+    let ro_consts2: ROConstantsCircuit<Secp256k1Engine> = PoseidonConstantsCircuit::default();
 
-    test_recursive_circuit_with::<
-      provider::secp_secq::secp256k1::Point,
-      provider::secp_secq::secq256k1::Point,
-    >(&params1, &params2, ro_consts1, ro_consts2, 10272, 10969);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(
+      &params1, &params2, ro_consts1, ro_consts2, 10272, 10969,
+    );
   }
 }

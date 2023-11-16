@@ -5,6 +5,7 @@ use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
+  provider::pasta::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
@@ -14,16 +15,16 @@ use nova_snark::{
 };
 use std::time::Duration;
 
-type E1 = pasta_curves::pallas::Point;
-type E2 = pasta_curves::vesta::Point;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments
-type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G1, EE1>;
-type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
+type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>;
+type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
 // SNARKs with computational commitments
-type SS1 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G1, EE1>;
-type SS2 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
+type SS1 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<E1, EE1>;
+type SS2 = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 

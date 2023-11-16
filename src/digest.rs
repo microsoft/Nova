@@ -80,14 +80,13 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 
 #[cfg(test)]
 mod tests {
+  use super::{DigestComputer, SimpleDigestible};
+  use crate::{provider::pasta::PallasEngine, traits::Engine};
   use ff::Field;
   use once_cell::sync::OnceCell;
-  use pasta_curves::pallas;
   use serde::{Deserialize, Serialize};
 
-  use crate::traits::Engine;
-
-  use super::{DigestComputer, SimpleDigestible};
+  type E = PallasEngine;
 
   #[derive(Serialize, Deserialize)]
   struct S<E: Engine> {
@@ -114,8 +113,6 @@ mod tests {
         .unwrap()
     }
   }
-
-  type E = pallas::Point;
 
   #[test]
   fn test_digest_field_not_ingested_in_computation() {

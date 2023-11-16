@@ -162,16 +162,19 @@ impl<'a, F: PrimeField> Iterator for Iter<'a, F> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{r1cs::util::FWrap, traits::Engine};
-
   use super::SparseMatrix;
-  use pasta_curves::pallas::Point as E;
+  use crate::{
+    provider::pasta::PallasEngine,
+    r1cs::util::FWrap,
+    traits::{Engine, Group},
+  };
   use proptest::{
     prelude::*,
     strategy::{BoxedStrategy, Just, Strategy},
   };
 
-  type Fr = <E as Engine>::Scalar;
+  type G = <PallasEngine as Engine>::GE;
+  type Fr = <G as Group>::Scalar;
 
   #[test]
   fn test_matrix_creation() {

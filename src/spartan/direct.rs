@@ -165,7 +165,9 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1};
+  use crate::provider::{
+    bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine,
+  };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -223,7 +225,7 @@ mod tests {
 
   #[test]
   fn test_direct_snark() {
-    type E = pasta_curves::pallas::Point;
+    type E = PallasEngine;
     type EE = crate::provider::ipa_pc::EvaluationEngine<E>;
     type S = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
     test_direct_snark_with::<E, S>();
@@ -231,7 +233,7 @@ mod tests {
     type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
     test_direct_snark_with::<E, Spp>();
 
-    type E2 = bn256::Point;
+    type E2 = Bn256Engine;
     type EE2 = crate::provider::ipa_pc::EvaluationEngine<E2>;
     type S2 = crate::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
     test_direct_snark_with::<E2, S2>();
@@ -239,7 +241,7 @@ mod tests {
     type S2pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
     test_direct_snark_with::<E2, S2pp>();
 
-    type E3 = secp256k1::Point;
+    type E3 = Secp256k1Engine;
     type EE3 = crate::provider::ipa_pc::EvaluationEngine<E3>;
     type S3 = crate::spartan::snark::RelaxedR1CSSNARK<E3, EE3>;
     test_direct_snark_with::<E3, S3>();

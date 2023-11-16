@@ -15,6 +15,7 @@ mod tests {
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
+    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
     traits::{snark::default_ck_hint, Engine},
   };
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
@@ -60,8 +61,8 @@ mod tests {
 
   #[test]
   fn test_alloc_bit() {
-    test_alloc_bit_with::<pasta_curves::pallas::Point>();
-    test_alloc_bit_with::<crate::provider::bn256_grumpkin::bn256::Point>();
-    test_alloc_bit_with::<crate::provider::secp_secq::secp256k1::Point>();
+    test_alloc_bit_with::<PallasEngine>();
+    test_alloc_bit_with::<Bn256Engine>();
+    test_alloc_bit_with::<Secp256k1Engine>();
   }
 }

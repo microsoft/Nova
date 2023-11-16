@@ -113,12 +113,16 @@ impl<E: Engine> NIFS<E> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{r1cs::SparseMatrix, r1cs::R1CS, traits::snark::default_ck_hint, traits::Engine};
+  use crate::{
+    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
+    r1cs::SparseMatrix,
+    r1cs::R1CS,
+    traits::snark::default_ck_hint,
+    traits::Engine,
+  };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
-
-  type E = pasta_curves::pallas::Point;
 
   fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     cs: &mut CS,
@@ -201,9 +205,9 @@ mod tests {
 
   #[test]
   fn test_tiny_r1cs_bellpepper() {
-    test_tiny_r1cs_bellpepper_with::<E>();
-
-    test_tiny_r1cs_bellpepper_with::<crate::provider::bn256_grumpkin::bn256::Point>();
+    test_tiny_r1cs_bellpepper_with::<PallasEngine>();
+    test_tiny_r1cs_bellpepper_with::<Bn256Engine>();
+    test_tiny_r1cs_bellpepper_with::<Secp256k1Engine>();
   }
 
   fn execute_sequence<E>(
@@ -386,8 +390,8 @@ mod tests {
 
   #[test]
   fn test_tiny_r1cs() {
-    test_tiny_r1cs_with::<pasta_curves::pallas::Point>();
-    test_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
-    test_tiny_r1cs_with::<crate::provider::secp_secq::secp256k1::Point>();
+    test_tiny_r1cs_with::<PallasEngine>();
+    test_tiny_r1cs_with::<Bn256Engine>();
+    test_tiny_r1cs_with::<Secp256k1Engine>();
   }
 }

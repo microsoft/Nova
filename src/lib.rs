@@ -853,26 +853,26 @@ type CE<E> = <E as Engine>::CE;
 
 #[cfg(test)]
 mod tests {
+  use super::*;
   use crate::{
     provider::{
-      bn256_grumpkin::{bn256, grumpkin},
+      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
+      pasta::{PallasEngine, VestaEngine},
       pedersen::CommitmentKeyExtTrait,
-      secp_secq::{secp256k1, secq256k1},
-      EngineExt,
+      secp_secq::{Secp256k1Engine, Secq256k1Engine},
+      GroupExt,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
-  use core::fmt::Write;
-
-  use super::*;
-  type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
-  type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
-  type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
-
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
+  use core::fmt::Write;
   use core::marker::PhantomData;
   use ff::PrimeField;
   use traits::circuit::TrivialCircuit;
+
+  type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
+  type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
+  type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -930,8 +930,10 @@ mod tests {
 
   fn test_pp_digest_with<E1, E2, T1, T2>(circuit1: &T1, circuit2: &T2, expected: &str)
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar> + EngineExt,
-    E2: Engine<Base = <E1 as Engine>::Scalar> + EngineExt,
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1::GE: GroupExt,
+    E2::GE: GroupExt,
     T1: StepCircuit<E1::Scalar>,
     T2: StepCircuit<E2::Scalar>,
     // required to use the IPA in the initialization of the commitment key hints below
@@ -957,64 +959,61 @@ mod tests {
 
   #[test]
   fn test_pp_digest() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-    let trivial_circuit1 = TrivialCircuit::<<E1 as Engine>::Scalar>::default();
-    let trivial_circuit2 = TrivialCircuit::<<E2 as Engine>::Scalar>::default();
-    let cubic_circuit1 = CubicCircuit::<<E1 as Engine>::Scalar>::default();
+    let trivial_circuit1 = TrivialCircuit::<<PallasEngine as Engine>::Scalar>::default();
+    let trivial_circuit2 = TrivialCircuit::<<VestaEngine as Engine>::Scalar>::default();
+    let cubic_circuit1 = CubicCircuit::<<PallasEngine as Engine>::Scalar>::default();
 
-    test_pp_digest_with::<E1, E2, _, _>(
+    test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &trivial_circuit1,
       &trivial_circuit2,
       "cb581e2d5c4b2ef2ddbe2d6849e0da810352f59bcdaca51476dcf9e16072f100",
     );
 
-    test_pp_digest_with::<E1, E2, _, _>(
+    test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &cubic_circuit1,
       &trivial_circuit2,
       "3cc29bb864910463e0501bac84cdefc1d4327e9c2ef5b0fd6d45ad1741f1a401",
     );
 
-    let trivial_circuit1_grumpkin = TrivialCircuit::<<bn256::Point as Engine>::Scalar>::default();
-    let trivial_circuit2_grumpkin =
-      TrivialCircuit::<<grumpkin::Point as Engine>::Scalar>::default();
-    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Engine>::Scalar>::default();
+    let trivial_circuit1_grumpkin = TrivialCircuit::<<Bn256Engine as Engine>::Scalar>::default();
+    let trivial_circuit2_grumpkin = TrivialCircuit::<<GrumpkinEngine as Engine>::Scalar>::default();
+    let cubic_circuit1_grumpkin = CubicCircuit::<<Bn256Engine as Engine>::Scalar>::default();
 
     #[cfg(feature = "asm")]
-    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
       "c4ecd363a6c1473de7e0d24fc1dbb660f563556e2e13fb4614acdff04cab7701",
     );
     #[cfg(feature = "asm")]
-    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
       "4853a6463b6309f6ae76442934d0a423f51f1e10abaddd0d39bf5644ed589100",
     );
     #[cfg(not(feature = "asm"))]
-    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
       "c26cc841d42c19bf98bc2482e66cd30903922f2a923927b85d66f375a821f101",
     );
     #[cfg(not(feature = "asm"))]
-    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
       "4c484cab71e93dda69b420beb7276af969c2034a7ffb0ea8e6964e96a7e5a901",
     );
 
-    let trivial_circuit1_secp = TrivialCircuit::<<secp256k1::Point as Engine>::Scalar>::default();
-    let trivial_circuit2_secp = TrivialCircuit::<<secq256k1::Point as Engine>::Scalar>::default();
-    let cubic_circuit1_secp = CubicCircuit::<<secp256k1::Point as Engine>::Scalar>::default();
+    let trivial_circuit1_secp = TrivialCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
+    let trivial_circuit2_secp = TrivialCircuit::<<Secq256k1Engine as Engine>::Scalar>::default();
+    let cubic_circuit1_secp = CubicCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
 
-    test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
+    test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &trivial_circuit1_secp,
       &trivial_circuit2_secp,
       "b794d655fb39891eaf530ca3be1ec2a5ac97f72a0d07c45dbb84529d8a611502",
     );
-    test_pp_digest_with::<secp256k1::Point, secq256k1::Point, _, _>(
+    test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &cubic_circuit1_secp,
       &trivial_circuit2_secp,
       "50e6acf363c31c2ac1c9c646b4494cb21aae6cb648c7b0d4c95015c811fba302",
@@ -1070,12 +1069,9 @@ mod tests {
 
   #[test]
   fn test_ivc_trivial() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_trivial_with::<E1, E2>();
-    test_ivc_trivial_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_trivial_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_trivial_with::<PallasEngine, VestaEngine>();
+    test_ivc_trivial_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_trivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
   fn test_ivc_nontrivial_with<E1, E2>()
@@ -1153,12 +1149,9 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_nontrivial_with::<E1, E2>();
-    test_ivc_nontrivial_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_nontrivial_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_nontrivial_with::<PallasEngine, VestaEngine>();
+    test_ivc_nontrivial_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
   fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
@@ -1247,12 +1240,9 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_nontrivial_with_compression_with::<E1, E2, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_compression_with::<secp256k1::Point, secq256k1::Point, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
   }
 
   fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
@@ -1346,18 +1336,10 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_nontrivial_with_spark_compression_with::<E1, E2, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_spark_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>(
+    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_spark_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
     );
-    test_ivc_nontrivial_with_spark_compression_with::<
-      secp256k1::Point,
-      secq256k1::Point,
-      EE<_>,
-      EE<_>,
-    >();
   }
 
   fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
@@ -1497,12 +1479,9 @@ mod tests {
 
   #[test]
   fn test_ivc_nondet_with_compression() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_nondet_with_compression_with::<E1, E2, EE<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<bn256::Point, grumpkin::Point, EE<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<secp256k1::Point, secq256k1::Point, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
   }
 
   fn test_ivc_base_with<E1, E2>()
@@ -1565,11 +1544,8 @@ mod tests {
 
   #[test]
   fn test_ivc_base() {
-    type E1 = pasta_curves::pallas::Point;
-    type E2 = pasta_curves::vesta::Point;
-
-    test_ivc_base_with::<E1, E2>();
-    test_ivc_base_with::<bn256::Point, grumpkin::Point>();
-    test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
+    test_ivc_base_with::<PallasEngine, VestaEngine>();
+    test_ivc_base_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_base_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 }

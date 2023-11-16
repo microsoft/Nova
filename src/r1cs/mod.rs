@@ -569,7 +569,11 @@ mod tests {
   use ff::Field;
 
   use super::*;
-  use crate::{r1cs::sparse::SparseMatrix, traits::Engine};
+  use crate::{
+    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
+    r1cs::sparse::SparseMatrix,
+    traits::Engine,
+  };
 
   fn tiny_r1cs<E: Engine>(num_vars: usize) -> R1CSShape<E> {
     let one = <E::Scalar as Field>::ONE;
@@ -648,8 +652,8 @@ mod tests {
 
   #[test]
   fn test_pad_tiny_r1cs() {
-    test_pad_tiny_r1cs_with::<pasta_curves::pallas::Point>();
-    test_pad_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
-    test_pad_tiny_r1cs_with::<crate::provider::secp_secq::secp256k1::Point>();
+    test_pad_tiny_r1cs_with::<PallasEngine>();
+    test_pad_tiny_r1cs_with::<Bn256Engine>();
+    test_pad_tiny_r1cs_with::<Secp256k1Engine>();
   }
 }

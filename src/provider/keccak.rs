@@ -99,8 +99,12 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
 #[cfg(test)]
 mod tests {
   use crate::{
-    provider::bn256_grumpkin::bn256,
-    provider::{self, keccak::Keccak256Transcript, secp_secq},
+    provider::keccak::Keccak256Transcript,
+    provider::{
+      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
+      pasta::{PallasEngine, VestaEngine},
+      secp_secq::{Secp256k1Engine, Secq256k1Engine},
+    },
     traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
   use ff::PrimeField;
@@ -135,17 +139,17 @@ mod tests {
 
   #[test]
   fn test_keccak_transcript() {
-    test_keccak_transcript_with::<pasta_curves::pallas::Point>(
+    test_keccak_transcript_with::<PallasEngine>(
       "5ddffa8dc091862132788b8976af88b9a2c70594727e611c7217ba4c30c8c70a",
       "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
     );
 
-    test_keccak_transcript_with::<bn256::Point>(
+    test_keccak_transcript_with::<Bn256Engine>(
       "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
       "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
     );
 
-    test_keccak_transcript_with::<provider::secp_secq::secp256k1::Point>(
+    test_keccak_transcript_with::<Secp256k1Engine>(
       "9723aafb69ec8f0e9c7de756df0993247d98cf2b2f72fa353e3de654a177e310",
       "a6a90fcb6e1b1a2a2f84c950ef1510d369aea8e42085f5c629bfa66d00255f25",
     );
@@ -242,9 +246,11 @@ mod tests {
 
   #[test]
   fn test_keccak_transcript_incremental_vs_explicit() {
-    test_keccak_transcript_incremental_vs_explicit_with::<pasta_curves::pallas::Point>();
-    test_keccak_transcript_incremental_vs_explicit_with::<bn256::Point>();
-    test_keccak_transcript_incremental_vs_explicit_with::<secp_secq::secp256k1::Point>();
-    test_keccak_transcript_incremental_vs_explicit_with::<secp_secq::secq256k1::Point>();
+    test_keccak_transcript_incremental_vs_explicit_with::<PallasEngine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<VestaEngine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<Bn256Engine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<GrumpkinEngine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<Secp256k1Engine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<Secq256k1Engine>();
   }
 }

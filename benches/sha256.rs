@@ -3,18 +3,18 @@
 //! This code invokes a hand-written SHA-256 gadget from bellman/bellperson.
 //! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
 #![allow(non_snake_case)]
-type E1 = pasta_curves::pallas::Point;
-type E2 = pasta_curves::vesta::Point;
 use bellpepper::gadgets::{sha256::sha256, Assignment};
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},
   num::{AllocatedNum, Num},
   ConstraintSystem, SynthesisError,
 };
+use core::marker::PhantomData;
 use core::time::Duration;
 use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
+  provider::pasta::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
@@ -23,7 +23,9 @@ use nova_snark::{
   PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
-use std::marker::PhantomData;
+
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 
 #[derive(Clone, Debug)]
 struct Sha256Circuit<Scalar: PrimeField> {

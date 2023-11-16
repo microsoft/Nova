@@ -197,7 +197,11 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq};
+  use crate::provider::{
+    bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
+    pasta::{PallasEngine, VestaEngine},
+    secp_secq::{Secp256k1Engine, Secq256k1Engine},
+  };
   use crate::{
     bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
     gadgets::utils::le_bits_to_num, traits::Engine,
@@ -239,9 +243,11 @@ mod tests {
 
   #[test]
   fn test_poseidon_ro() {
-    test_poseidon_ro_with::<pasta_curves::pallas::Point>();
-    test_poseidon_ro_with::<bn256::Point>();
-    test_poseidon_ro_with::<secp_secq::secp256k1::Point>();
-    test_poseidon_ro_with::<secp_secq::secq256k1::Point>();
+    test_poseidon_ro_with::<PallasEngine>();
+    test_poseidon_ro_with::<VestaEngine>();
+    test_poseidon_ro_with::<Bn256Engine>();
+    test_poseidon_ro_with::<GrumpkinEngine>();
+    test_poseidon_ro_with::<Secp256k1Engine>();
+    test_poseidon_ro_with::<Secq256k1Engine>();
   }
 }

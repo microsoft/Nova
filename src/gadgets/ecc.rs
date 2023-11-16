@@ -794,14 +794,15 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{
-    bn256_grumpkin::{bn256, grumpkin},
-    secp_secq::{secp256k1, secq256k1},
-  };
   use crate::{
     bellpepper::{
       r1cs::{NovaShape, NovaWitness},
       {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
+    },
+    provider::{
+      bn256_grumpkin::{bn256, grumpkin, Bn256Engine, GrumpkinEngine},
+      pasta::{PallasEngine, VestaEngine},
+      secp_secq::{secp256k1, secq256k1, Secp256k1Engine, Secq256k1Engine},
     },
     traits::snark::default_ck_hint,
   };
@@ -943,14 +944,14 @@ mod tests {
 
   #[test]
   fn test_ecc_ops() {
-    test_ecc_ops_with::<pallas::Affine, pallas::Point>();
-    test_ecc_ops_with::<vesta::Affine, vesta::Point>();
+    test_ecc_ops_with::<pallas::Affine, PallasEngine>();
+    test_ecc_ops_with::<vesta::Affine, VestaEngine>();
 
-    test_ecc_ops_with::<bn256::Affine, bn256::Point>();
-    test_ecc_ops_with::<grumpkin::Affine, grumpkin::Point>();
+    test_ecc_ops_with::<bn256::Affine, Bn256Engine>();
+    test_ecc_ops_with::<grumpkin::Affine, GrumpkinEngine>();
 
-    test_ecc_ops_with::<secp256k1::Affine, secp256k1::Point>();
-    test_ecc_ops_with::<secq256k1::Affine, secq256k1::Point>();
+    test_ecc_ops_with::<secp256k1::Affine, Secp256k1Engine>();
+    test_ecc_ops_with::<secq256k1::Affine, Secq256k1Engine>();
   }
 
   fn test_ecc_ops_with<C, E>()
@@ -1030,14 +1031,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_ops() {
-    test_ecc_circuit_ops_with::<pallas::Point, vesta::Point>();
-    test_ecc_circuit_ops_with::<vesta::Point, pallas::Point>();
+    test_ecc_circuit_ops_with::<PallasEngine, VestaEngine>();
+    test_ecc_circuit_ops_with::<VestaEngine, PallasEngine>();
 
-    test_ecc_circuit_ops_with::<bn256::Point, grumpkin::Point>();
-    test_ecc_circuit_ops_with::<grumpkin::Point, bn256::Point>();
+    test_ecc_circuit_ops_with::<Bn256Engine, GrumpkinEngine>();
+    test_ecc_circuit_ops_with::<GrumpkinEngine, Bn256Engine>();
 
-    test_ecc_circuit_ops_with::<secp256k1::Point, secq256k1::Point>();
-    test_ecc_circuit_ops_with::<secq256k1::Point, secp256k1::Point>();
+    test_ecc_circuit_ops_with::<Secp256k1Engine, Secq256k1Engine>();
+    test_ecc_circuit_ops_with::<Secq256k1Engine, Secp256k1Engine>();
   }
 
   fn test_ecc_circuit_ops_with<E1, E2>()
@@ -1086,14 +1087,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_add_equal() {
-    test_ecc_circuit_add_equal_with::<pallas::Point, vesta::Point>();
-    test_ecc_circuit_add_equal_with::<vesta::Point, pallas::Point>();
+    test_ecc_circuit_add_equal_with::<PallasEngine, VestaEngine>();
+    test_ecc_circuit_add_equal_with::<VestaEngine, PallasEngine>();
 
-    test_ecc_circuit_add_equal_with::<bn256::Point, grumpkin::Point>();
-    test_ecc_circuit_add_equal_with::<grumpkin::Point, bn256::Point>();
+    test_ecc_circuit_add_equal_with::<Bn256Engine, GrumpkinEngine>();
+    test_ecc_circuit_add_equal_with::<GrumpkinEngine, Bn256Engine>();
 
-    test_ecc_circuit_add_equal_with::<secp256k1::Point, secq256k1::Point>();
-    test_ecc_circuit_add_equal_with::<secq256k1::Point, secp256k1::Point>();
+    test_ecc_circuit_add_equal_with::<Secp256k1Engine, Secq256k1Engine>();
+    test_ecc_circuit_add_equal_with::<Secq256k1Engine, Secp256k1Engine>();
   }
 
   fn test_ecc_circuit_add_equal_with<E1, E2>()
@@ -1146,14 +1147,14 @@ mod tests {
 
   #[test]
   fn test_ecc_circuit_add_negation() {
-    test_ecc_circuit_add_negation_with::<pallas::Point, vesta::Point>();
-    test_ecc_circuit_add_negation_with::<vesta::Point, pallas::Point>();
+    test_ecc_circuit_add_negation_with::<PallasEngine, VestaEngine>();
+    test_ecc_circuit_add_negation_with::<VestaEngine, PallasEngine>();
 
-    test_ecc_circuit_add_negation_with::<bn256::Point, grumpkin::Point>();
-    test_ecc_circuit_add_negation_with::<grumpkin::Point, bn256::Point>();
+    test_ecc_circuit_add_negation_with::<Bn256Engine, GrumpkinEngine>();
+    test_ecc_circuit_add_negation_with::<GrumpkinEngine, Bn256Engine>();
 
-    test_ecc_circuit_add_negation_with::<secp256k1::Point, secq256k1::Point>();
-    test_ecc_circuit_add_negation_with::<secq256k1::Point, secp256k1::Point>();
+    test_ecc_circuit_add_negation_with::<Secp256k1Engine, Secq256k1Engine>();
+    test_ecc_circuit_add_negation_with::<Secq256k1Engine, Secp256k1Engine>();
   }
 
   fn test_ecc_circuit_add_negation_with<E1, E2>()

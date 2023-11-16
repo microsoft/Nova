@@ -6,7 +6,7 @@ use crate::{
 };
 use core::{
   fmt::Debug,
-  ops::{Add, AddAssign, Mul, MulAssign},
+  ops::{Add, Mul, MulAssign},
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,28 +15,6 @@ pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<R
 
 impl<T, Rhs, Output> ScalarMul<Rhs, Output> for T where T: Mul<Rhs, Output = Output> + MulAssign<Rhs>
 {}
-
-/// Defines basic operations on commitments
-pub trait CommitmentOps<Rhs = Self, Output = Self>:
-  Add<Rhs, Output = Output> + AddAssign<Rhs>
-{
-}
-
-impl<T, Rhs, Output> CommitmentOps<Rhs, Output> for T where
-  T: Add<Rhs, Output = Output> + AddAssign<Rhs>
-{
-}
-
-/// A helper trait for references with a commitment operation
-pub trait CommitmentOpsOwned<Rhs = Self, Output = Self>:
-  for<'r> CommitmentOps<&'r Rhs, Output>
-{
-}
-
-impl<T, Rhs, Output> CommitmentOpsOwned<Rhs, Output> for T where
-  T: for<'r> CommitmentOps<&'r Rhs, Output>
-{
-}
 
 /// This trait defines the behavior of the commitment
 pub trait CommitmentTrait<E: Engine>:
@@ -53,8 +31,6 @@ pub trait CommitmentTrait<E: Engine>:
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<E>
   + Add<Self, Output = Self>
-  //+ CommitmentOps
-  //+ CommitmentOpsOwned
   + ScalarMul<E::Scalar>
 {
   /// Holds the type of the compressed commitment
