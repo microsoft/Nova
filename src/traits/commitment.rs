@@ -52,8 +52,9 @@ pub trait CommitmentTrait<E: Engine>:
   + Serialize
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<E>
-  + CommitmentOps
-  + CommitmentOpsOwned
+  + Add<Self, Output = Self>
+  //+ CommitmentOps
+  //+ CommitmentOpsOwned
   + ScalarMul<E::Scalar>
 {
   /// Holds the type of the compressed commitment

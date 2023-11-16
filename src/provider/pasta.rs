@@ -7,7 +7,7 @@ use crate::{
     poseidon::{PoseidonRO, PoseidonROCircuit},
     CompressedGroup, GroupExt,
   },
-  traits::{Group, Engine, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -50,10 +50,10 @@ impl VestaCompressedElementWrapper {
   }
 }
 
-#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct PallasEngine;
 
-#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct VestaEngine;
 
 macro_rules! impl_traits {
@@ -189,7 +189,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<E: Engine> TranscriptReprTrait<E> for $name_compressed {
+    impl<G: GroupExt> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.repr.to_vec()
       }
@@ -203,7 +203,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<E: Engine> TranscriptReprTrait<E> for $name::Scalar {
+    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_repr().to_vec()
       }

@@ -42,9 +42,11 @@ pub mod grumpkin {
   };
 }
 
+/// An implementation of the Nova `Engine` trait with BN254 curve and Pedersen commitment scheme
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Bn256Engine;
 
+/// An implementation of the Nova `Engine` trait with Grumpkin curve and Pedersen commitment scheme
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GrumpkinEngine;
 

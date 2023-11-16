@@ -97,10 +97,10 @@ pub trait GroupExt:
 pub mod bn256_grumpkin;
 pub mod ipa_pc;
 pub mod keccak;
-//pub mod pasta;
+pub mod pasta;
 pub mod pedersen;
 pub mod poseidon;
-//pub mod secp_secq;
+pub mod secp_secq;
 
 use ff::PrimeField;
 use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};

@@ -8,7 +8,7 @@ use crate::{
     poseidon::{PoseidonRO, PoseidonROCircuit},
     CompressedGroup, GroupExt,
   },
-  traits::{Group, Engine, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -39,10 +39,10 @@ pub mod secq256k1 {
   };
 }
 
-#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Secp256k1Engine;
 
-#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Secq256k1Engine;
 
 impl_traits!(

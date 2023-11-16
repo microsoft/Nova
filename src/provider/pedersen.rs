@@ -10,7 +10,7 @@ use crate::{
 use core::{
   fmt::Debug,
   marker::PhantomData,
-  ops::{Add, AddAssign, Mul, MulAssign},
+  ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
 use rayon::prelude::*;
@@ -144,8 +144,10 @@ where
   E::GE: GroupExt,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
-    let result = (self as &Commitment<E>).comm * scalar;
-    *self = Commitment { comm: result };
+    //let result = (self as &Commitment<E>).comm * scalar;
+    *self = Commitment {
+      comm: self.comm * scalar,
+    };
   }
 }
 
@@ -176,13 +178,28 @@ where
   }
 }
 
+impl<E> Add for Commitment<E>
+where
+  E: Engine,
+  E::GE: GroupExt,
+{
+  type Output = Commitment<E>;
+
+  fn add(self, other: Commitment<E>) -> Commitment<E> {
+    Commitment {
+      comm: self.comm + other.comm,
+    }
+  }
+}
+
+/*
 impl<'b, E> AddAssign<&'b Commitment<E>> for Commitment<E>
 where
   E: Engine,
   E::GE: GroupExt,
 {
   fn add_assign(&mut self, other: &'b Commitment<E>) {
-    let result = (self as &Commitment<E>).comm + other.comm;
+    let result = self.comm + other.comm;
     *self = Commitment { comm: result };
   }
 }
@@ -205,8 +222,7 @@ macro_rules! define_add_variants {
     impl<'b, E: $g> Add<&'b $rhs> for $lhs {
       type Output = $out;
       fn add(self, rhs: &'b $rhs) -> $out {
-        // &self + rhs
-        rhs + &self
+        &self + rhs
       }
     }
 
@@ -238,7 +254,7 @@ macro_rules! define_add_assign_variants {
 
 define_add_variants!(E = Engine, LHS = Commitment<E>, RHS = Commitment<E>, Output = Commitment<E>);
 define_add_assign_variants!(E = Engine, LHS = Commitment<E>, RHS = Commitment<E>);
-
+*/
 
 /// Provides a commitment engine
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
