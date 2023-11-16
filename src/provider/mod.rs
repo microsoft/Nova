@@ -24,7 +24,7 @@ pub trait CompressedGroup:
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: GroupExt;
+  type GroupElement: DlogGroup;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
@@ -50,7 +50,7 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A trait that defines extensions to the Group trait
-pub trait GroupExt:
+pub trait DlogGroup:
   Group
   + Serialize
   + for<'de> Deserialize<'de>
@@ -253,7 +253,7 @@ macro_rules! impl_traits {
       type Scalar = $name::Scalar;
     }
 
-    impl GroupExt for $name::Point {
+    impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
@@ -342,7 +342,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: GroupExt> TranscriptReprTrait<G> for $name_compressed {
+    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.as_ref().to_vec()
       }

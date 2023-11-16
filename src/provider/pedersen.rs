@@ -1,7 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
-  provider::{CompressedGroup, GroupExt},
+  provider::{CompressedGroup, DlogGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -21,15 +21,15 @@ use serde::{Deserialize, Serialize};
 pub struct CommitmentKey<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
-  ck: Vec<<E::GE as GroupExt>::PreprocessedGroupElement>,
+  ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
 }
 
 impl<E> Len for CommitmentKey<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn length(&self) -> usize {
     self.ck.len()
@@ -49,15 +49,15 @@ pub struct Commitment<E: Engine> {
 pub struct CompressedCommitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
-  comm: <E::GE as GroupExt>::CompressedGroupElement,
+  comm: <E::GE as DlogGroup>::CompressedGroupElement,
 }
 
 impl<E> CommitmentTrait<E> for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   type CompressedCommitment = CompressedCommitment<E>;
 
@@ -72,7 +72,7 @@ where
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as GroupExt>::CompressedGroupElement::decompress(&c.comm);
+    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm);
     if comm.is_none() {
       return Err(NovaError::DecompressionError);
     }
@@ -85,7 +85,7 @@ where
 impl<E: Engine> Default for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn default() -> Self {
     Commitment {
@@ -97,7 +97,7 @@ where
 impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
@@ -114,7 +114,7 @@ where
 impl<E> AbsorbInROTrait<E> for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
@@ -131,7 +131,7 @@ where
 impl<E> TranscriptReprTrait<E::GE> for CompressedCommitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.comm.to_transcript_bytes()
@@ -141,7 +141,7 @@ where
 impl<E> MulAssign<E::Scalar> for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
     *self = Commitment {
@@ -153,7 +153,7 @@ where
 impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
   fn mul(self, scalar: &'b E::Scalar) -> Commitment<E> {
@@ -166,7 +166,7 @@ where
 impl<E> Mul<E::Scalar> for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
 
@@ -180,7 +180,7 @@ where
 impl<E> Add for Commitment<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
 
@@ -200,7 +200,7 @@ pub struct CommitmentEngine<E: Engine> {
 impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
@@ -223,7 +223,7 @@ where
 pub trait CommitmentKeyExtTrait<E>
 where
   E: Engine,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   /// Splits the commitment key into two pieces at a specified point
   fn split_at(&self, n: usize) -> (Self, Self)
@@ -250,7 +250,7 @@ where
 impl<E> CommitmentKeyExtTrait<E> for CommitmentKey<E>
 where
   E: Engine<CE = CommitmentEngine<E>>,
-  E::GE: GroupExt,
+  E::GE: DlogGroup,
 {
   fn split_at(&self, n: usize) -> (CommitmentKey<E>, CommitmentKey<E>) {
     (

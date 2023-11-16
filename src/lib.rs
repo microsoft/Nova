@@ -860,7 +860,7 @@ mod tests {
       pasta::{PallasEngine, VestaEngine},
       pedersen::CommitmentKeyExtTrait,
       secp_secq::{Secp256k1Engine, Secq256k1Engine},
-      GroupExt,
+      DlogGroup,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
@@ -932,8 +932,8 @@ mod tests {
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
-    E1::GE: GroupExt,
-    E2::GE: GroupExt,
+    E1::GE: DlogGroup,
+    E2::GE: DlogGroup,
     T1: StepCircuit<E1::Scalar>,
     T2: StepCircuit<E2::Scalar>,
     // required to use the IPA in the initialization of the commitment key hints below

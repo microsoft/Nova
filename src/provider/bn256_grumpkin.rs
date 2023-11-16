@@ -6,7 +6,7 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, GroupExt,
+    CompressedGroup, DlogGroup,
   },
   traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -95,7 +95,7 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let ck_par = <G as GroupExt>::from_label(label, n);
+      let ck_par = <G as DlogGroup>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);
