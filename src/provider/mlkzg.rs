@@ -1,4 +1,4 @@
-//! This module implements Nova's evaluation engine using multilinear KZG:
+//! This module implements Nova's evaluation engine using multilinear KZG
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
@@ -32,8 +32,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentKey<E: Engine> {
   Gi: Vec<G1Affine>,
-
-  // needed only for verification
+  // These three values are needed only for verification:
   G: G1Affine,
   H: G2Affine,
   tauH: G2Affine,
@@ -53,7 +52,7 @@ pub struct Commitment<E: Engine> {
   _p: PhantomData<E>,
 }
 
-/// A compressed commitment
+/// A compressed commitment (suitable for serialization)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompressedCommitment<E>
 where
@@ -227,10 +226,11 @@ where
 
   fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // this is for testing purposes
+    // TODO: we need to decide how to generate load/store parameters
     let tau = Fr::random(OsRng);
     let num_gens = n.next_power_of_two();
 
-    // compute powers of tau
+    // Compute powers of tau in Fr, then scalar muls in parallel
     let mut powers_of_tau: Vec<Fr> = Vec::with_capacity(num_gens);
     powers_of_tau.insert(0, Fr::one());
     for i in 1..num_gens {
@@ -400,19 +400,19 @@ where
 
     //////////////// begin helper closures //////////
     let kzg_open = |f: &[Fr], u: Fr| -> G1Affine {
-      //   On input f(x) and u compute the witness polynomial used to prove
-      // that f(u) = v.   The main part of this is to compute the
+      // On input f(x) and u compute the witness polynomial used to prove
+      // that f(u) = v. The main part of this is to compute the
       // division (f(x) - f(u)) / (x - u), but we   don't use a general
       // division algorithm, we make use of the fact that the division
-      //   never has a remainder, and that the denominator is always a linear
-      // polynomial.   The cost is (d-1) mults + (d-1) adds in Fr, where
+      // never has a remainder, and that the denominator is always a linear
+      // polynomial. The cost is (d-1) mults + (d-1) adds in Fr, where
       // d is the degree of f.
-
-      //   We use the fact that if we compute the quotient of f(x)/(x-u),
-      //   there will be a remainder, but it'll be v = f(u).  Put another way
-      // the quotient of   f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
-      // same.   One advantage is that computing f(u) could be decoupled
-      // from kzg_open,   it could be done later or separate from
+      //
+      // We use the fact that if we compute the quotient of f(x)/(x-u),
+      // there will be a remainder, but it'll be v = f(u).  Put another way
+      // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
+      // same.  One advantage is that computing f(u) could be decoupled
+      // from kzg_open, it could be done later or separate from
       // computing W.
 
       let compute_witness_polynomial = |f: &[Fr], u: Fr| -> Vec<Fr> {
@@ -501,7 +501,7 @@ where
       let q_powers = Self::batch_challenge_powers(q, k);
       let C_B = (C[0] + cpu_best_multiexp(&q_powers[1..k], &C[1..k])).to_affine();
 
-      // the prover computes the challenge to keep the transcript in the same
+      // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
       let _d_0 = Self::verifier_second_challenge(C_B, &w, transcript);
 
@@ -534,16 +534,16 @@ where
       polys.push(Pi);
     }
 
-    // we do not need to commit to the first polynomial as it is already
-    // committed compute commitments in parallel
+    // We do not need to commit to the first polynomial as it is already
+    // committed. Compute commitments in parallel
     let com: Vec<G1Affine> = (1..polys.len())
       .into_par_iter()
       .map(|i| E::CE::commit(ck, &polys[i]).comm.to_affine())
       .collect();
 
     // Phase 2
-    // we do not need to add x to the transcript, because in our context x was
-    // obtained from the transcript
+    // We do not need to add x to the transcript, because in our context x was
+    // obtained from the transcript.
     let r = Self::compute_challenge(&C.comm.to_affine(), eval, &com, transcript);
     let u = vec![r, -r, r * r];
 
