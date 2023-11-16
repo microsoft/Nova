@@ -204,7 +204,7 @@ mod tests {
     test_tiny_r1cs_bellpepper_with::<Secp256k1Engine>();
   }
 
-  fn execute_sequence<E>(
+  fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
     ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
     pp_digest: &<E as Engine>::Scalar,
@@ -213,9 +213,7 @@ mod tests {
     W1: &R1CSWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
-  ) where
-    E: Engine,
-  {
+  ) {
     // produce a default running instance
     let mut r_W = RelaxedR1CSWitness::default(shape);
     let mut r_U = RelaxedR1CSInstance::default(ck, shape);
