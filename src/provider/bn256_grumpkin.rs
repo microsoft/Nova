@@ -8,11 +8,11 @@ use crate::{
     poseidon::{PoseidonRO, PoseidonROCircuit},
     CompressedGroup, GroupExt,
   },
-  traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding};
+use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
 use num_bigint::BigInt;
 use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
@@ -42,7 +42,10 @@ pub mod grumpkin {
   };
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Bn256Engine;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GrumpkinEngine;
 
 impl_traits!(

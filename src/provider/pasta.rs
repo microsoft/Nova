@@ -7,7 +7,7 @@ use crate::{
     poseidon::{PoseidonRO, PoseidonROCircuit},
     CompressedGroup, GroupExt,
   },
-  traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, Engine, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -16,7 +16,7 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group, GroupEncoding},
+  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;
@@ -50,7 +50,10 @@ impl VestaCompressedElementWrapper {
   }
 }
 
+#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
 struct PallasEngine;
+
+#[derive(Clone, Copy, Debug, Send, Sync, Sized, Eq, PartialEq)]
 struct VestaEngine;
 
 macro_rules! impl_traits {
@@ -80,6 +83,11 @@ macro_rules! impl_traits {
 
         (A, B, order, base)
       }
+    }
+
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
     }
 
     impl GroupExt for $name::Point {

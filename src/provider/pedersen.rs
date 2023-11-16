@@ -26,7 +26,11 @@ where
   ck: Vec<<E::GE as GroupExt>::PreprocessedGroupElement>,
 }
 
-impl<E: Engine> Len for CommitmentKey<E> {
+impl<E> Len for CommitmentKey<E>
+where
+  E: Engine,
+  E::GE: GroupExt,
+{
   fn length(&self) -> usize {
     self.ck.len()
   }
@@ -36,7 +40,7 @@ impl<E: Engine> Len for CommitmentKey<E> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<E: Engine> {
-  pub(crate) comm: E,
+  pub(crate) comm: E::GE,
 }
 
 /// A type that holds a compressed commitment
@@ -84,11 +88,13 @@ where
   E::GE: GroupExt,
 {
   fn default() -> Self {
-    Commitment { comm: E::zero() }
+    Commitment {
+      comm: E::GE::zero(),
+    }
   }
 }
 
-impl<E> TranscriptReprTrait<E> for Commitment<E>
+impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
 where
   E: Engine,
   E::GE: GroupExt,
@@ -122,7 +128,7 @@ where
   }
 }
 
-impl<E> TranscriptReprTrait<E> for CompressedCommitment<E>
+impl<E> TranscriptReprTrait<E::GE> for CompressedCommitment<E>
 where
   E: Engine,
   E::GE: GroupExt,
@@ -199,7 +205,8 @@ macro_rules! define_add_variants {
     impl<'b, E: $g> Add<&'b $rhs> for $lhs {
       type Output = $out;
       fn add(self, rhs: &'b $rhs) -> $out {
-        &self + rhs
+        // &self + rhs
+        rhs + &self
       }
     }
 
@@ -229,8 +236,9 @@ macro_rules! define_add_assign_variants {
   };
 }
 
-define_add_assign_variants!(E = Engine, LHS = Commitment<E>, RHS = Commitment<E>);
 define_add_variants!(E = Engine, LHS = Commitment<E>, RHS = Commitment<E>, Output = Commitment<E>);
+define_add_assign_variants!(E = Engine, LHS = Commitment<E>, RHS = Commitment<E>);
+
 
 /// Provides a commitment engine
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,14 +256,14 @@ where
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     Self::CommitmentKey {
-      ck: E::from_label(label, n.next_power_of_two()),
+      ck: E::GE::from_label(label, n.next_power_of_two()),
     }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: E::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
   }
 }
@@ -322,7 +330,7 @@ where
       .into_par_iter()
       .map(|i| {
         let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
-        E::vartime_multiscalar_mul(&w, &bases).preprocessed()
+        E::GE::vartime_multiscalar_mul(&w, &bases).preprocessed()
       })
       .collect();
 
@@ -335,7 +343,7 @@ where
       .ck
       .clone()
       .into_par_iter()
-      .map(|g| E::vartime_multiscalar_mul(&[*r], &[g]).preprocessed())
+      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).preprocessed())
       .collect();
 
     CommitmentKey { ck: ck_scaled }

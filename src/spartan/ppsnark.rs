@@ -78,7 +78,7 @@ pub struct R1CSShapeSparkCommitment<E: Engine> {
   comm_ts_col: Commitment<E>,
 }
 
-impl<E: Engine> TranscriptReprTrait<E> for R1CSShapeSparkCommitment<E> {
+impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSShapeSparkCommitment<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_row,

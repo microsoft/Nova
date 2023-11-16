@@ -5,7 +5,7 @@ use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
-use crate::traits::{Engine, TranscriptReprTrait};
+use crate::traits::{Group, TranscriptReprTrait};
 
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
@@ -106,10 +106,14 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E> for UniPoly<E::Scalar> {
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
-    coeffs.as_slice().to_transcript_bytes()
+    //(coeffs.as_slice() as &[dyn TranscriptReprTrait<G>]).to_transcript_bytes()
+    coeffs
+      .iter()
+      .flat_map(|&t| t.to_repr().as_ref().to_vec())
+      .collect::<Vec<u8>>()
   }
 }
 #[cfg(test)]

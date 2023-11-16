@@ -536,7 +536,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E> for RelaxedR1CSInstance<E> {
+impl<E: Engine> TranscriptReprTrait<E::GE> for RelaxedR1CSInstance<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_W.to_transcript_bytes(),

@@ -17,30 +17,25 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   type Base: PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
-  type Scalar: PrimeFieldBits
-    + PrimeFieldExt
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>;
+  type Scalar: PrimeFieldBits + PrimeFieldExt + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 }
 
 /// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldBits + TranscriptReprTrait<Self::GE> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits
     + PrimeFieldExt
     + Send
     + Sync
-    + TranscriptReprTrait<Self>
+    + TranscriptReprTrait<Self::GE>
     + Serialize
     + for<'de> Deserialize<'de>;
 
   /// A type that represents an element of the group
-  type GE: Group<Base = Self::Base, Scalar = Self::Scalar>;
+  type GE: Group<Base = Self::Base, Scalar = Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -112,7 +107,7 @@ pub type ROConstantsCircuit<E> =
   <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Base>>::Constants;
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
-pub trait TranscriptReprTrait<E: Engine>: Send + Sync {
+pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   /// returns a byte representation of self to be added to the transcript
   fn to_transcript_bytes(&self) -> Vec<u8>;
 }
@@ -126,7 +121,7 @@ pub trait TranscriptEngineTrait<E: Engine>: Send + Sync {
   fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
-  fn absorb<T: TranscriptReprTrait<E>>(&mut self, label: &'static [u8], o: &T);
+  fn absorb<T: TranscriptReprTrait<E::GE>>(&mut self, label: &'static [u8], o: &T);
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
@@ -138,7 +133,7 @@ pub trait PrimeFieldExt: PrimeField {
   fn from_uniform(bytes: &[u8]) -> Self;
 }
 
-impl<E: Engine, T: TranscriptReprTrait<E>> TranscriptReprTrait<E> for &[T] {
+impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self
       .iter()

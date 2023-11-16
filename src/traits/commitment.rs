@@ -32,6 +32,7 @@ pub trait CommitmentOpsOwned<Rhs = Self, Output = Self>:
   for<'r> CommitmentOps<&'r Rhs, Output>
 {
 }
+
 impl<T, Rhs, Output> CommitmentOpsOwned<Rhs, Output> for T where
   T: for<'r> CommitmentOps<&'r Rhs, Output>
 {
@@ -47,7 +48,7 @@ pub trait CommitmentTrait<E: Engine>:
   + Eq
   + Send
   + Sync
-  + TranscriptReprTrait<E>
+  + TranscriptReprTrait<E::GE>
   + Serialize
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<E>
@@ -62,7 +63,7 @@ pub trait CommitmentTrait<E: Engine>:
     + Eq
     + Send
     + Sync
-    + TranscriptReprTrait<E>
+    + TranscriptReprTrait<E::GE>
     + Serialize
     + for<'de> Deserialize<'de>;
 

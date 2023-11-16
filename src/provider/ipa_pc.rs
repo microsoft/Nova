@@ -132,7 +132,7 @@ where
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E> for InnerProductInstance<E> {
+impl<E: Engine> TranscriptReprTrait<E::GE> for InnerProductInstance<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     // we do not need to include self.b_vec as in our context it is produced from the transcript
     [
