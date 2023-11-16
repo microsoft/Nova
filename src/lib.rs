@@ -118,14 +118,14 @@ where
   /// # Example
   ///
   /// ```rust
-  /// # use pasta_curves::{vesta, pallas};
   /// # use nova_snark::spartan::ppsnark::RelaxedR1CSSNARK;
   /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
+  /// # use nova_snark::provider::pasta::{PallasEngine, VestaEngine};
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
   /// use nova_snark::PublicParams;
   ///
-  /// type E1 = pallas::Point;
-  /// type E2 = vesta::Point;
+  /// type E1 = PallasEngine;
+  /// type E2 = VestaEngine;
   /// type EE<E> = EvaluationEngine<E>;
   /// type SPrime<E> = RelaxedR1CSSNARK<E, EE<E>>;
   ///

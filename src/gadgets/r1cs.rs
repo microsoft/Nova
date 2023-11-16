@@ -13,7 +13,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{Group, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit},
+  traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
 use bellpepper_core::{ConstraintSystem, SynthesisError};
