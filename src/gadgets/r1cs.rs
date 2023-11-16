@@ -13,7 +13,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit},
+  traits::{Group, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
 use bellpepper_core::{ConstraintSystem, SynthesisError};
@@ -276,7 +276,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
-      &E::get_curve_params().2,
+      &E::GE::group_params().2,
       limb_width,
       n_limbs,
     )?;

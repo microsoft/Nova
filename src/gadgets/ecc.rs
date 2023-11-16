@@ -6,7 +6,7 @@ use crate::{
     select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
     select_one_or_num2, select_zero_or_num2,
   },
-  traits::Engine,
+  traits::{Group, Engine},
 };
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{
@@ -81,8 +81,8 @@ where
       } else {
         Ok(
           *x_cube.get_value().get()?
-            + *self.x.get_value().get()? * E::get_curve_params().0
-            + E::get_curve_params().1,
+            + *self.x.get_value().get()? * E::GE::group_params().0
+            + E::GE::group_params().1,
         )
       }
     })?;
@@ -91,8 +91,8 @@ where
       || "rhs = (1-is_infinity) * (x^3 + Ax + B)",
       |lc| {
         lc + x_cube.get_variable()
-          + (E::get_curve_params().0, self.x.get_variable())
-          + (E::get_curve_params().1, CS::one())
+          + (E::GE::group_params().0, self.x.get_variable())
+          + (E::GE::group_params().1, CS::one())
       },
       |lc| lc + CS::one() - self.is_infinity.get_variable(),
       |lc| lc + rhs.get_variable(),
@@ -406,14 +406,14 @@ where
         (*tmp.get_value().get()?).invert().unwrap()
       };
 
-      Ok(tmp_inv * (*prod_1.get_value().get()? + E::get_curve_params().0))
+      Ok(tmp_inv * (*prod_1.get_value().get()? + E::GE::group_params().0))
     })?;
 
     cs.enforce(
       || "Check lambda",
       |lc| lc + tmp.get_variable(),
       |lc| lc + lambda.get_variable(),
-      |lc| lc + prod_1.get_variable() + (E::get_curve_params().0, CS::one()),
+      |lc| lc + prod_1.get_variable() + (E::GE::group_params().0, CS::one()),
     );
 
     /*************************************************************/
@@ -730,7 +730,7 @@ where
     let x_sq = self.x.square(cs.namespace(|| "x_sq"))?;
 
     let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-      let n = E::Base::from(3) * x_sq.get_value().get()? + E::get_curve_params().0;
+      let n = E::Base::from(3) * x_sq.get_value().get()? + E::GE::group_params().0;
       let d = E::Base::from(2) * *self.y.get_value().get()?;
       if d == E::Base::ZERO {
         Ok(E::Base::ONE)
@@ -742,7 +742,7 @@ where
       || "Check that lambda is computed correctly",
       |lc| lc + lambda.get_variable(),
       |lc| lc + (E::Base::from(2), self.y.get_variable()),
-      |lc| lc + (E::Base::from(3), x_sq.get_variable()) + (E::get_curve_params().0, CS::one()),
+      |lc| lc + (E::Base::from(3), x_sq.get_variable()) + (E::GE::group_params().0, CS::one()),
     );
 
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
@@ -831,7 +831,7 @@ mod tests {
     pub fn random_vartime() -> Self {
       loop {
         let x = E::Base::random(&mut OsRng);
-        let y = (x.square() * x + E::get_curve_params().1).sqrt();
+        let y = (x.square() * x + E::GE::group_params().1).sqrt();
         if y.is_some().unwrap_u8() == 1 {
           return Self {
             x,

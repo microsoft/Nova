@@ -237,8 +237,13 @@ macro_rules! impl_traits {
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
+    }
 
-      fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+
+      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
         let A = $name::Point::a();
         let B = $name::Point::b();
         let order = BigInt::from_str_radix($order_str, 16).unwrap();
@@ -246,11 +251,6 @@ macro_rules! impl_traits {
 
         (A, B, order, base)
       }
-    }
-
-    impl Group for $name::Point {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
     }
 
     impl DlogGroup for $name::Point {

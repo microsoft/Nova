@@ -18,6 +18,9 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits + PrimeFieldExt + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// Returns A, B, the order of the group, the size of the base field as big integers
+  fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt);
 }
 
 /// A collection of engines that are required by the library
@@ -49,9 +52,6 @@ pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
-
-  /// Returns A, B, the order of the group, the size of the base field as big integers
-  fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt);
 }
 
 /// A helper trait to absorb different objects in RO
