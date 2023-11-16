@@ -6,7 +6,7 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, EngineExt,
+    CompressedGroup, GroupExt,
   },
   traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -39,7 +39,11 @@ pub mod secq256k1 {
   };
 }
 
+struct Secp256k1Engine;
+struct Secq256k1Engine;
+
 impl_traits!(
+  Secp256k1Engine,
   secp256k1,
   Secp256k1Compressed,
   Secp256k1,
@@ -49,6 +53,7 @@ impl_traits!(
 );
 
 impl_traits!(
+  Secq256k1Engine,
   secq256k1,
   Secq256k1Compressed,
   Secq256k1,

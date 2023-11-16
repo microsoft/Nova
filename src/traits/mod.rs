@@ -12,6 +12,20 @@ use commitment::CommitmentEngineTrait;
 
 /// Represents an element of a group
 /// This is currently tailored for an elliptic curve group
+pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
+  /// A type representing an element of the base field of the group
+  type Base: PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type representing an element of the scalar field of the group
+  type Scalar: PrimeFieldBits
+    + PrimeFieldExt
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
+}
+
+/// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
   type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
@@ -24,6 +38,9 @@ pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
     + TranscriptReprTrait<Self>
     + Serialize
     + for<'de> Deserialize<'de>;
+
+  /// A type that represents an element of the group
+  type GE: Group<Base = Self::Base, Scalar = Self::Scalar>;
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field

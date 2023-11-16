@@ -3,7 +3,7 @@
 //! `Engine` with pasta curves and BN256/Grumpkin
 //! `RO` traits with Poseidon
 //! `EvaluationEngine` with an IPA-based polynomial evaluation argument
-use crate::traits::{commitment::ScalarMul, Engine, TranscriptReprTrait};
+use crate::traits::{commitment::ScalarMul, Engine, TranscriptReprTrait, Group};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
@@ -18,13 +18,13 @@ pub trait CompressedGroup:
   + Eq
   + Send
   + Sync
-  + TranscriptReprTrait<Self::GroupElement>
+  //+ TranscriptReprTrait<Self::GroupElement>
   + Serialize
   + for<'de> Deserialize<'de>
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Engine;
+  type GroupElement: GroupExt;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
@@ -50,8 +50,8 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A trait that defines extensions to the Engine trait
-pub trait EngineExt:
-  Engine
+pub trait GroupExt:
+  Group
   + Serialize
   + for<'de> Deserialize<'de>
   + GroupOps
@@ -84,7 +84,7 @@ pub trait EngineExt:
   fn zero() -> Self;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
-  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+  fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
 pub mod bn256_grumpkin;
@@ -96,7 +96,7 @@ pub mod poseidon;
 pub mod secp_secq;
 
 use ff::PrimeField;
-use pasta_curves::{self, arithmetic::CurveAffine, group::Group};
+use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};
 use rayon::{current_num_threads, prelude::*};
 
 /// Native implementation of fast multiexp
@@ -214,6 +214,7 @@ pub(crate) fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C
 #[macro_export]
 macro_rules! impl_traits {
   (
+    $engine:ident,
     $name:ident,
     $name_compressed:ident,
     $name_curve:ident,
@@ -221,9 +222,10 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $name::Point {
+    impl Engine for $engine {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
+      type GE = $name::Point;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
@@ -239,7 +241,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl EngineExt for $name::Point {
+    impl GroupExt for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 

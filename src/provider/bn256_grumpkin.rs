@@ -6,7 +6,7 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, EngineExt,
+    CompressedGroup, GroupExt,
   },
   traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -42,7 +42,11 @@ pub mod grumpkin {
   };
 }
 
+pub struct Bn256Engine;
+pub struct GrumpkinEngine;
+
 impl_traits!(
+  Bn256Engine,
   bn256,
   Bn256Compressed,
   Bn256Point,
@@ -52,6 +56,7 @@ impl_traits!(
 );
 
 impl_traits!(
+  GrumpkinEngine,
   grumpkin,
   GrumpkinCompressed,
   GrumpkinPoint,

@@ -5,7 +5,7 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, EngineExt,
+    CompressedGroup, GroupExt,
   },
   traits::{Engine, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -50,8 +50,12 @@ impl VestaCompressedElementWrapper {
   }
 }
 
+struct PallasEngine;
+struct VestaEngine;
+
 macro_rules! impl_traits {
   (
+    $engine:ident,
     $name:ident,
     $name_compressed:ident,
     $name_curve:ident,
@@ -59,9 +63,10 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $name::Point {
+    impl Engine for $engine {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
+      type GE = $name::Point;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
@@ -77,7 +82,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl EngineExt for $name::Point {
+    impl GroupExt for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
@@ -199,6 +204,7 @@ macro_rules! impl_traits {
 }
 
 impl_traits!(
+  PallasEngine,
   pallas,
   PallasCompressedElementWrapper,
   Ep,
@@ -208,6 +214,7 @@ impl_traits!(
 );
 
 impl_traits!(
+  VestaEngine,
   vesta,
   VestaCompressedElementWrapper,
   Eq,
