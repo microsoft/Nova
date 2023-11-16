@@ -74,10 +74,7 @@ struct MinRootCircuit<F: PrimeField> {
   seq: Vec<MinRootIteration<F>>,
 }
 
-impl<F> StepCircuit<F> for MinRootCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> StepCircuit<F> for MinRootCircuit<F> {
   fn arity(&self) -> usize {
     2
   }

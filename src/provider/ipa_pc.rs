@@ -99,10 +99,7 @@ where
   }
 }
 
-fn inner_product<T>(a: &[T], b: &[T]) -> T
-where
-  T: Field + Send + Sync,
-{
+fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
   assert_eq!(a.len(), b.len());
   (0..a.len())
     .into_par_iter()

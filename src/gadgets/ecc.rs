@@ -18,10 +18,7 @@ use ff::{Field, PrimeField};
 
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
-pub struct AllocatedPoint<E>
-where
-  E: Engine,
-{
+pub struct AllocatedPoint<E: Engine> {
   pub(crate) x: AllocatedNum<E::Base>,
   pub(crate) y: AllocatedNum<E::Base>,
   pub(crate) is_infinity: AllocatedNum<E::Base>,
@@ -33,13 +30,10 @@ where
 {
   /// Allocates a new point on the curve using coordinates provided by `coords`.
   /// If coords = None, it allocates the default infinity point
-  pub fn alloc<CS>(
+  pub fn alloc<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
     coords: Option<(E::Base, E::Base, bool)>,
-  ) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<E::Base>,
-  {
+  ) -> Result<Self, SynthesisError> {
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
       Ok(coords.map_or(E::Base::ZERO, |c| c.0))
     })?;
@@ -110,10 +104,7 @@ where
   }
 
   /// Allocates a default point on the curve, set to the identity point.
-  pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<E::Base>,
-  {
+  pub fn default<CS: ConstraintSystem<E::Base>>(mut cs: CS) -> Result<Self, SynthesisError> {
     let zero = alloc_zero(cs.namespace(|| "zero"));
     let one = alloc_one(cs.namespace(|| "one"));
 
@@ -368,7 +359,7 @@ where
   /// Doubles the supplied point.
   pub fn double<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     //*************************************************************/
-    // lambda = (E::Base::from(3) * self.x * self.x + E::A())
+    // lambda = (E::Base::from(3) * self.x * self.x + E::GE::A())
     //  * (E::Base::from(2)) * self.y).invert().unwrap();
     /*************************************************************/
 
@@ -385,7 +376,7 @@ where
 
     let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
-    // Now compute lambda as (E::Base::from(3) * self.x * self.x + E::A()) * tmp_inv
+    // Now compute lambda as (E::Base::from(3) * self.x * self.x + E::GE::A()) * tmp_inv
 
     let prod_1 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 1"), || {
       Ok(E::Base::from(3) * self.x.get_value().get()? * self.x.get_value().get()?)
@@ -601,10 +592,7 @@ where
 
 #[derive(Clone)]
 /// `AllocatedPoint` but one that is guaranteed to be not infinity
-pub struct AllocatedPointNonInfinity<E>
-where
-  E: Engine,
-{
+pub struct AllocatedPointNonInfinity<E: Engine> {
   x: AllocatedNum<E::Base>,
   y: AllocatedNum<E::Base>,
 }
@@ -619,10 +607,10 @@ where
   }
 
   /// Allocates a new point on the curve using coordinates provided by `coords`.
-  pub fn alloc<CS>(mut cs: CS, coords: Option<(E::Base, E::Base)>) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<E::Base>,
-  {
+  pub fn alloc<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    coords: Option<(E::Base, E::Base)>,
+  ) -> Result<Self, SynthesisError> {
     let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
       coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
     })?;
@@ -721,10 +709,10 @@ where
   }
 
   /// doubles the point; since this is called with a point not at infinity, it is guaranteed to be not infinity
-  pub fn double_incomplete<CS>(&self, mut cs: CS) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<E::Base>,
-  {
+  pub fn double_incomplete<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<Self, SynthesisError> {
     // lambda = (3 x^2 + a) / 2 * y
 
     let x_sq = self.x.square(cs.namespace(|| "x_sq"))?;
@@ -811,19 +799,13 @@ mod tests {
   use rand::rngs::OsRng;
 
   #[derive(Debug, Clone)]
-  pub struct Point<E>
-  where
-    E: Engine,
-  {
+  pub struct Point<E: Engine> {
     x: E::Base,
     y: E::Base,
     is_infinity: bool,
   }
 
-  impl<E> Point<E>
-  where
-    E: Engine,
-  {
+  impl<E: Engine> Point<E> {
     pub fn new(x: E::Base, y: E::Base, is_infinity: bool) -> Self {
       Self { x, y, is_infinity }
     }

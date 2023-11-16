@@ -177,10 +177,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> StepCircuit<F> for CubicCircuit<F>
-  where
-    F: PrimeField,
-  {
+  impl<F: PrimeField> StepCircuit<F> for CubicCircuit<F> {
     fn arity(&self) -> usize {
       1
     }

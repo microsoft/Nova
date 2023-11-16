@@ -41,10 +41,7 @@ mod tests {
     );
   }
 
-  fn test_alloc_bit_with<E>()
-  where
-    E: Engine,
-  {
+  fn test_alloc_bit_with<E: Engine>() {
     // First create the shape
     let mut cs: ShapeCS<E> = ShapeCS::new();
     synthesize_alloc_bit(&mut cs);

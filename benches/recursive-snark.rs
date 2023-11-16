@@ -129,10 +129,7 @@ struct NonTrivialCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
 
-impl<F> NonTrivialCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> NonTrivialCircuit<F> {
   pub fn new(num_cons: usize) -> Self {
     Self {
       num_cons,
@@ -140,10 +137,7 @@ where
     }
   }
 }
-impl<F> StepCircuit<F> for NonTrivialCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
   fn arity(&self) -> usize {
     1
   }

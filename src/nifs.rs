@@ -114,11 +114,14 @@ impl<E: Engine> NIFS<E> {
 mod tests {
   use super::*;
   use crate::{
+    bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      solver::SatisfyingAssignment,
+      test_shape_cs::TestShapeCS,
+    },
     provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
-    r1cs::SparseMatrix,
-    r1cs::R1CS,
-    traits::snark::default_ck_hint,
-    traits::Engine,
+    r1cs::{SparseMatrix, R1CS},
+    traits::{snark::default_ck_hint, Engine},
   };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
@@ -157,16 +160,7 @@ mod tests {
     Ok(())
   }
 
-  fn test_tiny_r1cs_bellpepper_with<E>()
-  where
-    E: Engine,
-  {
-    use crate::bellpepper::{
-      r1cs::{NovaShape, NovaWitness},
-      solver::SatisfyingAssignment,
-      test_shape_cs::TestShapeCS,
-    };
-
+  fn test_tiny_r1cs_bellpepper_with<E: Engine>() {
     // First create the shape
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);

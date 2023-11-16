@@ -155,7 +155,7 @@ where
     let F_arity_primary = c_primary.arity();
     let F_arity_secondary = c_secondary.arity();
 
-    // ro_consts_circuit_primary are parameterized by G2 because the type alias uses G2::Base = E1::Scalar
+    // ro_consts_circuit_primary are parameterized by E2 because the type alias uses E2::Base = E1::Scalar
     let ro_consts_circuit_primary: ROConstantsCircuit<E2> = ROConstantsCircuit::<E2>::default();
     let ro_consts_circuit_secondary: ROConstantsCircuit<E1> = ROConstantsCircuit::<E1>::default();
 
@@ -865,8 +865,7 @@ mod tests {
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
-  use core::fmt::Write;
-  use core::marker::PhantomData;
+  use core::{fmt::Write, marker::PhantomData};
   use ff::PrimeField;
   use traits::circuit::TrivialCircuit;
 
@@ -879,10 +878,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> StepCircuit<F> for CubicCircuit<F>
-  where
-    F: PrimeField,
-  {
+  impl<F: PrimeField> StepCircuit<F> for CubicCircuit<F> {
     fn arity(&self) -> usize {
       1
     }
@@ -919,10 +915,7 @@ mod tests {
     }
   }
 
-  impl<F> CubicCircuit<F>
-  where
-    F: PrimeField,
-  {
+  impl<F: PrimeField> CubicCircuit<F> {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
@@ -1355,10 +1348,7 @@ mod tests {
       y: F,
     }
 
-    impl<F> FifthRootCheckingCircuit<F>
-    where
-      F: PrimeField,
-    {
+    impl<F: PrimeField> FifthRootCheckingCircuit<F> {
       fn new(num_steps: usize) -> (Vec<F>, Vec<Self>) {
         let mut powers = Vec::new();
         let rng = &mut rand::rngs::OsRng;

@@ -105,10 +105,7 @@ where
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonROCircuit<Scalar>
-where
-  Scalar: PrimeField,
-{
+pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
@@ -140,14 +137,11 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze<CS>(
+  fn squeeze<CS: ConstraintSystem<Scalar>>(
     &mut self,
     mut cs: CS,
     num_bits: usize,
-  ) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
+  ) -> Result<Vec<AllocatedBit>, SynthesisError> {
     // check if we have squeezed already
     assert!(!self.squeezed, "Cannot squeeze again after squeezing");
     self.squeezed = true;

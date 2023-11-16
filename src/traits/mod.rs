@@ -93,9 +93,11 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   fn absorb(&mut self, e: &AllocatedNum<Base>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze<CS>(&mut self, cs: CS, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Base>;
+  fn squeeze<CS: ConstraintSystem<Base>>(
+    &mut self,
+    cs: CS,
+    num_bits: usize,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>;
 }
 
 /// An alias for constants associated with E::RO

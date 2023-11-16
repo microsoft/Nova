@@ -48,10 +48,7 @@ impl Ord for OrderedVariable {
 }
 
 /// `TestShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct TestShapeCS<E: Engine>
-where
-  E::Scalar: PrimeField + Field,
-{
+pub struct TestShapeCS<E: Engine> {
   named_objects: HashMap<String, NamedObject>,
   current_namespace: Vec<String>,
   /// All constraints added to the `TestShapeCS`.
@@ -216,10 +213,7 @@ where
   }
 }
 
-impl<E: Engine> Default for TestShapeCS<E>
-where
-  E::Scalar: PrimeField,
-{
+impl<E: Engine> Default for TestShapeCS<E> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<E>::one()));
