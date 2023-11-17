@@ -229,29 +229,14 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $engine {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-      type GE = $name::Point;
-      type RO = PoseidonRO<Self::Base, Self::Scalar>;
-      type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = Keccak256Transcript<Self>;
-      type CE = CommitmentEngine<Self>;
-    }
-
-    impl Group for $name::Point {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-
-      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
-        let A = $name::Point::a();
-        let B = $name::Point::b();
-        let order = BigInt::from_str_radix($order_str, 16).unwrap();
-        let base = BigInt::from_str_radix($base_str, 16).unwrap();
-
-        (A, B, order, base)
-      }
-    }
+    impl_folding!(
+      $engine,
+      $name,
+      $name_compressed,
+      $name_curve,
+      $order_str,
+      $base_str
+    );
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
@@ -335,10 +320,11 @@ macro_rules! impl_traits {
       }
     }
 
-    impl PrimeFieldExt for $name::Scalar {
-      fn from_uniform(bytes: &[u8]) -> Self {
-        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
-        $name::Scalar::from_uniform_bytes(&bytes_arr)
+    impl CompressedGroup for $name_compressed {
+      type GroupElement = $name::Point;
+
+      fn decompress(&self) -> Option<$name::Point> {
+        Some($name_curve::from_bytes(&self).unwrap())
       }
     }
 
@@ -347,12 +333,48 @@ macro_rules! impl_traits {
         self.as_ref().to_vec()
       }
     }
+  };
+}
 
-    impl CompressedGroup for $name_compressed {
-      type GroupElement = $name::Point;
+/// Nova folding circuit engine and curve group ops
+#[macro_export]
+macro_rules! impl_folding {
+  (
+    $engine:ident,
+    $name:ident,
+    $name_compressed:ident,
+    $name_curve:ident,
+    $order_str:literal,
+    $base_str:literal
+  ) => {
+    impl Engine for $engine {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+      type GE = $name::Point;
+      type RO = PoseidonRO<Self::Base, Self::Scalar>;
+      type ROCircuit = PoseidonROCircuit<Self::Base>;
+      type TE = Keccak256Transcript<Self>;
+      type CE = CommitmentEngine<Self>;
+    }
 
-      fn decompress(&self) -> Option<$name::Point> {
-        Some($name_curve::from_bytes(&self).unwrap())
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+
+      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
+        let A = $name::Point::a();
+        let B = $name::Point::b();
+        let order = BigInt::from_str_radix($order_str, 16).unwrap();
+        let base = BigInt::from_str_radix($base_str, 16).unwrap();
+
+        (A, B, order, base)
+      }
+    }
+
+    impl PrimeFieldExt for $name::Scalar {
+      fn from_uniform(bytes: &[u8]) -> Self {
+        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
+        $name::Scalar::from_uniform_bytes(&bytes_arr)
       }
     }
 

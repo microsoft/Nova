@@ -1,6 +1,6 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
 use crate::{
-  impl_traits,
+  impl_folding, impl_traits,
   provider::{
     cpu_best_multiexp,
     keccak::Keccak256Transcript,

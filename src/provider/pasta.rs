@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
+  impl_folding,
   provider::{
     cpu_best_multiexp,
     keccak::Keccak256Transcript,
@@ -68,60 +69,39 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $engine {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-      type GE = $name::Point;
-      type RO = PoseidonRO<Self::Base, Self::Scalar>;
-      type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = Keccak256Transcript<Self>;
-      type CE = CommitmentEngine<Self>;
-    }
-
-    impl Group for $name::Point {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-
-      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
-        let A = $name::Point::a();
-        let B = $name::Point::b();
-        let order = BigInt::from_str_radix($order_str, 16).unwrap();
-        let base = BigInt::from_str_radix($base_str, 16).unwrap();
-
-        (A, B, order, base)
-      }
-    }
+    impl_folding!(
+      $engine,
+      $name,
+      $name_compressed,
+      $name_curve,
+      $order_str,
+      $base_str
+    );
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
-      #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if scalars.len() >= 128 {
           pasta_msm::$name(bases, scalars)
         } else {
           cpu_best_multiexp(scalars, bases)
         }
-      }
-
-      #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::PreprocessedGroupElement],
-      ) -> Self {
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         cpu_best_multiexp(scalars, bases)
-      }
-
-      fn compress(&self) -> Self::CompressedGroupElement {
-        $name_compressed::new(self.to_bytes())
       }
 
       fn preprocessed(&self) -> Self::PreprocessedGroupElement {
         self.to_affine()
+      }
+
+      fn compress(&self) -> Self::CompressedGroupElement {
+        $name_compressed::new(self.to_bytes())
       }
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
@@ -184,19 +164,6 @@ macro_rules! impl_traits {
       }
     }
 
-    impl PrimeFieldExt for $name::Scalar {
-      fn from_uniform(bytes: &[u8]) -> Self {
-        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
-        $name::Scalar::from_uniform_bytes(&bytes_arr)
-      }
-    }
-
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
-      fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.repr.to_vec()
-      }
-    }
-
     impl CompressedGroup for $name_compressed {
       type GroupElement = $name::Point;
 
@@ -205,9 +172,9 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.to_repr().to_vec()
+        self.repr.to_vec()
       }
     }
   };
