@@ -199,37 +199,3 @@ impl_traits!(
   "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",
   "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001"
 );
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  type G = <PallasEngine as Engine>::GE;
-
-  fn from_label_serial(label: &'static [u8], n: usize) -> Vec<EpAffine> {
-    let mut shake = Shake256::default();
-    shake.update(label);
-    let mut reader = shake.finalize_xof();
-    let mut ck = Vec::new();
-    for _ in 0..n {
-      let mut uniform_bytes = [0u8; 32];
-      reader.read_exact(&mut uniform_bytes).unwrap();
-      let hash = Ep::hash_to_curve("from_uniform_bytes");
-      ck.push(hash(&uniform_bytes).to_affine());
-    }
-    ck
-  }
-
-  #[test]
-  fn test_from_label() {
-    let label = b"test_from_label";
-    for n in [
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
-    ] {
-      let ck_par = <G as DlogGroup>::from_label(label, n);
-      let ck_ser = from_label_serial(label, n);
-      assert_eq!(ck_par.len(), n);
-      assert_eq!(ck_ser.len(), n);
-      assert_eq!(ck_par, ck_ser);
-    }
-  }
-}

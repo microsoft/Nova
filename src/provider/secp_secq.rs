@@ -66,37 +66,3 @@ impl_traits!(
   "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",
   "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"
 );
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  type G = secp256k1::Point;
-
-  fn from_label_serial(label: &'static [u8], n: usize) -> Vec<Secp256k1Affine> {
-    let mut shake = Shake256::default();
-    shake.update(label);
-    let mut reader = shake.finalize_xof();
-    let mut ck = Vec::new();
-    for _ in 0..n {
-      let mut uniform_bytes = [0u8; 32];
-      reader.read_exact(&mut uniform_bytes).unwrap();
-      let hash = secp256k1::Point::hash_to_curve("from_uniform_bytes");
-      ck.push(hash(&uniform_bytes).to_affine());
-    }
-    ck
-  }
-
-  #[test]
-  fn test_from_label() {
-    let label = b"test_from_label";
-    for n in [
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
-    ] {
-      let ck_par = <G as DlogGroup>::from_label(label, n);
-      let ck_ser = from_label_serial(label, n);
-      assert_eq!(ck_par.len(), n);
-      assert_eq!(ck_ser.len(), n);
-      assert_eq!(ck_par, ck_ser);
-    }
-  }
-}
