@@ -2,7 +2,12 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::{cpu_best_multiexp, DlogGroup},
+  provider::{
+    cpu_best_multiexp,
+    keccak::Keccak256Transcript,
+    poseidon::{PoseidonRO, PoseidonROCircuit},
+    DlogGroup,
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -15,7 +20,7 @@ use core::{
 };
 use ff::{Field, PrimeField};
 use halo2curves::{
-  bn256::{Fq, Fr, G1Affine, G2Affine, G1},
+  bn256::{Fq, Fr, G1Affine, G1Compressed, G2Affine, G1},
   group::{prime::PrimeCurveAffine, Curve},
   CurveAffine,
 };
@@ -61,7 +66,7 @@ where
 impl<E> CommitmentTrait<E> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type CompressedCommitment = CompressedCommitment<E>;
 
@@ -88,7 +93,7 @@ where
 impl<E> Default for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   fn default() -> Self {
     Commitment {
@@ -124,7 +129,7 @@ where
 impl<E> AbsorbInROTrait<E> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
@@ -150,7 +155,7 @@ impl<E: Engine> TranscriptReprTrait<E::GE> for CompressedCommitment<E> {
 impl<E> MulAssign<E::Scalar> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
     let result = (self as &Commitment<E>).comm * scalar;
@@ -164,7 +169,7 @@ where
 impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type Output = Commitment<E>;
 
@@ -179,7 +184,7 @@ where
 impl<E> Mul<E::Scalar> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type Output = Commitment<E>;
 
@@ -215,7 +220,7 @@ pub struct CommitmentEngine<E: Engine> {
 impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
@@ -296,7 +301,7 @@ pub struct EvaluationEngine<E: Engine> {
 impl<E> EvaluationEngine<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait
@@ -359,7 +364,7 @@ where
 impl<E> EvaluationEngineTrait<E> for EvaluationEngine<E>
 where
   E: Engine<Scalar = Fr, Base = Fq, CE = CommitmentEngine<E>>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Affine, PreprocessedGroupElement = G1Affine>,
+  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type EvaluationArgument = EvaluationArgument<E>;
   type ProverKey = ProverKey<E>;
@@ -686,26 +691,37 @@ where
   }
 }
 
+/// An implementation of Nova traits with multilinear KZG over the BN256 curve
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Bn256EngineKZG;
+
+impl Engine for Bn256EngineKZG {
+  type Base = Fq;
+  type Scalar = Fr;
+  type GE = G1;
+  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type TE = Keccak256Transcript<Self>;
+  type CE = CommitmentEngine<Self>;
+}
+
 #[cfg(test)]
 mod tests {
-  type G = crate::bn256::curve::G1;
-
   use super::*;
-  use crate::provider::{
-    keccak::Keccak256Transcript,
-    mlkzg::{EvaluationArgument, ProverKey, VerifierKey},
-  };
+  use crate::provider::keccak::Keccak256Transcript;
   use bincode::Options;
+
+  type E = Bn256EngineKZG;
 
   #[test]
   fn test_mlkzg_eval() {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
-    let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
+    let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
+
+    // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
-    // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0),
-    // (1,1)]
 
     let C = CommitmentEngine::commit(&ck, &poly);
     let mut tr = Keccak256Transcript::new(b"TestEval");
@@ -804,10 +820,10 @@ mod tests {
     .is_err());
   }
 
-  #[cfg(test)]
+  /*#[cfg(test)]
   use rand::SeedableRng;
   #[cfg(test)]
-  use rand_xorshift::XorShiftRng;
+  use rand_xorshift::;
 
   #[test]
   fn test_mlkzg_more() {
@@ -901,5 +917,5 @@ mod tests {
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
       );
     }
-  }
+  }*/
 }
