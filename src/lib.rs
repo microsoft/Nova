@@ -856,11 +856,8 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
-      pasta::{PallasEngine, VestaEngine},
-      pedersen::CommitmentKeyExtTrait,
-      secp_secq::{Secp256k1Engine, Secq256k1Engine},
-      DlogGroup,
+      pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256Engine, GrumpkinEngine,
+      PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };

@@ -2,13 +2,10 @@
 use crate::{
   impl_traits,
   provider::{
-    cpu_best_multiexp,
-    keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, DlogGroup,
+    msm::cpu_best_msm,
+    traits::{CompressedGroup, DlogGroup},
   },
-  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -27,7 +24,6 @@ use halo2curves::secq256k1::{Secq256k1, Secq256k1Affine, Secq256k1Compressed};
 pub mod secp256k1 {
   pub use halo2curves::secp256k1::{
     Fp as Base, Fq as Scalar, Secp256k1 as Point, Secp256k1Affine as Affine,
-    Secp256k1Compressed as Compressed,
   };
 }
 
@@ -35,20 +31,10 @@ pub mod secp256k1 {
 pub mod secq256k1 {
   pub use halo2curves::secq256k1::{
     Fp as Base, Fq as Scalar, Secq256k1 as Point, Secq256k1Affine as Affine,
-    Secq256k1Compressed as Compressed,
   };
 }
 
-/// An implementation of the Nova `Engine` trait with Secp256k1 curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Secp256k1Engine;
-
-/// An implementation of the Nova `Engine` trait with Secp256k1 curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Secq256k1Engine;
-
 impl_traits!(
-  Secp256k1Engine,
   secp256k1,
   Secp256k1Compressed,
   Secp256k1,
@@ -58,7 +44,6 @@ impl_traits!(
 );
 
 impl_traits!(
-  Secq256k1Engine,
   secq256k1,
   Secq256k1Compressed,
   Secq256k1,

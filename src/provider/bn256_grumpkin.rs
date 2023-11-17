@@ -2,13 +2,10 @@
 use crate::{
   impl_traits,
   provider::{
-    cpu_best_multiexp,
-    keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, DlogGroup,
+    msm::cpu_best_msm,
+    traits::{CompressedGroup, DlogGroup},
   },
-  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -30,28 +27,15 @@ use halo2curves::grumpkin::{
 
 /// Re-exports that give access to the standard aliases used in the code base, for bn256
 pub mod bn256 {
-  pub use halo2curves::bn256::{
-    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
-  };
+  pub use halo2curves::bn256::{Fq as Base, Fr as Scalar, G1Affine as Affine, G1 as Point};
 }
 
 /// Re-exports that give access to the standard aliases used in the code base, for grumpkin
 pub mod grumpkin {
-  pub use halo2curves::grumpkin::{
-    Fq as Base, Fr as Scalar, G1Affine as Affine, G1Compressed as Compressed, G1 as Point,
-  };
+  pub use halo2curves::grumpkin::{Fq as Base, Fr as Scalar, G1Affine as Affine, G1 as Point};
 }
 
-/// An implementation of the Nova `Engine` trait with BN254 curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Bn256Engine;
-
-/// An implementation of the Nova `Engine` trait with Grumpkin curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct GrumpkinEngine;
-
 impl_traits!(
-  Bn256Engine,
   bn256,
   Bn256Compressed,
   Bn256Point,
@@ -61,7 +45,6 @@ impl_traits!(
 );
 
 impl_traits!(
-  GrumpkinEngine,
   grumpkin,
   GrumpkinCompressed,
   GrumpkinPoint,

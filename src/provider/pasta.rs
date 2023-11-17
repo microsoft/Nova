@@ -1,13 +1,10 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
   provider::{
-    cpu_best_multiexp,
-    keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, DlogGroup,
+    msm::cpu_best_msm,
+    traits::{CompressedGroup, DlogGroup},
   },
-  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -50,17 +47,8 @@ impl VestaCompressedElementWrapper {
   }
 }
 
-/// An implementation of the Nova `Engine` trait with Pallas curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PallasEngine;
-
-/// An implementation of the Nova `Engine` trait with Vesta curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct VestaEngine;
-
 macro_rules! impl_traits {
   (
-    $engine:ident,
     $name:ident,
     $name_compressed:ident,
     $name_curve:ident,
@@ -68,16 +56,6 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $engine {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-      type GE = $name::Point;
-      type RO = PoseidonRO<Self::Base, Self::Scalar>;
-      type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = Keccak256Transcript<Self>;
-      type CE = CommitmentEngine<Self>;
-    }
-
     impl Group for $name::Point {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
@@ -104,7 +82,7 @@ macro_rules! impl_traits {
         if scalars.len() >= 128 {
           pasta_msm::$name(bases, scalars)
         } else {
-          cpu_best_multiexp(scalars, bases)
+          cpu_best_msm(scalars, bases)
         }
       }
 
@@ -113,7 +91,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
-        cpu_best_multiexp(scalars, bases)
+        cpu_best_msm(scalars, bases)
       }
 
       fn compress(&self) -> Self::CompressedGroupElement {
@@ -214,7 +192,6 @@ macro_rules! impl_traits {
 }
 
 impl_traits!(
-  PallasEngine,
   pallas,
   PallasCompressedElementWrapper,
   Ep,
@@ -224,7 +201,6 @@ impl_traits!(
 );
 
 impl_traits!(
-  VestaEngine,
   vesta,
   VestaCompressedElementWrapper,
   Eq,
@@ -236,6 +212,8 @@ impl_traits!(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::{provider::PallasEngine, traits::Engine};
+
   type G = <PallasEngine as Engine>::GE;
 
   fn from_label_serial(label: &'static [u8], n: usize) -> Vec<EpAffine> {
