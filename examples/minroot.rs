@@ -45,10 +45,12 @@ impl<F: PrimeField> MinRootIteration<F> {
       let x_i_plus_1 = (x_i + y_i).pow_vartime(exp.to_u64_digits()); // computes the fifth root of x_i + y_i
 
       // sanity check
-      let sq = x_i_plus_1 * x_i_plus_1;
-      let quad = sq * sq;
-      let fifth = quad * x_i_plus_1;
-      debug_assert_eq!(fifth, x_i + y_i);
+      if cfg!(debug_assertions) {
+        let sq = x_i_plus_1 * x_i_plus_1;
+        let quad = sq * sq;
+        let fifth = quad * x_i_plus_1;
+        assert_eq!(fifth, x_i + y_i);
+      }
 
       let y_i_plus_1 = x_i;
 
@@ -222,7 +224,7 @@ fn main() {
       )
       .unwrap();
 
-    for (i, circuit_primary) in minroot_circuits.iter().take(num_steps).enumerate() {
+    for (i, circuit_primary) in minroot_circuits.iter().enumerate() {
       let start = Instant::now();
       let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
