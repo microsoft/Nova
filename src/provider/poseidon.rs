@@ -192,9 +192,7 @@ where
 mod tests {
   use super::*;
   use crate::provider::{
-    bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
-    pasta::{PallasEngine, VestaEngine},
-    secp_secq::{Secp256k1Engine, Secq256k1Engine},
+    Bn256Engine, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
   };
   use crate::{
     bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,

@@ -81,7 +81,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 #[cfg(test)]
 mod tests {
   use super::{DigestComputer, SimpleDigestible};
-  use crate::{provider::pasta::PallasEngine, traits::Engine};
+  use crate::{provider::PallasEngine, traits::Engine};
   use ff::Field;
   use once_cell::sync::OnceCell;
   use serde::{Deserialize, Serialize};

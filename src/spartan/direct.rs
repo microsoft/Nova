@@ -165,9 +165,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{
-    bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine,
-  };
+  use crate::provider::{Bn256Engine, PallasEngine, Secp256k1Engine};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;

@@ -164,7 +164,7 @@ impl<'a, F: PrimeField> Iterator for Iter<'a, F> {
 mod tests {
   use super::SparseMatrix;
   use crate::{
-    provider::pasta::PallasEngine,
+    provider::PallasEngine,
     r1cs::util::FWrap,
     traits::{Engine, Group},
   };

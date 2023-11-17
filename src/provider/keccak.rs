@@ -101,9 +101,7 @@ mod tests {
   use crate::{
     provider::keccak::Keccak256Transcript,
     provider::{
-      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
-      pasta::{PallasEngine, VestaEngine},
-      secp_secq::{Secp256k1Engine, Secq256k1Engine},
+      Bn256Engine, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };

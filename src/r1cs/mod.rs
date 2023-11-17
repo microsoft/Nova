@@ -570,7 +570,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
+    provider::{Bn256Engine, PallasEngine, Secp256k1Engine},
     r1cs::sparse::SparseMatrix,
     traits::Engine,
   };

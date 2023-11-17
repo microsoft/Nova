@@ -15,7 +15,7 @@ mod tests {
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
-    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
+    provider::{Bn256Engine, PallasEngine, Secp256k1Engine},
     traits::{snark::default_ck_hint, Engine},
   };
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
