@@ -708,8 +708,11 @@ impl Engine for Bn256EngineKZG {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::keccak::Keccak256Transcript;
+  use crate::{
+    provider::keccak::Keccak256Transcript, spartan::polys::multilinear::MultilinearPolynomial,
+  };
   use bincode::Options;
+  use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
 
@@ -820,78 +823,17 @@ mod tests {
     .is_err());
   }
 
-  /*#[cfg(test)]
-  use rand::SeedableRng;
-  #[cfg(test)]
-  use rand_xorshift::;
-
   #[test]
   fn test_mlkzg_more() {
-    // Evaluates the multi-linear polynomial Z at the point r
-    // Adapted from:
-    // (https://github.com/microsoft/Nova/blob/cbbc1c6127421f12e0ea1088c4cfd8137781b40e/src/spartan/polynomial.rs#L88)
-    let ml_poly_eval = |Z: &[Fr], r: &[Fr]| -> Fr {
-      let evals = |r: &[Fr]| -> Vec<Fr> {
-        let ell = r.len();
-        let mut evals: Vec<Fr> = vec![Fr::zero(); (2_usize).pow(ell as u32)];
-        let mut size = 1;
-        evals[0] = Fr::one();
+    // test the mlkzg prover and verifier with random instances (derived from a seed)
+    for ell in [4, 5, 6] {
+      let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
 
-        for r in r.iter().rev() {
-          let (evals_left, evals_right) = evals.split_at_mut(size);
-          let (evals_right, _) = evals_right.split_at_mut(size);
-
-          evals_left
-            .par_iter_mut()
-            .zip(evals_right.par_iter_mut())
-            .for_each(|(x, y)| {
-              *y = *x * r;
-              *x -= &*y;
-            });
-
-          size *= 2;
-        }
-        evals
-      };
-
-      assert_eq!(1 << r.len(), Z.len());
-      let chis = evals(r);
-      assert_eq!(chis.len(), Z.len());
-
-      (0..chis.len())
-        .into_par_iter()
-        .map(|i| chis[i] * Z[i])
-        .reduce(Fr::zero, |x, y| x + y)
-    };
-
-    // Briefly test the ml_poly_eval closure
-    let poly = vec![Fr::one(), Fr::from(2), Fr::from(1), Fr::from(4)];
-    let point = vec![Fr::from(4), Fr::from(3)];
-    let eval = ml_poly_eval(&poly, &point);
-    assert_eq!(eval, Fr::from(28));
-
-    // Now test the mlkzg prover and verifier with large random instances
-    // (derived from a seed)
-    for seed_ctr in [0x01, 0x02, 0x03] {
-      let mut rng = XorShiftRng::from_seed([
-        seed_ctr, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
-        0x0E, 0x0F,
-      ]);
-
-      let ell = 3 + usize::from(seed_ctr); // ell = 4, 5, 6
       let n = 1 << ell; // n = 2^ell
 
-      let mut poly = vec![Fr::zero(); n];
-      poly
-        .iter_mut()
-        .for_each(|eval| *eval = Fr::random(&mut rng));
-
-      let mut point = vec![Fr::zero(); ell];
-      point
-        .iter_mut()
-        .for_each(|point_i| *point_i = Fr::random(&mut rng));
-
-      let eval = ml_poly_eval(&poly, &point);
+      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
       let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
       let (pk, vk) = EvaluationEngine::setup(&ck);
@@ -917,5 +859,5 @@ mod tests {
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
       );
     }
-  }*/
+  }
 }
