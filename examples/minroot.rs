@@ -1,21 +1,23 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
 //! iterations of the `MinRoot` function, thereby realizing a Nova-based verifiable delay function (VDF).
 //! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
+  provider::pasta::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
-    Group,
+    Engine,
   },
   CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use num_bigint::BigUint;
 use std::time::Instant;
+
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 
 #[derive(Clone, Debug)]
 struct MinRootIteration<F: PrimeField> {
@@ -72,10 +74,7 @@ struct MinRootCircuit<F: PrimeField> {
   seq: Vec<MinRootIteration<F>>,
 }
 
-impl<F> StepCircuit<F> for MinRootCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> StepCircuit<F> for MinRootCircuit<F> {
   fn arity(&self) -> usize {
     2
   }
@@ -141,10 +140,10 @@ fn main() {
     let circuit_primary = MinRootCircuit {
       seq: vec![
         MinRootIteration {
-          x_i: <G1 as Group>::Scalar::zero(),
-          y_i: <G1 as Group>::Scalar::zero(),
-          x_i_plus_1: <G1 as Group>::Scalar::zero(),
-          y_i_plus_1: <G1 as Group>::Scalar::zero(),
+          x_i: <E1 as Engine>::Scalar::zero(),
+          y_i: <E1 as Engine>::Scalar::zero(),
+          x_i_plus_1: <E1 as Engine>::Scalar::zero(),
+          y_i_plus_1: <E1 as Engine>::Scalar::zero(),
         };
         num_iters_per_step
       ],
@@ -158,10 +157,10 @@ fn main() {
     let start = Instant::now();
     println!("Producing public parameters...");
     let pp = PublicParams::<
-      G1,
-      G2,
-      MinRootCircuit<<G1 as Group>::Scalar>,
-      TrivialCircuit<<G2 as Group>::Scalar>,
+      E1,
+      E2,
+      MinRootCircuit<<E1 as Engine>::Scalar>,
+      TrivialCircuit<<E2 as Engine>::Scalar>,
     >::setup(
       &circuit_primary,
       &circuit_secondary,
@@ -191,8 +190,8 @@ fn main() {
     // produce non-deterministic advice
     let (z0_primary, minroot_iterations) = MinRootIteration::new(
       num_iters_per_step * num_steps,
-      &<G1 as Group>::Scalar::zero(),
-      &<G1 as Group>::Scalar::one(),
+      &<E1 as Engine>::Scalar::zero(),
+      &<E1 as Engine>::Scalar::one(),
     );
     let minroot_circuits = (0..num_steps)
       .map(|i| MinRootCircuit {
@@ -207,14 +206,14 @@ fn main() {
       })
       .collect::<Vec<_>>();
 
-    let z0_secondary = vec![<G2 as Group>::Scalar::zero()];
+    let z0_secondary = vec![<E2 as Engine>::Scalar::zero()];
 
-    type C1 = MinRootCircuit<<G1 as Group>::Scalar>;
-    type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+    type C1 = MinRootCircuit<<E1 as Engine>::Scalar>;
+    type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
     // produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
-    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> =
-      RecursiveSNARK::<G1, G2, C1, C2>::new(
+    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> =
+      RecursiveSNARK::<E1, E2, C1, C2>::new(
         &pp,
         &minroot_circuits[0],
         &circuit_secondary,
@@ -251,10 +250,10 @@ fn main() {
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
     let start = Instant::now();
-    type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
-    type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
-    type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G1, EE1>;
-    type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
+    type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
+    type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
+    type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>;
+    type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
 
     let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
     println!(

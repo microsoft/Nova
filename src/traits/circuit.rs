@@ -26,10 +26,7 @@ pub struct TrivialCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
 
-impl<F> StepCircuit<F> for TrivialCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> StepCircuit<F> for TrivialCircuit<F> {
   fn arity(&self) -> usize {
     1
   }

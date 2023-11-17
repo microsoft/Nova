@@ -3,27 +3,29 @@
 //! This code invokes a hand-written SHA-256 gadget from bellman/bellperson.
 //! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
 #![allow(non_snake_case)]
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
 use bellpepper::gadgets::{sha256::sha256, Assignment};
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},
   num::{AllocatedNum, Num},
   ConstraintSystem, SynthesisError,
 };
+use core::marker::PhantomData;
 use core::time::Duration;
 use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
+  provider::pasta::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
-    Group,
+    Engine,
   },
   PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
-use std::marker::PhantomData;
+
+type E1 = PallasEngine;
+type E2 = VestaEngine;
 
 #[derive(Clone, Debug)]
 struct Sha256Circuit<Scalar: PrimeField> {
@@ -120,8 +122,8 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
   }
 }
 
-type C1 = Sha256Circuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type C1 = Sha256Circuit<<E1 as Engine>::Scalar>;
+type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
 criterion_group! {
 name = recursive_snark;
@@ -156,7 +158,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
 
     // Produce public parameters
     let ttc = TrivialCircuit::default();
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+    let pp = PublicParams::<E1, E2, C1, C2>::setup(
       &circuit_primary,
       &ttc,
       &*default_ck_hint(),
@@ -164,8 +166,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
     );
 
     let circuit_secondary = TrivialCircuit::default();
-    let z0_primary = vec![<G1 as Group>::Scalar::from(2u64)];
-    let z0_secondary = vec![<G2 as Group>::Scalar::from(2u64)];
+    let z0_primary = vec![<E1 as Engine>::Scalar::from(2u64)];
+    let z0_secondary = vec![<E2 as Engine>::Scalar::from(2u64)];
 
     group.bench_function("Prove", |b| {
       b.iter(|| {

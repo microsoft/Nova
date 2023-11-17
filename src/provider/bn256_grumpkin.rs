@@ -6,9 +6,9 @@ use crate::{
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, GroupExt,
+    CompressedGroup, DlogGroup,
   },
-  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -42,7 +42,16 @@ pub mod grumpkin {
   };
 }
 
+/// An implementation of the Nova `Engine` trait with BN254 curve and Pedersen commitment scheme
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Bn256Engine;
+
+/// An implementation of the Nova `Engine` trait with Grumpkin curve and Pedersen commitment scheme
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GrumpkinEngine;
+
 impl_traits!(
+  Bn256Engine,
   bn256,
   Bn256Compressed,
   Bn256Point,
@@ -52,6 +61,7 @@ impl_traits!(
 );
 
 impl_traits!(
+  GrumpkinEngine,
   grumpkin,
   GrumpkinCompressed,
   GrumpkinPoint,
@@ -85,7 +95,7 @@ mod tests {
     for n in [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
     ] {
-      let ck_par = <G as GroupExt>::from_label(label, n);
+      let ck_par = <G as DlogGroup>::from_label(label, n);
       let ck_ser = from_label_serial(label, n);
       assert_eq!(ck_par.len(), n);
       assert_eq!(ck_ser.len(), n);

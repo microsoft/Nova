@@ -1,6 +1,6 @@
 //! This module implements Nova's traits using the following configuration:
 //! `CommitmentEngine` with Pedersen's commitments
-//! `Group` with pasta curves and BN256/Grumpkin
+//! `Engine` with pasta curves and BN256/Grumpkin
 //! `RO` traits with Poseidon
 //! `EvaluationEngine` with an IPA-based polynomial evaluation argument
 use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
@@ -24,7 +24,7 @@ pub trait CompressedGroup:
   + 'static
 {
   /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: Group;
+  type GroupElement: DlogGroup;
 
   /// Decompresses the compressed group element
   fn decompress(&self) -> Option<Self::GroupElement>;
@@ -50,7 +50,7 @@ pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output>
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
 /// A trait that defines extensions to the Group trait
-pub trait GroupExt:
+pub trait DlogGroup:
   Group
   + Serialize
   + for<'de> Deserialize<'de>
@@ -63,7 +63,14 @@ pub trait GroupExt:
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type PreprocessedGroupElement: Clone
+    + Debug
+    + PartialEq
+    + Eq
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -84,7 +91,7 @@ pub trait GroupExt:
   fn zero() -> Self;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
-  fn to_coordinates(&self) -> (Self::Base, Self::Base, bool);
+  fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
 pub mod bn256_grumpkin;
@@ -214,6 +221,7 @@ pub(crate) fn cpu_best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C
 #[macro_export]
 macro_rules! impl_traits {
   (
+    $engine:ident,
     $name:ident,
     $name_compressed:ident,
     $name_curve:ident,
@@ -221,15 +229,21 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Group for $name::Point {
+    impl Engine for $engine {
       type Base = $name::Base;
       type Scalar = $name::Scalar;
+      type GE = $name::Point;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
+    }
 
-      fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+
+      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
         let A = $name::Point::a();
         let B = $name::Point::b();
         let order = BigInt::from_str_radix($order_str, 16).unwrap();
@@ -239,7 +253,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl GroupExt for $name::Point {
+    impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
       type PreprocessedGroupElement = $name::Affine;
 
@@ -328,7 +342,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
+    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.as_ref().to_vec()
       }

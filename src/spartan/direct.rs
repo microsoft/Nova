@@ -12,7 +12,7 @@ use crate::{
   traits::{
     circuit::StepCircuit,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
-    Group,
+    Engine,
   },
   Commitment, CommitmentKey,
 };
@@ -21,25 +21,25 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-struct DirectCircuit<G: Group, SC: StepCircuit<G::Scalar>> {
-  z_i: Option<Vec<G::Scalar>>, // inputs to the circuit
+struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {
+  z_i: Option<Vec<E::Scalar>>, // inputs to the circuit
   sc: SC,                      // step circuit to be executed
 }
 
-impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<G, SC> {
-  fn synthesize<CS: ConstraintSystem<G::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit<E, SC> {
+  fn synthesize<CS: ConstraintSystem<E::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
     // obtain the arity information
     let arity = self.sc.arity();
 
     // Allocate zi. If inputs.zi is not provided, allocate default value 0
-    let zero = vec![G::Scalar::ZERO; arity];
+    let zero = vec![E::Scalar::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
           Ok(self.z_i.as_ref().unwrap_or(&zero)[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<G::Scalar>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
 
     let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| "F"), &z_i)?;
 
@@ -58,30 +58,30 @@ impl<G: Group, SC: StepCircuit<G::Scalar>> Circuit<G::Scalar> for DirectCircuit<
 /// A type that holds the prover key
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G, S>
+pub struct ProverKey<E, S>
 where
-  G: Group,
-  S: RelaxedR1CSSNARKTrait<G>,
+  E: Engine,
+  S: RelaxedR1CSSNARKTrait<E>,
 {
-  S: R1CSShape<G>,
-  ck: CommitmentKey<G>,
+  S: R1CSShape<E>,
+  ck: CommitmentKey<E>,
   pk: S::ProverKey,
 }
 
 /// A type that holds the verifier key
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G, S>
+pub struct VerifierKey<E, S>
 where
-  G: Group,
-  S: RelaxedR1CSSNARKTrait<G>,
+  E: Engine,
+  S: RelaxedR1CSSNARKTrait<E>,
 {
   vk: S::VerifierKey,
 }
 
-impl<G: Group, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
+impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>> VerifierKey<E, S> {
   /// Returns the digest of the verifier's key
-  pub fn digest(&self) -> G::Scalar {
+  pub fn digest(&self) -> E::Scalar {
     self.vk.digest()
   }
 }
@@ -89,24 +89,24 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>> VerifierKey<G, S> {
 /// A direct SNARK proving a step circuit
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct DirectSNARK<G, S, C>
+pub struct DirectSNARK<E, S, C>
 where
-  G: Group,
-  S: RelaxedR1CSSNARKTrait<G>,
-  C: StepCircuit<G::Scalar>,
+  E: Engine,
+  S: RelaxedR1CSSNARKTrait<E>,
+  C: StepCircuit<E::Scalar>,
 {
-  comm_W: Commitment<G>, // commitment to the witness
+  comm_W: Commitment<E>, // commitment to the witness
   snark: S,              // snark proving the witness is satisfying
   _p: PhantomData<C>,
 }
 
-impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNARK<G, S, C> {
+impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSNARK<E, S, C> {
   /// Produces prover and verifier keys for the direct SNARK
-  pub fn setup(sc: C) -> Result<(ProverKey<G, S>, VerifierKey<G, S>), NovaError> {
+  pub fn setup(sc: C) -> Result<(ProverKey<E, S>, VerifierKey<E, S>), NovaError> {
     // construct a circuit that can be synthesized
-    let circuit: DirectCircuit<G, C> = DirectCircuit { z_i: None, sc };
+    let circuit: DirectCircuit<E, C> = DirectCircuit { z_i: None, sc };
 
-    let mut cs: ShapeCS<G> = ShapeCS::new();
+    let mut cs: ShapeCS<E> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
 
     let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
@@ -121,10 +121,10 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
   }
 
   /// Produces a proof of satisfiability of the provided circuit
-  pub fn prove(pk: &ProverKey<G, S>, sc: C, z_i: &[G::Scalar]) -> Result<Self, NovaError> {
-    let mut cs = SatisfyingAssignment::<G>::new();
+  pub fn prove(pk: &ProverKey<E, S>, sc: C, z_i: &[E::Scalar]) -> Result<Self, NovaError> {
+    let mut cs = SatisfyingAssignment::<E>::new();
 
-    let circuit: DirectCircuit<G, C> = DirectCircuit {
+    let circuit: DirectCircuit<E, C> = DirectCircuit {
       z_i: Some(z_i.to_vec()),
       sc,
     };
@@ -151,7 +151,7 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
   }
 
   /// Verifies a proof of satisfiability
-  pub fn verify(&self, vk: &VerifierKey<G, S>, io: &[G::Scalar]) -> Result<(), NovaError> {
+  pub fn verify(&self, vk: &VerifierKey<E, S>, io: &[E::Scalar]) -> Result<(), NovaError> {
     // construct an instance using the provided commitment to the witness and z_i and z_{i+1}
     let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(&self.comm_W, io);
 
@@ -165,7 +165,9 @@ impl<G: Group, S: RelaxedR1CSSNARKTrait<G>, C: StepCircuit<G::Scalar>> DirectSNA
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1};
+  use crate::provider::{
+    bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine,
+  };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -175,10 +177,7 @@ mod tests {
     _p: PhantomData<F>,
   }
 
-  impl<F> StepCircuit<F> for CubicCircuit<F>
-  where
-    F: PrimeField,
-  {
+  impl<F: PrimeField> StepCircuit<F> for CubicCircuit<F> {
     fn arity(&self) -> usize {
       1
     }
@@ -223,42 +222,42 @@ mod tests {
 
   #[test]
   fn test_direct_snark() {
-    type G = pasta_curves::pallas::Point;
-    type EE = crate::provider::ipa_pc::EvaluationEngine<G>;
-    type S = crate::spartan::snark::RelaxedR1CSSNARK<G, EE>;
-    test_direct_snark_with::<G, S>();
+    type E = PallasEngine;
+    type EE = crate::provider::ipa_pc::EvaluationEngine<E>;
+    type S = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
+    test_direct_snark_with::<E, S>();
 
-    type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G, EE>;
-    test_direct_snark_with::<G, Spp>();
+    type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
+    test_direct_snark_with::<E, Spp>();
 
-    type G2 = bn256::Point;
-    type EE2 = crate::provider::ipa_pc::EvaluationEngine<G2>;
-    type S2 = crate::spartan::snark::RelaxedR1CSSNARK<G2, EE2>;
-    test_direct_snark_with::<G2, S2>();
+    type E2 = Bn256Engine;
+    type EE2 = crate::provider::ipa_pc::EvaluationEngine<E2>;
+    type S2 = crate::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
+    test_direct_snark_with::<E2, S2>();
 
-    type S2pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G2, EE2>;
-    test_direct_snark_with::<G2, S2pp>();
+    type S2pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E2, EE2>;
+    test_direct_snark_with::<E2, S2pp>();
 
-    type G3 = secp256k1::Point;
-    type EE3 = crate::provider::ipa_pc::EvaluationEngine<G3>;
-    type S3 = crate::spartan::snark::RelaxedR1CSSNARK<G3, EE3>;
-    test_direct_snark_with::<G3, S3>();
+    type E3 = Secp256k1Engine;
+    type EE3 = crate::provider::ipa_pc::EvaluationEngine<E3>;
+    type S3 = crate::spartan::snark::RelaxedR1CSSNARK<E3, EE3>;
+    test_direct_snark_with::<E3, S3>();
 
-    type S3pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<G3, EE3>;
-    test_direct_snark_with::<G3, S3pp>();
+    type S3pp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E3, EE3>;
+    test_direct_snark_with::<E3, S3pp>();
   }
 
-  fn test_direct_snark_with<G: Group, S: RelaxedR1CSSNARKTrait<G>>() {
+  fn test_direct_snark_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
     let circuit = CubicCircuit::default();
 
     // produce keys
     let (pk, vk) =
-      DirectSNARK::<G, S, CubicCircuit<<G as Group>::Scalar>>::setup(circuit.clone()).unwrap();
+      DirectSNARK::<E, S, CubicCircuit<<E as Engine>::Scalar>>::setup(circuit.clone()).unwrap();
 
     let num_steps = 3;
 
     // setup inputs
-    let z0 = vec![<G as Group>::Scalar::ZERO];
+    let z0 = vec![<E as Engine>::Scalar::ZERO];
     let mut z_i = z0;
 
     for _i in 0..num_steps {
@@ -284,6 +283,6 @@ mod tests {
     }
 
     // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(z_i, vec![<G as Group>::Scalar::from(2460515u64)]);
+    assert_eq!(z_i, vec![<E as Engine>::Scalar::from(2460515u64)]);
   }
 }

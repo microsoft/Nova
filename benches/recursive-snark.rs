@@ -5,19 +5,20 @@ use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
+  provider::pasta::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
-    Group,
+    Engine,
   },
   PublicParams, RecursiveSNARK,
 };
 use std::time::Duration;
 
-type G1 = pasta_curves::pallas::Point;
-type G2 = pasta_curves::vesta::Point;
-type C1 = NonTrivialCircuit<<G1 as Group>::Scalar>;
-type C2 = TrivialCircuit<<G2 as Group>::Scalar>;
+type E1 = PallasEngine;
+type E2 = VestaEngine;
+type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
+type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
@@ -57,7 +58,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     let c_secondary = TrivialCircuit::default();
 
     // Produce public parameters
-    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+    let pp = PublicParams::<E1, E2, C1, C2>::setup(
       &c_primary,
       &c_secondary,
       &*default_ck_hint(),
@@ -69,12 +70,12 @@ fn bench_recursive_snark(c: &mut Criterion) {
     // the first step is cheaper than other steps owing to the presence of
     // a lot of zeros in the satisfying assignment
     let num_warmup_steps = 10;
-    let mut recursive_snark: RecursiveSNARK<G1, G2, C1, C2> = RecursiveSNARK::new(
+    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
       &pp,
       &c_primary,
       &c_secondary,
-      &[<G1 as Group>::Scalar::from(2u64)],
-      &[<G2 as Group>::Scalar::from(2u64)],
+      &[<E1 as Engine>::Scalar::from(2u64)],
+      &[<E2 as Engine>::Scalar::from(2u64)],
     )
     .unwrap();
 
@@ -86,8 +87,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       let res = recursive_snark.verify(
         &pp,
         i + 1,
-        &[<G1 as Group>::Scalar::from(2u64)],
-        &[<G2 as Group>::Scalar::from(2u64)],
+        &[<E1 as Engine>::Scalar::from(2u64)],
+        &[<E2 as Engine>::Scalar::from(2u64)],
       );
       assert!(res.is_ok());
     }
@@ -112,8 +113,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
           .verify(
             black_box(&pp),
             black_box(num_warmup_steps),
-            black_box(&[<G1 as Group>::Scalar::from(2u64)]),
-            black_box(&[<G2 as Group>::Scalar::from(2u64)]),
+            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
+            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
           )
           .is_ok());
       });
@@ -128,10 +129,7 @@ struct NonTrivialCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
 
-impl<F> NonTrivialCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> NonTrivialCircuit<F> {
   pub fn new(num_cons: usize) -> Self {
     Self {
       num_cons,
@@ -139,10 +137,7 @@ where
     }
   }
 }
-impl<F> StepCircuit<F> for NonTrivialCircuit<F>
-where
-  F: PrimeField,
-{
+impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
   fn arity(&self) -> usize {
     1
   }

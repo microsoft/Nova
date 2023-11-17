@@ -14,16 +14,31 @@ use commitment::CommitmentEngineTrait;
 /// This is currently tailored for an elliptic curve group
 pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldBits + Serialize + for<'de> Deserialize<'de>;
+
+  /// A type representing an element of the scalar field of the group
+  type Scalar: PrimeFieldBits + PrimeFieldExt + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
+  /// Returns A, B, the order of the group, the size of the base field as big integers
+  fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt);
+}
+
+/// A collection of engines that are required by the library
+pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
+  /// A type representing an element of the base field of the group
+  type Base: PrimeFieldBits + TranscriptReprTrait<Self::GE> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits
     + PrimeFieldExt
     + Send
     + Sync
-    + TranscriptReprTrait<Self>
+    + TranscriptReprTrait<Self::GE>
     + Serialize
     + for<'de> Deserialize<'de>;
+
+  /// A type that represents an element of the group
+  type GE: Group<Base = Self::Base, Scalar = Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents a circuit-friendly sponge that consumes elements
   /// from the base field and squeezes out elements of the scalar field
@@ -37,15 +52,12 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
-
-  /// Returns A, B, the order of the group, the size of the base field as big integers
-  fn get_curve_params() -> (Self::Base, Self::Base, BigInt, BigInt);
 }
 
 /// A helper trait to absorb different objects in RO
-pub trait AbsorbInROTrait<G: Group> {
+pub trait AbsorbInROTrait<E: Engine> {
   /// Absorbs the value in the provided RO
-  fn absorb_in_ro(&self, ro: &mut G::RO);
+  fn absorb_in_ro(&self, ro: &mut E::RO);
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
@@ -81,18 +93,20 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   fn absorb(&mut self, e: &AllocatedNum<Base>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze<CS>(&mut self, cs: CS, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Base>;
+  fn squeeze<CS: ConstraintSystem<Base>>(
+    &mut self,
+    cs: CS,
+    num_bits: usize,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>;
 }
 
-/// An alias for constants associated with G::RO
-pub type ROConstants<G> =
-  <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants;
+/// An alias for constants associated with E::RO
+pub type ROConstants<E> =
+  <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants;
 
-/// An alias for constants associated with `G::ROCircuit`
-pub type ROConstantsCircuit<G> =
-  <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
+/// An alias for constants associated with `E::ROCircuit`
+pub type ROConstantsCircuit<E> =
+  <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Base>>::Constants;
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
 pub trait TranscriptReprTrait<G: Group>: Send + Sync {
@@ -101,15 +115,15 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
 }
 
 /// This trait defines the behavior of a transcript engine compatible with Spartan
-pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
+pub trait TranscriptEngineTrait<E: Engine>: Send + Sync {
   /// initializes the transcript
   fn new(label: &'static [u8]) -> Self;
 
   /// returns a scalar element of the group as a challenge
-  fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
-  fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T);
+  fn absorb<T: TranscriptReprTrait<E::GE>>(&mut self, label: &'static [u8], o: &T);
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);

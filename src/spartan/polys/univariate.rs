@@ -109,7 +109,10 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
 impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
-    coeffs.as_slice().to_transcript_bytes()
+    coeffs
+      .iter()
+      .flat_map(|&t| t.to_repr().as_ref().to_vec())
+      .collect::<Vec<u8>>()
   }
 }
 #[cfg(test)]

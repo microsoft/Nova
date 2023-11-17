@@ -3,12 +3,12 @@
 //! and a commitment provided by the commitment engine is treated as a multilinear polynomial commitment
 use crate::{
   errors::NovaError,
-  traits::{commitment::CommitmentEngineTrait, Group},
+  traits::{commitment::CommitmentEngineTrait, Engine},
 };
 use serde::{Deserialize, Serialize};
 
 /// A trait that ties different pieces of the commitment evaluation together
-pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
+pub trait EvaluationEngineTrait<E: Engine>: Clone + Send + Sync {
   /// A type that holds the prover key
   type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
@@ -20,27 +20,27 @@ pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
 
   /// A method to perform any additional setup needed to produce proofs of evaluations
   fn setup(
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey);
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
     pk: &Self::ProverKey,
-    transcript: &mut G::TE,
-    comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
-    poly: &[G::Scalar],
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    transcript: &mut E::TE,
+    comm: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    poly: &[E::Scalar],
+    point: &[E::Scalar],
+    eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError>;
 
   /// A method to verify the purported evaluation of a multilinear polynomials
   fn verify(
     vk: &Self::VerifierKey,
-    transcript: &mut G::TE,
-    comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    transcript: &mut E::TE,
+    comm: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    point: &[E::Scalar],
+    eval: &E::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError>;
 }

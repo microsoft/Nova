@@ -1,12 +1,12 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
 use crate::{
   errors::NovaError,
-  provider::{pedersen::CommitmentKeyExtTrait, GroupExt},
+  provider::{pedersen::CommitmentKeyExtTrait, DlogGroup},
   spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,
-    Group, TranscriptEngineTrait, TranscriptReprTrait,
+    Engine, TranscriptEngineTrait, TranscriptReprTrait,
   },
   Commitment, CommitmentKey, CompressedCommitment, CE,
 };
@@ -19,37 +19,38 @@ use std::marker::PhantomData;
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct ProverKey<G: Group> {
-  ck_s: CommitmentKey<G>,
+pub struct ProverKey<E: Engine> {
+  ck_s: CommitmentKey<E>,
 }
 
 /// Provides an implementation of the verifier key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<G: Group> {
-  ck_v: CommitmentKey<G>,
-  ck_s: CommitmentKey<G>,
+pub struct VerifierKey<E: Engine> {
+  ck_v: CommitmentKey<E>,
+  ck_s: CommitmentKey<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation engine using IPA
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct EvaluationEngine<G: Group> {
-  _p: PhantomData<G>,
+pub struct EvaluationEngine<E: Engine> {
+  _p: PhantomData<E>,
 }
 
-impl<G> EvaluationEngineTrait<G> for EvaluationEngine<G>
+impl<E> EvaluationEngineTrait<E> for EvaluationEngine<E>
 where
-  G: GroupExt,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
+  E: Engine,
+  E::GE: DlogGroup,
+  CommitmentKey<E>: CommitmentKeyExtTrait<E>,
 {
-  type ProverKey = ProverKey<G>;
-  type VerifierKey = VerifierKey<G>;
-  type EvaluationArgument = InnerProductArgument<G>;
+  type ProverKey = ProverKey<E>;
+  type VerifierKey = VerifierKey<E>;
+  type EvaluationArgument = InnerProductArgument<E>;
 
   fn setup(
-    ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+    ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
-    let ck_c = G::CE::setup(b"ipa", 1);
+    let ck_c = E::CE::setup(b"ipa", 1);
 
     let pk = ProverKey { ck_s: ck_c.clone() };
     let vk = VerifierKey {
@@ -61,13 +62,13 @@ where
   }
 
   fn prove(
-    ck: &CommitmentKey<G>,
+    ck: &CommitmentKey<E>,
     pk: &Self::ProverKey,
-    transcript: &mut G::TE,
-    comm: &Commitment<G>,
-    poly: &[G::Scalar],
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    transcript: &mut E::TE,
+    comm: &Commitment<E>,
+    poly: &[E::Scalar],
+    point: &[E::Scalar],
+    eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
     let w = InnerProductWitness::new(poly);
@@ -78,10 +79,10 @@ where
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify(
     vk: &Self::VerifierKey,
-    transcript: &mut G::TE,
-    comm: &Commitment<G>,
-    point: &[G::Scalar],
-    eval: &G::Scalar,
+    transcript: &mut E::TE,
+    comm: &Commitment<E>,
+    point: &[E::Scalar],
+    eval: &E::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
     let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
@@ -98,10 +99,7 @@ where
   }
 }
 
-fn inner_product<T>(a: &[T], b: &[T]) -> T
-where
-  T: Field + Send + Sync,
-{
+fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
   assert_eq!(a.len(), b.len());
   (0..a.len())
     .into_par_iter()
@@ -111,14 +109,18 @@ where
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
 /// and the claim that c = <a, b>.
-pub struct InnerProductInstance<G: Group> {
-  comm_a_vec: Commitment<G>,
-  b_vec: Vec<G::Scalar>,
-  c: G::Scalar,
+pub struct InnerProductInstance<E: Engine> {
+  comm_a_vec: Commitment<E>,
+  b_vec: Vec<E::Scalar>,
+  c: E::Scalar,
 }
 
-impl<G: Group> InnerProductInstance<G> {
-  fn new(comm_a_vec: &Commitment<G>, b_vec: &[G::Scalar], c: &G::Scalar) -> Self {
+impl<E> InnerProductInstance<E>
+where
+  E: Engine,
+  E::GE: DlogGroup,
+{
+  fn new(comm_a_vec: &Commitment<E>, b_vec: &[E::Scalar], c: &E::Scalar) -> Self {
     InnerProductInstance {
       comm_a_vec: *comm_a_vec,
       b_vec: b_vec.to_vec(),
@@ -127,7 +129,7 @@ impl<G: Group> InnerProductInstance<G> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for InnerProductInstance<G> {
+impl<E: Engine> TranscriptReprTrait<E::GE> for InnerProductInstance<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     // we do not need to include self.b_vec as in our context it is produced from the transcript
     [
@@ -138,12 +140,12 @@ impl<G: Group> TranscriptReprTrait<G> for InnerProductInstance<G> {
   }
 }
 
-struct InnerProductWitness<G: Group> {
-  a_vec: Vec<G::Scalar>,
+struct InnerProductWitness<E: Engine> {
+  a_vec: Vec<E::Scalar>,
 }
 
-impl<G: Group> InnerProductWitness<G> {
-  fn new(a_vec: &[G::Scalar]) -> Self {
+impl<E: Engine> InnerProductWitness<E> {
+  fn new(a_vec: &[E::Scalar]) -> Self {
     InnerProductWitness {
       a_vec: a_vec.to_vec(),
     }
@@ -153,27 +155,28 @@ impl<G: Group> InnerProductWitness<G> {
 /// An inner product argument
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct InnerProductArgument<G: Group> {
-  L_vec: Vec<CompressedCommitment<G>>,
-  R_vec: Vec<CompressedCommitment<G>>,
-  a_hat: G::Scalar,
+pub struct InnerProductArgument<E: Engine> {
+  L_vec: Vec<CompressedCommitment<E>>,
+  R_vec: Vec<CompressedCommitment<E>>,
+  a_hat: E::Scalar,
 }
 
-impl<G> InnerProductArgument<G>
+impl<E> InnerProductArgument<E>
 where
-  G: GroupExt,
-  CommitmentKey<G>: CommitmentKeyExtTrait<G>,
+  E: Engine,
+  E::GE: DlogGroup,
+  CommitmentKey<E>: CommitmentKeyExtTrait<E>,
 {
   const fn protocol_name() -> &'static [u8] {
     b"IPA"
   }
 
   fn prove(
-    ck: &CommitmentKey<G>,
-    ck_c: &CommitmentKey<G>,
-    U: &InnerProductInstance<G>,
-    W: &InnerProductWitness<G>,
-    transcript: &mut G::TE,
+    ck: &CommitmentKey<E>,
+    ck_c: &CommitmentKey<E>,
+    U: &InnerProductInstance<E>,
+    W: &InnerProductWitness<E>,
+    transcript: &mut E::TE,
   ) -> Result<Self, NovaError> {
     transcript.dom_sep(Self::protocol_name());
 
@@ -191,17 +194,17 @@ where
     let ck_c = ck_c.scale(&r);
 
     // a closure that executes a step of the recursive inner product argument
-    let prove_inner = |a_vec: &[G::Scalar],
-                       b_vec: &[G::Scalar],
-                       ck: &CommitmentKey<G>,
-                       transcript: &mut G::TE|
+    let prove_inner = |a_vec: &[E::Scalar],
+                       b_vec: &[E::Scalar],
+                       ck: &CommitmentKey<E>,
+                       transcript: &mut E::TE|
      -> Result<
       (
-        CompressedCommitment<G>,
-        CompressedCommitment<G>,
-        Vec<G::Scalar>,
-        Vec<G::Scalar>,
-        CommitmentKey<G>,
+        CompressedCommitment<E>,
+        CompressedCommitment<E>,
+        Vec<E::Scalar>,
+        Vec<E::Scalar>,
+        CommitmentKey<E>,
       ),
       NovaError,
     > {
@@ -211,22 +214,22 @@ where
       let c_L = inner_product(&a_vec[0..n / 2], &b_vec[n / 2..n]);
       let c_R = inner_product(&a_vec[n / 2..n], &b_vec[0..n / 2]);
 
-      let L = CE::<G>::commit(
+      let L = CE::<E>::commit(
         &ck_R.combine(&ck_c),
         &a_vec[0..n / 2]
           .iter()
           .chain(iter::once(&c_L))
           .copied()
-          .collect::<Vec<G::Scalar>>(),
+          .collect::<Vec<E::Scalar>>(),
       )
       .compress();
-      let R = CE::<G>::commit(
+      let R = CE::<E>::commit(
         &ck_L.combine(&ck_c),
         &a_vec[n / 2..n]
           .iter()
           .chain(iter::once(&c_R))
           .copied()
-          .collect::<Vec<G::Scalar>>(),
+          .collect::<Vec<E::Scalar>>(),
       )
       .compress();
 
@@ -241,13 +244,13 @@ where
         .par_iter()
         .zip(a_vec[n / 2..n].par_iter())
         .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
-        .collect::<Vec<G::Scalar>>();
+        .collect::<Vec<E::Scalar>>();
 
       let b_vec_folded = b_vec[0..n / 2]
         .par_iter()
         .zip(b_vec[n / 2..n].par_iter())
         .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
-        .collect::<Vec<G::Scalar>>();
+        .collect::<Vec<E::Scalar>>();
 
       let ck_folded = ck.fold(&r_inverse, &r);
 
@@ -255,8 +258,8 @@ where
     };
 
     // two vectors to hold the logarithmic number of group elements
-    let mut L_vec: Vec<CompressedCommitment<G>> = Vec::new();
-    let mut R_vec: Vec<CompressedCommitment<G>> = Vec::new();
+    let mut L_vec: Vec<CompressedCommitment<E>> = Vec::new();
+    let mut R_vec: Vec<CompressedCommitment<E>> = Vec::new();
 
     // we create mutable copies of vectors and generators
     let mut a_vec = W.a_vec.to_vec();
@@ -282,11 +285,11 @@ where
 
   fn verify(
     &self,
-    ck: &CommitmentKey<G>,
-    ck_c: &CommitmentKey<G>,
+    ck: &CommitmentKey<E>,
+    ck_c: &CommitmentKey<E>,
     n: usize,
-    U: &InnerProductInstance<G>,
-    transcript: &mut G::TE,
+    U: &InnerProductInstance<E>,
+    transcript: &mut E::TE,
   ) -> Result<(), NovaError> {
     let (ck, _) = ck.split_at(U.b_vec.len());
 
@@ -306,11 +309,11 @@ where
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
 
-    let P = U.comm_a_vec + CE::<G>::commit(&ck_c, &[U.c]);
+    let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c]);
 
-    let batch_invert = |v: &[G::Scalar]| -> Result<Vec<G::Scalar>, NovaError> {
-      let mut products = vec![G::Scalar::ZERO; v.len()];
-      let mut acc = G::Scalar::ONE;
+    let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
+      let mut products = vec![E::Scalar::ZERO; v.len()];
+      let mut acc = E::Scalar::ONE;
 
       for i in 0..v.len() {
         products[i] = acc;
@@ -324,7 +327,7 @@ where
       };
 
       // compute the inverse once for all entries
-      let mut inv = vec![G::Scalar::ZERO; v.len()];
+      let mut inv = vec![E::Scalar::ZERO; v.len()];
       for i in (0..v.len()).rev() {
         let tmp = acc * v[i];
         inv[i] = products[i] * acc;
@@ -341,24 +344,24 @@ where
         transcript.absorb(b"R", &self.R_vec[i]);
         transcript.squeeze(b"r")
       })
-      .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+      .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
 
     // precompute scalars necessary for verification
-    let r_square: Vec<G::Scalar> = (0..self.L_vec.len())
+    let r_square: Vec<E::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
       .map(|i| r[i] * r[i])
       .collect();
     let r_inverse = batch_invert(&r)?;
-    let r_inverse_square: Vec<G::Scalar> = (0..self.L_vec.len())
+    let r_inverse_square: Vec<E::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
       .map(|i| r_inverse[i] * r_inverse[i])
       .collect();
 
     // compute the vector with the tensor structure
     let s = {
-      let mut s = vec![G::Scalar::ZERO; n];
+      let mut s = vec![E::Scalar::ZERO; n];
       s[0] = {
-        let mut v = G::Scalar::ONE;
+        let mut v = E::Scalar::ONE;
         for r_inverse_i in r_inverse {
           v *= r_inverse_i;
         }
@@ -372,32 +375,32 @@ where
     };
 
     let ck_hat = {
-      let c = CE::<G>::commit(&ck, &s).compress();
-      CommitmentKey::<G>::reinterpret_commitments_as_ck(&[c])?
+      let c = CE::<E>::commit(&ck, &s).compress();
+      CommitmentKey::<E>::reinterpret_commitments_as_ck(&[c])?
     };
 
     let b_hat = inner_product(&U.b_vec, &s);
 
     let P_hat = {
       let ck_folded = {
-        let ck_L = CommitmentKey::<G>::reinterpret_commitments_as_ck(&self.L_vec)?;
-        let ck_R = CommitmentKey::<G>::reinterpret_commitments_as_ck(&self.R_vec)?;
-        let ck_P = CommitmentKey::<G>::reinterpret_commitments_as_ck(&[P.compress()])?;
+        let ck_L = CommitmentKey::<E>::reinterpret_commitments_as_ck(&self.L_vec)?;
+        let ck_R = CommitmentKey::<E>::reinterpret_commitments_as_ck(&self.R_vec)?;
+        let ck_P = CommitmentKey::<E>::reinterpret_commitments_as_ck(&[P.compress()])?;
         ck_L.combine(&ck_R).combine(&ck_P)
       };
 
-      CE::<G>::commit(
+      CE::<E>::commit(
         &ck_folded,
         &r_square
           .iter()
           .chain(r_inverse_square.iter())
-          .chain(iter::once(&G::Scalar::ONE))
+          .chain(iter::once(&E::Scalar::ONE))
           .copied()
-          .collect::<Vec<G::Scalar>>(),
+          .collect::<Vec<E::Scalar>>(),
       )
     };
 
-    if P_hat == CE::<G>::commit(&ck_hat.combine(&ck_c), &[self.a_hat, self.a_hat * b_hat]) {
+    if P_hat == CE::<E>::commit(&ck_hat.combine(&ck_c), &[self.a_hat, self.a_hat * b_hat]) {
       Ok(())
     } else {
       Err(NovaError::InvalidIPA)

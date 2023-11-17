@@ -1,25 +1,25 @@
 //! Support for generating R1CS shape using bellpepper.
 
-use crate::traits::Group;
+use crate::traits::Engine;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use ff::PrimeField;
 
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
-pub struct ShapeCS<G: Group>
+pub struct ShapeCS<E: Engine>
 where
-  G::Scalar: PrimeField,
+  E::Scalar: PrimeField,
 {
   /// All constraints added to the `ShapeCS`.
   pub constraints: Vec<(
-    LinearCombination<G::Scalar>,
-    LinearCombination<G::Scalar>,
-    LinearCombination<G::Scalar>,
+    LinearCombination<E::Scalar>,
+    LinearCombination<E::Scalar>,
+    LinearCombination<E::Scalar>,
   )>,
   inputs: usize,
   aux: usize,
 }
 
-impl<G: Group> ShapeCS<G> {
+impl<E: Engine> ShapeCS<E> {
   /// Create a new, default `ShapeCS`,
   pub fn new() -> Self {
     ShapeCS::default()
@@ -41,7 +41,7 @@ impl<G: Group> ShapeCS<G> {
   }
 }
 
-impl<G: Group> Default for ShapeCS<G> {
+impl<E: Engine> Default for ShapeCS<E> {
   fn default() -> Self {
     ShapeCS {
       constraints: vec![],
@@ -51,12 +51,12 @@ impl<G: Group> Default for ShapeCS<G> {
   }
 }
 
-impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
+impl<E: Engine> ConstraintSystem<E::Scalar> for ShapeCS<E> {
   type Root = Self;
 
   fn alloc<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -67,7 +67,7 @@ impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
 
   fn alloc_input<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
-    F: FnOnce() -> Result<G::Scalar, SynthesisError>,
+    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
     A: FnOnce() -> AR,
     AR: Into<String>,
   {
@@ -80,9 +80,9 @@ impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   where
     A: FnOnce() -> AR,
     AR: Into<String>,
-    LA: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LB: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
-    LC: FnOnce(LinearCombination<G::Scalar>) -> LinearCombination<G::Scalar>,
+    LA: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
+    LB: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
+    LC: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
   {
     let a = a(LinearCombination::zero());
     let b = b(LinearCombination::zero());

@@ -32,10 +32,10 @@ pub struct Bitvector<Scalar: PrimeField> {
 impl<Scalar: PrimeField> Bit<Scalar> {
   /// Allocate a variable in the constraint system which can only be a
   /// boolean value.
-  pub fn alloc<CS>(mut cs: CS, value: Option<bool>) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
+  pub fn alloc<CS: ConstraintSystem<Scalar>>(
+    mut cs: CS,
+    value: Option<bool>,
+  ) -> Result<Self, SynthesisError> {
     let var = cs.alloc(
       || "boolean",
       || {

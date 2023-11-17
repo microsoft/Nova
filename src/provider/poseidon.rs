@@ -105,10 +105,7 @@ where
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonROCircuit<Scalar>
-where
-  Scalar: PrimeField,
-{
+pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
@@ -140,14 +137,11 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze<CS>(
+  fn squeeze<CS: ConstraintSystem<Scalar>>(
     &mut self,
     mut cs: CS,
     num_bits: usize,
-  ) -> Result<Vec<AllocatedBit>, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
+  ) -> Result<Vec<AllocatedBit>, SynthesisError> {
     // check if we have squeezed already
     assert!(!self.squeezed, "Cannot squeeze again after squeezing");
     self.squeezed = true;
@@ -197,32 +191,37 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq};
+  use crate::provider::{
+    bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
+    pasta::{PallasEngine, VestaEngine},
+    secp_secq::{Secp256k1Engine, Secq256k1Engine},
+  };
   use crate::{
     bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
-    gadgets::utils::le_bits_to_num, traits::Group,
+    gadgets::utils::le_bits_to_num, traits::Engine,
   };
   use ff::Field;
   use rand::rngs::OsRng;
 
-  fn test_poseidon_ro_with<G: Group>()
+  fn test_poseidon_ro_with<E: Engine>()
   where
-    // we can print the field elements we get from G's Base & Scalar fields,
+    // we can print the field elements we get from E's Base & Scalar fields,
     // and compare their byte representations
-    <<G as Group>::Base as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Scalar as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Base as PrimeField>::Repr: PartialEq<<<G as Group>::Scalar as PrimeField>::Repr>,
+    <<E as Engine>::Base as PrimeField>::Repr: std::fmt::Debug,
+    <<E as Engine>::Scalar as PrimeField>::Repr: std::fmt::Debug,
+    <<E as Engine>::Base as PrimeField>::Repr:
+      PartialEq<<<E as Engine>::Scalar as PrimeField>::Repr>,
   {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = PoseidonConstantsCircuit::<G::Scalar>::default();
+    let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
+    let mut ro: PoseidonRO<E::Scalar, E::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<E::Scalar> =
       PoseidonROCircuit::new(constants, num_absorbs);
-    let mut cs = SatisfyingAssignment::<G>::new();
+    let mut cs = SatisfyingAssignment::<E>::new();
     for i in 0..num_absorbs {
-      let num = G::Scalar::random(&mut csprng);
+      let num = E::Scalar::random(&mut csprng);
       ro.absorb(num);
       let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| format!("data {i}")), || num);
       num_gadget
@@ -238,9 +237,11 @@ mod tests {
 
   #[test]
   fn test_poseidon_ro() {
-    test_poseidon_ro_with::<pasta_curves::pallas::Point>();
-    test_poseidon_ro_with::<bn256::Point>();
-    test_poseidon_ro_with::<secp_secq::secp256k1::Point>();
-    test_poseidon_ro_with::<secp_secq::secq256k1::Point>();
+    test_poseidon_ro_with::<PallasEngine>();
+    test_poseidon_ro_with::<VestaEngine>();
+    test_poseidon_ro_with::<Bn256Engine>();
+    test_poseidon_ro_with::<GrumpkinEngine>();
+    test_poseidon_ro_with::<Secp256k1Engine>();
+    test_poseidon_ro_with::<Secq256k1Engine>();
   }
 }
