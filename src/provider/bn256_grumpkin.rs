@@ -3,7 +3,10 @@ use crate::{
   impl_traits,
   provider::{
     msm::cpu_best_msm,
-    traits::{CompressedGroup, DlogGroup},
+    traits::{CompressedGroup, DlogGroup, PairingGroup},
+    keccak::Keccak256Transcript,
+    pedersen::CommitmentEngine,
+    poseidon::{PoseidonRO, PoseidonROCircuit},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -19,7 +22,7 @@ use sha3::Shake256;
 use std::io::Read;
 
 use halo2curves::bn256::{
-  G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G1 as Bn256Point,
+  pairing, G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, Gt, G1 as Bn256Point, G2,
 };
 use halo2curves::grumpkin::{
   G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint,
@@ -52,3 +55,12 @@ impl_traits!(
   "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
   "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
 );
+
+impl PairingGroup for Bn256Point {
+  type G2 = G2;
+  type GT = Gt;
+
+  fn pairing(p: &Self, q: &Self::G2) -> Self::GT {
+    pairing(&p.to_affine(), &q.to_affine())
+  }
+}
