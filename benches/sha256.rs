@@ -14,7 +14,7 @@ use core::time::Duration;
 use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
-  provider::pasta::{PallasEngine, VestaEngine},
+  provider::{PallasEngine, VestaEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
