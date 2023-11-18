@@ -1,6 +1,6 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
-  impl_folding, impl_traits,
+  impl_engine, impl_traits,
   provider::{
     cpu_best_multiexp,
     keccak::Keccak256Transcript,

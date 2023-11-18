@@ -1,6 +1,6 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
-  impl_folding,
+  impl_engine,
   provider::{
     cpu_best_multiexp,
     keccak::Keccak256Transcript,
@@ -69,7 +69,7 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl_folding!(
+    impl_engine!(
       $engine,
       $name,
       $name_compressed,

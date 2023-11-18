@@ -229,7 +229,7 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl_folding!(
+    impl_engine!(
       $engine,
       $name,
       $name_compressed,
@@ -338,7 +338,7 @@ macro_rules! impl_traits {
 
 /// Nova folding circuit engine and curve group ops
 #[macro_export]
-macro_rules! impl_folding {
+macro_rules! impl_engine {
   (
     $engine:ident,
     $name:ident,
