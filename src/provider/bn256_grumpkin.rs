@@ -4,9 +4,6 @@ use crate::{
   provider::{
     msm::cpu_best_msm,
     traits::{CompressedGroup, DlogGroup, PairingGroup},
-    keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };

@@ -104,8 +104,6 @@ pub trait PairingGroup: DlogGroup {
   fn pairing(p: &Self, q: &Self::G2) -> Self::GT;
 }
 
-
-
 /// This implementation behaves in ways specific to the halo2curves suite of curves in:
 // - to_coordinates,
 // - vartime_multiscalar_mul, where it does not call into accelerated implementations.
