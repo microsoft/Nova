@@ -229,29 +229,14 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl Engine for $engine {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-      type GE = $name::Point;
-      type RO = PoseidonRO<Self::Base, Self::Scalar>;
-      type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = Keccak256Transcript<Self>;
-      type CE = CommitmentEngine<Self>;
-    }
-
-    impl Group for $name::Point {
-      type Base = $name::Base;
-      type Scalar = $name::Scalar;
-
-      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
-        let A = $name::Point::a();
-        let B = $name::Point::b();
-        let order = BigInt::from_str_radix($order_str, 16).unwrap();
-        let base = BigInt::from_str_radix($base_str, 16).unwrap();
-
-        (A, B, order, base)
-      }
-    }
+    impl_engine!(
+      $engine,
+      $name,
+      $name_compressed,
+      $name_curve,
+      $order_str,
+      $base_str
+    );
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
@@ -335,10 +320,11 @@ macro_rules! impl_traits {
       }
     }
 
-    impl PrimeFieldExt for $name::Scalar {
-      fn from_uniform(bytes: &[u8]) -> Self {
-        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
-        $name::Scalar::from_uniform_bytes(&bytes_arr)
+    impl CompressedGroup for $name_compressed {
+      type GroupElement = $name::Point;
+
+      fn decompress(&self) -> Option<$name::Point> {
+        Some($name_curve::from_bytes(&self).unwrap())
       }
     }
 
@@ -347,12 +333,48 @@ macro_rules! impl_traits {
         self.as_ref().to_vec()
       }
     }
+  };
+}
 
-    impl CompressedGroup for $name_compressed {
-      type GroupElement = $name::Point;
+/// Nova folding circuit engine and curve group ops
+#[macro_export]
+macro_rules! impl_engine {
+  (
+    $engine:ident,
+    $name:ident,
+    $name_compressed:ident,
+    $name_curve:ident,
+    $order_str:literal,
+    $base_str:literal
+  ) => {
+    impl Engine for $engine {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+      type GE = $name::Point;
+      type RO = PoseidonRO<Self::Base, Self::Scalar>;
+      type ROCircuit = PoseidonROCircuit<Self::Base>;
+      type TE = Keccak256Transcript<Self>;
+      type CE = CommitmentEngine<Self>;
+    }
 
-      fn decompress(&self) -> Option<$name::Point> {
-        Some($name_curve::from_bytes(&self).unwrap())
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+
+      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
+        let A = $name::Point::a();
+        let B = $name::Point::b();
+        let order = BigInt::from_str_radix($order_str, 16).unwrap();
+        let base = BigInt::from_str_radix($base_str, 16).unwrap();
+
+        (A, B, order, base)
+      }
+    }
+
+    impl PrimeFieldExt for $name::Scalar {
+      fn from_uniform(bytes: &[u8]) -> Self {
+        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
+        $name::Scalar::from_uniform_bytes(&bytes_arr)
       }
     }
 
@@ -371,11 +393,44 @@ mod tests {
   use crate::provider::{
     bn256_grumpkin::{bn256, grumpkin},
     secp_secq::{secp256k1, secq256k1},
+    DlogGroup,
   };
-  use group::{ff::Field, Group};
-  use halo2curves::CurveAffine;
+  use digest::{ExtendableOutput, Update};
+  use group::{ff::Field, Curve, Group};
+  use halo2curves::{CurveAffine, CurveExt};
   use pasta_curves::{pallas, vesta};
   use rand_core::OsRng;
+  use sha3::Shake256;
+  use std::io::Read;
+
+  macro_rules! impl_cycle_pair_test {
+    ($curve:ident) => {
+      fn from_label_serial(label: &'static [u8], n: usize) -> Vec<$curve::Affine> {
+        let mut shake = Shake256::default();
+        shake.update(label);
+        let mut reader = shake.finalize_xof();
+        (0..n)
+          .map(|_| {
+            let mut uniform_bytes = [0u8; 32];
+            reader.read_exact(&mut uniform_bytes).unwrap();
+            let hash = $curve::Point::hash_to_curve("from_uniform_bytes");
+            hash(&uniform_bytes).to_affine()
+          })
+          .collect()
+      }
+
+      let label = b"test_from_label";
+      for n in [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
+      ] {
+        let ck_par = <$curve::Point as DlogGroup>::from_label(label, n);
+        let ck_ser = from_label_serial(label, n);
+        assert_eq!(ck_par.len(), n);
+        assert_eq!(ck_ser.len(), n);
+        assert_eq!(ck_par, ck_ser);
+      }
+    };
+  }
 
   fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
     let n = 8;
@@ -402,5 +457,20 @@ mod tests {
     test_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
     test_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
     test_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
+  }
+
+  #[test]
+  fn test_bn256_from_label() {
+    impl_cycle_pair_test!(bn256);
+  }
+
+  #[test]
+  fn test_pallas_from_label() {
+    impl_cycle_pair_test!(pallas);
+  }
+
+  #[test]
+  fn test_secp256k1_from_label() {
+    impl_cycle_pair_test!(secp256k1);
   }
 }
