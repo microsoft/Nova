@@ -5,7 +5,7 @@ use crate::{
   provider::{
     keccak::Keccak256Transcript,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    traits::{CompressedGroup, DlogGroup, PairingGroup},
+    traits::{DlogGroup, PairingGroup},
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
@@ -60,7 +60,7 @@ where
   E: Engine,
   E::GE: PairingGroup,
 {
-  comm: <E::GE as DlogGroup>::CompressedGroupElement,
+  comm: <E::GE as DlogGroup>::PreprocessedGroupElement,
 }
 
 impl<E> CommitmentTrait<E> for Commitment<E>
@@ -72,7 +72,7 @@ where
 
   fn compress(&self) -> Self::CompressedCommitment {
     CompressedCommitment {
-      comm: self.comm.compress(),
+      comm: self.comm.preprocessed(),
     }
   }
 
@@ -81,12 +81,8 @@ where
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm);
-    if comm.is_none() {
-      return Err(NovaError::DecompressionError);
-    }
     Ok(Commitment {
-      comm: comm.unwrap(),
+      comm: <<E as Engine>::GE as DlogGroup>::group(&c.comm),
     })
   }
 }
