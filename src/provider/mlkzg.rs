@@ -242,10 +242,7 @@ where
 
     let tauH = (G2Affine::generator() * tau).to_affine();
 
-    Self::CommitmentKey {
-      ck,
-      tauH,
-    }
+    Self::CommitmentKey { ck, tauH }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
