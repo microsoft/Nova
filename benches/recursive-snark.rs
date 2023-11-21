@@ -80,17 +80,12 @@ fn bench_recursive_snark(c: &mut Criterion) {
     )
     .unwrap();
 
-    for i in 0..num_warmup_steps {
+    for _ in 0..num_warmup_steps {
       let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::from(2u64)],
-        &[<E2 as Engine>::Scalar::from(2u64)],
-      );
+      let res = recursive_snark.verify(&pp);
       assert!(res.is_ok());
     }
 
@@ -110,14 +105,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
     // Benchmark the verification time
     group.bench_function("Verify", |b| {
       b.iter(|| {
-        assert!(black_box(&recursive_snark)
-          .verify(
-            black_box(&pp),
-            black_box(num_warmup_steps),
-            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
-            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
-          )
-          .is_ok());
+        assert!(black_box(&recursive_snark).verify(black_box(&pp),).is_ok());
       });
     });
     group.finish();

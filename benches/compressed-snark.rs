@@ -89,17 +89,12 @@ fn bench_compressed_snark(c: &mut Criterion) {
     )
     .unwrap();
 
-    for i in 0..num_steps {
+    for _ in 0..num_steps {
       let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::from(2u64)],
-        &[<E2 as Engine>::Scalar::from(2u64)],
-      );
+      let res = recursive_snark.verify(&pp);
       assert!(res.is_ok());
     }
 
@@ -175,17 +170,12 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     )
     .unwrap();
 
-    for i in 0..num_steps {
+    for _ in 0..num_steps {
       let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::from(2u64)],
-        &[<E2 as Engine>::Scalar::from(2u64)],
-      );
+      let res = recursive_snark.verify(&pp);
       assert!(res.is_ok());
     }
 
