@@ -257,7 +257,6 @@ where
   G: <E::GE as DlogGroup>::PreprocessedGroupElement,
   H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
   tauH: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
-  _p: PhantomData<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
@@ -270,7 +269,6 @@ where
   com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   w: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   v: Vec<Vec<E::Scalar>>,
-  _p: PhantomData<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation engine using KZG
@@ -366,7 +364,6 @@ where
       G: E::GE::gen().preprocessed(),
       H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().preprocessed(),
       tauH: ck.tauH.clone(),
-      _p: Default::default(),
     };
 
     (pk, vk)
@@ -542,12 +539,7 @@ where
     com_all.insert(0, C.comm.preprocessed());
     let (w, v) = kzg_open_batch(&com_all, &polys, &u, transcript);
 
-    Ok(EvaluationArgument {
-      com,
-      w,
-      v,
-      _p: Default::default(),
-    })
+    Ok(EvaluationArgument { com, w, v })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
