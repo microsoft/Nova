@@ -15,12 +15,13 @@ use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
 use nova_snark::{
   provider::{PallasEngine, VestaEngine},
+  public_params::PublicParams,
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
+  RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
 

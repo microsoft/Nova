@@ -22,208 +22,28 @@ mod r1cs;
 pub mod errors;
 pub mod gadgets;
 pub mod provider;
+pub mod public_params;
 pub mod spartan;
 pub mod traits;
 
-use once_cell::sync::OnceCell;
-
-use crate::bellpepper::{
-  r1cs::{NovaShape, NovaWitness},
-  shape_cs::ShapeCS,
-  solver::SatisfyingAssignment,
-};
-use crate::digest::{DigestComputer, SimpleDigestible};
+use crate::bellpepper::{r1cs::NovaWitness, solver::SatisfyingAssignment};
 use bellpepper_core::ConstraintSystem;
-use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
-use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
+use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
+use constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use r1cs::{
-  CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
-};
+use public_params::PublicParams;
+use r1cs::{R1CSInstance, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit,
-  commitment::{CommitmentEngineTrait, CommitmentTrait},
+  commitment::{Commitment, CommitmentTrait},
   snark::RelaxedR1CSSNARKTrait,
-  AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
+  AbsorbInROTrait, Engine, ROConstants, ROTrait,
 };
-
-/// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct PublicParams<E1, E2, C1, C2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-  C1: StepCircuit<E1::Scalar>,
-  C2: StepCircuit<E2::Scalar>,
-{
-  F_arity_primary: usize,
-  F_arity_secondary: usize,
-  ro_consts_primary: ROConstants<E1>,
-  ro_consts_circuit_primary: ROConstantsCircuit<E2>,
-  ck_primary: CommitmentKey<E1>,
-  r1cs_shape_primary: R1CSShape<E1>,
-  ro_consts_secondary: ROConstants<E2>,
-  ro_consts_circuit_secondary: ROConstantsCircuit<E1>,
-  ck_secondary: CommitmentKey<E2>,
-  r1cs_shape_secondary: R1CSShape<E2>,
-  augmented_circuit_params_primary: NovaAugmentedCircuitParams,
-  augmented_circuit_params_secondary: NovaAugmentedCircuitParams,
-  #[serde(skip, default = "OnceCell::new")]
-  digest: OnceCell<E1::Scalar>,
-  _p: PhantomData<(C1, C2)>,
-}
-
-impl<E1, E2, C1, C2> SimpleDigestible for PublicParams<E1, E2, C1, C2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-  C1: StepCircuit<E1::Scalar>,
-  C2: StepCircuit<E2::Scalar>,
-{
-}
-
-impl<E1, E2, C1, C2> PublicParams<E1, E2, C1, C2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-  C1: StepCircuit<E1::Scalar>,
-  C2: StepCircuit<E2::Scalar>,
-{
-  /// Creates a new `PublicParams` for a pair of circuits `C1` and `C2`.
-  ///
-  /// # Note
-  ///
-  /// Public parameters set up a number of bases for the homomorphic commitment scheme of Nova.
-  ///
-  /// Some final compressing SNARKs, like variants of Spartan, use computation commitments that require
-  /// larger sizes for these parameters. These SNARKs provide a hint for these values by
-  /// implementing `RelaxedR1CSSNARKTrait::ck_floor()`, which can be passed to this function.
-  ///
-  /// If you're not using such a SNARK, pass `nova_snark::traits::snark::default_ck_hint()` instead.
-  ///
-  /// # Arguments
-  ///
-  /// * `c_primary`: The primary circuit of type `C1`.
-  /// * `c_secondary`: The secondary circuit of type `C2`.
-  /// * `ck_hint1`: A `CommitmentKeyHint` for `G1`, which is a function that provides a hint
-  ///   for the number of generators required in the commitment scheme for the primary circuit.
-  /// * `ck_hint2`: A `CommitmentKeyHint` for `G2`, similar to `ck_hint1`, but for the secondary circuit.
-  ///
-  /// # Example
-  ///
-  /// ```rust
-  /// # use nova_snark::spartan::ppsnark::RelaxedR1CSSNARK;
-  /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
-  /// # use nova_snark::provider::{PallasEngine, VestaEngine};
-  /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
-  /// use nova_snark::PublicParams;
-  ///
-  /// type E1 = PallasEngine;
-  /// type E2 = VestaEngine;
-  /// type EE<E> = EvaluationEngine<E>;
-  /// type SPrime<E> = RelaxedR1CSSNARK<E, EE<E>>;
-  ///
-  /// let circuit1 = TrivialCircuit::<<E1 as Engine>::Scalar>::default();
-  /// let circuit2 = TrivialCircuit::<<E2 as Engine>::Scalar>::default();
-  /// // Only relevant for a SNARK using computational commitments, pass &(|_| 0)
-  /// // or &*nova_snark::traits::snark::default_ck_hint() otherwise.
-  /// let ck_hint1 = &*SPrime::<E1>::ck_floor();
-  /// let ck_hint2 = &*SPrime::<E2>::ck_floor();
-  ///
-  /// let pp = PublicParams::setup(&circuit1, &circuit2, ck_hint1, ck_hint2);
-  /// ```
-  pub fn setup(
-    c_primary: &C1,
-    c_secondary: &C2,
-    ck_hint1: &CommitmentKeyHint<E1>,
-    ck_hint2: &CommitmentKeyHint<E2>,
-  ) -> Self {
-    let augmented_circuit_params_primary =
-      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let augmented_circuit_params_secondary =
-      NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-
-    let ro_consts_primary: ROConstants<E1> = ROConstants::<E1>::default();
-    let ro_consts_secondary: ROConstants<E2> = ROConstants::<E2>::default();
-
-    let F_arity_primary = c_primary.arity();
-    let F_arity_secondary = c_secondary.arity();
-
-    // ro_consts_circuit_primary are parameterized by E2 because the type alias uses E2::Base = E1::Scalar
-    let ro_consts_circuit_primary: ROConstantsCircuit<E2> = ROConstantsCircuit::<E2>::default();
-    let ro_consts_circuit_secondary: ROConstantsCircuit<E1> = ROConstantsCircuit::<E1>::default();
-
-    // Initialize ck for the primary
-    let circuit_primary: NovaAugmentedCircuit<'_, E2, C1> = NovaAugmentedCircuit::new(
-      &augmented_circuit_params_primary,
-      None,
-      c_primary,
-      ro_consts_circuit_primary.clone(),
-    );
-    let mut cs: ShapeCS<E1> = ShapeCS::new();
-    let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape(ck_hint1);
-
-    // Initialize ck for the secondary
-    let circuit_secondary: NovaAugmentedCircuit<'_, E1, C2> = NovaAugmentedCircuit::new(
-      &augmented_circuit_params_secondary,
-      None,
-      c_secondary,
-      ro_consts_circuit_secondary.clone(),
-    );
-    let mut cs: ShapeCS<E2> = ShapeCS::new();
-    let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape(ck_hint2);
-
-    PublicParams {
-      F_arity_primary,
-      F_arity_secondary,
-      ro_consts_primary,
-      ro_consts_circuit_primary,
-      ck_primary,
-      r1cs_shape_primary,
-      ro_consts_secondary,
-      ro_consts_circuit_secondary,
-      ck_secondary,
-      r1cs_shape_secondary,
-      augmented_circuit_params_primary,
-      augmented_circuit_params_secondary,
-      digest: OnceCell::new(),
-      _p: Default::default(),
-    }
-  }
-
-  /// Retrieve the digest of the public parameters.
-  pub fn digest(&self) -> E1::Scalar {
-    self
-      .digest
-      .get_or_try_init(|| DigestComputer::new(self).digest())
-      .cloned()
-      .expect("Failure in retrieving digest")
-  }
-
-  /// Returns the number of constraints in the primary and secondary circuits
-  pub const fn num_constraints(&self) -> (usize, usize) {
-    (
-      self.r1cs_shape_primary.num_cons,
-      self.r1cs_shape_secondary.num_cons,
-    )
-  }
-
-  /// Returns the number of variables in the primary and secondary circuits
-  pub const fn num_variables(&self) -> (usize, usize) {
-    (
-      self.r1cs_shape_primary.num_vars,
-      self.r1cs_shape_secondary.num_vars,
-    )
-  }
-}
 
 /// A SNARK that proves the correct execution of an incremental computation
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -846,11 +666,6 @@ where
   }
 }
 
-type CommitmentKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey;
-type Commitment<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment;
-type CompressedCommitment<E> = <<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment as CommitmentTrait<E>>::CompressedCommitment;
-type CE<E> = <E as Engine>::CE;
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -864,7 +679,7 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::{fmt::Write, marker::PhantomData};
   use ff::PrimeField;
-  use traits::circuit::TrivialCircuit;
+  use traits::{circuit::TrivialCircuit, commitment::CommitmentEngineTrait};
 
   type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
   type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;

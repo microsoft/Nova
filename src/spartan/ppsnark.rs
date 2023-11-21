@@ -21,12 +21,13 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{
+      Commitment, CommitmentEngineTrait, CommitmentKey, CommitmentTrait, CompressedCommitment, Len,
+    },
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CompressedCommitment,
 };
 use core::cmp::max;
 use ff::Field;

@@ -15,11 +15,11 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
+    commitment::{Commitment, CommitmentKey},
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait,
   },
-  Commitment, CommitmentKey,
 };
 use ff::Field;
 use once_cell::sync::OnceCell;

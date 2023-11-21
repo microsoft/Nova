@@ -6,12 +6,13 @@ use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
   provider::{PallasEngine, VestaEngine},
+  public_params::PublicParams,
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
+  RecursiveSNARK,
 };
 use std::time::Duration;
 

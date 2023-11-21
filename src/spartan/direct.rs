@@ -11,10 +11,10 @@ use crate::{
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     circuit::StepCircuit,
+    commitment::{Commitment, CommitmentKey},
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine,
   },
-  Commitment, CommitmentKey,
 };
 use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;

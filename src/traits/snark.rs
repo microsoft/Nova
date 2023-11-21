@@ -2,8 +2,7 @@
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::Engine,
-  CommitmentKey,
+  traits::{commitment::CommitmentKey, Engine},
 };
 
 use serde::{Deserialize, Serialize};

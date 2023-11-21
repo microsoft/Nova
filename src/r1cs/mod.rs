@@ -12,9 +12,9 @@ use crate::{
     utils::scalar_as_base,
   },
   traits::{
-    commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
+    commitment::{Commitment, CommitmentEngineTrait, CommitmentKey, CE},
+    AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CE,
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;

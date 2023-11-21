@@ -6,8 +6,7 @@ use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::Test
 use crate::{
   errors::NovaError,
   r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
-  traits::Engine,
-  CommitmentKey,
+  traits::{commitment::CommitmentKey, Engine},
 };
 use bellpepper_core::{Index, LinearCombination};
 use ff::PrimeField;

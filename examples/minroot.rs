@@ -6,12 +6,13 @@ use ff::PrimeField;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   provider::{PallasEngine, VestaEngine},
+  public_params::PublicParams,
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
+  CompressedSNARK, RecursiveSNARK,
 };
 use num_bigint::BigUint;
 use std::time::Instant;

@@ -76,3 +76,8 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Commits to the provided vector using the provided generators
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment;
 }
+
+pub(crate) type CommitmentKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey;
+pub(crate) type Commitment<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment;
+pub(crate) type CompressedCommitment<E> = <<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment as CommitmentTrait<E>>::CompressedCommitment;
+pub(crate) type CE<E> = <E as Engine>::CE;

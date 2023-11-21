@@ -6,8 +6,11 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
-  traits::{commitment::CommitmentTrait, AbsorbInROTrait, Engine, ROTrait},
-  Commitment, CommitmentKey, CompressedCommitment,
+  traits::{
+    commitment::{CommitmentKey, CommitmentTrait, CompressedCommitment},
+    AbsorbInROTrait, Engine, ROTrait,
+  },
+  Commitment,
 };
 use serde::{Deserialize, Serialize};
 
