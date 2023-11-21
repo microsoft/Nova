@@ -170,7 +170,7 @@ mod tests {
   use core::marker::PhantomData;
   use ff::PrimeField;
 
-  #[derive(Clone, Debug, Default)]
+  #[derive(Clone, Debug, Default, Serialize, Deserialize)]
   struct CubicCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }

@@ -37,7 +37,7 @@ use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use prover::{ProverKey, ProvingContext};
-use public_params::PublicParams;
+use public_params::{ParamContext, PublicParams};
 use r1cs::{R1CSInstance, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{
@@ -46,7 +46,7 @@ use traits::{
 };
 
 /// A SNARK that proves the correct execution of an incremental computation
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RecursiveSNARK<E1, E2, C1, C2>
 where
@@ -55,6 +55,7 @@ where
   C1: StepCircuit<E1::Scalar>,
   C2: StepCircuit<E2::Scalar>,
 {
+  ctx_params: ParamContext<E1, E2, C1, C2>,
   ctx_proving: ProvingContext<E1, E2, C1, C2>,
 }
 
@@ -162,6 +163,13 @@ where
       .expect("Nova error synthesis");
 
     Ok(Self {
+      ctx_params: ParamContext {
+        public_param: pp.clone(),
+        c_primary: c_primary.clone(),
+        c_secondary: c_secondary.clone(),
+        z0_primary: z0_primary.to_vec(),
+        z0_secondary: z0_secondary.to_vec(),
+      },
       ctx_proving: ProvingContext {
         z0_primary: z0_primary.to_vec(),
         z0_secondary: z0_secondary.to_vec(),
@@ -181,21 +189,22 @@ where
 
   /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
   /// by executing a step of the incremental computation
-  pub fn prove_step(
-    &mut self,
-    pp: &PublicParams<E1, E2, C1, C2>,
-    c_primary: &C1,
-    c_secondary: &C2,
-  ) -> Result<(), NovaError> {
-    self.ctx_proving.prove(pp, c_primary, c_secondary)
+  pub fn prove_step(&mut self) -> Result<(), NovaError> {
+    let ParamContext {
+      public_param,
+      c_primary,
+      c_secondary,
+      z0_primary: _,
+      z0_secondary: _,
+    } = self.ctx_params.clone();
+    self
+      .ctx_proving
+      .prove(&public_param, &c_primary, &c_secondary)
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
-  pub fn verify(
-    &self,
-    pp: &PublicParams<E1, E2, C1, C2>,
-  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
-    self.ctx_proving.verify(pp)
+  pub fn verify(&self) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    self.ctx_proving.verify(&self.ctx_params.public_param)
   }
 }
 
@@ -471,7 +480,7 @@ mod tests {
   type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
   type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
-  #[derive(Clone, Debug, Default)]
+  #[derive(Clone, Debug, Default, Serialize, Deserialize)]
   struct CubicCircuit<F: PrimeField> {
     _p: PhantomData<F>,
   }
@@ -642,12 +651,12 @@ mod tests {
     )
     .unwrap();
 
-    let res = recursive_snark.prove_step(&pp, &test_circuit1, &test_circuit2);
+    let res = recursive_snark.prove_step();
 
     assert!(res.is_ok());
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
   }
 
@@ -696,17 +705,17 @@ mod tests {
     )
     .unwrap();
 
-    for _ in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
+    for _i in 0..num_steps {
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(&pp);
+      let res = recursive_snark.verify();
       assert!(res.is_ok());
     }
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
@@ -769,12 +778,12 @@ mod tests {
     .unwrap();
 
     for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
     }
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
@@ -855,12 +864,12 @@ mod tests {
     .unwrap();
 
     for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
     }
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();
@@ -914,12 +923,12 @@ mod tests {
     EE2: EvaluationEngineTrait<E2>,
   {
     // y is a non-deterministic advice representing the fifth root of the input at a step.
-    #[derive(Clone, Debug)]
-    struct FifthRootCheckingCircuit<F: PrimeField> {
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    struct FifthRootCheckingCircuit<F: PrimeField + Serialize> {
       y: F,
     }
 
-    impl<F: PrimeField> FifthRootCheckingCircuit<F> {
+    impl<F: PrimeField + Serialize + for<'de> Deserialize<'de>> FifthRootCheckingCircuit<F> {
       fn new(num_steps: usize) -> (Vec<F>, Vec<Self>) {
         let mut powers = Vec::new();
         let rng = &mut rand::rngs::OsRng;
@@ -932,13 +941,13 @@ mod tests {
 
         // reverse the powers to get roots
         let roots = powers.into_iter().rev().collect::<Vec<Self>>();
-        (vec![roots[0].y], roots[1..].to_vec())
+        (vec![roots[0].y], vec![roots[0].clone()])
       }
     }
 
     impl<F> StepCircuit<F> for FifthRootCheckingCircuit<F>
     where
-      F: PrimeField,
+      F: PrimeField + Serialize + for<'de> Deserialize<'de>,
     {
       fn arity(&self) -> usize {
         1
@@ -1015,13 +1024,13 @@ mod tests {
     )
     .unwrap();
 
-    for circuit_primary in roots.iter().take(num_steps) {
-      let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
+    for _ in roots.iter().take(num_steps) {
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
     }
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
 
     // produce the prover and verifier keys for compressed snark
@@ -1082,12 +1091,12 @@ mod tests {
     .unwrap();
 
     // produce a recursive SNARK
-    let res = recursive_snark.prove_step(&pp, &test_circuit1, &test_circuit2);
+    let res = recursive_snark.prove_step();
 
     assert!(res.is_ok());
 
     // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     assert!(res.is_ok());
 
     let (zn_primary, zn_secondary) = res.unwrap();

@@ -15,12 +15,13 @@ use nova_snark::{
   CompressedSNARK, RecursiveSNARK,
 };
 use num_bigint::BigUint;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
 type E1 = PallasEngine;
 type E2 = VestaEngine;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct MinRootIteration<F: PrimeField> {
   x_i: F,
   y_i: F,
@@ -72,12 +73,12 @@ impl<F: PrimeField> MinRootIteration<F> {
   }
 }
 
-#[derive(Clone, Debug)]
-struct MinRootCircuit<F: PrimeField> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct MinRootCircuit<F: PrimeField + Serialize> {
   seq: Vec<MinRootIteration<F>>,
 }
 
-impl<F: PrimeField> StepCircuit<F> for MinRootCircuit<F> {
+impl<F: PrimeField + Serialize + for<'de> Deserialize<'de>> StepCircuit<F> for MinRootCircuit<F> {
   fn arity(&self) -> usize {
     2
   }
@@ -225,9 +226,9 @@ fn main() {
       )
       .unwrap();
 
-    for (i, circuit_primary) in minroot_circuits.iter().enumerate() {
+    for (i, _) in minroot_circuits.iter().enumerate() {
       let start = Instant::now();
-      let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
       println!(
         "RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
@@ -240,7 +241,7 @@ fn main() {
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
     let start = Instant::now();
-    let res = recursive_snark.verify(&pp);
+    let res = recursive_snark.verify();
     println!(
       "RecursiveSNARK::verify: {:?}, took {:?}",
       res.is_ok(),

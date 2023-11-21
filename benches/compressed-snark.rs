@@ -14,6 +14,7 @@ use nova_snark::{
   },
   CompressedSNARK, RecursiveSNARK,
 };
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 type E1 = PallasEngine;
@@ -90,11 +91,11 @@ fn bench_compressed_snark(c: &mut Criterion) {
     .unwrap();
 
     for _ in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(&pp);
+      let res = recursive_snark.verify();
       assert!(res.is_ok());
     }
 
@@ -171,11 +172,11 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     .unwrap();
 
     for _ in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(&pp);
+      let res = recursive_snark.verify();
       assert!(res.is_ok());
     }
 
@@ -212,7 +213,7 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,

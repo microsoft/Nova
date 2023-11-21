@@ -14,6 +14,7 @@ use nova_snark::{
   },
   RecursiveSNARK,
 };
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 type E1 = PallasEngine;
@@ -81,38 +82,32 @@ fn bench_recursive_snark(c: &mut Criterion) {
     .unwrap();
 
     for _ in 0..num_warmup_steps {
-      let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
+      let res = recursive_snark.prove_step();
       assert!(res.is_ok());
 
       // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(&pp);
+      let res = recursive_snark.verify();
       assert!(res.is_ok());
     }
 
     group.bench_function("Prove", |b| {
       b.iter(|| {
         // produce a recursive SNARK for a step of the recursion
-        assert!(black_box(&mut recursive_snark.clone())
-          .prove_step(
-            black_box(&pp),
-            black_box(&c_primary),
-            black_box(&c_secondary),
-          )
-          .is_ok());
+        assert!(black_box(&mut recursive_snark.clone()).prove_step().is_ok());
       })
     });
 
     // Benchmark the verification time
     group.bench_function("Verify", |b| {
       b.iter(|| {
-        assert!(black_box(&recursive_snark).verify(black_box(&pp),).is_ok());
+        assert!(black_box(&recursive_snark).verify().is_ok());
       });
     });
     group.finish();
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,

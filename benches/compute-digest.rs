@@ -12,6 +12,7 @@ use nova_snark::{
     Engine,
   },
 };
+use serde::{Deserialize, Serialize};
 
 type E1 = PallasEngine;
 type E2 = VestaEngine;
@@ -39,7 +40,7 @@ fn bench_compute_digest(c: &mut Criterion) {
   });
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct NonTrivialCircuit<F: PrimeField> {
   num_cons: usize,
   _p: PhantomData<F>,

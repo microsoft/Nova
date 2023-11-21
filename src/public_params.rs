@@ -13,7 +13,7 @@ use crate::traits::{
 };
 
 /// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<E1, E2, C1, C2>
 where
@@ -82,7 +82,7 @@ where
   /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
   /// # use nova_snark::provider::{PallasEngine, VestaEngine};
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
-  /// use nova_snark::PublicParams;
+  /// use nova_snark::public_params::PublicParams;
   ///
   /// type E1 = PallasEngine;
   /// type E2 = VestaEngine;
@@ -183,4 +183,20 @@ where
       self.r1cs_shape_secondary.num_vars,
     )
   }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub(crate) struct ParamContext<E1, E2, C1, C2>
+where
+  E1: Engine<Base = <E2 as Engine>::Scalar>,
+  E2: Engine<Base = <E1 as Engine>::Scalar>,
+  C1: StepCircuit<E1::Scalar>,
+  C2: StepCircuit<E2::Scalar>,
+{
+  pub(crate) public_param: PublicParams<E1, E2, C1, C2>,
+  pub(crate) c_primary: C1,
+  pub(crate) c_secondary: C2,
+  pub(crate) z0_primary: Vec<E1::Scalar>,
+  pub(crate) z0_secondary: Vec<E2::Scalar>,
 }

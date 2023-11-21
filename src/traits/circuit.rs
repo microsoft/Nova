@@ -2,9 +2,12 @@
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
+use serde::{Deserialize, Serialize};
 
 /// A helper trait for a step of the incremental computation (i.e., circuit for F)
-pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
+pub trait StepCircuit<F: PrimeField>:
+  Send + Sync + Clone + Serialize + for<'de> Deserialize<'de>
+{
   /// Return the the number of inputs or outputs of each step
   /// (this method is called only at circuit synthesis time)
   /// `synthesize` and `output` methods are expected to take as
@@ -21,7 +24,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
 }
 
 /// A trivial step circuit that simply returns the input
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrivialCircuit<F: PrimeField> {
   _p: PhantomData<F>,
 }
