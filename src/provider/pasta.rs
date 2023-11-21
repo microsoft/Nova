@@ -92,6 +92,10 @@ macro_rules! impl_traits {
         self.to_affine()
       }
 
+      fn group(p: &Self::PreprocessedGroupElement) -> Self {
+        $name::Point::from(*p)
+      }
+
       fn compress(&self) -> Self::CompressedGroupElement {
         $name_compressed::new(self.to_bytes())
       }

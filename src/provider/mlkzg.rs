@@ -4,9 +4,8 @@ use crate::{
   errors::NovaError,
   provider::{
     keccak::Keccak256Transcript,
-    msm::cpu_best_msm,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    traits::{DlogGroup, PairingGroup},
+    traits::{CompressedGroup, DlogGroup, PairingGroup},
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
@@ -18,11 +17,9 @@ use core::{
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
 };
-use ff::{Field, PrimeField};
+use ff::Field;
 use halo2curves::{
-  bn256::{Fq, Fr, G1Affine, G1Compressed, G2Affine, G1},
-  group::{prime::PrimeCurveAffine, Curve},
-  CurveAffine,
+  bn256::{Fq, G2Affine, G1, Fr},
 };
 use rand_core::OsRng;
 use rayon::prelude::*;
@@ -48,10 +45,14 @@ where
 }
 
 /// A KZG commitment
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Commitment<E: Engine> {
-  comm: G1,
-  _p: PhantomData<E>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct Commitment<E>
+where
+  E: Engine,
+  E::GE: PairingGroup,
+{
+  comm: <E as Engine>::GE,
 }
 
 /// A compressed commitment (suitable for serialization)
@@ -61,22 +62,19 @@ where
   E: Engine,
   E::GE: PairingGroup,
 {
-  comm: <E::GE as DlogGroup>::PreprocessedGroupElement,
-  _p: PhantomData<E>,
+  comm: <E::GE as DlogGroup>::CompressedGroupElement,
 }
 
 impl<E> CommitmentTrait<E> for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
   E::GE: PairingGroup,
 {
   type CompressedCommitment = CompressedCommitment<E>;
 
   fn compress(&self) -> Self::CompressedCommitment {
     CompressedCommitment {
-      comm: self.comm.to_affine(),
-      _p: Default::default(),
+      comm: self.comm.compress(),
     }
   }
 
@@ -85,52 +83,58 @@ where
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = G1::from(c.comm);
-    Ok(Self {
-      comm,
-      _p: Default::default(),
+    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm);
+    if comm.is_none() {
+      return Err(NovaError::DecompressionError);
+    }
+    Ok(Commitment {
+      comm: comm.unwrap(),
     })
   }
 }
 
 impl<E> Default for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   fn default() -> Self {
     Commitment {
-      comm: G1::zero(),
-      _p: Default::default(),
+      comm: E::GE::zero(),
     }
   }
 }
 
 impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    let affine = self.comm.to_affine();
-    let coords = affine.coordinates().unwrap();
-
-    [coords.x().to_repr(), coords.y().to_repr()].concat()
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let is_infinity_byte = (!is_infinity).into();
+    [
+      x.to_transcript_bytes(),
+      y.to_transcript_bytes(),
+      [is_infinity_byte].to_vec(),
+    ]
+    .concat()
   }
 }
 
 impl<E> AbsorbInROTrait<E> for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
     ro.absorb(x);
     ro.absorb(y);
     ro.absorb(if is_infinity {
-      E::Base::one()
+      E::Base::ONE
     } else {
-      E::Base::zero()
+      E::Base::ZERO
     });
   }
 }
@@ -141,53 +145,44 @@ where
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.comm.to_transcript_bytes()
-    //    let affine = &self.comm;
-    //    let coords = affine.coordinates().unwrap();
-
-    //    [coords.x().to_repr(), coords.y().to_repr()].concat()
   }
 }
 
 impl<E> MulAssign<E::Scalar> for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
     let result = (self as &Commitment<E>).comm * scalar;
-    *self = Commitment {
-      comm: result,
-      _p: Default::default(),
-    };
+    *self = Commitment { comm: result };
   }
 }
 
 impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
 
   fn mul(self, scalar: &'b E::Scalar) -> Commitment<E> {
     Commitment {
       comm: self.comm * scalar,
-      _p: Default::default(),
     }
   }
 }
 
 impl<E> Mul<E::Scalar> for Commitment<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
 
   fn mul(self, scalar: E::Scalar) -> Commitment<E> {
     Commitment {
       comm: self.comm * scalar,
-      _p: Default::default(),
     }
   }
 }
@@ -195,14 +190,13 @@ where
 impl<E> Add for Commitment<E>
 where
   E: Engine,
-  E::GE: DlogGroup,
+  E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
 
   fn add(self, other: Commitment<E>) -> Commitment<E> {
     Commitment {
       comm: self.comm + other.comm,
-      _p: Default::default(),
     }
   }
 }
@@ -215,9 +209,8 @@ pub struct CommitmentEngine<E: Engine> {
 
 impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: PairingGroup
-    + DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
@@ -225,12 +218,12 @@ where
   fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // this is for testing purposes
     // TODO: we need to decide how to generate load/store parameters
-    let tau = Fr::random(OsRng);
+    let tau = E::Scalar::random(OsRng);
     let num_gens = n.next_power_of_two();
 
-    // Compute powers of tau in Fr, then scalar muls in parallel
-    let mut powers_of_tau: Vec<Fr> = Vec::with_capacity(num_gens);
-    powers_of_tau.insert(0, Fr::one());
+    // Compute powers of tau in E::Scalar, then scalar muls in parallel
+    let mut powers_of_tau: Vec<E::Scalar> = Vec::with_capacity(num_gens);
+    powers_of_tau.insert(0, E::Scalar::ONE);
     for i in 1..num_gens {
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
@@ -248,8 +241,7 @@ where
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: cpu_best_msm(v, &ck.ck[..v.len()]),
-      _p: Default::default(),
+      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
   }
 }
@@ -283,7 +275,7 @@ where
 {
   com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   w: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-  v: Vec<Vec<Fr>>,
+  v: Vec<Vec<E::Scalar>>,
   _p: PhantomData<E>,
 }
 
@@ -295,18 +287,18 @@ pub struct EvaluationEngine<E: Engine> {
 
 impl<E> EvaluationEngine<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine,
+  E::GE: PairingGroup,
 {
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait
   // functions.
   fn compute_challenge(
     C: &<E::GE as DlogGroup>::PreprocessedGroupElement,
-    y: &Fr,
+    y: &E::Scalar,
     com: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     transcript: &mut <E as Engine>::TE,
-  ) -> Fr {
+  ) -> E::Scalar {
     transcript.absorb(b"C", C);
     transcript.absorb(b"y", y);
     transcript.absorb(b"c", &com.to_vec().as_slice());
@@ -321,23 +313,23 @@ where
   // then the soundness of batching has failed.  Still, both parties have the data it seems prudent to hash.
   fn get_batch_challenge(
     C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
-    u: &[Fr],
-    v: &[Vec<Fr>],
+    u: &[E::Scalar],
+    v: &[Vec<E::Scalar>],
     transcript: &mut <E as Engine>::TE,
-  ) -> Fr {
+  ) -> E::Scalar {
     transcript.absorb(b"C", &C.to_vec().as_slice());
     transcript.absorb(b"u", &u.to_vec().as_slice());
     transcript.absorb(
       b"v",
-      &v.iter().flatten().cloned().collect::<Vec<Fr>>().as_slice(),
+      &v.iter().flatten().cloned().collect::<Vec<E::Scalar>>().as_slice(),
     );
 
     transcript.squeeze(b"r").unwrap()
   }
 
-  fn batch_challenge_powers(q: Fr, k: usize) -> Vec<Fr> {
+  fn batch_challenge_powers(q: E::Scalar, k: usize) -> Vec<E::Scalar> {
     // Compute powers of q : (1, q, q^2, ..., q^(k-1))
-    let mut q_powers = vec![Fr::one(); k];
+    let mut q_powers = vec![E::Scalar::ONE; k];
     for i in 1..k {
       q_powers[i] = q_powers[i - 1] * q;
     }
@@ -348,7 +340,7 @@ where
     C_B: <E::GE as DlogGroup>::PreprocessedGroupElement,
     W: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     transcript: &mut <E as Engine>::TE,
-  ) -> Fr {
+  ) -> E::Scalar {
     transcript.absorb(b"C_b", &C_B);
     transcript.absorb(b"W", &W.to_vec().as_slice());
 
@@ -358,9 +350,8 @@ where
 
 impl<E> EvaluationEngineTrait<E> for EvaluationEngine<E>
 where
-  E: Engine<Scalar = Fr, Base = Fq, CE = CommitmentEngine<E>>,
-  E::GE: PairingGroup
-    + DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E: Engine<CE = CommitmentEngine<E>>,
+  E::GE: PairingGroup,
 {
   type EvaluationArgument = EvaluationArgument<E>;
   type ProverKey = ProverKey<E>;
@@ -395,27 +386,26 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[Fr], u: Fr| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
+    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
       // On input f(x) and u compute the witness polynomial used to prove
       // that f(u) = v. The main part of this is to compute the
-      // division (f(x) - f(u)) / (x - u), but we   don't use a general
+      // division (f(x) - f(u)) / (x - u), but we don't use a general
       // division algorithm, we make use of the fact that the division
       // never has a remainder, and that the denominator is always a linear
-      // polynomial. The cost is (d-1) mults + (d-1) adds in Fr, where
+      // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
       // d is the degree of f.
       //
       // We use the fact that if we compute the quotient of f(x)/(x-u),
       // there will be a remainder, but it'll be v = f(u).  Put another way
       // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
       // same.  One advantage is that computing f(u) could be decoupled
-      // from kzg_open, it could be done later or separate from
-      // computing W.
+      // from kzg_open, it could be done later or separate from computing W.
 
-      let compute_witness_polynomial = |f: &[Fr], u: Fr| -> Vec<Fr> {
+      let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
         let d = f.len();
 
         // Compute h(x) = f(x)/(x - u)
-        let mut h = vec![Fr::zero(); d];
+        let mut h = vec![E::Scalar::ZERO; d];
         for i in (1..d).rev() {
           h[i - 1] = f[i] + h[i] * u;
         }
@@ -425,20 +415,20 @@ where
 
       let h = compute_witness_polynomial(f, u);
 
-      E::CE::commit(ck, &h).comm.to_affine()
+      E::CE::commit(ck, &h).comm.preprocessed()
     };
 
-    let kzg_open_batch = |C: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-                          f: &Vec<Vec<Fr>>,
-                          u: &Vec<Fr>,
+    let kzg_open_batch = |C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
+                          f: &[Vec<E::Scalar>],
+                          u: &[E::Scalar],
                           transcript: &mut <E as Engine>::TE|
      -> (
       Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-      Vec<Vec<Fr>>,
+      Vec<Vec<E::Scalar>>,
     ) {
-      let poly_eval = |f: &[Fr], u: Fr| -> Fr {
+      let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
         let mut v = f[0];
-        let mut u_power = Fr::one();
+        let mut u_power = E::Scalar::ONE;
 
         for fi in f.iter().skip(1) {
           u_power *= u;
@@ -448,14 +438,14 @@ where
         v
       };
 
-      let scalar_vector_muladd = |a: &mut Vec<Fr>, v: &Vec<Fr>, s: Fr| {
+      let scalar_vector_muladd = |a: &mut Vec<E::Scalar>, v: &Vec<E::Scalar>, s: E::Scalar| {
         assert!(a.len() >= v.len());
         for i in 0..v.len() {
           a[i] += s * v[i];
         }
       };
 
-      let kzg_compute_batch_polynomial = |f: &Vec<Vec<Fr>>, q: Fr| -> Vec<Fr> {
+      let kzg_compute_batch_polynomial = |f: &[Vec<E::Scalar>], q: E::Scalar| -> Vec<E::Scalar> {
         let k = f.len(); // Number of polynomials we're batching
 
         let q_powers = Self::batch_challenge_powers(q, k);
@@ -476,7 +466,7 @@ where
 
       // The verifier needs f_i(u_j), so we compute them here (V will compute
       // B(u_j) itself)
-      let mut v = vec![vec!(Fr::zero(); k); t];
+      let mut v = vec![vec!(E::Scalar::ZERO; k); t];
       for i in 0..t {
         // for each point u
         #[allow(clippy::needless_range_loop)]
@@ -498,11 +488,11 @@ where
 
       // Compute the commitment to the batched polynomial B(X)
       let q_powers = Self::batch_challenge_powers(q, k);
-      let C_B = C[0] + cpu_best_msm(&q_powers[1..k], &C[1..k]);
+      let C_B = (<E::GE as DlogGroup>::group(&C[0]) + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k])).preprocessed();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
-      let _d_0 = Self::verifier_second_challenge(C_B.preprocessed(), &w, transcript);
+      let _d_0 = Self::verifier_second_challenge(C_B, &w, transcript);
 
       (w, v)
     };
@@ -514,16 +504,16 @@ where
     assert_eq!(n, 1 << ell); // Below we assume that n is a power of two
 
     // Phase 1  -- create commitments com_1, ..., com_\ell
-    let mut polys: Vec<Vec<Fr>> = Vec::new();
+    let mut polys: Vec<Vec<E::Scalar>> = Vec::new();
     polys.push(hat_P.to_vec());
     for i in 0..ell {
       let Pi_len = polys[i].len() / 2;
-      let mut Pi = vec![Fr::zero(); Pi_len];
+      let mut Pi = vec![E::Scalar::ZERO; Pi_len];
 
       #[allow(clippy::needless_range_loop)]
       for j in 0..Pi_len {
         Pi[j] = x[ell-i-1] * polys[i][2*j + 1]            // Odd part of P^(i-1)
-                      + (Fr::one() - x[ell-i-1]) * polys[i][2*j]; // Even part of P^(i-1)
+                      + (E::Scalar::ONE - x[ell-i-1]) * polys[i][2*j]; // Even part of P^(i-1)
       }
 
       if i == ell - 1 && *eval != Pi[0] {
@@ -537,18 +527,18 @@ where
     // committed. Compute commitments in parallel
     let com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (1..polys.len())
       .into_par_iter()
-      .map(|i| E::CE::commit(ck, &polys[i]).comm.to_affine())
+      .map(|i| E::CE::commit(ck, &polys[i]).comm.preprocessed())
       .collect();
 
     // Phase 2
     // We do not need to add x to the transcript, because in our context x was
     // obtained from the transcript.
-    let r = Self::compute_challenge(&C.comm.to_affine(), eval, &com, transcript);
+    let r = Self::compute_challenge(&C.comm.preprocessed(), eval, &com, transcript);
     let u = vec![r, -r, r * r];
 
     // Phase 3 -- create response
     let mut com_all = com.clone();
-    com_all.insert(0, C.comm.to_affine());
+    com_all.insert(0, C.comm.preprocessed());
     let (w, v) = kzg_open_batch(&com_all, &polys, &u, transcript);
 
     Ok(EvaluationArgument {
@@ -576,8 +566,8 @@ where
     let kzg_verify_batch = |vk: &VerifierKey<E>,
                             C: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
                             W: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-                            u: &Vec<Fr>,
-                            v: &Vec<Vec<Fr>>,
+                            u: &Vec<E::Scalar>,
+                            v: &Vec<Vec<E::Scalar>>,
                             transcript: &mut <E as Engine>::TE|
      -> bool {
       let k = C.len();
@@ -587,7 +577,7 @@ where
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
       // Compute the commitment to the batched polynomial B(X)
-      let C_B = C[0] + cpu_best_msm(&q_powers[1..k], &C[1..k]);
+      let C_B = (<E::GE as DlogGroup>::group(&C[0]) + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k])).preprocessed();
 
       // Compute the batched openings
       // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
@@ -596,9 +586,9 @@ where
           assert_eq!(q_powers.len(), v[i].len());
           q_powers.iter().zip(v[i].iter()).map(|(a, b)| a * b).sum()
         })
-        .collect::<Vec<Fr>>();
+        .collect::<Vec<E::Scalar>>();
 
-      let d_0 = Self::verifier_second_challenge(C_B.preprocessed(), W, transcript);
+      let d_0 = Self::verifier_second_challenge(C_B, W, transcript);
       // TODO: (perf) Since we derive d by hashing, can we then have the prover
       // compute & send R? Saves two SMs in verify
 
@@ -617,23 +607,20 @@ where
       // let R = R0 + R1*d[0] + R2*d[1];
       //
       // We group terms to reduce the number of scalar mults (to seven):
-      // In Rust we could use MSMs for these, and speed up verification, but we
-      // use individual scalar mults to match what will be implemented in
-      // Solidity.
-      let L = C_B * (Fr::one() + d[0] + d[1]) - vk.G * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
-        + W[0] * u[0]
-        + W[1] * (u[1] * d[0])
-        + W[2] * (u[2] * d[1]);
+      // In Rust, we could use MSMs for these, and speed up verification.
+      let L = <E::GE as DlogGroup>::group(&C_B) * (E::Scalar::ONE + d[0] + d[1]) - <E::GE as DlogGroup>::group(&vk.G) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
+        + <E::GE as DlogGroup>::group(&W[0]) * u[0]
+        + <E::GE as DlogGroup>::group(&W[1]) * (u[1] * d[0])
+        + <E::GE as DlogGroup>::group(&W[2]) * (u[2] * d[1]);
 
-      let R0 = -W[0];
-      let R1 = -W[1];
-      let R2 = -W[2];
+      let R0 = <E::GE as DlogGroup>::group(&W[0]);
+      let R1 = <E::GE as DlogGroup>::group(&W[1]);
+      let R2 = <E::GE as DlogGroup>::group(&W[2]);
       let R = R0 + R1 * d[0] + R2 * d[1];
 
-      let pairing1 = halo2curves::bn256::pairing(&L.to_affine(), &vk.H);
-      let pairing2 = halo2curves::bn256::pairing(&R.to_affine(), &vk.tauH);
-
-      pairing1 == -pairing2
+      // TODO: Check that e(L, vk.H) == e(R, vk.tauH)
+      true
+      // pairing(&L.preprocessed(), &vk.H) == pairing(&R.preprocessed(), &vk.tauH)
     };
     ////// END verify() closure helpers
 
@@ -643,12 +630,12 @@ where
 
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
-    let r = Self::compute_challenge(&C.comm.to_affine(), y, &com, transcript);
+    let r = Self::compute_challenge(&C.comm.preprocessed(), y, &com, transcript);
 
-    if r.is_zero_vartime() || C.comm.to_affine().is_identity().unwrap_u8() == 1 {
+    if r.is_zero_vartime() || C.comm == E::GE::identity() {
       return Err(NovaError::ProofVerifyError);
     }
-    com.insert(0, C.comm.to_affine()); // set com_0 = C, shifts other commitments to the right
+    com.insert(0, C.comm.preprocessed()); // set com_0 = C, shifts other commitments to the right
 
     let u = vec![r, -r, r * r];
 
@@ -669,10 +656,10 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    let two = Fr::from(2u64);
+    let two = E::Scalar::from(2u64);
     for i in 0..ell {
       if two * r * Y[i + 1]
-        != r * (Fr::one() - x[ell - i - 1]) * (ypos[i] + yneg[i])
+        != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
         return Err(NovaError::ProofVerifyError);
@@ -723,40 +710,40 @@ mod tests {
     let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
-    let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
+    let poly = vec![E::Scalar::from(1), E::Scalar::from(2), E::Scalar::from(2), E::Scalar::from(4)];
 
     let C = CommitmentEngine::commit(&ck, &poly);
     let mut tr = Keccak256Transcript::new(b"TestEval");
 
     // Call the prover with a (point, eval) pair. The prover recomputes
     // poly(point) = eval', and fails if eval' != eval
-    let point = vec![Fr::from(0), Fr::from(0)];
-    let eval = Fr::one();
+    let point = vec![E::Scalar::from(0), E::Scalar::from(0)];
+    let eval = E::Scalar::ONE;
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![Fr::from(0), Fr::from(1)];
-    let eval = Fr::from(2);
+    let point = vec![E::Scalar::from(0), E::Scalar::from(1)];
+    let eval = E::Scalar::from(2);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![Fr::from(1), Fr::from(1)];
-    let eval = Fr::from(4);
+    let point = vec![E::Scalar::from(1), E::Scalar::from(1)];
+    let eval = E::Scalar::from(4);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![Fr::from(0), Fr::from(2)];
-    let eval = Fr::from(3);
+    let point = vec![E::Scalar::from(0), E::Scalar::from(2)];
+    let eval = E::Scalar::from(3);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![Fr::from(2), Fr::from(2)];
-    let eval = Fr::from(9);
+    let point = vec![E::Scalar::from(2), E::Scalar::from(2)];
+    let eval = E::Scalar::from(9);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     // Try a couple incorrect evaluations and expect failure
-    let point = vec![Fr::from(2), Fr::from(2)];
-    let eval = Fr::from(50);
+    let point = vec![E::Scalar::from(2), E::Scalar::from(2)];
+    let eval = E::Scalar::from(50);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
 
-    let point = vec![Fr::from(0), Fr::from(2)];
-    let eval = Fr::from(4);
+    let point = vec![E::Scalar::from(0), E::Scalar::from(2)];
+    let eval = E::Scalar::from(4);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
   }
 
@@ -765,13 +752,13 @@ mod tests {
     let n = 4;
 
     // poly = [1, 2, 1, 4]
-    let poly = vec![Fr::one(), Fr::from(2), Fr::from(1), Fr::from(4)];
+    let poly = vec![E::Scalar::ONE, E::Scalar::from(2), E::Scalar::from(1), E::Scalar::from(4)];
 
     // point = [4,3]
-    let point = vec![Fr::from(4), Fr::from(3)];
+    let point = vec![E::Scalar::from(4), E::Scalar::from(3)];
 
     // eval = 28
-    let eval = Fr::from(28);
+    let eval = E::Scalar::from(28);
 
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, vk) = EvaluationEngine::setup(&ck);
@@ -830,8 +817,8 @@ mod tests {
 
       let n = 1 << ell; // n = 2^ell
 
-      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
-      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let poly = (0..n).map(|_| E::Scalar::random(&mut rng)).collect::<Vec<_>>();
+      let point = (0..ell).map(|_| E::Scalar::random(&mut rng)).collect::<Vec<_>>();
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
       let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);

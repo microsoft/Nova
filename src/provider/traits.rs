@@ -83,6 +83,9 @@ pub trait DlogGroup:
   /// Produces a preprocessed element
   fn preprocessed(&self) -> Self::PreprocessedGroupElement;
 
+  /// Returns a group element from a preprocessed group element
+  fn group(p: &Self::PreprocessedGroupElement) -> Self;
+
   /// Returns an element that is the additive identity of the group
   fn zero() -> Self;
 
@@ -149,6 +152,10 @@ macro_rules! impl_traits {
 
       fn preprocessed(&self) -> Self::PreprocessedGroupElement {
         self.to_affine()
+      }
+
+      fn group(p: &Self::PreprocessedGroupElement) -> Self {
+        $name::Point::from(*p)
       }
 
       fn compress(&self) -> Self::CompressedGroupElement {
