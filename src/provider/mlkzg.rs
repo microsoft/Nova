@@ -30,18 +30,17 @@ use serde::{Deserialize, Serialize};
 
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommitmentKey<E: Engine> {
-  Gi: Vec<G1Affine>,
-  // These three values are needed only for verification:
-  G: G1Affine,
-  H: G2Affine,
-  tauH: G2Affine,
+pub struct CommitmentKey<E: Engine> 
+  where E::GE: PairingGroup,
+{
+  ck: Vec<G1Affine>,
+  tauH: G2Affine, // needed only for the verifier key
   _p: PhantomData<E>,
 }
 
 impl<E: Engine> Len for CommitmentKey<E> {
   fn length(&self) -> usize {
-    self.Gi.len()
+    self.ck.len()
   }
 }
 
@@ -237,29 +236,24 @@ where
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
 
-    let Gi: Vec<G1Affine> = (0..num_gens)
+    let ck: Vec<G1Affine> = (0..num_gens)
       .into_par_iter()
       .map(|i| (G1Affine::generator() * powers_of_tau[i]).to_affine())
       .collect();
 
-    let H = G2Affine::generator();
-    let tauH = (H * tau).to_affine();
-
-    let G = Gi[0];
+    let tauH = (G2Affine::generator() * tau).to_affine();
 
     Self::CommitmentKey {
-      Gi,
-      G,
-      H,
+      ck,
       tauH,
       _p: Default::default(),
     }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
-    assert!(ck.Gi.len() >= v.len());
+    assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: cpu_best_multiexp(v, &ck.Gi[..v.len()]),
+      comm: cpu_best_multiexp(v, &ck.ck[..v.len()]),
       _p: Default::default(),
     }
   }
@@ -378,8 +372,8 @@ where
     };
 
     let vk = VerifierKey {
-      G: ck.G,
-      H: ck.H,
+      G: G1Affine::generator(),
+      H: G2Affine::generator(),
       tauH: ck.tauH,
       _p: Default::default(),
     };
