@@ -16,6 +16,7 @@ mod circuit;
 mod constants;
 mod digest;
 mod nifs;
+mod prover;
 mod r1cs;
 
 // public modules
@@ -35,6 +36,7 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
+use prover::ProverKey;
 use public_params::PublicParams;
 use r1cs::{R1CSInstance, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
@@ -408,23 +410,6 @@ where
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
-}
-
-/// A type that holds the prover key for `CompressedSNARK`
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct ProverKey<E1, E2, C1, C2, S1, S2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-  C1: StepCircuit<E1::Scalar>,
-  C2: StepCircuit<E2::Scalar>,
-  S1: RelaxedR1CSSNARKTrait<E1>,
-  S2: RelaxedR1CSSNARKTrait<E2>,
-{
-  pk_primary: S1::ProverKey,
-  pk_secondary: S2::ProverKey,
-  _p: PhantomData<(C1, C2)>,
 }
 
 /// A type that holds the verifier key for `CompressedSNARK`
