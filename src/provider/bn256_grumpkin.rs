@@ -109,7 +109,7 @@ impl DlogGroup for G2 {
   }
 
   fn from_label(_label: &'static [u8], _n: usize) -> Vec<Self::PreprocessedGroupElement> {
-    vec![] // unimplemented
+    unimplemented!()
   }
 
   fn zero() -> Self {
@@ -121,7 +121,7 @@ impl DlogGroup for G2 {
   }
 
   fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
-    (Self::Base::zero(), Self::Base::zero(), true) // unimplemented
+    unimplemented!()
   }
 }
 
@@ -135,12 +135,12 @@ impl CompressedGroup for G2Compressed {
   type GroupElement = G2;
 
   fn decompress(&self) -> Option<G2> {
-    Some(G2::from_bytes(&self).unwrap())
+    Some(G2::from_bytes(self).unwrap())
   }
 }
 
 impl<G: DlogGroup> TranscriptReprTrait<G> for G2Affine {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    vec![] // unimplemented
+    unimplemented!()
   }
 }
