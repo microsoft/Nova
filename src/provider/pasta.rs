@@ -1,14 +1,10 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
-  impl_engine,
   provider::{
-    cpu_best_multiexp,
-    keccak::Keccak256Transcript,
-    pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
-    CompressedGroup, DlogGroup,
+    msm::cpu_best_msm,
+    traits::{CompressedGroup, DlogGroup},
   },
-  traits::{Engine, Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
@@ -51,17 +47,8 @@ impl VestaCompressedElementWrapper {
   }
 }
 
-/// An implementation of the Nova `Engine` trait with Pallas curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PallasEngine;
-
-/// An implementation of the Nova `Engine` trait with Vesta curve and Pedersen commitment scheme
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct VestaEngine;
-
 macro_rules! impl_traits {
   (
-    $engine:ident,
     $name:ident,
     $name_compressed:ident,
     $name_curve:ident,
@@ -69,14 +56,19 @@ macro_rules! impl_traits {
     $order_str:literal,
     $base_str:literal
   ) => {
-    impl_engine!(
-      $engine,
-      $name,
-      $name_compressed,
-      $name_curve,
-      $order_str,
-      $base_str
-    );
+    impl Group for $name::Point {
+      type Base = $name::Base;
+      type Scalar = $name::Scalar;
+
+      fn group_params() -> (Self::Base, Self::Base, BigInt, BigInt) {
+        let A = $name::Point::a();
+        let B = $name::Point::b();
+        let order = BigInt::from_str_radix($order_str, 16).unwrap();
+        let base = BigInt::from_str_radix($base_str, 16).unwrap();
+
+        (A, B, order, base)
+      }
+    }
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
@@ -90,10 +82,10 @@ macro_rules! impl_traits {
         if scalars.len() >= 128 {
           pasta_msm::$name(bases, scalars)
         } else {
-          cpu_best_multiexp(scalars, bases)
+          cpu_best_msm(scalars, bases)
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        cpu_best_multiexp(scalars, bases)
+        cpu_best_msm(scalars, bases)
       }
 
       fn preprocessed(&self) -> Self::PreprocessedGroupElement {
@@ -164,6 +156,13 @@ macro_rules! impl_traits {
       }
     }
 
+    impl PrimeFieldExt for $name::Scalar {
+      fn from_uniform(bytes: &[u8]) -> Self {
+        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
+        $name::Scalar::from_uniform_bytes(&bytes_arr)
+      }
+    }
+
     impl CompressedGroup for $name_compressed {
       type GroupElement = $name::Point;
 
@@ -177,11 +176,16 @@ macro_rules! impl_traits {
         self.repr.to_vec()
       }
     }
+
+    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+      fn to_transcript_bytes(&self) -> Vec<u8> {
+        self.to_repr().to_vec()
+      }
+    }
   };
 }
 
 impl_traits!(
-  PallasEngine,
   pallas,
   PallasCompressedElementWrapper,
   Ep,
@@ -191,7 +195,6 @@ impl_traits!(
 );
 
 impl_traits!(
-  VestaEngine,
   vesta,
   VestaCompressedElementWrapper,
   Eq,

@@ -371,10 +371,9 @@ mod tests {
     constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
     gadgets::utils::scalar_as_base,
     provider::{
-      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
-      pasta::{PallasEngine, VestaEngine},
       poseidon::PoseidonConstantsCircuit,
-      secp_secq::{Secp256k1Engine, Secq256k1Engine},
+      {Bn256Engine, GrumpkinEngine}, {PallasEngine, VestaEngine},
+      {Secp256k1Engine, Secq256k1Engine},
     },
     traits::{circuit::TrivialCircuit, snark::default_ck_hint},
   };

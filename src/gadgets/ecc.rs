@@ -788,9 +788,9 @@ mod tests {
       {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
     },
     provider::{
-      bn256_grumpkin::{bn256, grumpkin, Bn256Engine, GrumpkinEngine},
-      pasta::{PallasEngine, VestaEngine},
-      secp_secq::{secp256k1, secq256k1, Secp256k1Engine, Secq256k1Engine},
+      bn256_grumpkin::{bn256, grumpkin},
+      secp_secq::{secp256k1, secq256k1},
+      Bn256Engine, GrumpkinEngine, Secp256k1Engine, Secq256k1Engine, {PallasEngine, VestaEngine},
     },
     traits::snark::default_ck_hint,
   };

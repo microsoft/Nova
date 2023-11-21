@@ -119,7 +119,7 @@ mod tests {
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
     },
-    provider::{bn256_grumpkin::Bn256Engine, pasta::PallasEngine, secp_secq::Secp256k1Engine},
+    provider::{Bn256Engine, PallasEngine, Secp256k1Engine},
     r1cs::{SparseMatrix, R1CS},
     traits::{snark::default_ck_hint, Engine},
   };

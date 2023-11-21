@@ -120,7 +120,7 @@ where
   /// ```rust
   /// # use nova_snark::spartan::ppsnark::RelaxedR1CSSNARK;
   /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
-  /// # use nova_snark::provider::pasta::{PallasEngine, VestaEngine};
+  /// # use nova_snark::provider::{PallasEngine, VestaEngine};
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
   /// use nova_snark::PublicParams;
   ///
@@ -856,11 +856,8 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      bn256_grumpkin::{Bn256Engine, GrumpkinEngine},
-      pasta::{PallasEngine, VestaEngine},
-      pedersen::CommitmentKeyExtTrait,
-      secp_secq::{Secp256k1Engine, Secq256k1Engine},
-      DlogGroup,
+      pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256Engine, GrumpkinEngine,
+      PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
