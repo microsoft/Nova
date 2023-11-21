@@ -96,13 +96,11 @@ pub trait DlogGroup:
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
-// TODO: remove this once we use it
-#[allow(dead_code)]
 /// A trait that defines extensions to the DlogGroup trait, to be implemented for
 /// elliptic curve groups that are pairing friendly
 pub trait PairingGroup: DlogGroup {
   /// A type representing the second group
-  type G2;
+  type G2: DlogGroup<Scalar = Self::Scalar, Base = Self::Base>;
 
   /// A type representing the target group
   type GT: PartialEq + Eq;

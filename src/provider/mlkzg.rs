@@ -18,9 +18,7 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-use halo2curves::{
-  bn256::{Fq, G2Affine, G1, Fr},
-};
+use halo2curves::bn256::{Fq, Fr, G1};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -32,7 +30,7 @@ where
   E::GE: PairingGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-  tauH: G2Affine, // needed only for the verifier key
+  tauH: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement, // needed only for the verifier key
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -233,7 +231,7 @@ where
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).preprocessed())
       .collect();
 
-    let tauH = (G2Affine::generator() * tau).to_affine();
+    let tauH = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).preprocessed();
 
     Self::CommitmentKey { ck, tauH }
   }
@@ -261,8 +259,8 @@ where
   E::GE: PairingGroup,
 {
   G: <E::GE as DlogGroup>::PreprocessedGroupElement,
-  H: G2Affine,
-  tauH: G2Affine,
+  H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
+  tauH: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
   _p: PhantomData<E>,
 }
 
@@ -321,7 +319,11 @@ where
     transcript.absorb(b"u", &u.to_vec().as_slice());
     transcript.absorb(
       b"v",
-      &v.iter().flatten().cloned().collect::<Vec<E::Scalar>>().as_slice(),
+      &v.iter()
+        .flatten()
+        .cloned()
+        .collect::<Vec<E::Scalar>>()
+        .as_slice(),
     );
 
     transcript.squeeze(b"r").unwrap()
@@ -337,11 +339,11 @@ where
   }
 
   fn verifier_second_challenge(
-    C_B: <E::GE as DlogGroup>::PreprocessedGroupElement,
+    C_B: &<E::GE as DlogGroup>::PreprocessedGroupElement,
     W: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     transcript: &mut <E as Engine>::TE,
   ) -> E::Scalar {
-    transcript.absorb(b"C_b", &C_B);
+    transcript.absorb(b"C_b", C_B);
     transcript.absorb(b"W", &W.to_vec().as_slice());
 
     transcript.squeeze(b"d").unwrap()
@@ -366,8 +368,8 @@ where
 
     let vk = VerifierKey {
       G: E::GE::gen().preprocessed(),
-      H: G2Affine::generator(),
-      tauH: ck.tauH,
+      H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().preprocessed(),
+      tauH: ck.tauH.clone(),
       _p: Default::default(),
     };
 
@@ -386,37 +388,38 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
-      // On input f(x) and u compute the witness polynomial used to prove
-      // that f(u) = v. The main part of this is to compute the
-      // division (f(x) - f(u)) / (x - u), but we don't use a general
-      // division algorithm, we make use of the fact that the division
-      // never has a remainder, and that the denominator is always a linear
-      // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
-      // d is the degree of f.
-      //
-      // We use the fact that if we compute the quotient of f(x)/(x-u),
-      // there will be a remainder, but it'll be v = f(u).  Put another way
-      // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
-      // same.  One advantage is that computing f(u) could be decoupled
-      // from kzg_open, it could be done later or separate from computing W.
+    let kzg_open =
+      |f: &[E::Scalar], u: E::Scalar| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
+        // On input f(x) and u compute the witness polynomial used to prove
+        // that f(u) = v. The main part of this is to compute the
+        // division (f(x) - f(u)) / (x - u), but we don't use a general
+        // division algorithm, we make use of the fact that the division
+        // never has a remainder, and that the denominator is always a linear
+        // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
+        // d is the degree of f.
+        //
+        // We use the fact that if we compute the quotient of f(x)/(x-u),
+        // there will be a remainder, but it'll be v = f(u).  Put another way
+        // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
+        // same.  One advantage is that computing f(u) could be decoupled
+        // from kzg_open, it could be done later or separate from computing W.
 
-      let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
-        let d = f.len();
+        let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
+          let d = f.len();
 
-        // Compute h(x) = f(x)/(x - u)
-        let mut h = vec![E::Scalar::ZERO; d];
-        for i in (1..d).rev() {
-          h[i - 1] = f[i] + h[i] * u;
-        }
+          // Compute h(x) = f(x)/(x - u)
+          let mut h = vec![E::Scalar::ZERO; d];
+          for i in (1..d).rev() {
+            h[i - 1] = f[i] + h[i] * u;
+          }
 
-        h
+          h
+        };
+
+        let h = compute_witness_polynomial(f, u);
+
+        E::CE::commit(ck, &h).comm.preprocessed()
       };
-
-      let h = compute_witness_polynomial(f, u);
-
-      E::CE::commit(ck, &h).comm.preprocessed()
-    };
 
     let kzg_open_batch = |C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
                           f: &[Vec<E::Scalar>],
@@ -488,11 +491,13 @@ where
 
       // Compute the commitment to the batched polynomial B(X)
       let q_powers = Self::batch_challenge_powers(q, k);
-      let C_B = (<E::GE as DlogGroup>::group(&C[0]) + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k])).preprocessed();
+      let C_B = (<E::GE as DlogGroup>::group(&C[0])
+        + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k]))
+      .preprocessed();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
-      let _d_0 = Self::verifier_second_challenge(C_B, &w, transcript);
+      let _d_0 = Self::verifier_second_challenge(&C_B, &w, transcript);
 
       (w, v)
     };
@@ -577,18 +582,20 @@ where
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
       // Compute the commitment to the batched polynomial B(X)
-      let C_B = (<E::GE as DlogGroup>::group(&C[0]) + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k])).preprocessed();
+      let C_B = (<E::GE as DlogGroup>::group(&C[0])
+        + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k]))
+      .preprocessed();
 
       // Compute the batched openings
       // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
       let B_u = (0..t)
         .map(|i| {
           assert_eq!(q_powers.len(), v[i].len());
-          q_powers.iter().zip(v[i].iter()).map(|(a, b)| a * b).sum()
+          q_powers.iter().zip(v[i].iter()).map(|(a, b)| *a * *b).sum()
         })
         .collect::<Vec<E::Scalar>>();
 
-      let d_0 = Self::verifier_second_challenge(C_B, W, transcript);
+      let d_0 = Self::verifier_second_challenge(&C_B, W, transcript);
       // TODO: (perf) Since we derive d by hashing, can we then have the prover
       // compute & send R? Saves two SMs in verify
 
@@ -608,7 +615,8 @@ where
       //
       // We group terms to reduce the number of scalar mults (to seven):
       // In Rust, we could use MSMs for these, and speed up verification.
-      let L = <E::GE as DlogGroup>::group(&C_B) * (E::Scalar::ONE + d[0] + d[1]) - <E::GE as DlogGroup>::group(&vk.G) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
+      let L = <E::GE as DlogGroup>::group(&C_B) * (E::Scalar::ONE + d[0] + d[1])
+        - <E::GE as DlogGroup>::group(&vk.G) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
         + <E::GE as DlogGroup>::group(&W[0]) * u[0]
         + <E::GE as DlogGroup>::group(&W[1]) * (u[1] * d[0])
         + <E::GE as DlogGroup>::group(&W[2]) * (u[2] * d[1]);
@@ -618,9 +626,14 @@ where
       let R2 = <E::GE as DlogGroup>::group(&W[2]);
       let R = R0 + R1 * d[0] + R2 * d[1];
 
-      // TODO: Check that e(L, vk.H) == e(R, vk.tauH)
-      true
-      // pairing(&L.preprocessed(), &vk.H) == pairing(&R.preprocessed(), &vk.tauH)
+      // Check that e(L, vk.H) == e(R, vk.tauH)
+      (<E::GE as PairingGroup>::pairing(
+        &L,
+        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.H),
+      )) == (<E::GE as PairingGroup>::pairing(
+        &R,
+        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.tauH),
+      ))
     };
     ////// END verify() closure helpers
 
@@ -632,7 +645,7 @@ where
     // obtained from the transcript
     let r = Self::compute_challenge(&C.comm.preprocessed(), y, &com, transcript);
 
-    if r.is_zero_vartime() || C.comm == E::GE::identity() {
+    if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
       return Err(NovaError::ProofVerifyError);
     }
     com.insert(0, C.comm.preprocessed()); // set com_0 = C, shifts other commitments to the right
@@ -698,6 +711,7 @@ mod tests {
     provider::keccak::Keccak256Transcript, spartan::polys::multilinear::MultilinearPolynomial,
   };
   use bincode::Options;
+  use group::Curve;
   use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
@@ -710,40 +724,40 @@ mod tests {
     let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
-    let poly = vec![E::Scalar::from(1), E::Scalar::from(2), E::Scalar::from(2), E::Scalar::from(4)];
+    let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
     let C = CommitmentEngine::commit(&ck, &poly);
     let mut tr = Keccak256Transcript::new(b"TestEval");
 
     // Call the prover with a (point, eval) pair. The prover recomputes
     // poly(point) = eval', and fails if eval' != eval
-    let point = vec![E::Scalar::from(0), E::Scalar::from(0)];
-    let eval = E::Scalar::ONE;
+    let point = vec![Fr::from(0), Fr::from(0)];
+    let eval = Fr::ONE;
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![E::Scalar::from(0), E::Scalar::from(1)];
-    let eval = E::Scalar::from(2);
+    let point = vec![Fr::from(0), Fr::from(1)];
+    let eval = Fr::from(2);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![E::Scalar::from(1), E::Scalar::from(1)];
-    let eval = E::Scalar::from(4);
+    let point = vec![Fr::from(1), Fr::from(1)];
+    let eval = Fr::from(4);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![E::Scalar::from(0), E::Scalar::from(2)];
-    let eval = E::Scalar::from(3);
+    let point = vec![Fr::from(0), Fr::from(2)];
+    let eval = Fr::from(3);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
-    let point = vec![E::Scalar::from(2), E::Scalar::from(2)];
-    let eval = E::Scalar::from(9);
+    let point = vec![Fr::from(2), Fr::from(2)];
+    let eval = Fr::from(9);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     // Try a couple incorrect evaluations and expect failure
-    let point = vec![E::Scalar::from(2), E::Scalar::from(2)];
-    let eval = E::Scalar::from(50);
+    let point = vec![Fr::from(2), Fr::from(2)];
+    let eval = Fr::from(50);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
 
-    let point = vec![E::Scalar::from(0), E::Scalar::from(2)];
-    let eval = E::Scalar::from(4);
+    let point = vec![Fr::from(0), Fr::from(2)];
+    let eval = Fr::from(4);
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
   }
 
@@ -752,13 +766,13 @@ mod tests {
     let n = 4;
 
     // poly = [1, 2, 1, 4]
-    let poly = vec![E::Scalar::ONE, E::Scalar::from(2), E::Scalar::from(1), E::Scalar::from(4)];
+    let poly = vec![Fr::ONE, Fr::from(2), Fr::from(1), Fr::from(4)];
 
     // point = [4,3]
-    let point = vec![E::Scalar::from(4), E::Scalar::from(3)];
+    let point = vec![Fr::from(4), Fr::from(3)];
 
     // eval = 28
-    let eval = E::Scalar::from(28);
+    let eval = Fr::from(28);
 
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, vk) = EvaluationEngine::setup(&ck);
@@ -817,8 +831,8 @@ mod tests {
 
       let n = 1 << ell; // n = 2^ell
 
-      let poly = (0..n).map(|_| E::Scalar::random(&mut rng)).collect::<Vec<_>>();
-      let point = (0..ell).map(|_| E::Scalar::random(&mut rng)).collect::<Vec<_>>();
+      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
       let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
