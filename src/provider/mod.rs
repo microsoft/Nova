@@ -2,6 +2,7 @@
 
 // public modules to be used as an evaluation engine with Spartan
 pub mod ipa_pc;
+pub mod mlkzg;
 
 // crate-public modules, made crate-public mostly for tests
 pub(crate) mod bn256_grumpkin;

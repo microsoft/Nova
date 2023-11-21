@@ -3,15 +3,15 @@
 use crate::{
   errors::NovaError,
   provider::{
-    cpu_best_multiexp,
     keccak::Keccak256Transcript,
+    msm::cpu_best_msm,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    DlogGroup,
+    traits::{DlogGroup, PairingGroup},
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInROTrait, Engine, Group, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -30,15 +30,18 @@ use serde::{Deserialize, Serialize};
 
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommitmentKey<E: Engine> 
-  where E::GE: PairingGroup,
+pub struct CommitmentKey<E: Engine>
+where
+  E::GE: PairingGroup,
 {
-  ck: Vec<G1Affine>,
+  ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   tauH: G2Affine, // needed only for the verifier key
-  _p: PhantomData<E>,
 }
 
-impl<E: Engine> Len for CommitmentKey<E> {
+impl<E: Engine> Len for CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
   fn length(&self) -> usize {
     self.ck.len()
   }
@@ -52,12 +55,13 @@ pub struct Commitment<E: Engine> {
 }
 
 /// A compressed commitment (suitable for serialization)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CompressedCommitment<E>
 where
   E: Engine,
+  E::GE: PairingGroup,
 {
-  comm: G1Affine,
+  comm: <E::GE as DlogGroup>::PreprocessedGroupElement,
   _p: PhantomData<E>,
 }
 
@@ -65,6 +69,7 @@ impl<E> CommitmentTrait<E> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
   E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E::GE: PairingGroup,
 {
   type CompressedCommitment = CompressedCommitment<E>;
 
@@ -101,17 +106,6 @@ where
   }
 }
 
-impl<G> TranscriptReprTrait<G> for G1Affine
-where
-  G: Group<Scalar = Fr, Base = Fq>,
-{
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    let coords = self.coordinates().unwrap();
-
-    [coords.x().to_repr(), coords.y().to_repr()].concat()
-  }
-}
-
 impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
@@ -141,12 +135,16 @@ where
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E::GE> for CompressedCommitment<E> {
+impl<E: Engine> TranscriptReprTrait<E::GE> for CompressedCommitment<E>
+where
+  E::GE: PairingGroup,
+{
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    let affine = &self.comm;
-    let coords = affine.coordinates().unwrap();
+    self.comm.to_transcript_bytes()
+    //    let affine = &self.comm;
+    //    let coords = affine.coordinates().unwrap();
 
-    [coords.x().to_repr(), coords.y().to_repr()].concat()
+    //    [coords.x().to_repr(), coords.y().to_repr()].concat()
   }
 }
 
@@ -218,7 +216,8 @@ pub struct CommitmentEngine<E: Engine> {
 impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E: Engine<Scalar = Fr, Base = Fq>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E::GE: PairingGroup
+    + DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
@@ -236,9 +235,9 @@ where
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
 
-    let ck: Vec<G1Affine> = (0..num_gens)
+    let ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (0..num_gens)
       .into_par_iter()
-      .map(|i| (G1Affine::generator() * powers_of_tau[i]).to_affine())
+      .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).preprocessed())
       .collect();
 
     let tauH = (G2Affine::generator() * tau).to_affine();
@@ -246,14 +245,13 @@ where
     Self::CommitmentKey {
       ck,
       tauH,
-      _p: Default::default(),
     }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: cpu_best_multiexp(v, &ck.ck[..v.len()]),
+      comm: cpu_best_msm(v, &ck.ck[..v.len()]),
       _p: Default::default(),
     }
   }
@@ -269,8 +267,11 @@ pub struct ProverKey<E: Engine> {
 /// A verifier key
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct VerifierKey<E: Engine> {
-  G: G1Affine,
+pub struct VerifierKey<E: Engine>
+where
+  E::GE: PairingGroup,
+{
+  G: <E::GE as DlogGroup>::PreprocessedGroupElement,
   H: G2Affine,
   tauH: G2Affine,
   _p: PhantomData<E>,
@@ -279,9 +280,12 @@ pub struct VerifierKey<E: Engine> {
 /// Provides an implementation of a polynomial evaluation argument
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct EvaluationArgument<E: Engine> {
-  com: Vec<G1Affine>,
-  w: Vec<G1Affine>,
+pub struct EvaluationArgument<E: Engine>
+where
+  E::GE: PairingGroup,
+{
+  com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+  w: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   v: Vec<Vec<Fr>>,
   _p: PhantomData<E>,
 }
@@ -301,9 +305,9 @@ where
   // EvaluationEngineTrait, but that we will use to implement the trait
   // functions.
   fn compute_challenge(
-    C: &G1Affine,
+    C: &<E::GE as DlogGroup>::PreprocessedGroupElement,
     y: &Fr,
-    com: &[G1Affine],
+    com: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     transcript: &mut <E as Engine>::TE,
   ) -> Fr {
     transcript.absorb(b"C", C);
@@ -319,7 +323,7 @@ where
   // Both prover and verifier have these values, but if f_i(u_j) can be changed
   // then the soundness of batching has failed.  Still, both parties have the data it seems prudent to hash.
   fn get_batch_challenge(
-    C: &[G1Affine],
+    C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     u: &[Fr],
     v: &[Vec<Fr>],
     transcript: &mut <E as Engine>::TE,
@@ -344,8 +348,8 @@ where
   }
 
   fn verifier_second_challenge(
-    C_B: G1Affine,
-    W: &[G1Affine],
+    C_B: <E::GE as DlogGroup>::PreprocessedGroupElement,
+    W: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     transcript: &mut <E as Engine>::TE,
   ) -> Fr {
     transcript.absorb(b"C_b", &C_B);
@@ -358,7 +362,8 @@ where
 impl<E> EvaluationEngineTrait<E> for EvaluationEngine<E>
 where
   E: Engine<Scalar = Fr, Base = Fq, CE = CommitmentEngine<E>>,
-  E::GE: DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
+  E::GE: PairingGroup
+    + DlogGroup<CompressedGroupElement = G1Compressed, PreprocessedGroupElement = G1Affine>,
 {
   type EvaluationArgument = EvaluationArgument<E>;
   type ProverKey = ProverKey<E>;
@@ -372,7 +377,7 @@ where
     };
 
     let vk = VerifierKey {
-      G: G1Affine::generator(),
+      G: E::GE::gen().preprocessed(),
       H: G2Affine::generator(),
       tauH: ck.tauH,
       _p: Default::default(),
@@ -393,7 +398,7 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[Fr], u: Fr| -> G1Affine {
+    let kzg_open = |f: &[Fr], u: Fr| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
       // On input f(x) and u compute the witness polynomial used to prove
       // that f(u) = v. The main part of this is to compute the
       // division (f(x) - f(u)) / (x - u), but we   don't use a general
@@ -426,11 +431,14 @@ where
       E::CE::commit(ck, &h).comm.to_affine()
     };
 
-    let kzg_open_batch = |C: &Vec<G1Affine>,
+    let kzg_open_batch = |C: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
                           f: &Vec<Vec<Fr>>,
                           u: &Vec<Fr>,
                           transcript: &mut <E as Engine>::TE|
-     -> (Vec<G1Affine>, Vec<Vec<Fr>>) {
+     -> (
+      Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+      Vec<Vec<Fr>>,
+    ) {
       let poly_eval = |f: &[Fr], u: Fr| -> Fr {
         let mut v = f[0];
         let mut u_power = Fr::one();
@@ -493,11 +501,11 @@ where
 
       // Compute the commitment to the batched polynomial B(X)
       let q_powers = Self::batch_challenge_powers(q, k);
-      let C_B = (C[0] + cpu_best_multiexp(&q_powers[1..k], &C[1..k])).to_affine();
+      let C_B = C[0] + cpu_best_msm(&q_powers[1..k], &C[1..k]);
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
-      let _d_0 = Self::verifier_second_challenge(C_B, &w, transcript);
+      let _d_0 = Self::verifier_second_challenge(C_B.preprocessed(), &w, transcript);
 
       (w, v)
     };
@@ -530,7 +538,7 @@ where
 
     // We do not need to commit to the first polynomial as it is already
     // committed. Compute commitments in parallel
-    let com: Vec<G1Affine> = (1..polys.len())
+    let com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (1..polys.len())
       .into_par_iter()
       .map(|i| E::CE::commit(ck, &polys[i]).comm.to_affine())
       .collect();
@@ -569,8 +577,8 @@ where
     // vk is hashed in transcript already, so we do not add it here
 
     let kzg_verify_batch = |vk: &VerifierKey<E>,
-                            C: &Vec<G1Affine>,
-                            W: &Vec<G1Affine>,
+                            C: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+                            W: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
                             u: &Vec<Fr>,
                             v: &Vec<Vec<Fr>>,
                             transcript: &mut <E as Engine>::TE|
@@ -582,7 +590,7 @@ where
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
       // Compute the commitment to the batched polynomial B(X)
-      let C_B = (C[0] + cpu_best_multiexp(&q_powers[1..k], &C[1..k])).to_affine();
+      let C_B = C[0] + cpu_best_msm(&q_powers[1..k], &C[1..k]);
 
       // Compute the batched openings
       // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
@@ -593,7 +601,7 @@ where
         })
         .collect::<Vec<Fr>>();
 
-      let d_0 = Self::verifier_second_challenge(C_B, W, transcript);
+      let d_0 = Self::verifier_second_challenge(C_B.preprocessed(), W, transcript);
       // TODO: (perf) Since we derive d by hashing, can we then have the prover
       // compute & send R? Saves two SMs in verify
 

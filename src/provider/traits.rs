@@ -65,7 +65,8 @@ pub trait DlogGroup:
     + Send
     + Sync
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + TranscriptReprTrait<Self>;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(
@@ -84,6 +85,9 @@ pub trait DlogGroup:
 
   /// Returns an element that is the additive identity of the group
   fn zero() -> Self;
+
+  /// Returns the generator of the group
+  fn gen() -> Self;
 
   /// Returns the affine coordinates (x, y, infinty) for the point
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
@@ -201,6 +205,10 @@ macro_rules! impl_traits {
         $name::Point::identity()
       }
 
+      fn gen() -> Self {
+        $name::Point::generator()
+      }
+
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
         let coordinates = self.to_affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1
@@ -237,6 +245,14 @@ macro_rules! impl_traits {
     impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_repr().to_vec()
+      }
+    }
+
+    impl<G: DlogGroup> TranscriptReprTrait<G> for $name::Affine {
+      fn to_transcript_bytes(&self) -> Vec<u8> {
+        let coords = self.coordinates().unwrap();
+
+        [coords.x().to_repr(), coords.y().to_repr()].concat()
       }
     }
   };
