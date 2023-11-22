@@ -184,6 +184,8 @@ mod tests {
 
   use super::*;
   use pasta_curves::Fp;
+  use rand_chacha::ChaCha20Rng;
+  use rand_core::{CryptoRng, RngCore, SeedableRng};
 
   fn make_mlp<F: PrimeField>(len: usize, value: F) -> MultilinearPolynomial<F> {
     MultilinearPolynomial {
@@ -286,5 +288,120 @@ mod tests {
     test_evaluation_with::<Fp>();
     test_evaluation_with::<provider::bn256_grumpkin::bn256::Scalar>();
     test_evaluation_with::<provider::secp_secq::secp256k1::Scalar>();
+  }
+
+  /// Returns a random ML polynomial
+  fn random<R: RngCore + CryptoRng, Scalar: PrimeField>(
+    num_vars: usize,
+    mut rng: &mut R,
+  ) -> MultilinearPolynomial<Scalar> {
+    MultilinearPolynomial::new(
+      std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
+        .take(1 << num_vars)
+        .collect(),
+    )
+  }
+
+  /// This evaluates a multilinear polynomial at a partial point in the evaluation domain,
+  /// which forces us to model how we pass coordinates to the evaluation function precisely.
+  fn partial_eval<F: PrimeField>(
+    poly: &MultilinearPolynomial<F>,
+    point: &[F],
+  ) -> MultilinearPolynomial<F> {
+    // Get size of partial evaluation point u = (u_0,...,u_{m-1})
+    let m = point.len();
+
+    // Assert that the size of the polynomial being evaluated is a power of 2 greater than (1 << m)
+    assert!(poly.Z.len().is_power_of_two());
+    assert!(poly.Z.len() >= 1 << m);
+    let n = poly.Z.len().trailing_zeros() as usize;
+
+    // Partial evaluation is done in m rounds l = 0,...,m-1.
+
+    // Temporary buffer of half the size of the polynomial
+    let mut n_l = 1 << (n - 1);
+    let mut tmp = vec![F::ZERO; n_l];
+
+    let prev = &poly.Z;
+    // Evaluate variable X_{n-1} at u_{m-1}
+    let u_l = point[m - 1];
+    for i in 0..n_l {
+      tmp[i] = prev[i] + u_l * (prev[i + n_l] - prev[i]);
+    }
+
+    // Evaluate m-1 variables X_{n-l-1}, ..., X_{n-2} at m-1 remaining values u_0,...,u_{m-2})
+    for l in 1..m {
+      n_l = 1 << (n - l - 1);
+      let u_l = point[m - l - 1];
+      for i in 0..n_l {
+        tmp[i] = tmp[i] + u_l * (tmp[i + n_l] - tmp[i]);
+      }
+    }
+    tmp.truncate(1 << (poly.num_vars - m));
+
+    MultilinearPolynomial::new(tmp)
+  }
+
+  fn partial_evaluate_mle_with<F: PrimeField>() {
+    // Initialize a random polynomial
+    let n = 5;
+    let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
+    let poly = random(n, &mut rng);
+
+    // Define a random multivariate evaluation point u = (u_0, u_1, u_2, u_3, u_4)
+    let u_0 = F::random(&mut rng);
+    let u_1 = F::random(&mut rng);
+    let u_2 = F::random(&mut rng);
+    let u_3 = F::random(&mut rng);
+    let u_4 = F::random(&mut rng);
+    let u_challenge = [u_4, u_3, u_2, u_1, u_0];
+
+    // Directly computing v = p(u_0,...,u_4) and comparing it with the result of
+    // first computing the partial evaluation in the last 3 variables
+    // g(X_0,X_1) = p(X_0,X_1,u_2,u_3,u_4), then v = g(u_0,u_1)
+
+    // Compute v = p(u_0,...,u_4)
+    let v_expected = poly.evaluate(&u_challenge[..]);
+
+    // Compute g(X_0,X_1) = p(X_0,X_1,u_2,u_3,u_4), then v = g(u_0,u_1)
+    let u_part_1 = [u_1, u_0]; // note the endianness difference
+    let u_part_2 = [u_2, u_3, u_4];
+
+    // Note how we start with part 2, and continue with part 1
+    let partial_evaluated_poly = partial_eval(&poly, &u_part_2);
+    let v_result = partial_evaluated_poly.evaluate(&u_part_1);
+
+    assert_eq!(v_result, v_expected);
+  }
+
+  #[test]
+  fn test_partial_evaluate_mle() {
+    partial_evaluate_mle_with::<Fp>();
+    partial_evaluate_mle_with::<bn256::Scalar>();
+    partial_evaluate_mle_with::<secp256k1::Scalar>();
+  }
+
+  fn partial_and_evaluate_with<F: PrimeField>() {
+    for i in 0..50 {
+      // Initialize a random polynomial
+      let n = 7;
+      let mut rng = ChaCha20Rng::from_seed([i as u8; 32]);
+      let poly = random(n, &mut rng);
+
+      // draw a random point
+      let pt: Vec<_> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+        .take(n)
+        .collect();
+      // this shows the order in which coordinates are evaluated
+      let rev_pt: Vec<_> = pt.iter().cloned().rev().collect();
+      assert_eq!(poly.evaluate(&pt), partial_eval(&poly, &rev_pt).Z[0])
+    }
+  }
+
+  #[test]
+  fn test_partial_and_evaluate() {
+    partial_and_evaluate_with::<Fp>();
+    partial_and_evaluate_with::<bn256::Scalar>();
+    partial_and_evaluate_with::<secp256k1::Scalar>();
   }
 }
