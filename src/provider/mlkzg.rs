@@ -30,7 +30,7 @@ where
   E::GE: PairingGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-  tauH: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement, // needed only for the verifier key
+  tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement, // needed only for the verifier key
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -231,9 +231,9 @@ where
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).preprocessed())
       .collect();
 
-    let tauH = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).preprocessed();
+    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).preprocessed();
 
-    Self::CommitmentKey { ck, tauH }
+    Self::CommitmentKey { ck, tau_H }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
@@ -260,7 +260,7 @@ where
 {
   G: <E::GE as DlogGroup>::PreprocessedGroupElement,
   H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
-  tauH: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
+  tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
@@ -367,7 +367,7 @@ where
     let vk = VerifierKey {
       G: E::GE::gen().preprocessed(),
       H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().preprocessed(),
-      tauH: ck.tauH.clone(),
+      tau_H: ck.tau_H.clone(),
     };
 
     (pk, vk)
@@ -617,13 +617,13 @@ where
       let R2 = <E::GE as DlogGroup>::group(&W[2]);
       let R = R0 + R1 * d[0] + R2 * d[1];
 
-      // Check that e(L, vk.H) == e(R, vk.tauH)
+      // Check that e(L, vk.H) == e(R, vk.tau_H)
       (<E::GE as PairingGroup>::pairing(
         &L,
         &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.H),
       )) == (<E::GE as PairingGroup>::pairing(
         &R,
-        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.tauH),
+        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.tau_H),
       ))
     };
     ////// END verify() closure helpers
