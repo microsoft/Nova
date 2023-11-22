@@ -701,6 +701,7 @@ mod tests {
   use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
+  type Fr = <E as Engine>::Scalar;
 
   #[test]
   fn test_mlkzg_eval() {
@@ -708,7 +709,6 @@ mod tests {
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
-    type Fr = <E as Engine>::Scalar;
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
@@ -751,7 +751,6 @@ mod tests {
   #[test]
   fn test_mlkzg() {
     let n = 4;
-    type Fr = <E as Engine>::Scalar;
 
     // poly = [1, 2, 1, 4]
     let poly = vec![Fr::ONE, Fr::from(2), Fr::from(1), Fr::from(4)];
@@ -813,8 +812,6 @@ mod tests {
 
   #[test]
   fn test_mlkzg_more() {
-    type Fr = <E as Engine>::Scalar;
-
     // test the mlkzg prover and verifier with random instances (derived from a seed)
     for ell in [4, 5, 6] {
       let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
