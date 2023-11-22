@@ -387,47 +387,43 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open =
-      |f: &[E::Scalar], u: E::Scalar| -> G1<E> {
-        // On input f(x) and u compute the witness polynomial used to prove
-        // that f(u) = v. The main part of this is to compute the
-        // division (f(x) - f(u)) / (x - u), but we don't use a general
-        // division algorithm, we make use of the fact that the division
-        // never has a remainder, and that the denominator is always a linear
-        // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
-        // d is the degree of f.
-        //
-        // We use the fact that if we compute the quotient of f(x)/(x-u),
-        // there will be a remainder, but it'll be v = f(u).  Put another way
-        // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
-        // same.  One advantage is that computing f(u) could be decoupled
-        // from kzg_open, it could be done later or separate from computing W.
+    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1<E> {
+      // On input f(x) and u compute the witness polynomial used to prove
+      // that f(u) = v. The main part of this is to compute the
+      // division (f(x) - f(u)) / (x - u), but we don't use a general
+      // division algorithm, we make use of the fact that the division
+      // never has a remainder, and that the denominator is always a linear
+      // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
+      // d is the degree of f.
+      //
+      // We use the fact that if we compute the quotient of f(x)/(x-u),
+      // there will be a remainder, but it'll be v = f(u).  Put another way
+      // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
+      // same.  One advantage is that computing f(u) could be decoupled
+      // from kzg_open, it could be done later or separate from computing W.
 
-        let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
-          let d = f.len();
+      let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
+        let d = f.len();
 
-          // Compute h(x) = f(x)/(x - u)
-          let mut h = vec![E::Scalar::ZERO; d];
-          for i in (1..d).rev() {
-            h[i - 1] = f[i] + h[i] * u;
-          }
+        // Compute h(x) = f(x)/(x - u)
+        let mut h = vec![E::Scalar::ZERO; d];
+        for i in (1..d).rev() {
+          h[i - 1] = f[i] + h[i] * u;
+        }
 
-          h
-        };
-
-        let h = compute_witness_polynomial(f, u);
-
-        E::CE::commit(ck, &h).comm.preprocessed()
+        h
       };
+
+      let h = compute_witness_polynomial(f, u);
+
+      E::CE::commit(ck, &h).comm.preprocessed()
+    };
 
     let kzg_open_batch = |C: &[G1<E>],
                           f: &[Vec<E::Scalar>],
                           u: &[E::Scalar],
                           transcript: &mut <E as Engine>::TE|
-     -> (
-      Vec<G1<E>>,
-      Vec<Vec<E::Scalar>>,
-    ) {
+     -> (Vec<G1<E>>, Vec<Vec<E::Scalar>>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
         let mut v = f[0];
         let mut u_power = E::Scalar::ONE;
@@ -592,14 +588,10 @@ where
       let d = [d_0, d_0 * d_0];
 
       // Shorthand to convert from preprocessed G1 elements to non-preprocessed
-      let from_ppG1 = |P: &G1<E>| {
-        <E::GE as DlogGroup>::group(P)
-      };
+      let from_ppG1 = |P: &G1<E>| <E::GE as DlogGroup>::group(P);
       // Shorthand to convert from preprocessed G2 elements to non-preprocessed
-      let from_ppG2 = |P: &G2<E>| {
-        <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P)
-      };      
-        
+      let from_ppG2 = |P: &G2<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
+
       assert!(t == 3);
       // We write a special case for t=3, since this what is required for
       // mlkzg. Following the paper directly, we must compute:
@@ -626,13 +618,8 @@ where
       let R = R0 + R1 * d[0] + R2 * d[1];
 
       // Check that e(L, vk.H) == e(R, vk.tau_H)
-      (<E::GE as PairingGroup>::pairing(
-        &L,
-        &from_ppG2(&vk.H),
-      )) == (<E::GE as PairingGroup>::pairing(
-        &R,
-        &from_ppG2(&vk.tau_H),
-      ))
+      (<E::GE as PairingGroup>::pairing(&L, &from_ppG2(&vk.H)))
+        == (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
     };
     ////// END verify() closure helpers
 
@@ -722,7 +709,7 @@ mod tests {
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
     type Fr = <E as Engine>::Scalar;
-    
+
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
