@@ -214,7 +214,7 @@ where
   type CommitmentKey = CommitmentKey<E>;
 
   fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    // this is for testing purposes
+    // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);
     let num_gens = n.next_power_of_two();
@@ -287,8 +287,7 @@ where
   E::GE: PairingGroup,
 {
   // This impl block defines helper functions that are not a part of
-  // EvaluationEngineTrait, but that we will use to implement the trait
-  // functions.
+  // EvaluationEngineTrait, but that we will use to implement the trait methods.
   fn compute_challenge(
     C: &<E::GE as DlogGroup>::PreprocessedGroupElement,
     y: &E::Scalar,
@@ -304,9 +303,6 @@ where
 
   // Compute challenge q = Hash(vk, C0, ..., C_{k-1}, u0, ...., u_{t-1},
   // (f_i(u_j))_{i=0..k-1,j=0..t-1})
-  // TODO: Including f_i(u_j) in the challenge may be optional?
-  // Both prover and verifier have these values, but if f_i(u_j) can be changed
-  // then the soundness of batching has failed.  Still, both parties have the data it seems prudent to hash.
   fn get_batch_challenge(
     C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
     u: &[E::Scalar],
@@ -464,8 +460,8 @@ where
       let t = u.len();
       assert!(C.len() == k);
 
-      // The verifier needs f_i(u_j), so we compute them here (V will compute
-      // B(u_j) itself)
+      // The verifier needs f_i(u_j), so we compute them here
+      // (V will compute B(u_j) itself)
       let mut v = vec![vec!(E::Scalar::ZERO; k); t];
       for i in 0..t {
         // for each point u
@@ -524,8 +520,8 @@ where
       polys.push(Pi);
     }
 
-    // We do not need to commit to the first polynomial as it is already
-    // committed. Compute commitments in parallel
+    // We do not need to commit to the first polynomial as it is already committed.
+    // Compute commitments in parallel
     let com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (1..polys.len())
       .into_par_iter()
       .map(|i| E::CE::commit(ck, &polys[i]).comm.preprocessed())
@@ -587,9 +583,6 @@ where
         .collect::<Vec<E::Scalar>>();
 
       let d_0 = Self::verifier_second_challenge(&C_B, W, transcript);
-      // TODO: (perf) Since we derive d by hashing, can we then have the prover
-      // compute & send R? Saves two SMs in verify
-
       let d = [d_0, d_0 * d_0];
 
       assert!(t == 3);
