@@ -18,10 +18,16 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-use halo2curves::bn256::{Fq, Fr, G1};
+use halo2curves::bn256::{Fq as Bn256Fq, Fr as Bn256Fr, G1 as Bn256G1};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
+/// Alias to points on G1 that are in preprocessed form
+type G1<E> = <<E as Engine>::GE as DlogGroup>::PreprocessedGroupElement;
+
+/// Alias to points on G1 that are in preprocessed form
+type G2<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement;
 
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,7 +232,7 @@ where
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
 
-    let ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (0..num_gens)
+    let ck: Vec<G1<E>> = (0..num_gens)
       .into_par_iter()
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).preprocessed())
       .collect();
@@ -258,9 +264,9 @@ pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  G: <E::GE as DlogGroup>::PreprocessedGroupElement,
-  H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
-  tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement,
+  G: G1<E>,
+  H: G2<E>,
+  tau_H: G2<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
@@ -270,8 +276,8 @@ pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-  w: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+  com: Vec<G1<E>>,
+  w: Vec<G1<E>>,
   v: Vec<Vec<E::Scalar>>,
 }
 
@@ -289,9 +295,9 @@ where
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait methods.
   fn compute_challenge(
-    C: &<E::GE as DlogGroup>::PreprocessedGroupElement,
+    C: &G1<E>,
     y: &E::Scalar,
-    com: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
+    com: &[G1<E>],
     transcript: &mut <E as Engine>::TE,
   ) -> E::Scalar {
     transcript.absorb(b"C", C);
@@ -304,7 +310,7 @@ where
   // Compute challenge q = Hash(vk, C0, ..., C_{k-1}, u0, ...., u_{t-1},
   // (f_i(u_j))_{i=0..k-1,j=0..t-1})
   fn get_batch_challenge(
-    C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
+    C: &[G1<E>],
     u: &[E::Scalar],
     v: &[Vec<E::Scalar>],
     transcript: &mut <E as Engine>::TE,
@@ -333,8 +339,8 @@ where
   }
 
   fn verifier_second_challenge(
-    C_B: &<E::GE as DlogGroup>::PreprocessedGroupElement,
-    W: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
+    C_B: &G1<E>,
+    W: &[G1<E>],
     transcript: &mut <E as Engine>::TE,
   ) -> E::Scalar {
     transcript.absorb(b"C_b", C_B);
@@ -382,7 +388,7 @@ where
 
     //////////////// begin helper closures //////////
     let kzg_open =
-      |f: &[E::Scalar], u: E::Scalar| -> <E::GE as DlogGroup>::PreprocessedGroupElement {
+      |f: &[E::Scalar], u: E::Scalar| -> G1<E> {
         // On input f(x) and u compute the witness polynomial used to prove
         // that f(u) = v. The main part of this is to compute the
         // division (f(x) - f(u)) / (x - u), but we don't use a general
@@ -414,12 +420,12 @@ where
         E::CE::commit(ck, &h).comm.preprocessed()
       };
 
-    let kzg_open_batch = |C: &[<E::GE as DlogGroup>::PreprocessedGroupElement],
+    let kzg_open_batch = |C: &[G1<E>],
                           f: &[Vec<E::Scalar>],
                           u: &[E::Scalar],
                           transcript: &mut <E as Engine>::TE|
      -> (
-      Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+      Vec<G1<E>>,
       Vec<Vec<E::Scalar>>,
     ) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
@@ -522,7 +528,7 @@ where
 
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
-    let com: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement> = (1..polys.len())
+    let com: Vec<G1<E>> = (1..polys.len())
       .into_par_iter()
       .map(|i| E::CE::commit(ck, &polys[i]).comm.preprocessed())
       .collect();
@@ -556,8 +562,8 @@ where
     // vk is hashed in transcript already, so we do not add it here
 
     let kzg_verify_batch = |vk: &VerifierKey<E>,
-                            C: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-                            W: &Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+                            C: &Vec<G1<E>>,
+                            W: &Vec<G1<E>>,
                             u: &Vec<E::Scalar>,
                             v: &Vec<Vec<E::Scalar>>,
                             transcript: &mut <E as Engine>::TE|
@@ -585,6 +591,15 @@ where
       let d_0 = Self::verifier_second_challenge(&C_B, W, transcript);
       let d = [d_0, d_0 * d_0];
 
+      // Shorthand to convert from preprocessed G1 elements to non-preprocessed
+      let from_ppG1 = |P: &G1<E>| {
+        <E::GE as DlogGroup>::group(P)
+      };
+      // Shorthand to convert from preprocessed G2 elements to non-preprocessed
+      let from_ppG2 = |P: &G2<E>| {
+        <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P)
+      };      
+        
       assert!(t == 3);
       // We write a special case for t=3, since this what is required for
       // mlkzg. Following the paper directly, we must compute:
@@ -599,24 +614,24 @@ where
       //
       // We group terms to reduce the number of scalar mults (to seven):
       // In Rust, we could use MSMs for these, and speed up verification.
-      let L = <E::GE as DlogGroup>::group(&C_B) * (E::Scalar::ONE + d[0] + d[1])
-        - <E::GE as DlogGroup>::group(&vk.G) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
-        + <E::GE as DlogGroup>::group(&W[0]) * u[0]
-        + <E::GE as DlogGroup>::group(&W[1]) * (u[1] * d[0])
-        + <E::GE as DlogGroup>::group(&W[2]) * (u[2] * d[1]);
+      let L = from_ppG1(&C_B) * (E::Scalar::ONE + d[0] + d[1])
+        - from_ppG1(&vk.G) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
+        + from_ppG1(&W[0]) * u[0]
+        + from_ppG1(&W[1]) * (u[1] * d[0])
+        + from_ppG1(&W[2]) * (u[2] * d[1]);
 
-      let R0 = <E::GE as DlogGroup>::group(&W[0]);
-      let R1 = <E::GE as DlogGroup>::group(&W[1]);
-      let R2 = <E::GE as DlogGroup>::group(&W[2]);
+      let R0 = from_ppG1(&W[0]);
+      let R1 = from_ppG1(&W[1]);
+      let R2 = from_ppG1(&W[2]);
       let R = R0 + R1 * d[0] + R2 * d[1];
 
       // Check that e(L, vk.H) == e(R, vk.tau_H)
       (<E::GE as PairingGroup>::pairing(
         &L,
-        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.H),
+        &from_ppG2(&vk.H),
       )) == (<E::GE as PairingGroup>::pairing(
         &R,
-        &<<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::group(&vk.tau_H),
+        &from_ppG2(&vk.tau_H),
       ))
     };
     ////// END verify() closure helpers
@@ -679,9 +694,9 @@ where
 pub struct Bn256EngineKZG;
 
 impl Engine for Bn256EngineKZG {
-  type Base = Fq;
-  type Scalar = Fr;
-  type GE = G1;
+  type Base = Bn256Fq;
+  type Scalar = Bn256Fr;
+  type GE = Bn256G1;
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
   type TE = Keccak256Transcript<Self>;
@@ -706,7 +721,8 @@ mod tests {
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
-
+    type Fr = <E as Engine>::Scalar;
+    
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
@@ -748,6 +764,7 @@ mod tests {
   #[test]
   fn test_mlkzg() {
     let n = 4;
+    type Fr = <E as Engine>::Scalar;
 
     // poly = [1, 2, 1, 4]
     let poly = vec![Fr::ONE, Fr::from(2), Fr::from(1), Fr::from(4)];
@@ -809,6 +826,8 @@ mod tests {
 
   #[test]
   fn test_mlkzg_more() {
+    type Fr = <E as Engine>::Scalar;
+
     // test the mlkzg prover and verifier with random instances (derived from a seed)
     for ell in [4, 5, 6] {
       let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
