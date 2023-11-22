@@ -469,10 +469,9 @@ where
       let mut v = vec![vec!(E::Scalar::ZERO; k); t];
       for i in 0..t {
         // for each point u
-        #[allow(clippy::needless_range_loop)]
-        for j in 0..k {
+        for (j, f_j) in f.iter().enumerate().take(k) {
           // for each poly f
-          v[i][j] = poly_eval(&f[j], u[i]); // = f_j(u_i)
+          v[i][j] = poly_eval(f_j, u[i]); // = f_j(u_i)
         }
       }
 
