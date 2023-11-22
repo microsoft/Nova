@@ -23,15 +23,13 @@ use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-type PreprocessedGroupElement<G> = <G as DlogGroup>::PreprocessedGroupElement;
-
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  ck: Vec<PreprocessedGroupElement<E::GE>>,
+  ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
   tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement, // needed only for the verifier key
 }
 
