@@ -1,4 +1,4 @@
-# Nova: Recursive SNARKs without trusted setup
+# Nova: High-speed recursive arguments from folding schemes
 
 Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). 
 
@@ -6,11 +6,16 @@ More precisely, Nova achieves [incrementally verifiable computation (IVC)](https
 
 A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is about 10,000 multiplication gates. Nova is constructed from a simple primitive called a *folding scheme*, a cryptographic primitive that reduces the task of checking two NP statements into the task of checking a single NP statement. 
 
-## Tests and examples
-This repository provides `nova-snark,` a Rust library implementation of Nova on a cycle of elliptic curves. The code currently supports Pallas/Vesta (i.e., Pasta curves) and BN254/Grumpkin elliptic curve cycles. One can use Nova with other elliptic curve cycles (e.g., secp/secq) by providing an implementation of Nova's traits for those curves (e.g., see `src/provider/mod.rs`).
+## Library details
+This repository provides `nova-snark,` a Rust library implementation of Nova on a cycle of elliptic curves. The code currently supports Pallas/Vesta (i.e., Pasta curves), BN254/Grumpkin, and secp/secq elliptic curve cycles. One can use Nova with other elliptic curve cycles by providing an implementation of Nova's traits for those curves (e.g., see `src/provider/mod.rs`).
 
 We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova.
 
+At its core, Nova relies on a commitment scheme for vectors, and IVC proof compression with Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. 
+
+The current code implements two commitment schemes: (1) Pedersen commitments with IPA-based evaluation argument (supported on all the three curve cycles); and (2) multilinear KZG commitments and evaluation argument (supported on curves with support for pairings e.g., BN254). For more details, please see the test `test_ivc_nontrivial_with_compression`. The multilinear KZG instantiation requires a universal trusted setup ("powers of tau"). In the `setup` method in `src/provider/mlkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or Marlin or variants), but the library does not currently do so. 
+
+## Tests and examples
 To run tests (we recommend the release mode to drastically shorten run times):
 ```text
 cargo test --release
