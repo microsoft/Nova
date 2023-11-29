@@ -3,6 +3,7 @@
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 //! This code includes experimental optimizations to reduce runtimes and proof sizes.
+//! We have not yet proven the security of these optimizations, so this code is subject to significant changes in the future.
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -809,7 +810,8 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   eval_ts_col: E::Scalar,
 
   // a PCS evaluation argument
-  eval_arg: EE::EvaluationArgument,
+  eval_arg_W: EE::EvaluationArgument,
+  eval_arg_batch: EE::EvaluationArgument,
 }
 
 impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
@@ -1025,14 +1027,13 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
-    let (Az, Bz, Cz, W, E) = {
+    let (Az, Bz, Cz, E) = {
       Az.resize(pk.S_repr.N, E::Scalar::ZERO);
       Bz.resize(pk.S_repr.N, E::Scalar::ZERO);
       Cz.resize(pk.S_repr.N, E::Scalar::ZERO);
       let E = padded::<E>(&W.E, pk.S_repr.N, &E::Scalar::ZERO);
-      let W = padded::<E>(&W.W, pk.S_repr.N, &E::Scalar::ZERO);
 
-      (Az, Bz, Cz, W, E)
+      (Az, Bz, Cz, E)
     };
     let (eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau) = {
       let evals_at_tau = [&Az, &Bz, &Cz]
@@ -1175,9 +1176,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_ts_col = claims_mem[1][2];
 
     // compute the remaining claims that did not come for free from the sum-check prover
-    let (eval_W, eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
+    let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
       let e = [
-        &W,
         &Cz,
         &E,
         &pk.S_repr.val_A,
@@ -1189,12 +1189,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .into_par_iter()
       .map(|p| MultilinearPolynomial::evaluate_with(p, &rand_sc))
       .collect::<Vec<E::Scalar>>();
-      (e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7])
+      (e[0], e[1], e[2], e[3], e[4], e[5], e[6])
     };
 
-    // all the evaluations are at rand_sc, we can fold them into one claim
+    // all the following evaluations are at rand_sc, we can fold them into one claim
     let eval_vec = vec![
-      eval_W,
       eval_Az,
       eval_Bz,
       eval_Cz,
@@ -1217,7 +1216,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     .collect::<Vec<E::Scalar>>();
 
     let comm_vec = [
-      U.comm_W,
       comm_Az,
       comm_Bz,
       comm_Cz,
@@ -1237,7 +1235,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       pk.S_comm.comm_ts_col,
     ];
     let poly_vec = [
-      &W,
       &Az,
       &Bz,
       &Cz,
@@ -1261,7 +1258,21 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &rand_sc, &eval_vec, &c);
 
-    let eval_arg = EE::prove(ck, &pk.pk_ee, &mut transcript, &u.c, &w.p, &rand_sc, &u.e)?;
+    let eval_arg_batch = EE::prove(ck, &pk.pk_ee, &mut transcript, &u.c, &w.p, &rand_sc, &u.e)?;
+
+    // prove eval_W at the shortened vector
+    let l = pk.S_comm.N.log_2() - (2 * S.num_vars).log_2();
+    let rand_sc_unpad = rand_sc[l..].to_vec();
+    let eval_W = MultilinearPolynomial::evaluate_with(&W.W, &rand_sc_unpad[1..]);
+    let eval_arg_W = EE::prove(
+      ck,
+      &pk.pk_ee,
+      &mut transcript,
+      &U.comm_W,
+      &W.W,
+      &rand_sc_unpad[1..],
+      &eval_W,
+    )?;
 
     Ok(RelaxedR1CSSNARK {
       comm_Az: comm_Az.compress(),
@@ -1303,7 +1314,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       eval_w_plus_r_inv_col,
       eval_ts_col,
 
-      eval_arg,
+      eval_arg_batch,
+      eval_arg_W,
     })
   }
 
@@ -1438,7 +1450,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             SparsePolynomial::new(vk.num_vars.log_2(), poly_X).evaluate(&rand_sc_unpad[1..])
           };
 
-          self.eval_W + factor * rand_sc_unpad[0] * eval_X
+          factor * ((E::Scalar::ONE - rand_sc_unpad[0]) * self.eval_W + rand_sc_unpad[0] * eval_X)
         };
         let eval_t = eval_addr_col + gamma * eval_val_col;
         eval_t + r
@@ -1484,7 +1496,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     }
 
     let eval_vec = vec![
-      self.eval_W,
       self.eval_Az,
       self.eval_Bz,
       self.eval_Cz,
@@ -1506,7 +1517,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     .into_iter()
     .collect::<Vec<E::Scalar>>();
     let comm_vec = [
-      U.comm_W,
       comm_Az,
       comm_Bz,
       comm_Cz,
@@ -1529,14 +1539,28 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let c = transcript.squeeze(b"c")?;
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &rand_sc, &eval_vec, &c);
 
-    // verify
+    // verify eval_arg_batch
     EE::verify(
       &vk.vk_ee,
       &mut transcript,
       &u.c,
       &rand_sc,
       &u.e,
-      &self.eval_arg,
+      &self.eval_arg_batch,
+    )?;
+
+    // verify eval_arg_W
+    let rand_sc_unpad = {
+      let l = vk.S_comm.N.log_2() - (2 * vk.num_vars).log_2();
+      rand_sc[l..].to_vec()
+    };
+    EE::verify(
+      &vk.vk_ee,
+      &mut transcript,
+      &U.comm_W,
+      &rand_sc_unpad[1..],
+      &self.eval_W,
+      &self.eval_arg_W,
     )?;
 
     Ok(())
