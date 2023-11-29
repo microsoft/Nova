@@ -33,16 +33,13 @@ pub struct PolyEvalWitness<E: Engine> {
 }
 
 impl<E: Engine> PolyEvalWitness<E> {
-  fn pad(W: &[PolyEvalWitness<E>]) -> Vec<PolyEvalWitness<E>> {
+  fn pad(mut W: Vec<PolyEvalWitness<E>>) -> Vec<PolyEvalWitness<E>> {
     // determine the maximum size
     if let Some(n) = W.iter().map(|w| w.p.len()).max() {
-      W.iter()
-        .map(|w| {
-          let mut p = vec![E::Scalar::ZERO; n];
-          p[..w.p.len()].copy_from_slice(&w.p);
-          PolyEvalWitness { p }
-        })
-        .collect()
+      W.iter_mut().for_each(|w| {
+        w.p.resize(n, E::Scalar::ZERO);
+      });
+      W
     } else {
       Vec::new()
     }
@@ -94,14 +91,14 @@ pub struct PolyEvalInstance<E: Engine> {
 }
 
 impl<E: Engine> PolyEvalInstance<E> {
-  fn pad(U: &[PolyEvalInstance<E>]) -> Vec<PolyEvalInstance<E>> {
+  fn pad(U: Vec<PolyEvalInstance<E>>) -> Vec<PolyEvalInstance<E>> {
     // determine the maximum size
     if let Some(ell) = U.iter().map(|u| u.x.len()).max() {
-      U.iter()
-        .map(|u| {
+      U.into_iter()
+        .map(|mut u| {
           let mut x = vec![E::Scalar::ZERO; ell - u.x.len()];
-          x.extend(u.x.clone());
-          PolyEvalInstance { c: u.c, x, e: u.e }
+          x.append(&mut u.x);
+          PolyEvalInstance { x, ..u }
         })
         .collect()
     } else {

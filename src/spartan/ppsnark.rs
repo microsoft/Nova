@@ -281,11 +281,11 @@ impl<E: Engine> MemorySumcheckInstance<E> {
   pub fn new(
     ck: &CommitmentKey<E>,
     r: &E::Scalar,
-    T_row: Vec<E::Scalar>,
-    W_row: Vec<E::Scalar>,
+    T_row: &[E::Scalar],
+    W_row: &[E::Scalar],
     ts_row: Vec<E::Scalar>,
-    T_col: Vec<E::Scalar>,
-    W_col: Vec<E::Scalar>,
+    T_col: &[E::Scalar],
+    W_col: &[E::Scalar],
     ts_col: Vec<E::Scalar>,
     transcript: &mut E::TE,
   ) -> Result<(Self, [Commitment<E>; 4], [Vec<E::Scalar>; 4]), NovaError> {
@@ -362,8 +362,8 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)),
       ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)),
     ) = rayon::join(
-      || helper(&T_row, &W_row, &ts_row, r),
-      || helper(&T_col, &W_col, &ts_col, r),
+      || helper(T_row, W_row, &ts_row, r),
+      || helper(T_col, W_col, &ts_col, r),
     );
 
     let t_plus_r_inv_row = t_plus_r_inv_row?;
@@ -1068,7 +1068,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
 
     // we now need to prove three claims
-    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
+    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
     // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
     // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
     let gamma = transcript.squeeze(b"g")?;
@@ -1139,11 +1139,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         MemorySumcheckInstance::new(
           ck,
           &r,
-          T_row,
-          W_row,
+          &T_row,
+          &W_row,
           pk.S_repr.ts_row.clone(),
-          T_col,
-          W_col,
+          &T_col,
+          &W_col,
           pk.S_repr.ts_col.clone(),
           &mut transcript,
         )
