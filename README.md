@@ -6,14 +6,27 @@ More precisely, Nova achieves [incrementally verifiable computation (IVC)](https
 
 A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is about 10,000 multiplication gates. Nova is constructed from a simple primitive called a *folding scheme*, a cryptographic primitive that reduces the task of checking two NP statements into the task of checking a single NP statement. 
 
-## Library details
-This repository provides `nova-snark,` a Rust library implementation of Nova on a cycle of elliptic curves. The code currently supports Pallas/Vesta (i.e., Pasta curves), BN254/Grumpkin, and secp/secq elliptic curve cycles. One can use Nova with other elliptic curve cycles by providing an implementation of Nova's traits for those curves (e.g., see `src/provider/mod.rs`).
+## Details of the library
+This repository provides `nova-snark,` a Rust library implementation of Nova over a cycle of elliptic curves. Our code supports three curve cycles: (1) Pallas/Vesta, (2) BN254/Grumpkin, and (3) secp/secq. 
 
-We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova.
+At its core, Nova relies on a commitment scheme for vectors. Compressing IVC proofs using Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. Our code implements two commitment schemes and evaluation arguments: 
+1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
+2. Multilinear KZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
+    
+For more details on using multilinear KZG, please see the test `test_ivc_nontrivial_with_compression`. The multilinear KZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/mlkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this](https://github.com/microsoft/Nova/issues/270) issue). 
 
-At its core, Nova relies on a commitment scheme for vectors, and IVC proof compression with Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. 
+We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit.
 
-The current code implements two commitment schemes: (1) Pedersen commitments with IPA-based evaluation argument (supported on all the three curve cycles); and (2) multilinear KZG commitments and evaluation argument (supported on curves with support for pairings e.g., BN254). For more details, please see the test `test_ivc_nontrivial_with_compression`. The multilinear KZG instantiation requires a universal trusted setup ("powers of tau"). In the `setup` method in `src/provider/mlkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or Marlin or variants), but the library does not currently do so. 
+## Supported front-ends
+A front-end is a tool to take a high-level program and turn it into an intermediate representation (e.g., a circuit) that can be used to prove executions of the program on concrete inputs. There are three supported ways to write high-level programs in a form that can be proven with Nova.
+
+1. bellpepper: The native APIs of Nova accept circuits expressed with bellpepper, a Rust toolkit to express circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
+
+2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
+
+3. [Lurk](https://github.com/lurk-lab/lurk-rs): A Lisp dialect and a universal circuit to execute programs expressed in Lurk. The universal circuit can be proven with Nova.
+
+In the future, we plan to support [Noir](https://noir-lang.org/), a Rust-like DSL and a compiler to transform those programs into an IR. See [this](https://github.com/microsoft/Nova/issues/275) GitHub issue for details.
 
 ## Tests and examples
 To run tests (we recommend the release mode to drastically shorten run times):
