@@ -113,7 +113,7 @@ fn add_constraint<S: PrimeField>(
   let add_constraint_component = |index: Index, coeff: &S, M: &mut SparseMatrix<S>| {
     match index {
       Index::Input(idx) => {
-        // Inputs come last, with input 0, reprsenting 'one',
+        // Inputs come last, with input 0, representing 'one',
         // at position num_vars within the witness vector.
         let idx = idx + num_vars;
         M.data.push(*coeff);

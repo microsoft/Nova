@@ -381,7 +381,7 @@ impl<E: Engine> R1CSWitness<E> {
 }
 
 impl<E: Engine> R1CSInstance<E> {
-  /// A method to create an instance object using consitituent elements
+  /// A method to create an instance object using constituent elements
   pub fn new(
     S: &R1CSShape<E>,
     comm_W: &Commitment<E>,
