@@ -16,7 +16,7 @@ use ff::PrimeField;
 pub trait NovaWitness<E: Engine> {
   /// Return an instance and witness, given a shape and ck.
   fn r1cs_instance_and_witness(
-    &self,
+    self,
     shape: &R1CSShape<E>,
     ck: &CommitmentKey<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
@@ -32,16 +32,17 @@ pub trait NovaShape<E: Engine> {
 
 impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
   fn r1cs_instance_and_witness(
-    &self,
+    self,
     shape: &R1CSShape<E>,
     ck: &CommitmentKey<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
-    let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
-    let X = &self.input_assignment()[1..];
+    let (input_assignment, aux_assignment) = self.to_assignments();
+    let W = R1CSWitness::<E>::new(shape, aux_assignment)?;
+    let X = input_assignment[1..].to_owned();
 
     let comm_W = W.commit(ck);
 
-    let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
+    let instance = R1CSInstance::<E>::new(shape, comm_W, X)?;
 
     Ok((instance, W))
   }

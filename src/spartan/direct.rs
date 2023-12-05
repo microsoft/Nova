@@ -137,7 +137,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     // convert the instance and witness to relaxed form
     let (u_relaxed, w_relaxed) = (
       RelaxedR1CSInstance::from_r1cs_instance_unchecked(&u.comm_W, &u.X),
-      RelaxedR1CSWitness::from_r1cs_witness(&pk.S, &w),
+      RelaxedR1CSWitness::from_r1cs_witness(&pk.S, w),
     );
 
     // prove the instance using Spartan
