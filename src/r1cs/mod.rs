@@ -173,6 +173,29 @@ impl<E: Engine> R1CSShape<E> {
     Ok((Az, Bz, Cz))
   }
 
+  pub(crate) fn multiply_witness(
+    &self,
+    W: &[E::Scalar],
+    u: &E::Scalar,
+    X: &[E::Scalar],
+  ) -> Result<(Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
+    if X.len() != self.num_io || W.len() != self.num_vars {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    let (Az, (Bz, Cz)) = rayon::join(
+      || self.A.multiply_witness(W, u, X),
+      || {
+        rayon::join(
+          || self.B.multiply_witness(W, u, X),
+          || self.C.multiply_witness(W, u, X),
+        )
+      },
+    );
+
+    Ok((Az, Bz, Cz))
+  }
+
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat_relaxed(
     &self,
@@ -186,8 +209,7 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if Az * Bz = u*Cz + E
     let res_eq = {
-      let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
-      let (Az, Bz, Cz) = self.multiply_vec(&z)?;
+      let (Az, Bz, Cz) = self.multiply_witness(&W.W, &U.u, &U.X)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
@@ -221,8 +243,7 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if Az * Bz = u*Cz
     let res_eq = {
-      let z = [W.W.clone(), vec![E::Scalar::ONE], U.X.clone()].concat();
-      let (Az, Bz, Cz) = self.multiply_vec(&z)?;
+      let (Az, Bz, Cz) = self.multiply_witness(&W.W, &E::Scalar::ONE, &U.X)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
       assert_eq!(Cz.len(), self.num_cons);
@@ -250,15 +271,9 @@ impl<E: Engine> R1CSShape<E> {
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    let (AZ_1, BZ_1, CZ_1) = {
-      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-      self.multiply_vec(&Z1)?
-    };
+    let (AZ_1, BZ_1, CZ_1) = self.multiply_witness(&W1.W, &U1.u, &U1.X)?;
 
-    let (AZ_2, BZ_2, CZ_2) = {
-      let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-      self.multiply_vec(&Z2)?
-    };
+    let (AZ_2, BZ_2, CZ_2) = self.multiply_witness(&W2.W, &E::Scalar::ONE, &U2.X)?;
 
     let (AZ_1_circ_BZ_2, AZ_2_circ_BZ_1, u_1_cdot_CZ_2, u_2_cdot_CZ_1) = {
       let AZ_1_circ_BZ_2 = (0..AZ_1.len())
