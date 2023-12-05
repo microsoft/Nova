@@ -372,11 +372,11 @@ impl<E: Engine> R1CSShape<E> {
 
 impl<E: Engine> R1CSWitness<E> {
   /// A method to create a witness object using a vector of scalars
-  pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+  pub fn new(S: &R1CSShape<E>, W: Vec<E::Scalar>) -> Result<R1CSWitness<E>, NovaError> {
     if S.num_vars != W.len() {
       Err(NovaError::InvalidWitnessLength)
     } else {
-      Ok(R1CSWitness { W: W.to_owned() })
+      Ok(R1CSWitness { W })
     }
   }
 
@@ -390,16 +390,13 @@ impl<E: Engine> R1CSInstance<E> {
   /// A method to create an instance object using constituent elements
   pub fn new(
     S: &R1CSShape<E>,
-    comm_W: &Commitment<E>,
-    X: &[E::Scalar],
+    comm_W: Commitment<E>,
+    X: Vec<E::Scalar>,
   ) -> Result<R1CSInstance<E>, NovaError> {
     if S.num_io != X.len() {
       Err(NovaError::InvalidInputLength)
     } else {
-      Ok(R1CSInstance {
-        comm_W: *comm_W,
-        X: X.to_owned(),
-      })
+      Ok(R1CSInstance { comm_W, X })
     }
   }
 }
@@ -423,9 +420,9 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
   }
 
   /// Initializes a new `RelaxedR1CSWitness` from an `R1CSWitness`
-  pub fn from_r1cs_witness(S: &R1CSShape<E>, witness: &R1CSWitness<E>) -> RelaxedR1CSWitness<E> {
+  pub fn from_r1cs_witness(S: &R1CSShape<E>, witness: R1CSWitness<E>) -> RelaxedR1CSWitness<E> {
     RelaxedR1CSWitness {
-      W: witness.W.clone(),
+      W: witness.W,
       E: vec![E::Scalar::ZERO; S.num_cons],
     }
   }
@@ -488,15 +485,18 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
 
   /// Initializes a new `RelaxedR1CSInstance` from an `R1CSInstance`
   pub fn from_r1cs_instance(
-    ck: &CommitmentKey<E>,
+    _ck: &CommitmentKey<E>,
     S: &R1CSShape<E>,
-    instance: &R1CSInstance<E>,
+    instance: R1CSInstance<E>,
   ) -> RelaxedR1CSInstance<E> {
-    let mut r_instance = RelaxedR1CSInstance::default(ck, S);
-    r_instance.comm_W = instance.comm_W;
-    r_instance.u = E::Scalar::ONE;
-    r_instance.X = instance.X.clone();
-    r_instance
+    assert_eq!(S.num_io, instance.X.len());
+
+    RelaxedR1CSInstance {
+      comm_W: instance.comm_W,
+      comm_E: Commitment::<E>::default(),
+      u: E::Scalar::ONE,
+      X: instance.X,
+    }
   }
 
   /// Initializes a new `RelaxedR1CSInstance` from an `R1CSInstance`

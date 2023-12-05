@@ -349,13 +349,13 @@ mod tests {
         };
 
         let W = {
-          let res = R1CSWitness::new(&S, &vars);
+          let res = R1CSWitness::new(&S, vars);
           assert!(res.is_ok());
           res.unwrap()
         };
         let U = {
           let comm_W = W.commit(ck);
-          let res = R1CSInstance::new(&S, &comm_W, &X);
+          let res = R1CSInstance::new(&S, comm_W, X);
           assert!(res.is_ok());
           res.unwrap()
         };

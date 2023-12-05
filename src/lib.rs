@@ -318,9 +318,9 @@ where
     // IVC proof for the primary circuit
     let l_w_primary = w_primary;
     let l_u_primary = u_primary;
-    let r_W_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
+    let r_W_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, l_w_primary);
     let r_U_primary =
-      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, l_u_primary);
 
     // IVC proof for the secondary circuit
     let l_w_secondary = w_secondary;
@@ -386,7 +386,10 @@ where
       &self.l_w_secondary,
     )?;
 
-    let mut cs_primary = SatisfyingAssignment::<E1>::new();
+    let mut cs_primary = SatisfyingAssignment::<E1>::with_capacity(
+      pp.r1cs_shape_primary.num_io + 1,
+      pp.r1cs_shape_primary.num_vars,
+    );
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<E1>(pp.digest()),
       E1::Scalar::from(self.i as u64),
@@ -420,7 +423,10 @@ where
       &l_w_primary,
     )?;
 
-    let mut cs_secondary = SatisfyingAssignment::<E2>::new();
+    let mut cs_secondary = SatisfyingAssignment::<E2>::with_capacity(
+      pp.r1cs_shape_secondary.num_io + 1,
+      pp.r1cs_shape_secondary.num_vars,
+    );
     let inputs_secondary: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
       E2::Scalar::from(self.i as u64),
