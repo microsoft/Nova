@@ -6,6 +6,7 @@
 use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
 
 /// CSR format sparse matrix, We follow the names used by scipy.
 /// Detailed explanation here: https://stackoverflow.com/questions/52299420/scipy-csr-matrix-understand-indptr
@@ -74,14 +75,14 @@ impl<F: PrimeField> SparseMatrix<F> {
       .zip(&self.indices[ptrs[0]..ptrs[1]])
   }
 
-  /// Multiply by a dense vector; uses rayon/gpu.
+  /// Multiply by a dense vector; uses rayon to parallelize.
   pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
     assert_eq!(self.cols, vector.len(), "invalid shape");
 
     self.multiply_vec_unchecked(vector)
   }
 
-  /// Multiply by a dense vector; uses rayon/gpu.
+  /// Multiply by a dense vector; uses rayon to parallelize.
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
     self
@@ -94,6 +95,38 @@ impl<F: PrimeField> SparseMatrix<F> {
           .sum()
       })
       .collect()
+  }
+
+  /// Multiply by a witness representing a dense vector; uses rayon to parallelize.
+  pub fn multiply_witness(&self, W: &[F], u: &F, X: &[F]) -> Vec<F> {
+    assert_eq!(self.cols, W.len() + X.len() + 1, "invalid shape");
+
+    self.multiply_witness_unchecked(W, u, X)
+  }
+
+  /// Multiply by a witness representing a dense vector; uses rayon to parallelize.
+  /// This does not check that the shape of the matrix/vector are compatible.
+  pub fn multiply_witness_unchecked(&self, W: &[F], u: &F, X: &[F]) -> Vec<F> {
+    let num_vars = W.len();
+    // preallocate the result vector
+    let mut result = Vec::with_capacity(self.indptr.len() - 1);
+    self
+      .indptr
+      .par_windows(2)
+      .map(|ptrs| {
+        self
+          .get_row_unchecked(ptrs.try_into().unwrap())
+          .fold(F::ZERO, |acc, (val, col_idx)| {
+            let val = match col_idx.cmp(&num_vars) {
+              Ordering::Less => *val * W[*col_idx],
+              Ordering::Equal => *val * *u,
+              Ordering::Greater => *val * X[*col_idx - num_vars - 1],
+            };
+            acc + val
+          })
+      })
+      .collect_into_vec(&mut result);
+    result
   }
 
   /// number of non-zero entries
