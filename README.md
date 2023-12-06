@@ -6,6 +6,8 @@ More precisely, Nova achieves [incrementally verifiable computation (IVC)](https
 
 A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is about 10,000 multiplication gates. Nova is constructed from a simple primitive called a *folding scheme*, a cryptographic primitive that reduces the task of checking two NP statements into the task of checking a single NP statement. 
 
+> This project accepts external contributions, but please read [this](#additional-guidelines) section before contributing.
+
 ## Details of the library
 This repository provides `nova-snark,` a Rust library implementation of Nova over a cycle of elliptic curves. Our code supports three curve cycles: (1) Pallas/Vesta, (2) BN254/Grumpkin, and (3) secp/secq. 
 
@@ -52,9 +54,6 @@ For efficiency, our implementation of the Nova proof system is instantiated over
 Wilson Nguyen, Dan Boneh, and Srinath Setty \
 IACR ePrint 2023/969
 
-## Acknowledgments
-See the contributors list [here](https://github.com/microsoft/Nova/graphs/contributors)
-
 ## Contributing
 
 This project welcomes contributions and suggestions.  Most contributions require you to agree to a
@@ -69,6 +68,15 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
 contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
+### Additional guidelines
+This codebase implements a sophisticated cryptographic protocol, necessitating proficiency in cryptography, mathematics, security, and software engineering. Given the inherent complexity, the introduction of subtle bugs is a pervasive concern, rendering the acceptance of substantial contributions exceptionally challenging. Consequently, external contributors are kindly urged to submit incremental, easily reviewable pull requests (PRs) that encapsulate well-defined changes.
+
+Our preference is to maintain code that is not only simple, but also easy to comprehend and maintain. This approach facilitates the auditing of code for correctness and security. To achieve this objective, we may prioritize code simplicity over minor performance enhancements, particularly when such improvements entail intricate, challenging-to-maintain code that disrupts abstractions.
+
+In the event that you propose performance-related changes through a PR, we anticipate the inclusion of reproducible benchmarks demonstrating substantial speedups across a range of typical circuits. This rigorous benchmarking ensures that the proposed changes meaningfully enhance the performance of a diverse set of applications built upon Nova. Each performance enhancement will undergo a thorough, case-by-case evaluation to ensure alignment with our commitment to maintaining codebase simplicity.
+
+Lastly, should you intend to submit a substantial PR, we kindly request that you initiate a GitHub issue outlining your planned changes, thereby soliciting feedback prior to committing substantial time to the implementation of said changes.
+
 ## Trademarks
 
 This project may contain trademarks or logos for projects, products, or services. Authorized use of Microsoft 
@@ -76,3 +84,6 @@ trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
+
+## Acknowledgments
+See the contributors list [here](https://github.com/microsoft/Nova/graphs/contributors)
