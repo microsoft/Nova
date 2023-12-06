@@ -255,38 +255,29 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       &mut transcript,
     )?;
 
-    // add additional claims about W and E polynomials to the list from CC
-    let mut w_u_vec = Vec::new();
-    let eval_W = MultilinearPolynomial::evaluate_with(&W.W, &r_y[1..]);
-    w_u_vec.push((
-      PolyEvalWitness { p: W.W },
-      PolyEvalInstance {
-        c: U.comm_W,
-        x: r_y[1..].to_vec(),
-        e: eval_W,
-      },
-    ));
-
-    w_u_vec.push((
-      PolyEvalWitness { p: W.E },
-      PolyEvalInstance {
-        c: U.comm_E,
-        x: r_x,
-        e: eval_E,
-      },
-    ));
-
-    // We will now reduce a vector of claims of evaluations at different points into claims about them at the same point.
+    // Add additional claims about W and E polynomials to the list from CC
+    // We will reduce a vector of claims of evaluations at different points into claims about them at the same point.
     // For example, eval_W =? W(r_y[1..]) and eval_E =? E(r_x) into
     // two claims: eval_W_prime =? W(rz) and eval_E_prime =? E(rz)
     // We can them combine the two into one: eval_W_prime + gamma * eval_E_prime =? (W + gamma*E)(rz),
     // where gamma is a public challenge
     // Since commitments to W and E are homomorphic, the verifier can compute a commitment
     // to the batched polynomial.
-    assert!(w_u_vec.len() >= 2);
+    let eval_W = MultilinearPolynomial::evaluate_with(&W.W, &r_y[1..]);
 
-    let (w_vec, u_vec): (Vec<PolyEvalWitness<E>>, Vec<PolyEvalInstance<E>>) =
-      w_u_vec.into_iter().unzip();
+    let w_vec = vec![PolyEvalWitness { p: W.W }, PolyEvalWitness { p: W.E }];
+    let u_vec = vec![
+      PolyEvalInstance {
+        c: U.comm_W,
+        x: r_y[1..].to_vec(),
+        e: eval_W,
+      },
+      PolyEvalInstance {
+        c: U.comm_E,
+        x: r_x,
+        e: eval_E,
+      },
+    ];
 
     let (batched_u, batched_w, sc_proof_batch, claims_batch_left) =
       batch_eval_prove(u_vec, w_vec, &mut transcript)?;
