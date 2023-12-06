@@ -850,8 +850,8 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG,
-      GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
+      traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG, Bn256EngineZM,
+      GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine, non_hiding_zeromorph::ZMPCS,
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
@@ -859,6 +859,7 @@ mod tests {
   use core::{fmt::Write, marker::PhantomData};
   use expect_test::{expect, Expect};
   use ff::PrimeField;
+  use halo2curves::bn256::Bn256;
 
   type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
   type EEPrime<E> = provider::hyperkzg::EvaluationEngine<E>;
@@ -913,7 +914,7 @@ mod tests {
     }
   }
 
-  fn test_pp_digest_with<E1, E2, T1, T2>(circuit1: &T1, circuit2: &T2, expected: &Expect)
+  fn test_pp_digest_with<E1, E2, T1, T2, EE1, EE2>(circuit1: &T1, circuit2: &T2, expected: &Expect)
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -921,13 +922,12 @@ mod tests {
     E2::GE: DlogGroup,
     T1: StepCircuit<E1::Scalar>,
     T2: StepCircuit<E2::Scalar>,
-    // required to use the IPA in the initialization of the commitment key hints below
-    <E1::CE as CommitmentEngineTrait<E1>>::CommitmentKey: CommitmentKeyExtTrait<E1>,
-    <E2::CE as CommitmentEngineTrait<E2>>::CommitmentKey: CommitmentKeyExtTrait<E2>,
+    EE1: EvaluationEngineTrait<E1>,
+    EE2: EvaluationEngineTrait<E2>,
   {
     // this tests public parameters with a size specifically intended for a spark-compressed SNARK
-    let ck_hint1 = &*SPrime::<E1, EE<E1>>::ck_floor();
-    let ck_hint2 = &*SPrime::<E2, EE<E2>>::ck_floor();
+    let ck_hint1 = &*SPrime::<E1, EE1>::ck_floor();
+    let ck_hint2 = &*SPrime::<E2, EE2>::ck_floor();
     let pp = PublicParams::<E1, E2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2).unwrap();
 
     let digest_str = pp
@@ -939,24 +939,25 @@ mod tests {
         let _ = write!(output, "{b:02x}");
         output
       });
+
     expected.assert_eq(&digest_str);
   }
 
   #[test]
   fn test_pp_digest() {
-    test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
+    test_pp_digest_with::<PallasEngine, VestaEngine, _, _, EE<_>, EE<_>>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
       &expect!["a69d6cf6d014c3a5cc99b77afc86691f7460faa737207dd21b30e8241fae8002"],
     );
 
-    test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
+    test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _, EE<_>, EE<_>>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
       &expect!["b22ab3456df4bd391804a39fae582b37ed4a8d90ace377337940ac956d87f701"],
     );
 
-    test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
+    test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _, EE<_>, EE<_>>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
       &expect!["c8aec89a3ea90317a0ecdc9150f4fc3648ca33f6660924a192cafd82e2939b02"],
@@ -1197,6 +1198,12 @@ mod tests {
       provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
     >();
+    test_ivc_nontrivial_with_compression_with::<
+      Bn256EngineZM,
+      GrumpkinEngine,
+      ZMPCS<Bn256, _>,
+      EE<_>,
+    >();
   }
 
   fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
@@ -1300,6 +1307,12 @@ mod tests {
     >();
     test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
     );
+    test_ivc_nontrivial_with_spark_compression_with::<
+      Bn256EngineZM,
+      GrumpkinEngine,
+      ZMPCS<Bn256, _>,
+      EE<_>,
+    >();
   }
 
   fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
@@ -1440,6 +1453,8 @@ mod tests {
     test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
     test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>();
     test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Bn256EngineZM, GrumpkinEngine, ZMPCS<Bn256, _>, EE<_>>(
+    );
   }
 
   fn test_ivc_base_with<E1, E2>()

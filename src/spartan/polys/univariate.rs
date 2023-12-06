@@ -1,17 +1,24 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
+use std::{
+  cmp::Ordering,
+  ops::{AddAssign, Index, IndexMut, MulAssign},
+};
+
 use ff::PrimeField;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use ref_cast::RefCast;
 use serde::{Deserialize, Serialize};
 
 use crate::traits::{Group, TranscriptReprTrait};
 
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, RefCast)]
+#[repr(transparent)]
 pub struct UniPoly<Scalar: PrimeField> {
-  coeffs: Vec<Scalar>,
+  pub coeffs: Vec<Scalar>,
 }
 
 // ax^2 + bx + c stored as vec![c, a]
@@ -22,6 +29,61 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
+  pub fn new(coeffs: Vec<Scalar>) -> Self {
+    let mut res = UniPoly { coeffs };
+    res.truncate_leading_zeros();
+    res
+  }
+
+  fn zero() -> Self {
+    UniPoly::new(Vec::new())
+  }
+
+  /// Divide self by another polynomial, and returns the
+  /// quotient and remainder.
+  pub fn divide_with_q_and_r(&self, divisor: &Self) -> Option<(UniPoly<Scalar>, UniPoly<Scalar>)> {
+    if self.is_zero() {
+      Some((UniPoly::zero(), UniPoly::zero()))
+    } else if divisor.is_zero() {
+      panic!("Dividing by zero polynomial")
+    } else if self.degree() < divisor.degree() {
+      Some((UniPoly::zero(), self.clone()))
+    } else {
+      // Now we know that self.degree() >= divisor.degree();
+      let mut quotient = vec![Scalar::ZERO; self.degree() - divisor.degree() + 1];
+      let mut remainder: UniPoly<Scalar> = self.clone();
+      // Can unwrap here because we know self is not zero.
+      let divisor_leading_inv = divisor.leading_coefficient().unwrap().invert().unwrap();
+      while !remainder.is_zero() && remainder.degree() >= divisor.degree() {
+        let cur_q_coeff = *remainder.leading_coefficient().unwrap() * divisor_leading_inv;
+        let cur_q_degree = remainder.degree() - divisor.degree();
+        quotient[cur_q_degree] = cur_q_coeff;
+
+        for (i, div_coeff) in divisor.coeffs.iter().enumerate() {
+          remainder.coeffs[cur_q_degree + i] -= &(cur_q_coeff * div_coeff);
+        }
+        while let Some(true) = remainder.coeffs.last().map(|c| c == &Scalar::ZERO) {
+          remainder.coeffs.pop();
+        }
+      }
+      Some((UniPoly::new(quotient), remainder))
+    }
+  }
+
+  pub fn is_zero(&self) -> bool {
+    self.coeffs.is_empty() || self.coeffs.iter().all(|c| c == &Scalar::ZERO)
+  }
+
+  fn truncate_leading_zeros(&mut self) {
+    while self.coeffs.last().map_or(false, |c| c == &Scalar::ZERO) {
+      self.coeffs.pop();
+    }
+  }
+
+  pub fn leading_coefficient(&self) -> Option<&Scalar> {
+    self.coeffs.last()
+  }
+
   pub fn from_evals(evals: &[Scalar]) -> Self {
     // we only support degree-2 or degree-3 univariate polynomials
     assert!(evals.len() == 3 || evals.len() == 4);
@@ -115,11 +177,61 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
       .collect::<Vec<u8>>()
   }
 }
+
+impl<Scalar: PrimeField> Index<usize> for UniPoly<Scalar> {
+  type Output = Scalar;
+
+  fn index(&self, index: usize) -> &Self::Output {
+    &self.coeffs[index]
+  }
+}
+
+impl<Scalar: PrimeField> IndexMut<usize> for UniPoly<Scalar> {
+  fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+    &mut self.coeffs[index]
+  }
+}
+
+impl<Scalar: PrimeField> AddAssign<&Scalar> for UniPoly<Scalar> {
+  fn add_assign(&mut self, rhs: &Scalar) {
+    self.coeffs.par_iter_mut().for_each(|c| *c += rhs);
+  }
+}
+
+impl<Scalar: PrimeField> MulAssign<&Scalar> for UniPoly<Scalar> {
+  fn mul_assign(&mut self, rhs: &Scalar) {
+    self.coeffs.par_iter_mut().for_each(|c| *c *= rhs);
+  }
+}
+
+impl<Scalar: PrimeField> AddAssign<&Self> for UniPoly<Scalar> {
+  fn add_assign(&mut self, rhs: &Self) {
+    let ordering = self.coeffs.len().cmp(&rhs.coeffs.len());
+    #[allow(clippy::disallowed_methods)]
+    for (lhs, rhs) in self.coeffs.iter_mut().zip(&rhs.coeffs) {
+      *lhs += rhs;
+    }
+    if matches!(ordering, Ordering::Less) {
+      self
+        .coeffs
+        .extend(rhs.coeffs[self.coeffs.len()..].iter().cloned());
+    }
+    if matches!(ordering, Ordering::Equal) {
+      self.truncate_leading_zeros();
+    }
+  }
+}
+
+impl<Scalar: PrimeField> AsRef<Vec<Scalar>> for UniPoly<Scalar> {
+  fn as_ref(&self) -> &Vec<Scalar> {
+    &self.coeffs
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use crate::provider::{bn256_grumpkin, secp_secq::secp256k1};
-
   use super::*;
+  use crate::provider::{bn256_grumpkin, secp_secq::secp256k1};
 
   fn test_from_evals_quad_with<F: PrimeField>() {
     // polynomial is 2x^2 + 3x + 1
