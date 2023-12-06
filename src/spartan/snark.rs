@@ -259,7 +259,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let mut w_u_vec = Vec::new();
     let eval_W = MultilinearPolynomial::evaluate_with(&W.W, &r_y[1..]);
     w_u_vec.push((
-      PolyEvalWitness { p: W.W.clone() },
+      PolyEvalWitness { p: W.W },
       PolyEvalInstance {
         c: U.comm_W,
         x: r_y[1..].to_vec(),
