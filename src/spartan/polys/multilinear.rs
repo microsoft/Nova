@@ -183,7 +183,6 @@ mod tests {
   use crate::provider::{self, bn256_grumpkin::bn256, secp_secq::secp256k1};
 
   use super::*;
-  use pasta_curves::Fp;
   use rand_chacha::ChaCha20Rng;
   use rand_core::{CryptoRng, RngCore, SeedableRng};
 
@@ -237,12 +236,12 @@ mod tests {
 
   #[test]
   fn test_multilinear_polynomial() {
-    test_multilinear_polynomial_with::<Fp>();
+    test_multilinear_polynomial_with::<pasta_curves::Fp>();
   }
 
   #[test]
   fn test_sparse_polynomial() {
-    test_sparse_polynomial_with::<Fp>();
+    test_sparse_polynomial_with::<pasta_curves::Fp>();
   }
 
   fn test_mlp_add_with<F: PrimeField>() {
@@ -256,7 +255,7 @@ mod tests {
 
   #[test]
   fn test_mlp_add() {
-    test_mlp_add_with::<Fp>();
+    test_mlp_add_with::<pasta_curves::Fp>();
     test_mlp_add_with::<bn256::Scalar>();
     test_mlp_add_with::<secp256k1::Scalar>();
   }
@@ -285,7 +284,7 @@ mod tests {
 
   #[test]
   fn test_evaluation() {
-    test_evaluation_with::<Fp>();
+    test_evaluation_with::<pasta_curves::Fp>();
     test_evaluation_with::<provider::bn256_grumpkin::bn256::Scalar>();
     test_evaluation_with::<provider::secp_secq::secp256k1::Scalar>();
   }
@@ -376,7 +375,7 @@ mod tests {
 
   #[test]
   fn test_partial_evaluate_mle() {
-    partial_evaluate_mle_with::<Fp>();
+    partial_evaluate_mle_with::<pasta_curves::Fp>();
     partial_evaluate_mle_with::<bn256::Scalar>();
     partial_evaluate_mle_with::<secp256k1::Scalar>();
   }
@@ -400,7 +399,7 @@ mod tests {
 
   #[test]
   fn test_partial_and_evaluate() {
-    partial_and_evaluate_with::<Fp>();
+    partial_and_evaluate_with::<pasta_curves::Fp>();
     partial_and_evaluate_with::<bn256::Scalar>();
     partial_and_evaluate_with::<secp256k1::Scalar>();
   }
