@@ -449,6 +449,7 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit_pasta() {
+    // this test checks against values that must be replicated in benchmarks if changed here
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<VestaEngine> = PoseidonConstantsCircuit::default();

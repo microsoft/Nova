@@ -2,7 +2,7 @@
 
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
-use criterion::*;
+use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use nova_snark::{
   provider::{PallasEngine, VestaEngine},
@@ -50,172 +50,137 @@ cfg_if::cfg_if! {
 
 criterion_main!(compressed_snark);
 
-fn bench_compressed_snark(c: &mut Criterion) {
-  let num_samples = 10;
-  let num_cons_verifier_circuit_primary = 9819;
-  // we vary the number of constraints in the step circuit
-  for &num_cons_in_augmented_circuit in
-    [9819, 16384, 32768, 65536, 131072, 262144, 524288, 1048576].iter()
-  {
-    // number of constraints in the step circuit
-    let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
+// This should match the value for the primary in test_recursive_circuit_pasta
+const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9825;
+const NUM_SAMPLES: usize = 10;
 
-    let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
-    group.sample_size(num_samples);
+/// Benchmarks the compressed SNARK at a provided number of constraints
+///
+/// Parameters
+/// - `group``: the criterion benchmark group
+/// - `num_cons`: the number of constraints in the step circuit
+fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1CSSNARKTrait<E2>>(
+  group: &mut BenchmarkGroup<'_, WallTime>,
+  num_cons: usize,
+) {
+  let c_primary = NonTrivialCircuit::new(num_cons);
+  let c_secondary = TrivialCircuit::default();
 
-    let c_primary = NonTrivialCircuit::new(num_cons);
-    let c_secondary = TrivialCircuit::default();
+  // Produce public parameters
+  let pp = PublicParams::<E1, E2, C1, C2>::setup(
+    &c_primary,
+    &c_secondary,
+    &*S1::ck_floor(),
+    &*S2::ck_floor(),
+  );
 
-    // Produce public parameters
-    let pp = PublicParams::<E1, E2, C1, C2>::setup(
-      &c_primary,
-      &c_secondary,
-      &*S1::ck_floor(),
-      &*S2::ck_floor(),
-    );
+  // Produce prover and verifier keys for CompressedSNARK
+  let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
 
-    // Produce prover and verifier keys for CompressedSNARK
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
+  // produce a recursive SNARK
+  let num_steps = 3;
+  let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
+    &pp,
+    &c_primary,
+    &c_secondary,
+    &[<E1 as Engine>::Scalar::from(2u64)],
+    &[<E2 as Engine>::Scalar::from(2u64)],
+  )
+  .unwrap();
 
-    // produce a recursive SNARK
-    let num_steps = 3;
-    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
+  for i in 0..num_steps {
+    let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
+    assert!(res.is_ok());
+
+    // verify the recursive snark at each step of recursion
+    let res = recursive_snark.verify(
       &pp,
-      &c_primary,
-      &c_secondary,
+      i + 1,
       &[<E1 as Engine>::Scalar::from(2u64)],
       &[<E2 as Engine>::Scalar::from(2u64)],
-    )
-    .unwrap();
+    );
+    assert!(res.is_ok());
+  }
 
-    for i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
-      assert!(res.is_ok());
+  // Bench time to produce a compressed SNARK
+  group.bench_function("Prove", |b| {
+    b.iter(|| {
+      assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
+        black_box(&pp),
+        black_box(&pk),
+        black_box(&recursive_snark)
+      )
+      .is_ok());
+    })
+  });
+  let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
+  assert!(res.is_ok());
+  let compressed_snark = res.unwrap();
 
-      // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::from(2u64)],
-        &[<E2 as Engine>::Scalar::from(2u64)],
-      );
-      assert!(res.is_ok());
-    }
-
-    // Bench time to produce a compressed SNARK
-    group.bench_function("Prove", |b| {
-      b.iter(|| {
-        assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
-          black_box(&pp),
-          black_box(&pk),
-          black_box(&recursive_snark)
+  // Benchmark the verification time
+  group.bench_function("Verify", |b| {
+    b.iter(|| {
+      assert!(black_box(&compressed_snark)
+        .verify(
+          black_box(&vk),
+          black_box(num_steps),
+          black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
+          black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
         )
         .is_ok());
-      })
-    });
-    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
-    assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
+    })
+  });
+}
 
-    // Benchmark the verification time
-    group.bench_function("Verify", |b| {
-      b.iter(|| {
-        assert!(black_box(&compressed_snark)
-          .verify(
-            black_box(&vk),
-            black_box(num_steps),
-            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
-            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
-          )
-          .is_ok());
-      })
-    });
+fn bench_compressed_snark(c: &mut Criterion) {
+  // we vary the number of constraints in the step circuit
+  for &num_cons_in_augmented_circuit in [
+    NUM_CONS_VERIFIER_CIRCUIT_PRIMARY,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+    524288,
+    1048576,
+  ]
+  .iter()
+  {
+    // number of constraints in the step circuit
+    let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
+
+    let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
+    group.sample_size(NUM_SAMPLES);
+
+    bench_compressed_snark_internal::<S1, S2>(&mut group, num_cons);
 
     group.finish();
   }
 }
 
 fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
-  let num_samples = 10;
-  let num_cons_verifier_circuit_primary = 9819;
   // we vary the number of constraints in the step circuit
-  for &num_cons_in_augmented_circuit in [9819, 16384, 32768, 65536, 131072, 262144].iter() {
+  for &num_cons_in_augmented_circuit in [
+    NUM_CONS_VERIFIER_CIRCUIT_PRIMARY,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+  ]
+  .iter()
+  {
     // number of constraints in the step circuit
-    let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
+    let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
     let mut group = c.benchmark_group(format!(
       "CompressedSNARK-Commitments-StepCircuitSize-{num_cons}"
     ));
     group
       .sampling_mode(SamplingMode::Flat)
-      .sample_size(num_samples);
+      .sample_size(NUM_SAMPLES);
 
-    let c_primary = NonTrivialCircuit::new(num_cons);
-    let c_secondary = TrivialCircuit::default();
-
-    // Produce public parameters
-    let pp = PublicParams::<E1, E2, C1, C2>::setup(
-      &c_primary,
-      &c_secondary,
-      &*SS1::ck_floor(),
-      &*SS2::ck_floor(),
-    );
-    // Produce prover and verifier keys for CompressedSNARK
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, SS1, SS2>::setup(&pp).unwrap();
-
-    // produce a recursive SNARK
-    let num_steps = 3;
-    let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> = RecursiveSNARK::new(
-      &pp,
-      &c_primary,
-      &c_secondary,
-      &[<E1 as Engine>::Scalar::from(2u64)],
-      &[<E2 as Engine>::Scalar::from(2u64)],
-    )
-    .unwrap();
-
-    for i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &c_primary, &c_secondary);
-      assert!(res.is_ok());
-
-      // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::from(2u64)],
-        &[<E2 as Engine>::Scalar::from(2u64)],
-      );
-      assert!(res.is_ok());
-    }
-
-    // Bench time to produce a compressed SNARK
-    group.bench_function("Prove", |b| {
-      b.iter(|| {
-        assert!(CompressedSNARK::<_, _, _, _, SS1, SS2>::prove(
-          black_box(&pp),
-          black_box(&pk),
-          black_box(&recursive_snark)
-        )
-        .is_ok());
-      })
-    });
-    let res = CompressedSNARK::<_, _, _, _, SS1, SS2>::prove(&pp, &pk, &recursive_snark);
-    assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
-
-    // Benchmark the verification time
-    group.bench_function("Verify", |b| {
-      b.iter(|| {
-        assert!(black_box(&compressed_snark)
-          .verify(
-            black_box(&vk),
-            black_box(num_steps),
-            black_box(&[<E1 as Engine>::Scalar::from(2u64)]),
-            black_box(&[<E2 as Engine>::Scalar::from(2u64)]),
-          )
-          .is_ok());
-      })
-    });
+    bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons);
 
     group.finish();
   }
