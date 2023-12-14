@@ -183,7 +183,8 @@ mod tests {
   use crate::provider::{self, bn256_grumpkin::bn256, secp_secq::secp256k1};
 
   use super::*;
-  use pasta_curves::Fp;
+  use rand_chacha::ChaCha20Rng;
+  use rand_core::{CryptoRng, RngCore, SeedableRng};
 
   fn make_mlp<F: PrimeField>(len: usize, value: F) -> MultilinearPolynomial<F> {
     MultilinearPolynomial {
@@ -235,12 +236,12 @@ mod tests {
 
   #[test]
   fn test_multilinear_polynomial() {
-    test_multilinear_polynomial_with::<Fp>();
+    test_multilinear_polynomial_with::<pasta_curves::Fp>();
   }
 
   #[test]
   fn test_sparse_polynomial() {
-    test_sparse_polynomial_with::<Fp>();
+    test_sparse_polynomial_with::<pasta_curves::Fp>();
   }
 
   fn test_mlp_add_with<F: PrimeField>() {
@@ -254,7 +255,7 @@ mod tests {
 
   #[test]
   fn test_mlp_add() {
-    test_mlp_add_with::<Fp>();
+    test_mlp_add_with::<pasta_curves::Fp>();
     test_mlp_add_with::<bn256::Scalar>();
     test_mlp_add_with::<secp256k1::Scalar>();
   }
@@ -283,8 +284,65 @@ mod tests {
 
   #[test]
   fn test_evaluation() {
-    test_evaluation_with::<Fp>();
+    test_evaluation_with::<pasta_curves::Fp>();
     test_evaluation_with::<provider::bn256_grumpkin::bn256::Scalar>();
     test_evaluation_with::<provider::secp_secq::secp256k1::Scalar>();
+  }
+
+  /// Returns a random ML polynomial
+  fn random<R: RngCore + CryptoRng, Scalar: PrimeField>(
+    num_vars: usize,
+    mut rng: &mut R,
+  ) -> MultilinearPolynomial<Scalar> {
+    MultilinearPolynomial::new(
+      std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
+        .take(1 << num_vars)
+        .collect(),
+    )
+  }
+
+  /// This binds the variables of a multilinear polynomial to a provided sequence
+  /// of values.
+  ///
+  /// Assuming `bind_poly_var_top` defines the "top" variable of the polynomial,
+  /// this aims to test whether variables should be provided to the
+  /// `evaluate` function in topmost-first (big endian) of topmost-last (lower endian)
+  /// order.
+  fn bind_sequence<F: PrimeField>(
+    poly: &MultilinearPolynomial<F>,
+    values: &[F],
+  ) -> MultilinearPolynomial<F> {
+    // Assert that the size of the polynomial being evaluated is a power of 2 greater than (1 << values.len())
+    assert!(poly.Z.len().is_power_of_two());
+    assert!(poly.Z.len() >= 1 << values.len());
+
+    let mut tmp = poly.clone();
+    for v in values.iter() {
+      tmp.bind_poly_var_top(v);
+    }
+    tmp
+  }
+
+  fn bind_and_evaluate_with<F: PrimeField>() {
+    for i in 0..50 {
+      // Initialize a random polynomial
+      let n = 7;
+      let mut rng = ChaCha20Rng::from_seed([i as u8; 32]);
+      let poly = random(n, &mut rng);
+
+      // draw a random point
+      let pt: Vec<_> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+        .take(n)
+        .collect();
+      // this shows the order in which coordinates are evaluated
+      assert_eq!(poly.evaluate(&pt), bind_sequence(&poly, &pt).Z[0])
+    }
+  }
+
+  #[test]
+  fn test_bind_and_evaluate() {
+    bind_and_evaluate_with::<pasta_curves::Fp>();
+    bind_and_evaluate_with::<bn256::Scalar>();
+    bind_and_evaluate_with::<secp256k1::Scalar>();
   }
 }
