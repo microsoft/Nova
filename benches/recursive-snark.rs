@@ -42,17 +42,29 @@ cfg_if::cfg_if! {
 
 criterion_main!(recursive_snark);
 
+// This should match the value for the primary in test_recursive_circuit_pasta
+const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9825;
+const NUM_SAMPLES: usize = 10;
+
 fn bench_recursive_snark(c: &mut Criterion) {
-  let num_cons_verifier_circuit_primary = 9819;
   // we vary the number of constraints in the step circuit
-  for &num_cons_in_augmented_circuit in
-    [9819, 16384, 32768, 65536, 131072, 262144, 524288, 1048576].iter()
+  for &num_cons_in_augmented_circuit in [
+    NUM_CONS_VERIFIER_CIRCUIT_PRIMARY,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+    524288,
+    1048576,
+  ]
+  .iter()
   {
     // number of constraints in the step circuit
-    let num_cons = num_cons_in_augmented_circuit - num_cons_verifier_circuit_primary;
+    let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
 
     let mut group = c.benchmark_group(format!("RecursiveSNARK-StepCircuitSize-{num_cons}"));
-    group.sample_size(10);
+    group.sample_size(NUM_SAMPLES);
 
     let c_primary = NonTrivialCircuit::new(num_cons);
     let c_secondary = TrivialCircuit::default();
