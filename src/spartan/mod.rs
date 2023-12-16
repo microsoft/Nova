@@ -5,6 +5,8 @@
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
 //!
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
+pub mod batched;
+pub mod batched_ppsnark;
 pub mod direct;
 #[macro_use]
 mod macros;

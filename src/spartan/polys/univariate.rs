@@ -11,7 +11,7 @@ use crate::traits::{Group, TranscriptReprTrait};
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
 #[derive(Debug, PartialEq, Eq)]
 pub struct UniPoly<Scalar: PrimeField> {
-  coeffs: Vec<Scalar>,
+  pub coeffs: Vec<Scalar>,
 }
 
 // ax^2 + bx + c stored as vec![c, a]
