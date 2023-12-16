@@ -49,36 +49,36 @@ fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar>
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSShapeSparkRepr<E: Engine> {
-  N: usize, // size of the vectors
+  pub(in crate::spartan) N: usize, // size of the vectors
 
   // dense representation
-  row: Vec<E::Scalar>,
-  col: Vec<E::Scalar>,
-  val_A: Vec<E::Scalar>,
-  val_B: Vec<E::Scalar>,
-  val_C: Vec<E::Scalar>,
+  pub(in crate::spartan) row: Vec<E::Scalar>,
+  pub(in crate::spartan) col: Vec<E::Scalar>,
+  pub(in crate::spartan) val_A: Vec<E::Scalar>,
+  pub(in crate::spartan) val_B: Vec<E::Scalar>,
+  pub(in crate::spartan) val_C: Vec<E::Scalar>,
 
   // timestamp polynomials
-  ts_row: Vec<E::Scalar>,
-  ts_col: Vec<E::Scalar>,
+  pub(in crate::spartan) ts_row: Vec<E::Scalar>,
+  pub(in crate::spartan) ts_col: Vec<E::Scalar>,
 }
 
 /// A type that holds a commitment to a sparse polynomial
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSShapeSparkCommitment<E: Engine> {
-  N: usize, // size of each vector
+  pub(in crate::spartan) N: usize, // size of each vector
 
   // commitments to the dense representation
-  comm_row: Commitment<E>,
-  comm_col: Commitment<E>,
-  comm_val_A: Commitment<E>,
-  comm_val_B: Commitment<E>,
-  comm_val_C: Commitment<E>,
+  pub(in crate::spartan) comm_row: Commitment<E>,
+  pub(in crate::spartan) comm_col: Commitment<E>,
+  pub(in crate::spartan) comm_val_A: Commitment<E>,
+  pub(in crate::spartan) comm_val_B: Commitment<E>,
+  pub(in crate::spartan) comm_val_C: Commitment<E>,
 
   // commitments to the timestamp polynomials
-  comm_ts_row: Commitment<E>,
-  comm_ts_col: Commitment<E>,
+  pub(in crate::spartan) comm_ts_row: Commitment<E>,
+  pub(in crate::spartan) comm_ts_col: Commitment<E>,
 }
 
 impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSShapeSparkCommitment<E> {
@@ -201,7 +201,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   }
 
   // computes evaluation oracles
-  fn evaluation_oracles(
+  pub(in crate::spartan) fn evaluation_oracles(
     &self,
     S: &R1CSShape<E>,
     r_x: &E::Scalar,
@@ -683,7 +683,7 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 }
 
-struct OuterSumcheckInstance<E: Engine> {
+pub(in crate::spartan) struct OuterSumcheckInstance<E: Engine> {
   poly_tau: MultilinearPolynomial<E::Scalar>,
   poly_Az: MultilinearPolynomial<E::Scalar>,
   poly_Bz: MultilinearPolynomial<E::Scalar>,
@@ -787,13 +787,27 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   }
 }
 
-struct InnerSumcheckInstance<E: Engine> {
+pub(in crate::spartan) struct InnerSumcheckInstance<E: Engine> {
   claim: E::Scalar,
   poly_L_row: MultilinearPolynomial<E::Scalar>,
   poly_L_col: MultilinearPolynomial<E::Scalar>,
   poly_val: MultilinearPolynomial<E::Scalar>,
 }
-
+impl<E: Engine> InnerSumcheckInstance<E> {
+  pub fn new(
+    claim: E::Scalar,
+    poly_L_row: MultilinearPolynomial<E::Scalar>,
+    poly_L_col: MultilinearPolynomial<E::Scalar>,
+    poly_val: MultilinearPolynomial<E::Scalar>,
+  ) -> Self {
+    Self {
+      claim,
+      poly_L_row,
+      poly_L_col,
+      poly_val,
+    }
+  }
+}
 impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
   fn initial_claims(&self) -> Vec<E::Scalar> {
     vec![self.claim]
