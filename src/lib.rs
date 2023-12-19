@@ -1192,16 +1192,17 @@ mod tests {
     );
     test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
 
-    test_ivc_nontrivial_with_spark_compression_with::<
-      Bn256EngineKZG,
-      GrumpkinEngine,
-      provider::hyperkzg::EvaluationEngine<_>,
-      EE<_>,
-    >();
     test_ivc_nontrivial_with_compression_with::<
       Bn256EngineZM,
       GrumpkinEngine,
       ZMPCS<Bn256, _>,
+      EE<_>,
+    >();
+
+    test_ivc_nontrivial_with_spark_compression_with::<
+      Bn256EngineKZG,
+      GrumpkinEngine,
+      provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
     >();
   }

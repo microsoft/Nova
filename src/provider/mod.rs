@@ -152,6 +152,7 @@ impl Engine for VestaEngine {
 #[cfg(test)]
 mod tests {
   use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
+  
   use digest::{ExtendableOutput, Update};
   use group::Curve;
   use halo2curves::CurveExt;

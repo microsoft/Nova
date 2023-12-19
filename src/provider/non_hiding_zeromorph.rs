@@ -6,8 +6,8 @@ use crate::{
   errors::{NovaError, PCSError},
   provider::{
     non_hiding_kzg::{
-      UVKZGCommitment, UVKZGEvaluation, UVKZGPoly, UVKZGProof, UVKZGProverKey, UVKZGVerifierKey,
-      UVUniversalKZGParam, UVKZGPCS,
+      KZGProverKey, KZGVerifierKey, UVKZGCommitment, UVKZGEvaluation, UVKZGPoly, UVKZGProof,
+      UniversalKZGParam, UVKZGPCS,
     },
     traits::DlogGroup,
   },
@@ -39,8 +39,8 @@ use crate::provider::kzg_commitment::KZGCommitmentEngine;
   deserialize = "E::G1Affine: Deserialize<'de>"
 ))]
 pub struct ZMProverKey<E: Engine> {
-  commit_pp: UVKZGProverKey<E>,
-  open_pp: UVKZGProverKey<E>,
+  commit_pp: KZGProverKey<E>,
+  open_pp: KZGProverKey<E>,
 }
 
 /// `ZMVerifierKey` is used to check evaluation proofs for a given
@@ -51,7 +51,7 @@ pub struct ZMProverKey<E: Engine> {
   deserialize = "E::G1Affine: Deserialize<'de>, E::G2Affine: Deserialize<'de>"
 ))]
 pub struct ZMVerifierKey<E: Engine> {
-  vp: UVKZGVerifierKey<E>,
+  vp: KZGVerifierKey<E>,
   s_offset_h: E::G2Affine,
 }
 
@@ -66,14 +66,14 @@ pub struct ZMVerifierKey<E: Engine> {
 // TODO: important, we need a better way to handle that the commitment key should be 2^max_degree sized,
 // see the runtime error in commit() below
 pub fn trim<E: Engine>(
-  params: &UVUniversalKZGParam<E>,
+  params: &UniversalKZGParam<E>,
   max_degree: usize,
 ) -> (ZMProverKey<E>, ZMVerifierKey<E>) {
   let (commit_pp, vp) = params.trim(max_degree);
   let offset = params.powers_of_g.len() - max_degree;
   let open_pp = {
     let offset_powers_of_g1 = params.powers_of_g[offset..].to_vec();
-    UVKZGProverKey {
+    KZGProverKey {
       powers_of_g: offset_powers_of_g1,
     }
   };
@@ -470,12 +470,12 @@ where
 
   type EvaluationArgument = ZMProof<E>;
 
-  fn setup(ck: &UVUniversalKZGParam<E>) -> (Self::ProverKey, Self::VerifierKey) {
+  fn setup(ck: &UniversalKZGParam<E>) -> (Self::ProverKey, Self::VerifierKey) {
     trim(ck, ck.length() - 1)
   }
 
   fn prove(
-    _ck: &UVUniversalKZGParam<E>,
+    _ck: &UniversalKZGParam<E>,
     pk: &Self::ProverKey,
     transcript: &mut NE::TE,
     comm: &Commitment<NE>,
@@ -525,7 +525,7 @@ mod test {
   use crate::{
     provider::{
       keccak::Keccak256Transcript,
-      non_hiding_kzg::{UVKZGPoly, UVUniversalKZGParam},
+      non_hiding_kzg::{UVKZGPoly, UniversalKZGParam},
       non_hiding_zeromorph::{
         batched_lifted_degree_quotient, eval_and_quotient_scalars, trim, ZMEvaluation, ZMPCS,
       },
@@ -545,7 +545,7 @@ mod test {
     let max_vars = 16;
     let mut rng = thread_rng();
     let max_poly_size = 1 << (max_vars + 1);
-    let universal_setup = UVUniversalKZGParam::<E>::gen_srs_for_testing(&mut rng, max_poly_size);
+    let universal_setup = UniversalKZGParam::<E>::gen_srs_for_testing(&mut rng, max_poly_size);
 
     for num_vars in 3..max_vars {
       // Setup
