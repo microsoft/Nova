@@ -16,7 +16,7 @@ use crate::traits::{
 };
 
 use crate::provider::{
-  non_hiding_kzg::{UVKZGCommitment, UVUniversalKZGParam},
+  non_hiding_kzg::{UVKZGCommitment, UniversalKZGParam},
   pedersen::Commitment,
   traits::DlogGroup,
 };
@@ -35,7 +35,7 @@ where
   E::G2Affine: Serialize + for<'de> Deserialize<'de>,
   E::Fr: PrimeFieldBits, // TODO due to use of gen_srs_for_testing, make optional
 {
-  type CommitmentKey = UVUniversalKZGParam<E>;
+  type CommitmentKey = UniversalKZGParam<E>;
   type Commitment = Commitment<NE>;
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
@@ -44,7 +44,7 @@ where
     let len = label.len().min(32);
     bytes[..len].copy_from_slice(&label[..len]);
     let rng = &mut StdRng::from_seed(bytes);
-    UVUniversalKZGParam::gen_srs_for_testing(rng, n.next_power_of_two())
+    UniversalKZGParam::gen_srs_for_testing(rng, n.next_power_of_two())
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[<E::G1 as Group>::Scalar]) -> Self::Commitment {
