@@ -33,7 +33,7 @@ use crate::bellpepper::{
   solver::SatisfyingAssignment,
 };
 use crate::digest::{DigestComputer, SimpleDigestible};
-use bellpepper_core::ConstraintSystem;
+use bellpepper_core::{ConstraintSystem, SynthesisError};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
@@ -286,14 +286,9 @@ where
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let zi_primary = circuit_primary
-      .synthesize(&mut cs_primary)
-      .map_err(|_| NovaError::SynthesisError)
-      .expect("Nova error synthesis");
-    let (u_primary, w_primary) = cs_primary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
-      .map_err(|_e| NovaError::UnSat)
-      .expect("Nova error unsat");
+    let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
+    let (u_primary, w_primary) =
+      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
 
     // base case for the secondary
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
@@ -312,14 +307,9 @@ where
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let zi_secondary = circuit_secondary
-      .synthesize(&mut cs_secondary)
-      .map_err(|_| NovaError::SynthesisError)
-      .expect("Nova error synthesis");
-    let (u_secondary, w_secondary) = cs_secondary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
-      .map_err(|_e| NovaError::UnSat)
-      .expect("Nova error unsat");
+    let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
+    let (u_secondary, w_secondary) =
+      cs_secondary.r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)?;
 
     // IVC proof for the primary circuit
     let l_w_primary = w_primary;
@@ -342,15 +332,13 @@ where
 
     let zi_primary = zi_primary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<E1 as Engine>::Scalar>, NovaError>>()
-      .expect("Nova error synthesis");
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
 
     let zi_secondary = zi_secondary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<E2 as Engine>::Scalar>, NovaError>>()
-      .expect("Nova error synthesis");
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E2 as Engine>::Scalar>, _>>()?;
 
     Ok(Self {
       z0_primary: z0_primary.to_vec(),
@@ -392,8 +380,7 @@ where
       &self.r_W_secondary,
       &self.l_u_secondary,
       &self.l_w_secondary,
-    )
-    .expect("Unable to fold secondary");
+    )?;
 
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
@@ -412,14 +399,10 @@ where
       c_primary,
       pp.ro_consts_circuit_primary.clone(),
     );
-    let zi_primary = circuit_primary
-      .synthesize(&mut cs_primary)
-      .map_err(|_| NovaError::SynthesisError)?;
+    let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
 
-    let (l_u_primary, l_w_primary) = cs_primary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)
-      .map_err(|_e| NovaError::UnSat)
-      .expect("Nova error unsat");
+    let (l_u_primary, l_w_primary) =
+      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
 
     // fold the primary circuit's instance
     let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
@@ -431,8 +414,7 @@ where
       &self.r_W_primary,
       &l_u_primary,
       &l_w_primary,
-    )
-    .expect("Unable to fold primary");
+    )?;
 
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
@@ -451,9 +433,7 @@ where
       c_secondary,
       pp.ro_consts_circuit_secondary.clone(),
     );
-    let zi_secondary = circuit_secondary
-      .synthesize(&mut cs_secondary)
-      .map_err(|_| NovaError::SynthesisError)?;
+    let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
@@ -462,12 +442,12 @@ where
     // update the running instances and witnesses
     self.zi_primary = zi_primary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<E1 as Engine>::Scalar>, NovaError>>()?;
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
     self.zi_secondary = zi_secondary
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<E2 as Engine>::Scalar>, NovaError>>()?;
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E2 as Engine>::Scalar>, _>>()?;
 
     self.l_u_secondary = l_u_secondary;
     self.l_w_secondary = l_w_secondary;
