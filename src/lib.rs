@@ -588,6 +588,16 @@ where
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
+
+  /// Get the outputs after the last step of computation.
+  pub fn outputs(&self) -> (&[E1::Scalar], &[E2::Scalar]) {
+    (&self.zi_primary, &self.zi_secondary)
+  }
+
+  /// The number of steps which have been executed thus far.
+  pub fn num_steps(&self) -> usize {
+    self.i
+  }
 }
 
 /// A type that holds the prover key for `CompressedSNARK`
