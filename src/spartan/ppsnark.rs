@@ -1050,20 +1050,16 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (comm_L_row, comm_L_col) =
       rayon::join(|| E::CE::commit(ck, &L_row), || E::CE::commit(ck, &L_col));
 
-    // absorb the claimed evaluations into the transcript
-    transcript.absorb(
-      b"e",
-      &[eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau].as_slice(),
-    );
-    // absorb commitments to L_row and L_col in the transcript
-    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
-
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau
     let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
+
+    // absorb the claimed evaluations into the transcript
+    transcript.absorb(b"e", &eval_vec.as_slice());
+    // absorb commitments to L_row and L_col in the transcript
+    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
     let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
     let poly_vec = vec![&Az, &Bz, &Cz];
-    transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
@@ -1343,18 +1339,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let tau = transcript.squeeze(b"t")?;
     let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
 
-    transcript.absorb(
-      b"e",
-      &[
-        self.eval_Az_at_tau,
-        self.eval_Bz_at_tau,
-        self.eval_Cz_at_tau,
-      ]
-      .as_slice(),
-    );
-
-    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
-
     // add claims about Az, Bz, and Cz to be checked later
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau
@@ -1363,8 +1347,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       self.eval_Bz_at_tau,
       self.eval_Cz_at_tau,
     ];
+
+    transcript.absorb(b"e", &eval_vec.as_slice());
+
+    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
     let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
-    transcript.absorb(b"e", &eval_vec.as_slice()); // c_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
     let claim = u.e;
