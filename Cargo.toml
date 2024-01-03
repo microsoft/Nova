@@ -32,16 +32,19 @@ bincode = "1.3"
 bitvec = "1.0"
 byteorder = "1.4.3"
 thiserror = "1.0"
-halo2curves = { version = "0.5.0", features = ["derive_serde"] }
 group = "0.13.0"
 once_cell = "1.18.0"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }
 
-[target.wasm32-unknown-unknown.dependencies]
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+halo2curves = { version = "0.5.0", features = ["bits", "derive_serde"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 # see https://github.com/rust-random/rand/pull/948
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }
+halo2curves = { version = "0.5.0", default-features = false, features = ["bits", "derive_serde"] }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
