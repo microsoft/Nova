@@ -1,10 +1,7 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
   impl_traits,
-  provider::{
-    msm::cpu_best_msm,
-    traits::{CompressedGroup, DlogGroup, PairingGroup},
-  },
+  provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
@@ -13,18 +10,18 @@ use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEn
 use num_bigint::BigInt;
 use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
+use halo2curves::{
+  bn256::{
+    pairing, G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G2Affine, G2Compressed, Gt,
+    G1 as Bn256Point, G2,
+  },
+  grumpkin::{G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint},
+  msm::best_multiexp,
+};
 use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
-
-use halo2curves::bn256::{
-  pairing, G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G2Affine, G2Compressed, Gt,
-  G1 as Bn256Point, G2,
-};
-use halo2curves::grumpkin::{
-  G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint,
-};
 
 /// Re-exports that give access to the standard aliases used in the code base, for bn256
 pub mod bn256 {
@@ -93,7 +90,7 @@ impl DlogGroup for G2 {
     scalars: &[Self::Scalar],
     bases: &[Self::PreprocessedGroupElement],
   ) -> Self {
-    cpu_best_msm(scalars, bases)
+    best_multiexp(scalars, bases)
   }
 
   fn preprocessed(&self) -> Self::PreprocessedGroupElement {

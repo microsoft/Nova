@@ -1,13 +1,11 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
-  provider::{
-    msm::cpu_best_msm,
-    traits::{CompressedGroup, DlogGroup},
-  },
+  provider::traits::{CompressedGroup, DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
+use halo2curves::msm::best_multiexp;
 use num_bigint::BigInt;
 use num_traits::Num;
 use pasta_curves::{
@@ -82,10 +80,10 @@ macro_rules! impl_traits {
         if scalars.len() >= 128 {
           pasta_msm::$name(bases, scalars)
         } else {
-          cpu_best_msm(scalars, bases)
+          best_multiexp(scalars, bases)
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-        cpu_best_msm(scalars, bases)
+        best_multiexp(scalars, bases)
       }
 
       fn preprocessed(&self) -> Self::PreprocessedGroupElement {

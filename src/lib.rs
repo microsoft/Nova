@@ -959,29 +959,16 @@ mod tests {
     let trivial_circuit2_grumpkin = TrivialCircuit::<<GrumpkinEngine as Engine>::Scalar>::default();
     let cubic_circuit1_grumpkin = CubicCircuit::<<Bn256Engine as Engine>::Scalar>::default();
 
-    #[cfg(feature = "asm")]
     test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "c4ecd363a6c1473de7e0d24fc1dbb660f563556e2e13fb4614acdff04cab7701",
+      "1507bae161c78d6fbb231d5aa288a5cbc91f667c563e1fc4d47e7965a00a6b02",
     );
-    #[cfg(feature = "asm")]
+
     test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      "4853a6463b6309f6ae76442934d0a423f51f1e10abaddd0d39bf5644ed589100",
-    );
-    #[cfg(not(feature = "asm"))]
-    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
-      &trivial_circuit1_grumpkin,
-      &trivial_circuit2_grumpkin,
-      "c26cc841d42c19bf98bc2482e66cd30903922f2a923927b85d66f375a821f101",
-    );
-    #[cfg(not(feature = "asm"))]
-    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
-      &cubic_circuit1_grumpkin,
-      &trivial_circuit2_grumpkin,
-      "4c484cab71e93dda69b420beb7276af969c2034a7ffb0ea8e6964e96a7e5a901",
+      "3ffcbf855534eea209f2c9735c71ed055e88eecc7342144d47d5de9597432001",
     );
 
     let trivial_circuit1_secp = TrivialCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
@@ -991,12 +978,12 @@ mod tests {
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &trivial_circuit1_secp,
       &trivial_circuit2_secp,
-      "b794d655fb39891eaf530ca3be1ec2a5ac97f72a0d07c45dbb84529d8a611502",
+      "ac3329f372c18a100b89fe6363844d2df42e6be539ce21bdfbe867e709be5403",
     );
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &cubic_circuit1_secp,
       &trivial_circuit2_secp,
-      "50e6acf363c31c2ac1c9c646b4494cb21aae6cb648c7b0d4c95015c811fba302",
+      "2310754f2fd0e1c4e097d178f7d36e18c0362ee59c713f2a0157a9d9be066103",
     );
   }
 
