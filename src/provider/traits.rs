@@ -145,7 +145,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::PreprocessedGroupElement],
       ) -> Self {
-        cpu_best_msm(scalars, bases)
+        best_multiexp(scalars, bases)
       }
 
       fn preprocessed(&self) -> Self::PreprocessedGroupElement {

@@ -14,7 +14,6 @@ pub(crate) mod traits;
 
 // crate-private modules
 mod keccak;
-mod msm;
 
 use crate::{
   provider::{
@@ -114,17 +113,11 @@ impl Engine for VestaEngine {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::{
-    bn256_grumpkin::{bn256, grumpkin},
-    msm::cpu_best_msm,
-    secp_secq::{secp256k1, secq256k1},
-    traits::DlogGroup,
-  };
+  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
   use digest::{ExtendableOutput, Update};
-  use group::{ff::Field, Curve, Group};
-  use halo2curves::{CurveAffine, CurveExt};
-  use pasta_curves::{pallas, vesta};
-  use rand_core::OsRng;
+  use group::Curve;
+  use halo2curves::CurveExt;
+  use pasta_curves::pallas;
   use sha3::Shake256;
   use std::io::Read;
 
@@ -155,32 +148,6 @@ mod tests {
         assert_eq!(ck_par, ck_ser);
       }
     };
-  }
-
-  fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
-    let n = 8;
-    let coeffs = (0..n).map(|_| F::random(OsRng)).collect::<Vec<_>>();
-    let bases = (0..n)
-      .map(|_| A::from(A::generator() * F::random(OsRng)))
-      .collect::<Vec<_>>();
-    let naive = coeffs
-      .iter()
-      .zip(bases.iter())
-      .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
-        acc + *base * coeff
-      });
-
-    assert_eq!(naive, cpu_best_msm(&coeffs, &bases))
-  }
-
-  #[test]
-  fn test_msm() {
-    test_msm_with::<pallas::Scalar, pallas::Affine>();
-    test_msm_with::<vesta::Scalar, vesta::Affine>();
-    test_msm_with::<bn256::Scalar, bn256::Affine>();
-    test_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
-    test_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
-    test_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
   }
 
   #[test]
