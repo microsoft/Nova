@@ -84,12 +84,7 @@ pub fn u64_into_bit_vec_le<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
   let bits = values
     .into_iter()
     .enumerate()
-    .map(|(i, b)| {
-      Ok(AllocatedBit::alloc(
-        cs.namespace(|| format!("bit {}", i)),
-        b,
-      )?)
-    })
+    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), b))
     .collect::<Result<Vec<_>, SynthesisError>>()?;
 
   Ok(bits)
@@ -278,7 +273,7 @@ fn main() {
       .unwrap();
 
     let start = Instant::now();
-    for (_, circuit_primary) in circuits.iter().enumerate() {
+    for circuit_primary in circuits.iter() {
       let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
       assert!(res.is_ok());
     }
