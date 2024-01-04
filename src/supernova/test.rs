@@ -7,7 +7,7 @@ use crate::provider::PallasEngine;
 use crate::provider::Secp256k1Engine;
 use crate::provider::Secq256k1Engine;
 use crate::provider::VestaEngine;
-use crate::traits::circuit_supernova::{
+use crate::supernova::circuit::{
   EnforcingStepCircuit, StepCircuit, TrivialSecondaryCircuit, TrivialTestCircuit,
 };
 use crate::traits::snark::default_ck_hint;

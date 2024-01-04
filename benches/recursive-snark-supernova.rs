@@ -7,11 +7,8 @@ use nova_snark::{
   provider::{PallasEngine, VestaEngine},
   supernova::NonUniformCircuit,
   supernova::{PublicParams, RecursiveSNARK},
-  traits::{
-    circuit_supernova::{StepCircuit, TrivialTestCircuit},
-    snark::default_ck_hint,
-    Engine,
-  },
+  supernova::{StepCircuit, TrivialTestCircuit},
+  traits::{snark::default_ck_hint, Engine},
 };
 use std::time::Duration;
 
