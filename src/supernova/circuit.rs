@@ -11,7 +11,6 @@
 //!    2. R1CS Instance u is folded into Ui[augmented_circuit_index] correctly; just like Nova IVC.
 //!    3. (optional by F logic) F circuit might check `program_counter_{i}` invoked current F circuit is legal or not.
 //!    3. F circuit produce `program_counter_{i+1}` and sent to next round for optionally constraint the next F' argumented circuit.
-
 use crate::{
   constants::NUM_HASH_BITS,
   gadgets::{
@@ -26,10 +25,7 @@ use crate::{
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{
-    circuit_supernova::EnforcingStepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait,
-    ROConstantsCircuit,
-  },
+  traits::{commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit},
   Commitment,
 };
 use bellpepper_core::{
@@ -40,14 +36,126 @@ use bellpepper_core::{
 
 use bellpepper::gadgets::Assignment;
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
+use std::marker::PhantomData;
 
 use crate::supernova::{
   num_ro_inputs,
   utils::{get_from_vec_alloc_relaxed_r1cs, get_selector_vec_from_index},
 };
+
+/// A helper trait for a step of the incremental computation for `SuperNova` (i.e., circuit for F) -- to be implemented by
+/// applications.
+pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
+  /// Return the the number of inputs or outputs of each step
+  /// (this method is called only at circuit synthesis time)
+  /// `synthesize` and `output` methods are expected to take as
+  /// input a vector of size equal to arity and output a vector of size equal to arity
+  fn arity(&self) -> usize;
+
+  /// Return this `StepCircuit`'s assigned index, for use when enforcing the program counter.
+  fn circuit_index(&self) -> usize;
+
+  /// Synthesize the circuit for a computation step and return variable
+  /// that corresponds to the output of the step `pc_{i+1}` and `z_{i+1}`
+  fn synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    cs: &mut CS,
+    pc: Option<&AllocatedNum<F>>,
+    z: &[AllocatedNum<F>],
+  ) -> Result<(Option<AllocatedNum<F>>, Vec<AllocatedNum<F>>), SynthesisError>;
+}
+
+/// A helper trait for a step of the incremental computation for `SuperNova` (i.e., circuit for F) -- automatically
+/// implemented for `StepCircuit` and used internally to enforce that the circuit selected by the program counter is used
+/// at each step.
+pub trait EnforcingStepCircuit<F: PrimeField>: Send + Sync + Clone + StepCircuit<F> {
+  /// Delegate synthesis to `StepCircuit::synthesize`, and additionally, enforce the constraint that program counter
+  /// `pc`, if supplied, is equal to the circuit's assigned index.
+  fn enforcing_synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    cs: &mut CS,
+    pc: Option<&AllocatedNum<F>>,
+    z: &[AllocatedNum<F>],
+  ) -> Result<(Option<AllocatedNum<F>>, Vec<AllocatedNum<F>>), SynthesisError> {
+    if let Some(pc) = pc {
+      let circuit_index = F::from(self.circuit_index() as u64);
+
+      // pc * 1 = circuit_index
+      cs.enforce(
+        || "pc matches circuit index",
+        |lc| lc + pc.get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + (circuit_index, CS::one()),
+      );
+    }
+    self.synthesize(cs, pc, z)
+  }
+}
+
+impl<F: PrimeField, S: StepCircuit<F>> EnforcingStepCircuit<F> for S {}
+
+/// A trivial step circuit that simply returns the input
+#[derive(Clone, Debug, Default)]
+pub struct TrivialTestCircuit<F: PrimeField> {
+  _p: PhantomData<F>,
+}
+
+impl<F> StepCircuit<F> for TrivialTestCircuit<F>
+where
+  F: PrimeField,
+{
+  fn arity(&self) -> usize {
+    1
+  }
+
+  fn circuit_index(&self) -> usize {
+    0
+  }
+
+  fn synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    _cs: &mut CS,
+    program_counter: Option<&AllocatedNum<F>>,
+    z: &[AllocatedNum<F>],
+  ) -> Result<(Option<AllocatedNum<F>>, Vec<AllocatedNum<F>>), SynthesisError> {
+    Ok((program_counter.cloned(), z.to_vec()))
+  }
+}
+
+/// A trivial step circuit that simply returns the input, for use on the secondary circuit when implementing NIVC.
+/// NOTE: This should not be needed. The secondary circuit doesn't need the program counter at all.
+/// Ideally, the need this fills could be met by `traits::circuit::TrivialTestCircuit` (or equivalent).
+#[derive(Clone, Debug, Default)]
+pub struct TrivialSecondaryCircuit<F: PrimeField> {
+  _p: PhantomData<F>,
+}
+
+impl<F> StepCircuit<F> for TrivialSecondaryCircuit<F>
+where
+  F: PrimeField,
+{
+  fn arity(&self) -> usize {
+    1
+  }
+
+  fn circuit_index(&self) -> usize {
+    0
+  }
+
+  fn synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    _cs: &mut CS,
+    program_counter: Option<&AllocatedNum<F>>,
+    z: &[AllocatedNum<F>],
+  ) -> Result<(Option<AllocatedNum<F>>, Vec<AllocatedNum<F>>), SynthesisError> {
+    assert!(program_counter.is_none());
+    assert_eq!(z.len(), 1, "Arity of trivial step circuit should be 1");
+    Ok((None, z.to_vec()))
+  }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SuperNovaAugmentedCircuitParams {
@@ -604,7 +712,8 @@ mod tests {
       {Bn256EngineKZG, GrumpkinEngine}, {PallasEngine, VestaEngine},
       {Secp256k1Engine, Secq256k1Engine},
     },
-    traits::{circuit_supernova::TrivialTestCircuit, snark::default_ck_hint},
+    supernova::circuit::TrivialTestCircuit,
+    traits::snark::default_ck_hint,
   };
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
