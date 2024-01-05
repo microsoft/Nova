@@ -421,7 +421,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 ///
 /// We allow the polynomial Pᵢ to have different sizes, by appropriately scaling
 /// the claims and resulting evaluations from Sumcheck.
-fn batch_eval_reduce<E: Engine>(
+pub(in crate::spartan) fn batch_eval_reduce<E: Engine>(
   u_vec: Vec<PolyEvalInstance<E>>,
   w_vec: Vec<PolyEvalWitness<E>>,
   transcript: &mut E::TE,
@@ -495,7 +495,7 @@ fn batch_eval_reduce<E: Engine>(
 
 /// Verifies a batch of polynomial evaluation claims using Sumcheck
 /// reducing them to a single claim at the same point.
-fn batch_eval_verify<E: Engine>(
+pub(in crate::spartan) fn batch_eval_verify<E: Engine>(
   u_vec: Vec<PolyEvalInstance<E>>,
   transcript: &mut E::TE,
   sc_proof_batch: &SumcheckProof<E>,

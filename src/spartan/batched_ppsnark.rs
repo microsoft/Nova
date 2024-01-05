@@ -939,9 +939,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> BatchedRelaxedR1CSSNARKTrait<E>
 
           let X = {
             let X = vec![U.u]
-            .into_iter()
-            .chain(U.X.iter().cloned())
-            .collect::<Vec<E::Scalar>>();
+              .into_iter()
+              .chain(U.X.iter().cloned())
+              .collect::<Vec<E::Scalar>>();
             SparsePolynomial::new(num_vars_log, X).evaluate(&rand_sc_unpad[1..])
           };
 

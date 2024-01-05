@@ -174,7 +174,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     }
   }
 
-  fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
+  pub(in crate::spartan) fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
     let comm_vec: Vec<Commitment<E>> = [
       &self.row,
       &self.col,
@@ -201,7 +201,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   }
 
   // computes evaluation oracles
-  pub(in crate::spartan) fn evaluation_oracles(
+  fn evaluation_oracles(
     &self,
     S: &R1CSShape<E>,
     r_x: &E::Scalar,
@@ -257,7 +257,11 @@ pub struct WitnessBoundSumcheck<E: Engine> {
 }
 
 impl<E: Engine> WitnessBoundSumcheck<E> {
-  fn new(tau: E::Scalar, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
+  pub(in crate::spartan) fn new(
+    tau: E::Scalar,
+    poly_W_padded: Vec<E::Scalar>,
+    num_vars: usize,
+  ) -> Self {
     let num_vars_log = num_vars.log_2();
     // When num_vars = num_rounds, we shouldn't have to prove anything
     // but we still want this instance to compute the evaluation of W
@@ -315,7 +319,7 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 }
 
-struct MemorySumcheckInstance<E: Engine> {
+pub(in crate::spartan) struct MemorySumcheckInstance<E: Engine> {
   // row
   w_plus_r_row: MultilinearPolynomial<E::Scalar>,
   t_plus_r_row: MultilinearPolynomial<E::Scalar>,

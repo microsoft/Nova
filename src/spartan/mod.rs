@@ -10,11 +10,11 @@ pub mod batched_ppsnark;
 pub mod direct;
 #[macro_use]
 mod macros;
-pub(crate) mod math;
+mod math;
 pub mod polys;
 pub mod ppsnark;
 pub mod snark;
-mod sumcheck;
+pub(in crate::spartan) mod sumcheck;
 
 use crate::{
   r1cs::{R1CSShape, SparseMatrix},
