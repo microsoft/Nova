@@ -201,7 +201,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   }
 
   // computes evaluation oracles
-  pub(in crate::spartan) fn evaluation_oracles(
+  fn evaluation_oracles(
     &self,
     S: &R1CSShape<E>,
     r_x: &E::Scalar,

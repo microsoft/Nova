@@ -82,7 +82,7 @@ where
   C2: StepCircuit<E2::Scalar>,
 {
   /// The internal circuit shapes
-  pub circuit_shapes: Vec<R1CSWithArity<E1>>,
+  circuit_shapes: Vec<R1CSWithArity<E1>>,
 
   ro_consts_primary: ROConstants<E1>,
   ro_consts_circuit_primary: ROConstantsCircuit<E2>,
@@ -373,7 +373,7 @@ where
   }
 
   /// Returns all the primary R1CS Shapes
-  pub fn primary_r1cs_shapes(&self) -> Vec<&R1CSShape<E1>> {
+  fn primary_r1cs_shapes(&self) -> Vec<&R1CSShape<E1>> {
     self
       .circuit_shapes
       .iter()
@@ -1005,7 +1005,7 @@ where
 }
 
 /// Extension trait to simplify getting scalar form of initial circuit index.
-pub trait InitialProgramCounter<E1, E2, C1, C2>: NonUniformCircuit<E1, E2, C1, C2>
+trait InitialProgramCounter<E1, E2, C1, C2>: NonUniformCircuit<E1, E2, C1, C2>
 where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
   E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1078,7 +1078,7 @@ fn num_ro_inputs(num_circuits: usize, num_limbs: usize, arity: usize, is_primary
 
 pub mod error;
 pub mod snark;
-pub(crate) mod utils;
+mod utils;
 
 #[cfg(test)]
 mod test;
