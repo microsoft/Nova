@@ -54,7 +54,7 @@ pub trait CommitmentTrait<E: Engine>:
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError>;
 }
 
-/// A trait that helps determine the lenght of a structure.
+/// A trait that helps determine the length of a structure.
 /// Note this does not impose any memory representation contraints on the structure.
 pub trait Len {
   /// Returns the length of the structure.
