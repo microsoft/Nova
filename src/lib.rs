@@ -63,7 +63,7 @@ pub struct R1CSWithArity<E: Engine> {
 impl<E: Engine> SimpleDigestible for R1CSWithArity<E> {}
 
 impl<E: Engine> R1CSWithArity<E> {
-  /// Create a new `CircuitShape`
+  /// Create a new `R1CSWithArity`
   pub fn new(r1cs_shape: R1CSShape<E>, F_arity: usize) -> Self {
     Self {
       F_arity,
@@ -71,7 +71,7 @@ impl<E: Engine> R1CSWithArity<E> {
     }
   }
 
-  /// Return the [CircuitShape]' digest.
+  /// Return the [R1CSWithArity]' digest.
   pub fn digest(&self) -> E::Scalar {
     let dc: DigestComputer<'_, <E as Engine>::Scalar, R1CSWithArity<E>> = DigestComputer::new(self);
     dc.digest().expect("Failure in computing digest")

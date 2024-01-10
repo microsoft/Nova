@@ -71,7 +71,7 @@ impl<E: Engine> CircuitDigests<E> {
   }
 }
 
-/// A vector of [CircuitParams] corresponding to a set of [PublicParams]
+/// A vector of [R1CSWithArity] adjoined to a set of [PublicParams]
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<E1, E2, C1, C2>
@@ -288,7 +288,7 @@ where
     (circuit_shapes, aux_params)
   }
 
-  /// Create a [PublicParams] from a vector of raw [CircuitShape] and auxiliary params.
+  /// Create a [PublicParams] from a vector of raw [R1CSWithArity] and auxiliary params.
   pub fn from_parts(circuit_shapes: Vec<R1CSWithArity<E1>>, aux_params: AuxParams<E1, E2>) -> Self {
     let pp = PublicParams {
       circuit_shapes,
@@ -312,7 +312,7 @@ where
     pp
   }
 
-  /// Create a [PublicParams] from a vector of raw [CircuitShape] and auxiliary params.
+  /// Create a [PublicParams] from a vector of raw [R1CSWithArity] and auxiliary params.
   /// We don't check that the `aux_params.digest` is a valid digest for the created params.
   pub fn from_parts_unchecked(
     circuit_shapes: Vec<R1CSWithArity<E1>>,
@@ -335,7 +335,7 @@ where
   }
 
   /// Compute primary and secondary commitment keys sized to handle the largest of the circuits in the provided
-  /// `CircuitShape`.
+  /// `R1CSWithArity`.
   fn compute_primary_ck(
     circuit_params: &[R1CSWithArity<E1>],
     ck_hint1: &CommitmentKeyHint<E1>,
