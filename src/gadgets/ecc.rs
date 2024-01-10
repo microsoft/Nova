@@ -193,7 +193,7 @@ where
   }
 
   /// Adds other point to this point and returns the result. Assumes that the two points are
-  /// different and that both `other.is_infinity` and `this.is_infinty` are bits
+  /// different and that both `other.is_infinity` and `this.is_infinity` are bits
   pub fn add_internal<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,

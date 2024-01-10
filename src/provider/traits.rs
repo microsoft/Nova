@@ -92,7 +92,7 @@ pub trait DlogGroup:
   /// Returns the generator of the group
   fn gen() -> Self;
 
-  /// Returns the affine coordinates (x, y, infinty) for the point
+  /// Returns the affine coordinates (x, y, infinity) for the point
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
