@@ -27,10 +27,11 @@ use crate::{
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CompressedCommitment,
+  zip_with, Commitment, CommitmentKey, CompressedCommitment,
 };
 use core::cmp::max;
 use ff::Field;
+use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -339,13 +340,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
               let inv = batch_invert(&T.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>())?;
 
               // compute inv[i] * TS[i] in parallel
-              Ok(
-                inv
-                  .par_iter()
-                  .zip(TS.par_iter())
-                  .map(|(e1, e2)| *e1 * *e2)
-                  .collect::<Vec<_>>(),
-              )
+              Ok(zip_with!(par_iter, (inv, TS), |e1, e2| *e1 * e2).collect::<Vec<_>>())
             },
             || batch_invert(&W.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
           )
@@ -853,11 +848,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
     let coeffs = powers::<E>(&s, claims.len());
 
     // compute the joint claim
-    let claim = claims
-      .iter()
-      .zip(coeffs.iter())
-      .map(|(c_1, c_2)| *c_1 * c_2)
-      .sum();
+    let claim = zip_with!(iter, (claims, coeffs), |c_1, c_2| *c_1 * c_2).sum();
 
     let mut e = claim;
     let mut r: Vec<E::Scalar> = Vec::new();
@@ -1086,14 +1077,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         );
 
         // a sum-check instance to prove the second claim
-        let val = pk
-          .S_repr
-          .val_A
-          .par_iter()
-          .zip(pk.S_repr.val_B.par_iter())
-          .zip(pk.S_repr.val_C.par_iter())
-          .map(|((v_a, v_b), v_c)| *v_a + c * *v_b + c * c * *v_c)
-          .collect::<Vec<E::Scalar>>();
+        let val = zip_with!(
+          par_iter,
+          (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
+          |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
+        )
+        .collect::<Vec<E::Scalar>>();
         let inner_sc_inst = InnerSumcheckInstance {
           claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
           poly_L_row: MultilinearPolynomial::new(L_row.clone()),

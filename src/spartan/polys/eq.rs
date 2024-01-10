@@ -52,13 +52,10 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
       let (evals_left, evals_right) = evals.split_at_mut(size);
       let (evals_right, _) = evals_right.split_at_mut(size);
 
-      evals_left
-        .par_iter_mut()
-        .zip(evals_right.par_iter_mut())
-        .for_each(|(x, y)| {
-          *y = *x * r;
-          *x -= &*y;
-        });
+      zip_with_for_each!(par_iter_mut, (evals_left, evals_right), |x, y| {
+        *y = *x * r;
+        *x -= &*y;
+      });
 
       size *= 2;
     }

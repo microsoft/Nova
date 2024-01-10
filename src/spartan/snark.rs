@@ -22,6 +22,7 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
+use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 
 use rayon::prelude::*;
@@ -469,11 +470,7 @@ fn batch_eval_prove<E: Engine>(
   let rho = transcript.squeeze(b"r")?;
   let num_claims = w_vec_padded.len();
   let powers_of_rho = powers::<E>(&rho, num_claims);
-  let claim_batch_joint = u_vec_padded
-    .iter()
-    .zip(powers_of_rho.iter())
-    .map(|(u, p)| u.e * p)
-    .sum();
+  let claim_batch_joint = zip_with!(iter, (u_vec_padded, powers_of_rho), |u, p| u.e * p).sum();
 
   let mut polys_left: Vec<MultilinearPolynomial<E::Scalar>> = w_vec_padded
     .iter()
@@ -504,17 +501,12 @@ fn batch_eval_prove<E: Engine>(
   // we now combine evaluation claims at the same point rz into one
   let gamma = transcript.squeeze(b"g")?;
   let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
-  let comm_joint = u_vec_padded
-    .iter()
-    .zip(powers_of_gamma.iter())
-    .map(|(u, g_i)| u.c * *g_i)
+  let comm_joint = zip_with!(iter, (u_vec_padded, powers_of_gamma), |u, g_i| u.c * *g_i)
     .fold(Commitment::<E>::default(), |acc, item| acc + item);
   let poly_joint = PolyEvalWitness::weighted_sum(&w_vec_padded, &powers_of_gamma);
-  let eval_joint = claims_batch_left
-    .iter()
-    .zip(powers_of_gamma.iter())
-    .map(|(e, g_i)| *e * *g_i)
-    .sum();
+  let eval_joint = zip_with!(iter, (claims_batch_left, powers_of_gamma), |e, g_i| *e
+    * *g_i)
+  .sum();
 
   Ok((
     PolyEvalInstance::<E> {
@@ -544,11 +536,7 @@ fn batch_eval_verify<E: Engine>(
   let rho = transcript.squeeze(b"r")?;
   let num_claims: usize = u_vec_padded.len();
   let powers_of_rho = powers::<E>(&rho, num_claims);
-  let claim_batch_joint = u_vec_padded
-    .iter()
-    .zip(powers_of_rho.iter())
-    .map(|(u, p)| u.e * p)
-    .sum();
+  let claim_batch_joint = zip_with!(iter, (u_vec_padded, powers_of_rho), |u, p| u.e * p).sum();
 
   let num_rounds_z = u_vec_padded[0].x.len();
 
@@ -562,12 +550,12 @@ fn batch_eval_verify<E: Engine>(
       .map(|u| poly_rz.evaluate(&u.x))
       .collect::<Vec<E::Scalar>>();
 
-    evals
-      .iter()
-      .zip(evals_batch.iter())
-      .zip(powers_of_rho.iter())
-      .map(|((e_i, p_i), rho_i)| *e_i * *p_i * rho_i)
-      .sum()
+    zip_with!(
+      iter,
+      (evals, evals_batch, powers_of_rho),
+      |e_i, p_i, rho_i| *e_i * *p_i * rho_i
+    )
+    .sum()
   };
 
   if claim_batch_final != claim_batch_final_expected {
@@ -579,16 +567,9 @@ fn batch_eval_verify<E: Engine>(
   // we now combine evaluation claims at the same point rz into one
   let gamma = transcript.squeeze(b"g")?;
   let powers_of_gamma: Vec<E::Scalar> = powers::<E>(&gamma, num_claims);
-  let comm_joint = u_vec_padded
-    .iter()
-    .zip(powers_of_gamma.iter())
-    .map(|(u, g_i)| u.c * *g_i)
+  let comm_joint = zip_with!(iter, (u_vec_padded, powers_of_gamma), |u, g_i| u.c * *g_i)
     .fold(Commitment::<E>::default(), |acc, item| acc + item);
-  let eval_joint = evals_batch
-    .iter()
-    .zip(powers_of_gamma.iter())
-    .map(|(e, g_i)| *e * *g_i)
-    .sum();
+  let eval_joint = zip_with!(iter, (evals_batch, powers_of_gamma), |e, g_i| *e * *g_i).sum();
 
   Ok(PolyEvalInstance::<E> {
     c: comm_joint,

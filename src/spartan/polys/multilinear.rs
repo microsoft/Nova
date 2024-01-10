@@ -5,6 +5,7 @@
 use std::ops::{Add, Index};
 
 use ff::PrimeField;
+use itertools::Itertools as _;
 use rayon::prelude::{
   IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
   IntoParallelRefMutIterator, ParallelIterator,
@@ -65,12 +66,9 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
-    left
-      .par_iter_mut()
-      .zip(right.par_iter())
-      .for_each(|(a, b)| {
-        *a += *r * (*b - *a);
-      });
+    zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
+      *a += *r * (*b - *a);
+    });
 
     self.Z.resize(n, Scalar::ZERO);
     self.num_vars -= 1;
@@ -94,12 +92,12 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
-    EqPolynomial::new(r.to_vec())
-      .evals()
-      .into_par_iter()
-      .zip(Z.into_par_iter())
-      .map(|(a, b)| a * b)
-      .sum()
+    zip_with!(
+      into_par_iter,
+      (EqPolynomial::new(r.to_vec()).evals(), Z),
+      |a, b| a * b
+    )
+    .sum()
   }
 }
 
@@ -167,12 +165,7 @@ impl<Scalar: PrimeField> Add for MultilinearPolynomial<Scalar> {
       return Err("The two polynomials must have the same number of variables");
     }
 
-    let sum: Vec<Scalar> = self
-      .Z
-      .iter()
-      .zip(other.Z.iter())
-      .map(|(a, b)| *a + *b)
-      .collect();
+    let sum: Vec<Scalar> = zip_with!(iter, (self.Z, other.Z), |a, b| *a + *b).collect();
 
     Ok(MultilinearPolynomial::new(sum))
   }
