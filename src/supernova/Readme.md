@@ -76,7 +76,7 @@ At each step, the prover needs to:
 
 In pseudocode, `prove_step` looks something like:
 
-```ignore
+```text
 if i = 0 {
 	U[] = [ø;l]
 
@@ -189,7 +189,7 @@ The inputs of provided to the augmented step circuit $F'_j$ are:
 	- **Secondary**: Always `None`, and interpreted as $\mathsf{pc}_i \equiv 0$, since there is only a single circuit.
 - $z_0 \in \mathbb{F}^a$: inputs for the first iteration of $F$
 - $z_i \in \mathbb{F}^a$: inputs for the current iteration of $F$
-	- **Base case**: Set to `None`, in which case it is allocated as $[0]$, and $z_0$ is used as $z_i$.
+	- **Base case**: Set to `None`, in which case it is allocated as $\[0\]$, and $z_0$ is used as $z_i$.
 - $U_i[\ ] \in \mathbb{R}'^\ell$: list of relaxed R1CS instances on the other curve
 	- **Primary**: Since there is only a single circuit on the secondary curve, we have $\ell = 0$ and therefore $U_i[\ ]$ only contains a single `RelaxedR1CSInstance`.
 	- **Secondary**: The list of input relaxed instances $U_i[\ ]$ is initialized by passing a slice `[Option<RelaxedR1CSInstance<G>>]`, one for each circuit on the primary curve.
