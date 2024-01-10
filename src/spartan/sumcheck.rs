@@ -156,10 +156,10 @@ impl<E: Engine> SumcheckProof<E> {
     let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
 
     for _ in 0..num_rounds {
-      let evals: Vec<(E::Scalar, E::Scalar)> = poly_A_vec
-        .par_iter()
-        .zip(poly_B_vec.par_iter())
-        .map(|(poly_A, poly_B)| Self::compute_eval_points_quad(poly_A, poly_B, &comb_func))
+      let evals: Vec<(E::Scalar, E::Scalar)> =
+        zip_with!(par_iter, (poly_A_vec, poly_B_vec), |poly_A, poly_B| {
+          Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
+        })
         .collect();
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
@@ -176,15 +176,12 @@ impl<E: Engine> SumcheckProof<E> {
       r.push(r_i);
 
       // bound all tables to the verifier's challenge
-      poly_A_vec
-        .par_iter_mut()
-        .zip(poly_B_vec.par_iter_mut())
-        .for_each(|(poly_A, poly_B)| {
-          let _ = rayon::join(
-            || poly_A.bind_poly_var_top(&r_i),
-            || poly_B.bind_poly_var_top(&r_i),
-          );
-        });
+      zip_with_for_each!(par_iter_mut, (poly_A_vec, poly_B_vec), |poly_A, poly_B| {
+        let _ = rayon::join(
+          || poly_A.bind_poly_var_top(&r_i),
+          || poly_B.bind_poly_var_top(&r_i),
+        );
+      });
 
       e = poly.evaluate(&r_i);
       quad_polys.push(poly.compress());

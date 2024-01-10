@@ -5,6 +5,8 @@
 //! We also provide direct.rs that allows proving a step circuit directly with either of the two SNARKs.
 //!
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
+#[macro_use]
+mod macros;
 pub mod direct;
 pub(crate) mod math;
 pub mod polys;
@@ -14,6 +16,7 @@ mod sumcheck;
 
 use crate::{traits::Engine, Commitment};
 use ff::Field;
+use itertools::Itertools as _;
 use polys::multilinear::SparsePolynomial;
 use rayon::{iter::IntoParallelRefIterator, prelude::*};
 
@@ -64,20 +67,17 @@ impl<E: Engine> PolyEvalWitness<E> {
 
     let powers_of_s = powers::<E>(s, p_vec.len());
 
-    let p = p_vec
-      .par_iter()
-      .zip(powers_of_s.par_iter())
-      .map(|(v, &weight)| {
-        // compute the weighted sum for each vector
-        v.iter().map(|&x| x * weight).collect::<Vec<E::Scalar>>()
-      })
-      .reduce(
-        || vec![E::Scalar::ZERO; p_vec[0].len()],
-        |acc, v| {
-          // perform vector addition to combine the weighted vectors
-          acc.into_iter().zip(v).map(|(x, y)| x + y).collect()
-        },
-      );
+    let p = zip_with!(par_iter, (p_vec, powers_of_s), |v, weight| {
+      // compute the weighted sum for each vector
+      v.iter().map(|&x| x * weight).collect::<Vec<E::Scalar>>()
+    })
+    .reduce(
+      || vec![E::Scalar::ZERO; p_vec[0].len()],
+      |acc, v| {
+        // perform vector addition to combine the weighted vectors
+        zip_with!((acc.into_iter(), v), |x, y| x + y).collect()
+      },
+    );
 
     PolyEvalWitness { p }
   }
@@ -113,15 +113,8 @@ impl<E: Engine> PolyEvalInstance<E> {
     s: &E::Scalar,
   ) -> PolyEvalInstance<E> {
     let powers_of_s = powers::<E>(s, c_vec.len());
-    let e = e_vec
-      .par_iter()
-      .zip(powers_of_s.par_iter())
-      .map(|(e, p)| *e * p)
-      .sum();
-    let c = c_vec
-      .par_iter()
-      .zip(powers_of_s.par_iter())
-      .map(|(c, p)| *c * *p)
+    let e = zip_with!(par_iter, (e_vec, powers_of_s), |e, p| *e * p).sum();
+    let c = zip_with!(par_iter, (c_vec, powers_of_s), |c, p| *c * *p)
       .reduce(Commitment::<E>::default, |acc, item| acc + item);
 
     PolyEvalInstance {
