@@ -237,7 +237,10 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // Compute r:
     let mut ro = E::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
     ro.absorb(params);
+
+    // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
     u.absorb_in_ro(&mut ro);
+    
     ro.absorb(&T.x);
     ro.absorb(&T.y);
     ro.absorb(&T.is_infinity);
