@@ -580,7 +580,7 @@ where
   }
 
   /// Set step index
-  pub fn set_step_index(&mut self, index: usize) {
+  pub fn set_step(&mut self, index: usize) {
       self.i = index
   }
 }
