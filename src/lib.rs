@@ -578,6 +578,11 @@ where
   pub fn num_steps(&self) -> usize {
     self.i
   }
+
+  /// Set step index
+  pub fn set_step_index(&mut self, index: usize) {
+      self.i = index
+  }
 }
 
 /// A type that holds the prover key for `CompressedSNARK`
