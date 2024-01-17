@@ -41,9 +41,7 @@ use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
-use r1cs::{
-  CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
-};
+use r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit,
@@ -237,12 +235,16 @@ where
 {
   z0_primary: Vec<E1::Scalar>,
   z0_secondary: Vec<E2::Scalar>,
-  r_W_primary: RelaxedR1CSWitness<E1>,
-  r_U_primary: RelaxedR1CSInstance<E1>,
-  r_W_secondary: RelaxedR1CSWitness<E2>,
-  r_U_secondary: RelaxedR1CSInstance<E2>,
-  l_w_secondary: R1CSWitness<E2>,
-  l_u_secondary: R1CSInstance<E2>,
+
+  r_W_primary: RelaxedR1CSWitness<E1>, // running witness for the primary circuit
+  r_U_primary: RelaxedR1CSInstance<E1>, // running instance for the primary circuit
+
+  r_U_secondary: RelaxedR1CSInstance<E2>, // running instance for the secondary circuit
+  l_u_secondary: R1CSInstance<E2>,        // last instance for the secondary circuit
+  nifs_secondary: NIFS<E2>,               // NIFS to fold r_u_secondary and l_u_secondary
+  f_U_secondary: RelaxedR1CSInstance<E2>, // folded instance of r_u_secondary and l_u_secondary
+  f_W_secondary: RelaxedR1CSWitness<E2>, // witness for the folded instance of r_u_secondary and l_u_secondary
+
   i: usize,
   zi_primary: Vec<E1::Scalar>,
   zi_secondary: Vec<E2::Scalar>,
@@ -325,10 +327,20 @@ where
     let r_U_secondary =
       RelaxedR1CSInstance::<E2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
 
-    assert!(
-      !(zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary),
-      "Invalid step length"
-    );
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &r_U_secondary,
+      &r_W_secondary,
+      &l_u_secondary,
+      &l_w_secondary,
+    )?;
+
+    if zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
 
     let zi_primary = zi_primary
       .iter()
@@ -345,10 +357,13 @@ where
       z0_secondary: z0_secondary.to_vec(),
       r_W_primary,
       r_U_primary,
-      r_W_secondary,
+
       r_U_secondary,
-      l_w_secondary,
       l_u_secondary,
+      nifs_secondary,
+      f_U_secondary,
+      f_W_secondary,
+
       i: 0,
       zi_primary,
       zi_secondary,
@@ -370,18 +385,6 @@ where
       return Ok(());
     }
 
-    // fold the secondary circuit's instance
-    let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
-      &pp.ck_secondary,
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
-      &self.r_U_secondary,
-      &self.r_W_secondary,
-      &self.l_u_secondary,
-      &self.l_w_secondary,
-    )?;
-
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<E1>(pp.digest()),
@@ -390,7 +393,7 @@ where
       Some(self.zi_primary.clone()),
       Some(self.r_U_secondary.clone()),
       Some(self.l_u_secondary.clone()),
-      Some(Commitment::<E2>::decompress(&nifs_secondary.comm_T)?),
+      Some(Commitment::<E2>::decompress(&self.nifs_secondary.comm_T)?),
     );
 
     let circuit_primary: NovaAugmentedCircuit<'_, E2, C1> = NovaAugmentedCircuit::new(
@@ -449,16 +452,29 @@ where
       .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
       .collect::<Result<Vec<<E2 as Engine>::Scalar>, _>>()?;
 
-    self.l_u_secondary = l_u_secondary;
-    self.l_w_secondary = l_w_secondary;
-
     self.r_U_primary = r_U_primary;
     self.r_W_primary = r_W_primary;
 
-    self.i += 1;
+    // fold the secondary circuit's instance
+    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &self.f_U_secondary,
+      &self.f_W_secondary,
+      &l_u_secondary,
+      &l_w_secondary,
+    )?;
 
-    self.r_U_secondary = r_U_secondary;
-    self.r_W_secondary = r_W_secondary;
+    self.l_u_secondary = l_u_secondary;
+    self.r_U_secondary = self.f_U_secondary.clone();
+
+    self.nifs_secondary = nifs_secondary;
+    self.f_U_secondary = f_U_secondary;
+    self.f_W_secondary = f_W_secondary;
+
+    self.i += 1;
 
     Ok(())
   }
@@ -535,28 +551,30 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
+    // fold the secondary's running instance with the last instance to get a folded instance
+    let f_U_secondary = self.nifs_secondary.verify(
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &self.r_U_secondary,
+      &self.l_u_secondary,
+    )?;
+
+    // check that the folded instance is the same as the provided instance
+    if f_U_secondary != self.f_U_secondary {
+      return Err(NovaError::ProofVerifyError);
+    }
+
     // check the satisfiability of the provided instances
-    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+    let (res_r_primary, res_r_secondary) = rayon::join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
       },
       || {
-        rayon::join(
-          || {
-            pp.r1cs_shape_secondary.is_sat_relaxed(
-              &pp.ck_secondary,
-              &self.r_U_secondary,
-              &self.r_W_secondary,
-            )
-          },
-          || {
-            pp.r1cs_shape_secondary.is_sat(
-              &pp.ck_secondary,
-              &self.l_u_secondary,
-              &self.l_w_secondary,
-            )
-          },
+        pp.r1cs_shape_secondary.is_sat_relaxed(
+          &pp.ck_secondary,
+          &self.f_U_secondary,
+          &self.f_W_secondary,
         )
       },
     );
@@ -564,7 +582,6 @@ where
     // check the returned res objects
     res_r_primary?;
     res_r_secondary?;
-    res_l_secondary?;
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
@@ -693,18 +710,6 @@ where
     pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
     recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
   ) -> Result<Self, NovaError> {
-    // fold the secondary circuit's instance with its running instance
-    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
-      &pp.ck_secondary,
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
-      &recursive_snark.r_U_secondary,
-      &recursive_snark.r_W_secondary,
-      &recursive_snark.l_u_secondary,
-      &recursive_snark.l_w_secondary,
-    )?;
-
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (r_W_snark_primary, f_W_snark_secondary) = rayon::join(
       || {
@@ -721,8 +726,8 @@ where
           &pp.ck_secondary,
           &pk.pk_secondary,
           &pp.r1cs_shape_secondary,
-          &f_U_secondary,
-          &f_W_secondary,
+          &recursive_snark.f_U_secondary,
+          &recursive_snark.f_W_secondary,
         )
       },
     );
@@ -733,7 +738,7 @@ where
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
-      nifs_secondary,
+      nifs_secondary: recursive_snark.nifs_secondary.clone(),
       f_W_snark_secondary: f_W_snark_secondary?,
 
       zn_primary: recursive_snark.zi_primary.clone(),
