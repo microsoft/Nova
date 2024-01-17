@@ -5,6 +5,7 @@ use crate::spartan::polys::{
 };
 use crate::traits::{Engine, TranscriptEngineTrait};
 use ff::Field;
+use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -61,8 +62,42 @@ impl<E: Engine> SumcheckProof<E> {
     Ok((e, r))
   }
 
+  pub fn verify_batch(
+    &self,
+    claims: &[E::Scalar],
+    num_rounds: &[usize],
+    coeffs: &[E::Scalar],
+    degree_bound: usize,
+    transcript: &mut E::TE,
+  ) -> Result<(E::Scalar, Vec<E::Scalar>), NovaError> {
+    let num_instances = claims.len();
+    assert_eq!(num_rounds.len(), num_instances);
+    assert_eq!(coeffs.len(), num_instances);
+
+    // n = maxᵢ{nᵢ}
+    let num_rounds_max = *num_rounds.iter().max().unwrap();
+
+    // Random linear combination of claims,
+    // where each claim is scaled by 2^{n-nᵢ} to account for the padding.
+    //
+    // claim = ∑ᵢ coeffᵢ⋅2^{n-nᵢ}⋅cᵢ
+    let claim = zip_with!(
+      (
+        zip_with!(iter, (claims, num_rounds), |claim, num_rounds| {
+          let scaling_factor = 1 << (num_rounds_max - num_rounds);
+          E::Scalar::from(scaling_factor as u64) * claim
+        }),
+        coeffs.iter()
+      ),
+      |scaled_claim, coeff| scaled_claim * coeff
+    )
+    .sum();
+
+    self.verify(claim, num_rounds_max, degree_bound, transcript)
+  }
+
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_quad<F>(
+  fn compute_eval_points_quad<F>(
     poly_A: &MultilinearPolynomial<E::Scalar>,
     poly_B: &MultilinearPolynomial<E::Scalar>,
     comb_func: &F,
@@ -123,7 +158,7 @@ impl<E: Engine> SumcheckProof<E> {
       // Set up next round
       claim_per_round = poly.evaluate(&r_i);
 
-      // bound all tables to the verifier's challenege
+      // bind all tables to the verifier's challenge
       rayon::join(
         || poly_A.bind_poly_var_top(&r_i),
         || poly_B.bind_poly_var_top(&r_i),
@@ -140,10 +175,10 @@ impl<E: Engine> SumcheckProof<E> {
   }
 
   pub fn prove_quad_batch<F>(
-    claim: &E::Scalar,
-    num_rounds: usize,
-    poly_A_vec: &mut Vec<MultilinearPolynomial<E::Scalar>>,
-    poly_B_vec: &mut Vec<MultilinearPolynomial<E::Scalar>>,
+    claims: &[E::Scalar],
+    num_rounds: &[usize],
+    mut poly_A_vec: Vec<MultilinearPolynomial<E::Scalar>>,
+    mut poly_B_vec: Vec<MultilinearPolynomial<E::Scalar>>,
     coeffs: &[E::Scalar],
     comb_func: F,
     transcript: &mut E::TE,
@@ -151,16 +186,58 @@ impl<E: Engine> SumcheckProof<E> {
   where
     F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
-    let mut e = *claim;
+    let num_claims = claims.len();
+
+    assert_eq!(num_rounds.len(), num_claims);
+    assert_eq!(poly_A_vec.len(), num_claims);
+    assert_eq!(poly_B_vec.len(), num_claims);
+    assert_eq!(coeffs.len(), num_claims);
+
+    for (i, &num_rounds) in num_rounds.iter().enumerate() {
+      let expected_size = 1 << num_rounds;
+
+      // Direct indexing with the assumption that the index will always be in bounds
+      let a = &poly_A_vec[i];
+      let b = &poly_B_vec[i];
+
+      for (l, polyname) in [(a.len(), "poly_A_vec"), (b.len(), "poly_B_vec")].iter() {
+        assert_eq!(
+          *l, expected_size,
+          "Mismatch in size for {} at index {}",
+          polyname, i
+        );
+      }
+    }
+
+    let num_rounds_max = *num_rounds.iter().max().unwrap();
+    let mut e = zip_with!(
+      iter,
+      (claims, num_rounds, coeffs),
+      |claim, num_rounds, coeff| {
+        let scaled_claim = E::Scalar::from((1 << (num_rounds_max - num_rounds)) as u64) * claim;
+        scaled_claim * coeff
+      }
+    )
+    .sum();
     let mut r: Vec<E::Scalar> = Vec::new();
     let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
 
-    for _ in 0..num_rounds {
-      let evals: Vec<(E::Scalar, E::Scalar)> =
-        zip_with!(par_iter, (poly_A_vec, poly_B_vec), |poly_A, poly_B| {
-          Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
-        })
-        .collect();
+    for current_round in 0..num_rounds_max {
+      let remaining_rounds = num_rounds_max - current_round;
+      let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
+        par_iter,
+        (num_rounds, claims, poly_A_vec, poly_B_vec),
+        |num_rounds, claim, poly_A, poly_B| {
+          if remaining_rounds <= *num_rounds {
+            Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
+          } else {
+            let remaining_variables = remaining_rounds - num_rounds - 1;
+            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
+            (scaled_claim, scaled_claim)
+          }
+        }
+      )
+      .collect();
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
       let evals_combined_2 = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
@@ -176,19 +253,45 @@ impl<E: Engine> SumcheckProof<E> {
       r.push(r_i);
 
       // bound all tables to the verifier's challenge
-      zip_with_for_each!(par_iter_mut, (poly_A_vec, poly_B_vec), |poly_A, poly_B| {
-        let _ = rayon::join(
-          || poly_A.bind_poly_var_top(&r_i),
-          || poly_B.bind_poly_var_top(&r_i),
-        );
-      });
+      zip_with_for_each!(
+        (
+          num_rounds.par_iter(),
+          poly_A_vec.par_iter_mut(),
+          poly_B_vec.par_iter_mut()
+        ),
+        |num_rounds, poly_A, poly_B| {
+          if remaining_rounds <= *num_rounds {
+            let _ = rayon::join(
+              || poly_A.bind_poly_var_top(&r_i),
+              || poly_B.bind_poly_var_top(&r_i),
+            );
+          }
+        }
+      );
 
       e = poly.evaluate(&r_i);
       quad_polys.push(poly.compress());
     }
+    poly_A_vec.iter().for_each(|p| assert_eq!(p.len(), 1));
+    poly_B_vec.iter().for_each(|p| assert_eq!(p.len(), 1));
 
-    let poly_A_final = (0..poly_A_vec.len()).map(|i| poly_A_vec[i][0]).collect();
-    let poly_B_final = (0..poly_B_vec.len()).map(|i| poly_B_vec[i][0]).collect();
+    let poly_A_final = poly_A_vec
+      .into_iter()
+      .map(|poly| poly[0])
+      .collect::<Vec<_>>();
+    let poly_B_final = poly_B_vec
+      .into_iter()
+      .map(|poly| poly[0])
+      .collect::<Vec<_>>();
+
+    let eval_expected = zip_with!(
+      iter,
+      (poly_A_final, poly_B_final, coeffs),
+      |eA, eB, coeff| comb_func(eA, eB) * coeff
+    )
+    .sum::<E::Scalar>();
+    assert_eq!(e, eval_expected);
+
     let claims_prod = (poly_A_final, poly_B_final);
 
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))

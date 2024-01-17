@@ -39,13 +39,12 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///
+  /// # Panics
   /// The number of evaluations must be a power of two.
   pub fn new(Z: Vec<Scalar>) -> Self {
-    assert_eq!(Z.len(), (2_usize).pow((Z.len() as f64).log2() as u32));
-    MultilinearPolynomial {
-      num_vars: usize::try_from(Z.len().ilog2()).unwrap(),
-      Z,
-    }
+    let num_vars = Z.len().log_2();
+    assert_eq!(Z.len(), 1 << num_vars);
+    MultilinearPolynomial { num_vars, Z }
   }
 
   /// Returns the number of variables in the multilinear polynomial
@@ -58,10 +57,12 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
-  /// Bounds the polynomial's top variable using the given scalar.
+  /// Binds the polynomial's top variable using the given scalar.
   ///
   /// This operation modifies the polynomial in-place.
   pub fn bind_poly_var_top(&mut self, r: &Scalar) {
+    assert!(self.num_vars > 0);
+
     let n = self.len() / 2;
 
     let (left, right) = self.Z.split_at_mut(n);
@@ -81,20 +82,22 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     // r must have a value for each variable
     assert_eq!(r.len(), self.get_num_vars());
-    let chis = EqPolynomial::new(r.to_vec()).evals();
-    assert_eq!(chis.len(), self.Z.len());
+    let chis = EqPolynomial::evals_from_points(r);
 
-    (0..chis.len())
-      .into_par_iter()
-      .map(|i| chis[i] * self.Z[i])
-      .sum()
+    zip_with!(
+      (chis.into_par_iter(), self.Z.par_iter()),
+      |chi_i, Z_i| chi_i * Z_i
+    )
+    .sum()
   }
 
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
     zip_with!(
-      into_par_iter,
-      (EqPolynomial::new(r.to_vec()).evals(), Z),
+      (
+        EqPolynomial::evals_from_points(r).into_par_iter(),
+        Z.par_iter()
+      ),
       |a, b| a * b
     )
     .sum()
@@ -141,7 +144,7 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
     chi_i
   }
 
-  // Takes O(n log n)
+  // Takes O(m log n) where m is the number of non-zero evaluations and n is the number of variables.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.num_vars, r.len());
 
@@ -165,7 +168,7 @@ impl<Scalar: PrimeField> Add for MultilinearPolynomial<Scalar> {
       return Err("The two polynomials must have the same number of variables");
     }
 
-    let sum: Vec<Scalar> = zip_with!(iter, (self.Z, other.Z), |a, b| *a + *b).collect();
+    let sum: Vec<Scalar> = zip_with!(into_iter, (self.Z, other.Z), |a, b| a + b).collect();
 
     Ok(MultilinearPolynomial::new(sum))
   }
@@ -257,7 +260,7 @@ mod tests {
     let num_evals = 4;
     let mut evals: Vec<F> = Vec::with_capacity(num_evals);
     for _ in 0..num_evals {
-      evals.push(F::from_u128(8));
+      evals.push(F::from(8));
     }
     let dense_poly: MultilinearPolynomial<F> = MultilinearPolynomial::new(evals.clone());
 
