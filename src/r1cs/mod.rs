@@ -156,14 +156,13 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
-  // Returns false if num_cons, num_vars, or num_io are not powers of two, or if num_io > num_vars
+  // Returns false if num_cons or num_vars are not powers of two, or if num_io > num_vars
   #[inline]
   pub(crate) fn is_regular_shape(&self) -> bool {
     let cons_valid = self.num_cons.next_power_of_two() == self.num_cons;
     let vars_valid = self.num_vars.next_power_of_two() == self.num_vars;
-    let io_valid = self.num_io.next_power_of_two() == self.num_io;
     let io_lt_vars = self.num_io < self.num_vars;
-    cons_valid && vars_valid && io_valid && io_lt_vars
+    cons_valid && vars_valid && io_lt_vars
   }
 
   pub fn multiply_vec(
@@ -302,16 +301,16 @@ impl<E: Engine> R1CSShape<E> {
     Ok((T, comm_T))
   }
 
-  /// Pads the `R1CSShape` so that the number of variables is a power of two
+  /// Pads the `R1CSShape` so that the shape passes `is_regular_shape`
   /// Renumbers variables to accommodate padded variables
   pub fn pad(&self) -> Self {
-    // equalize the number of variables and constraints
-    let m = max(self.num_vars, self.num_cons).next_power_of_two();
-
     // check if the provided R1CSShape is already as required
-    if self.num_vars == m && self.num_cons == m {
+    if self.is_regular_shape() {
       return self.clone();
     }
+
+    // equalize the number of variables, constraints, and public IO
+    let m = max(max(self.num_vars, self.num_cons), self.num_io).next_power_of_two();
 
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
