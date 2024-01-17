@@ -29,6 +29,12 @@ impl<E: Engine> NIFS<E> {
   /// a folded Relaxed R1CS instance-witness tuple `(U, W)` of the same shape `shape`,
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
+  ///
+  /// Note that this code is tailored for use with Nova's IVC scheme, which enforces
+  /// certain requirements between the two instances that are folded.
+  /// In particular, it requires that `U1` and `U2` are such that the hash of `U1` is stored in the public IO of `U2`.
+  /// In this particular setting, this means that if `U2` is absorbed in the RO, it implicitly absorbs `U1` as well.
+  /// So the code below avoids absorbing `U1` in the RO.
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
