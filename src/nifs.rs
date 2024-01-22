@@ -105,8 +105,7 @@ impl<E: Engine> NIFS<E> {
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
 
-    // append U1 and U2 to transcript
-    U1.absorb_in_ro(&mut ro);
+    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
     U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
