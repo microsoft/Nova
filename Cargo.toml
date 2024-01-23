@@ -53,6 +53,7 @@ cfg-if = "1.0.0"
 sha2 = "0.10.7"
 proptest = "1.2.0"
 rand = "0.8.5"
+expect-test = "1.4.1"
 
 [[bench]]
 name = "recursive-snark"
