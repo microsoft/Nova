@@ -51,7 +51,7 @@ cfg_if::cfg_if! {
 criterion_main!(compressed_snark);
 
 // This should match the value for the primary in test_recursive_circuit_pasta
-const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9825;
+const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9817;
 const NUM_SAMPLES: usize = 10;
 
 /// Benchmarks the compressed SNARK at a provided number of constraints

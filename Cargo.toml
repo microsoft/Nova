@@ -22,6 +22,7 @@ rand_core = { version = "0.6", default-features = false }
 rand_chacha = "0.3"
 subtle = "2.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
+halo2curves = { version = "0.6.0", features = ["bits", "derive_serde"] }
 neptune = { version = "13.0.0", default-features = false }
 generic-array = "0.14"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
@@ -39,13 +40,9 @@ itertools = "0.12.0"
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-halo2curves = { version = "0.5.0", features = ["bits", "derive_serde"] }
-
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # see https://github.com/rust-random/rand/pull/948
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }
-halo2curves = { version = "0.5.0", default-features = false, features = ["bits", "derive_serde"] }
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
@@ -56,6 +53,7 @@ cfg-if = "1.0.0"
 sha2 = "0.10.7"
 proptest = "1.2.0"
 rand = "0.8.5"
+expect-test = "1.4.1"
 
 [[bench]]
 name = "recursive-snark"
