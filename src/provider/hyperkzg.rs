@@ -1,4 +1,10 @@
-//! This module implements Nova's evaluation engine using multilinear KZG
+//! This module implements Nova's evaluation engine using `HyperKZG`, a KZG-based polynomial commitment for multilinear polynomials
+//! HyperKZG is based on the transformation from univariate PCS to multilinear PCS in the Gemini paper (section 2.4.2 in https://eprint.iacr.org/2022/420.pdf).
+//! However, there are some key differences:
+//! (1) HyperKZG works with multilinear polynomials represented in evaluation form (rather than in coefficient form in Gemini's transformation).
+//! This means that Spartan's polynomial IOP can use commit to its polynomials as-is without incurring any interpolations or FFTs.
+//! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
+//! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
@@ -294,14 +300,7 @@ where
 {
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait methods.
-  fn compute_challenge(
-    C: &G1<E>,
-    y: &E::Scalar,
-    com: &[G1<E>],
-    transcript: &mut <E as Engine>::TE,
-  ) -> E::Scalar {
-    transcript.absorb(b"C", C);
-    transcript.absorb(b"y", y);
+  fn compute_challenge(com: &[G1<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(b"c", &com.to_vec().as_slice());
 
     transcript.squeeze(b"c").unwrap()
@@ -309,14 +308,7 @@ where
 
   // Compute challenge q = Hash(vk, C0, ..., C_{k-1}, u0, ...., u_{t-1},
   // (f_i(u_j))_{i=0..k-1,j=0..t-1})
-  fn get_batch_challenge(
-    C: &[G1<E>],
-    u: &[E::Scalar],
-    v: &[Vec<E::Scalar>],
-    transcript: &mut <E as Engine>::TE,
-  ) -> E::Scalar {
-    transcript.absorb(b"C", &C.to_vec().as_slice());
-    transcript.absorb(b"u", &u.to_vec().as_slice());
+  fn get_batch_challenge(v: &[Vec<E::Scalar>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(
       b"v",
       &v.iter()
@@ -338,12 +330,7 @@ where
     q_powers
   }
 
-  fn verifier_second_challenge(
-    C_B: &G1<E>,
-    W: &[G1<E>],
-    transcript: &mut <E as Engine>::TE,
-  ) -> E::Scalar {
-    transcript.absorb(b"C_b", C_B);
+  fn verifier_second_challenge(W: &[G1<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(b"W", &W.to_vec().as_slice());
 
     transcript.squeeze(b"d").unwrap()
@@ -473,7 +460,7 @@ where
         }
       }
 
-      let q = Self::get_batch_challenge(C, u, &v, transcript);
+      let q = Self::get_batch_challenge(&v, transcript);
       let B = kzg_compute_batch_polynomial(f, q);
 
       // Now open B at u0, ..., u_{t-1}
@@ -483,15 +470,9 @@ where
         w.push(wi);
       }
 
-      // Compute the commitment to the batched polynomial B(X)
-      let q_powers = Self::batch_challenge_powers(q, k);
-      let C_B = (<E::GE as DlogGroup>::group(&C[0])
-        + E::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k]))
-      .preprocessed();
-
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
-      let _d_0 = Self::verifier_second_challenge(&C_B, &w, transcript);
+      let _d_0 = Self::verifier_second_challenge(&w, transcript);
 
       (w, v)
     };
@@ -530,9 +511,9 @@ where
       .collect();
 
     // Phase 2
-    // We do not need to add x to the transcript, because in our context x was
-    // obtained from the transcript.
-    let r = Self::compute_challenge(&C.comm.preprocessed(), eval, &com, transcript);
+    // We do not need to add x to the transcript, because in our context x was obtained from the transcript.
+    // We also do not need to absorb `C` and `eval` as they are already absorbed by the transcript by the caller
+    let r = Self::compute_challenge(&com, transcript);
     let u = vec![r, -r, r * r];
 
     // Phase 3 -- create response
@@ -567,7 +548,7 @@ where
       let k = C.len();
       let t = u.len();
 
-      let q = Self::get_batch_challenge(C, u, v, transcript);
+      let q = Self::get_batch_challenge(v, transcript);
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
       // Compute the commitment to the batched polynomial B(X)
@@ -584,7 +565,7 @@ where
         })
         .collect::<Vec<E::Scalar>>();
 
-      let d_0 = Self::verifier_second_challenge(&C_B, W, transcript);
+      let d_0 = Self::verifier_second_challenge(W, transcript);
       let d = [d_0, d_0 * d_0];
 
       // Shorthand to convert from preprocessed G1 elements to non-preprocessed
@@ -629,7 +610,7 @@ where
 
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
-    let r = Self::compute_challenge(&C.comm.preprocessed(), y, &com, transcript);
+    let r = Self::compute_challenge(&com, transcript);
 
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
       return Err(NovaError::ProofVerifyError);
