@@ -846,7 +846,7 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      mlkzg::Bn256EngineKZG, pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256Engine,
+      hyperkzg::Bn256EngineKZG, pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256Engine,
       GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
@@ -1214,7 +1214,7 @@ mod tests {
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
-      provider::mlkzg::EvaluationEngine<_>,
+      provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
     >();
   }
