@@ -700,7 +700,7 @@ mod tests {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
-    let (pk, _vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
+    let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
@@ -712,27 +712,37 @@ mod tests {
     let point = vec![Fr::from(0), Fr::from(0)];
     let eval = Fr::ONE;
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(1)];
     let eval = Fr::from(2);
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
 
     let point = vec![Fr::from(1), Fr::from(1)];
     let eval = Fr::from(4);
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(3);
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
 
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(9);
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
 
     // Try a couple incorrect evaluations and expect failure
     let point = vec![Fr::from(2), Fr::from(2)];
@@ -740,14 +750,14 @@ mod tests {
     let mut tr = Keccak256Transcript::new(b"TestEval");
     let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&pk, &mut tr, &C, &point, &eval, &proof).is_err());
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_err());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(4);
     let mut tr = Keccak256Transcript::new(b"TestEval");
     let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
     let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&pk, &mut tr, &C, &point, &eval, &proof).is_err());
+    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_err());
   }
 
   #[test]
