@@ -368,10 +368,10 @@ where
     ck: &CommitmentKey<E>,
     _pk: &Self::ProverKey,
     transcript: &mut <E as Engine>::TE,
-    C: &Commitment<E>,
+    _C: &Commitment<E>,
     hat_P: &[E::Scalar],
     point: &[E::Scalar],
-    eval: &E::Scalar,
+    _eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
     let x: Vec<E::Scalar> = point.to_vec();
 
@@ -408,8 +408,7 @@ where
       E::CE::commit(ck, &h).comm.preprocessed()
     };
 
-    let kzg_open_batch = |C: &[G1<E>],
-                          f: &[Vec<E::Scalar>],
+    let kzg_open_batch = |f: &[Vec<E::Scalar>],
                           u: &[E::Scalar],
                           transcript: &mut <E as Engine>::TE|
      -> (Vec<G1<E>>, Vec<Vec<E::Scalar>>) {
@@ -449,18 +448,18 @@ where
 
       let k = f.len();
       let t = u.len();
-      assert!(C.len() == k);
 
       // The verifier needs f_i(u_j), so we compute them here
       // (V will compute B(u_j) itself)
       let mut v = vec![vec!(E::Scalar::ZERO; k); t];
-      for i in 0..t {
+      v.par_iter_mut().enumerate().for_each(|(i, v_i)| {
         // for each point u
-        for (j, f_j) in f.iter().enumerate().take(k) {
+        v_i.par_iter_mut().zip_eq(f).for_each(|(v_ij, f)| {
           // for each poly f
-          v[i][j] = poly_eval(f_j, u[i]); // = f_j(u_i)
-        }
-      }
+          // for each poly f (except the last one - since it is constant)
+          *v_ij = poly_eval(f, u[i]);
+        });
+      });
 
       let q = Self::get_batch_challenge(&v, transcript);
       let B = kzg_compute_batch_polynomial(f, q);
@@ -486,9 +485,11 @@ where
     assert_eq!(n, 1 << ell); // Below we assume that n is a power of two
 
     // Phase 1  -- create commitments com_1, ..., com_\ell
+    // We do not compute final Pi (and its commitment) as it is constant and equals to 'eval'
+    // also known to verifier, so can be derived on its side as well
     let mut polys: Vec<Vec<E::Scalar>> = Vec::new();
     polys.push(hat_P.to_vec());
-    for i in 0..ell {
+    for i in 0..ell - 1 {
       let Pi_len = polys[i].len() / 2;
       let mut Pi = vec![E::Scalar::ZERO; Pi_len];
 
@@ -496,10 +497,6 @@ where
       Pi.par_iter_mut().enumerate().for_each(|(j, Pi_j)| {
         *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
       });
-
-      if i == ell - 1 && *eval != Pi[0] {
-        return Err(NovaError::UnSat);
-      }
 
       polys.push(Pi);
     }
@@ -518,9 +515,7 @@ where
     let u = vec![r, -r, r * r];
 
     // Phase 3 -- create response
-    let mut com_all = com.clone();
-    com_all.insert(0, C.comm.preprocessed());
-    let (w, v) = kzg_open_batch(&com_all, &polys, &u, transcript);
+    let (w, v) = kzg_open_batch(&polys, &u, transcript);
 
     Ok(EvaluationArgument { com, w, v })
   }
@@ -643,18 +638,15 @@ where
     if v.len() != 3 {
       return Err(NovaError::ProofVerifyError);
     }
-    if v[0].len() != ell + 1 || v[1].len() != ell + 1 || v[2].len() != ell + 1 {
+    if v[0].len() != ell || v[1].len() != ell || v[2].len() != ell {
       return Err(NovaError::ProofVerifyError);
     }
     let ypos = &v[0];
     let yneg = &v[1];
-    let Y = &v[2];
+    let mut Y = v[2].to_vec();
+    Y.push(*y);
 
     // Check consistency of (Y, ypos, yneg)
-    if Y[ell] != *y {
-      return Err(NovaError::ProofVerifyError);
-    }
-
     let two = E::Scalar::from(2u64);
     for i in 0..ell {
       if two * r * Y[i + 1]
@@ -714,38 +706,48 @@ mod tests {
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
     let C = CommitmentEngine::commit(&ck, &poly);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
 
-    // Call the prover with a (point, eval) pair. The prover recomputes
-    // poly(point) = eval', and fails if eval' != eval
+    // Call the prover with a (point, eval) pair.
+    // The prover does not recompute so it may produce a proof, but it should not verify
     let point = vec![Fr::from(0), Fr::from(0)];
     let eval = Fr::ONE;
+    let mut tr = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(1)];
     let eval = Fr::from(2);
+    let mut tr = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     let point = vec![Fr::from(1), Fr::from(1)];
     let eval = Fr::from(4);
+    let mut tr = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(3);
+    let mut tr = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(9);
+    let mut tr = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
 
     // Try a couple incorrect evaluations and expect failure
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(50);
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&pk, &mut tr, &C, &point, &eval, &proof).is_err());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(4);
-    assert!(EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_err());
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+    let mut tr = Keccak256Transcript::new(b"TestEval");
+    assert!(EvaluationEngine::verify(&pk, &mut tr, &C, &point, &eval, &proof).is_err());
   }
 
   #[test]
@@ -797,7 +799,7 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.com[0] = (bad_proof.com[0] + bad_proof.com[1]).to_affine();
+    bad_proof.com[0] = (bad_proof.com[0] + bad_proof.com[0]).to_affine();
     let mut verifier_transcript2 = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::verify(
       &vk,
