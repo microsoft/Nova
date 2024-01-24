@@ -1,4 +1,10 @@
-//! This module implements Nova's evaluation engine using multilinear KZG
+//! This module implements Nova's evaluation engine using `HyperKZG`, a KZG-based polynomial commitment for multilinear polynomials
+//! HyperKZG is based on the transformation from univariate PCS to multilinear PCS in the Gemini paper (section 2.4.2 in https://eprint.iacr.org/2022/420.pdf).
+//! However, there are some key differences:
+//! (1) HyperKZG works with multilinear polynomials represented in evaluation form (rather than in coefficient form in Gemini's transformation).
+//! This means that Spartan's polynomial IOP can use commit to its polynomials as-is without incurring any interpolations or FFTs.
+//! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
+//! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
