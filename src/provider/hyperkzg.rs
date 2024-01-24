@@ -558,7 +558,7 @@ where
       assert_eq!(t, 3);
       assert_eq!(W.len(), 3);
       // We write a special case for t=3, since this what is required for
-      // mlkzg. Following the paper directly, we must compute:
+      // hyperkzg. Following the paper directly, we must compute:
       // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
       // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
       // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
@@ -696,7 +696,7 @@ mod tests {
   type Fr = <E as Engine>::Scalar;
 
   #[test]
-  fn test_mlkzg_eval() {
+  fn test_hyperkzg_eval() {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
@@ -707,61 +707,47 @@ mod tests {
 
     let C = CommitmentEngine::commit(&ck, &poly);
 
+    let test_inner = |point: Vec<Fr>, eval: Fr| -> Result<(), NovaError> {
+      let mut tr = Keccak256Transcript::new(b"TestEval");
+      let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
+      let mut tr = Keccak256Transcript::new(b"TestEval");
+      EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof)
+    };
+
     // Call the prover with a (point, eval) pair.
     // The prover does not recompute so it may produce a proof, but it should not verify
     let point = vec![Fr::from(0), Fr::from(0)];
     let eval = Fr::ONE;
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
+    assert!(test_inner(point, eval).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(1)];
     let eval = Fr::from(2);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
+    assert!(test_inner(point, eval).is_ok());
 
     let point = vec![Fr::from(1), Fr::from(1)];
     let eval = Fr::from(4);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
+    assert!(test_inner(point, eval).is_ok());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(3);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
+    assert!(test_inner(point, eval).is_ok());
 
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(9);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_ok());
+    assert!(test_inner(point, eval).is_ok());
 
     // Try a couple incorrect evaluations and expect failure
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(50);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_err());
+    assert!(test_inner(point, eval).is_err());
 
     let point = vec![Fr::from(0), Fr::from(2)];
     let eval = Fr::from(4);
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    let proof = EvaluationEngine::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).unwrap();
-    let mut tr = Keccak256Transcript::new(b"TestEval");
-    assert!(EvaluationEngine::verify(&vk, &mut tr, &C, &point, &eval, &proof).is_err());
+    assert!(test_inner(point, eval).is_err());
   }
 
   #[test]
-  fn test_mlkzg() {
+  fn test_hyperkzg() {
     let n = 4;
 
     // poly = [1, 2, 1, 4]
@@ -823,8 +809,8 @@ mod tests {
   }
 
   #[test]
-  fn test_mlkzg_more() {
-    // test the mlkzg prover and verifier with random instances (derived from a seed)
+  fn test_hyperkzg_more() {
+    // test the hyperkzg prover and verifier with random instances (derived from a seed)
     for ell in [4, 5, 6] {
       let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
 
