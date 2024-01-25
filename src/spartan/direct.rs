@@ -167,6 +167,7 @@ mod tests {
   use super::*;
   use crate::provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
+use halo2curves::bn256::Bn256;
   use core::marker::PhantomData;
   use ff::PrimeField;
 
@@ -229,7 +230,7 @@ mod tests {
     test_direct_snark_with::<E, Spp>();
 
     type E2 = Bn256EngineKZG;
-    type EE2 = crate::provider::hyperkzg::EvaluationEngine<E2>;
+    type EE2 = crate::provider::hyperkzg::EvaluationEngine<Bn256, E2>;
     type S2 = crate::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
     test_direct_snark_with::<E2, S2>();
 

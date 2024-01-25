@@ -862,7 +862,7 @@ mod tests {
   use halo2curves::bn256::Bn256;
 
   type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
-  type EEPrime<E> = provider::hyperkzg::EvaluationEngine<E>;
+  type EEPrime<E> = provider::hyperkzg::EvaluationEngine<Bn256, E>;
   type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
   type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
@@ -1202,7 +1202,7 @@ mod tests {
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
-      provider::hyperkzg::EvaluationEngine<_>,
+      provider::hyperkzg::EvaluationEngine<Bn256, _>,
       EE<_>,
     >();
   }
