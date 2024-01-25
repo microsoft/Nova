@@ -35,9 +35,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
   deserialize = "E::G1Affine: Deserialize<'de>, E::Fr: Deserialize<'de>"
 ))]
 pub struct EvaluationArgument<E: Engine> {
-  evals_r: Vec<E::G1Affine>,
-  evals_neg_r: Vec<E::G1Affine>,
-  evals_r_squared: Vec<Vec<E::Fr>>,
+  comms: Vec<E::G1Affine>,
+  w: Vec<E::G1Affine>,
+  evals: Vec<Vec<E::Fr>>,
 }
 
 /// Provides an implementation of a polynomial evaluation engine using KZG
@@ -250,7 +250,7 @@ where
 
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
-    let com: Vec<E::G1Affine> = (1..polys.len())
+    let comms: Vec<E::G1Affine> = (1..polys.len())
       .into_par_iter()
       .map(|i| {
         <NE::CE as CommitmentEngineTrait<NE>>::commit(ck, &polys[i])
@@ -260,21 +260,17 @@ where
       .collect();
 
     // Phase 2
-    // We do not need to add x to the transcript, because in our context x was
-    // obtained from the transcript.
-    let r = Self::compute_challenge(&com, transcript);
+    // We do not need to add x to the transcript, because in our context x was obtained from the transcript.
+    // We also do not need to absorb `C` and `eval` as they are already absorbed by the transcript by the caller
+    let r = Self::compute_challenge(&comms, transcript);
     let u = vec![r, -r, r * r];
 
     // Phase 3 -- create response
-    let mut com_all = com.clone();
+    let mut com_all = comms.clone();
     com_all.insert(0, C.comm.affine());
-    let (w, v) = kzg_open_batch(&com_all, &polys, &u, transcript);
+    let (w, evals) = kzg_open_batch(&com_all, &polys, &u, transcript);
 
-    Ok(EvaluationArgument {
-      evals_r: com,
-      evals_neg_r: w,
-      evals_r_squared: v,
-    })
+    Ok(EvaluationArgument { comms, w, evals })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
@@ -356,7 +352,7 @@ where
 
     let ell = x.len();
 
-    let mut com = pi.evals_r.clone();
+    let mut com = pi.comms.clone();
 
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
@@ -370,7 +366,7 @@ where
     let u = vec![r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    let v = &pi.evals_r_squared;
+    let v = &pi.evals;
     if v.len() != 3 {
       return Err(NovaError::ProofVerifyError);
     }
@@ -399,14 +395,7 @@ where
     }
 
     // Check commitments to (Y, ypos, yneg) are valid
-    if !kzg_verify_batch(
-      vk,
-      &com,
-      &pi.evals_neg_r,
-      &u,
-      &pi.evals_r_squared,
-      transcript,
-    ) {
+    if !kzg_verify_batch(vk, &com, &pi.w, &u, &pi.evals, transcript) {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -526,7 +515,7 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.evals_r[0] = (bad_proof.evals_r[0] + bad_proof.evals_r[1]).to_affine();
+    bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[1]).to_affine();
     let mut verifier_transcript2 = Keccak256Transcript::<NE>::new(b"TestEval");
     assert!(EvaluationEngine::<E, NE>::verify(
       &vk,
@@ -579,7 +568,7 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
-      bad_proof.evals_r[0] = (bad_proof.evals_r[0] + bad_proof.evals_r[1]).to_affine();
+      bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[1]).to_affine();
       let mut verifier_tr2 = Keccak256Transcript::<NE>::new(b"TestEval");
       assert!(EvaluationEngine::<E, NE>::verify(
         &vk,
