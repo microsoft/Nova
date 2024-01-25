@@ -15,7 +15,8 @@ pub(crate) mod traits;
 // a non-hiding variant of {kzg, zeromorph}
 pub(crate) mod kzg_commitment;
 pub(crate) mod non_hiding_kzg;
-pub(crate) mod util;
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 // crate-private modules
 mod keccak;

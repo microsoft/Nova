@@ -411,7 +411,7 @@ where
 #[cfg(test)]
 mod test {
   use crate::provider::ipa_pc::EvaluationEngine;
-  use crate::provider::util::test_utils::prove_verify_from_num_vars;
+  use crate::provider::test_utils::prove_verify_from_num_vars;
   use crate::provider::GrumpkinEngine;
 
   #[test]
