@@ -1,7 +1,6 @@
 //! Main components:
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
-
 use std::ops::{Add, Index};
 
 use ff::PrimeField;
@@ -60,9 +59,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
-  /// Binds the polynomial's top variable using the given scalar.
   /// Returns a random polynomial
-  ///
   pub fn random<R: RngCore + CryptoRng>(num_vars: usize, mut rng: &mut R) -> Self {
     MultilinearPolynomial::new(
       std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
