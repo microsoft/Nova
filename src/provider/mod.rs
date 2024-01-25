@@ -23,7 +23,6 @@ mod keccak;
 use crate::{
   provider::{
     bn256_grumpkin::{bn256, grumpkin},
-    hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine as PedersenCommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
@@ -56,7 +55,7 @@ impl Engine for Bn256EngineKZG {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
   type TE = Keccak256Transcript<Self>;
-  type CE = HyperKZGCommitmentEngine<Self>;
+  type CE = KZGCommitmentEngine<Bn256>;
 }
 
 impl Engine for Bn256EngineIPA {
@@ -152,7 +151,7 @@ impl Engine for VestaEngine {
 #[cfg(test)]
 mod tests {
   use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
-  
+
   use digest::{ExtendableOutput, Update};
   use group::Curve;
   use halo2curves::CurveExt;

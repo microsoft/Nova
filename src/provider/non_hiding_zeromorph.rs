@@ -20,8 +20,8 @@ use crate::{
 };
 use ff::{BatchInvert, Field, PrimeField, PrimeFieldBits};
 use group::{Curve, Group as _};
-use itertools::Itertools as _;
 use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
+use itertools::Itertools as _;
 use rayon::{
   iter::IntoParallelRefIterator,
   prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -515,8 +515,8 @@ mod test {
   use ff::{Field, PrimeField, PrimeFieldBits};
   use halo2curves::bn256::Bn256;
   use halo2curves::bn256::Fr as Scalar;
-  use itertools::Itertools as _;
   use halo2curves::pairing::MultiMillerLoop;
+  use itertools::Itertools as _;
   use rand::thread_rng;
   use rand_chacha::ChaCha20Rng;
   use rand_core::SeedableRng;
