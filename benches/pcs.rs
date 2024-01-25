@@ -156,7 +156,7 @@ fn bench_pcs(c: &mut Criterion) {
     bench_pcs_proving_internal,
     bench_pcs_verifying_internal,
     (ipa_assets, IPAEvaluationEngine<Bn256Engine>),
-    (mlkzg_assets, MLEvaluationEngine<Bn256, Bn256EngineKZG>),
+    (hyperkzg_assets, MLEvaluationEngine<Bn256, Bn256EngineKZG>),
     (zm_assets, ZMPCS<Bn256, Bn256EngineZM>)
   );
 }

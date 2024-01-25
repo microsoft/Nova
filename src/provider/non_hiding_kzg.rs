@@ -1,5 +1,5 @@
 //! Non-hiding variant of KZG10 scheme for univariate polynomials.
-use ff::{Field, PrimeField, PrimeFieldBits};
+use ff::Field;
 use group::{prime::PrimeCurveAffine, Curve, Group as _};
 use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
 use rand_core::{CryptoRng, RngCore};
@@ -9,7 +9,6 @@ use std::{borrow::Borrow, marker::PhantomData, ops::Mul};
 use crate::{
   errors::{NovaError, PCSError},
   provider::traits::DlogGroup,
-  provider::util::fb_msm,
   traits::{commitment::Len, Group, TranscriptReprTrait},
 };
 
@@ -119,10 +118,7 @@ impl<E: Engine> UniversalKZGParam<E> {
   }
 }
 
-impl<E: Engine> UniversalKZGParam<E>
-where
-  E::Fr: PrimeFieldBits,
-{
+impl<E: Engine> UniversalKZGParam<E> {
   /// Build SRS for testing.
   /// WARNING: THIS FUNCTION IS FOR TESTING PURPOSE ONLY.
   /// THE OUTPUT SRS SHOULD NOT BE USED IN PRODUCTION.
@@ -131,25 +127,24 @@ where
     let g = E::G1::random(&mut rng);
     let h = E::G2::random(rng);
 
-    let nz_powers_of_beta = (0..=max_degree)
-      .scan(beta, |acc, _| {
-        let val = *acc;
-        *acc *= beta;
-        Some(val)
-      })
-      .collect::<Vec<E::Fr>>();
-
-    let window_size = fb_msm::get_mul_window_size(max_degree);
-    let scalar_bits = E::Fr::NUM_BITS as usize;
-
     let (powers_of_g_projective, powers_of_h_projective) = rayon::join(
       || {
-        let g_table = fb_msm::get_window_table(scalar_bits, window_size, g);
-        fb_msm::multi_scalar_mul::<E::G1>(scalar_bits, window_size, &g_table, &nz_powers_of_beta)
+        (0..=max_degree)
+          .scan(g, |acc, _| {
+            let val = *acc;
+            *acc *= beta;
+            Some(val)
+          })
+          .collect::<Vec<E::G1>>()
       },
       || {
-        let h_table = fb_msm::get_window_table(scalar_bits, window_size, h);
-        fb_msm::multi_scalar_mul::<E::G2>(scalar_bits, window_size, &h_table, &nz_powers_of_beta)
+        (0..=max_degree)
+          .scan(h, |acc, _| {
+            let val = *acc;
+            *acc *= beta;
+            Some(val)
+          })
+          .collect::<Vec<E::G2>>()
       },
     );
 
@@ -306,6 +301,7 @@ where
 mod tests {
   use super::*;
   use crate::spartan::polys::univariate::UniPoly;
+  use ff::PrimeField;
   use rand::{thread_rng, Rng};
   use rand_core::{CryptoRng, RngCore};
 
@@ -318,7 +314,6 @@ mod tests {
   where
     E: MultiMillerLoop,
     E::G1: DlogGroup<AffineGroupElement = E::G1Affine, Scalar = E::Fr>,
-    E::Fr: PrimeFieldBits,
   {
     for _ in 0..100 {
       let mut rng = &mut thread_rng();

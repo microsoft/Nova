@@ -18,7 +18,7 @@ use crate::{
   },
   Commitment,
 };
-use ff::{BatchInvert, Field, PrimeField, PrimeFieldBits};
+use ff::{BatchInvert, Field, PrimeField};
 use group::{Curve, Group as _};
 use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
 use itertools::Itertools as _;
@@ -463,7 +463,6 @@ where
   E::G1Affine: Serialize + DeserializeOwned,
   E::G2Affine: Serialize + DeserializeOwned,
   <E::G1 as Group>::Base: TranscriptReprTrait<E::G1>, // Note: due to the move of the bound TranscriptReprTrait<G> on G::Base from Group to Engine
-  E::Fr: PrimeFieldBits, // TODO due to use of gen_srs_for_testing, make optional
 {
   type ProverKey = ZMProverKey<E>;
   type VerifierKey = ZMVerifierKey<E>;
@@ -529,8 +528,8 @@ mod test {
       non_hiding_zeromorph::{
         batched_lifted_degree_quotient, eval_and_quotient_scalars, trim, ZMEvaluation, ZMPCS,
       },
+      test_utils::prove_verify_from_num_vars,
       traits::DlogGroup,
-      util::test_utils::prove_verify_from_num_vars,
       Bn256EngineZM,
     },
     spartan::polys::multilinear::MultilinearPolynomial,

@@ -20,8 +20,8 @@ use crate::{
   zip_with,
 };
 use core::marker::PhantomData;
-use ff::{Field, PrimeFieldBits};
-use group::{Group as _, Curve};
+use ff::Field;
+use group::{Curve, Group as _};
 use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
 use itertools::Itertools;
 use rayon::prelude::*;
@@ -54,7 +54,7 @@ where
   NE: NovaEngine<GE = E::G1, Scalar = E::Fr>,
   E::G1: DlogGroup<AffineGroupElement = E::G1Affine, Scalar = E::Fr>,
   E::Fr: TranscriptReprTrait<E::G1>,
-  E::G1Affine: TranscriptReprTrait<E::G1>, // TODO: this bound on DlogGroup is really unusable!
+  E::G1Affine: TranscriptReprTrait<E::G1>,
 {
   fn compute_challenge(
     com: &[E::G1Affine],
@@ -109,7 +109,6 @@ where
   E::G2Affine: Serialize + DeserializeOwned,
   E::G1: DlogGroup<AffineGroupElement = E::G1Affine, Scalar = E::Fr>,
   <E::G1 as Group>::Base: TranscriptReprTrait<E::G1>, // Note: due to the move of the bound TranscriptReprTrait<G> on G::Base from Group to Engine
-  E::Fr: PrimeFieldBits, // TODO due to use of gen_srs_for_testing, make optional
   E::Fr: TranscriptReprTrait<E::G1>,
   E::G1Affine: TranscriptReprTrait<E::G1>,
 {
@@ -299,7 +298,7 @@ where
       assert!(t == 3);
       assert!(W.len() == 3);
       // We write a special case for t=3, since this what is required for
-      // mlkzg. Following the paper directly, we must compute:
+      // hyperkzg. Following the paper directly, we must compute:
       // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
       // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
       // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
@@ -421,7 +420,7 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::util::test_utils::prove_verify_from_num_vars;
+  use crate::provider::test_utils::prove_verify_from_num_vars;
   use crate::{
     provider::keccak::Keccak256Transcript, CommitmentKey,
   };
@@ -466,54 +465,6 @@ mod tests {
     let point = vec![Fr::from(2), Fr::from(2)];
     let eval = Fr::from(9);
     assert!(EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut tr, &C, &poly, &point, &eval).is_ok());
-  }
-
-  #[test]
-  fn test_mlkzg_alternative() {
-    fn test_inner(n: usize, poly: &[Fr], point: &[Fr], eval: Fr) -> Result<(), NovaError> {
-      let ck: CommitmentKey<NE> =
-        <KZGCommitmentEngine<E> as CommitmentEngineTrait<NE>>::setup(b"test", n);
-      let (pk, vk): (KZGProverKey<E>, KZGVerifierKey<E>) = EvaluationEngine::<E, NE>::setup(&ck);
-
-      // make a commitment
-      let C = KZGCommitmentEngine::commit(&ck, poly);
-
-      // prove an evaluation
-      let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
-      let proof =
-        EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut prover_transcript, &C, poly, point, &eval)
-          .unwrap();
-
-      // verify the evaluation
-      let mut verifier_transcript = Keccak256Transcript::<NE>::new(b"TestEval");
-      EvaluationEngine::<E, NE>::verify(&vk, &mut verifier_transcript, &C, point, &eval, &proof)
-    }
-
-    let n = 8;
-
-    // poly = [1, 2, 1, 4, 1, 2, 1, 4]
-    let poly = vec![
-      Fr::ONE,
-      Fr::from(2),
-      Fr::from(1),
-      Fr::from(4),
-      Fr::ONE,
-      Fr::from(2),
-      Fr::from(1),
-      Fr::from(4),
-    ];
-
-    // point = [4,3,8]
-    let point = vec![Fr::from(4), Fr::from(3), Fr::from(8)];
-
-    // eval = 57
-    let eval = Fr::from(57);
-
-    assert!(test_inner(n, &poly, &point, eval).is_ok());
-
-    // wrong eval
-    let eval = Fr::from(56);
-    assert!(test_inner(n, &poly, &point, eval).is_err());
   }
 
   #[test]
