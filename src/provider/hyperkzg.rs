@@ -431,12 +431,11 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::provider::util::test_utils::prove_verify_from_num_vars;
   use crate::{
-    provider::keccak::Keccak256Transcript, spartan::polys::multilinear::MultilinearPolynomial,
-    CommitmentKey,
+    provider::keccak::Keccak256Transcript, CommitmentKey,
   };
   use bincode::Options;
-  use rand::SeedableRng;
 
   type E = halo2curves::bn256::Bn256;
   type NE = crate::provider::Bn256EngineKZG;
@@ -555,55 +554,9 @@ mod tests {
 
   #[test]
   fn test_hyperkzg_large() {
-    // test the hyperkzg prover and verifier with random instances (derived from a seed)
-    for ell in [4, 5, 6] {
-      let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
-
-      let n = 1 << ell; // n = 2^ell
-
-      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
-      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
-      let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
-
-      let ck: CommitmentKey<NE> =
-        <KZGCommitmentEngine<E> as CommitmentEngineTrait<NE>>::setup(b"test", n);
-      let (pk, vk): (KZGProverKey<E>, KZGVerifierKey<E>) = EvaluationEngine::<E, NE>::setup(&ck);
-
-      // make a commitment
-      let C = <KZGCommitmentEngine<E> as CommitmentEngineTrait<NE>>::commit(&ck, &poly);
-
-      // prove an evaluation
-      let mut prover_transcript = Keccak256Transcript::<NE>::new(b"TestEval");
-      let proof: EvaluationArgument<E> = EvaluationEngine::<E, NE>::prove(
-        &ck,
-        &pk,
-        &mut prover_transcript,
-        &C,
-        &poly,
-        &point,
-        &eval,
-      )
-      .unwrap();
-
-      // verify the evaluation
-      let mut verifier_tr = Keccak256Transcript::<NE>::new(b"TestEval");
-      assert!(
-        EvaluationEngine::<E, NE>::verify(&vk, &mut verifier_tr, &C, &point, &eval, &proof).is_ok()
-      );
-
-      // Change the proof and expect verification to fail
-      let mut bad_proof = proof.clone();
-      bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[1]).to_affine();
-      let mut verifier_tr2 = Keccak256Transcript::<NE>::new(b"TestEval");
-      assert!(EvaluationEngine::<E, NE>::verify(
-        &vk,
-        &mut verifier_tr2,
-        &C,
-        &point,
-        &eval,
-        &bad_proof
-      )
-      .is_err());
+    // test the mlkzg prover and verifier with random instances (derived from a seed)
+    for num_vars in [4, 5, 6] {
+      prove_verify_from_num_vars::<_, EvaluationEngine<E, NE>>(num_vars);
     }
   }
 }

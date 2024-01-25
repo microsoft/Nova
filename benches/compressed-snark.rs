@@ -29,7 +29,7 @@ type SS2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
-// To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
+// To run these benchmarks, first download `criterion` with `cargo install cargo-criterion`.
 // Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
 // For flamegraphs, run `cargo criterion --bench compressed-snark --features flamegraph -- --profile-time <secs>`.
 // The results are located in `target/criterion/profile/<name-of-benchmark>`.
