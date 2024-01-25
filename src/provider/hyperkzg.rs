@@ -300,21 +300,11 @@ where
       let q = Self::get_batch_challenge(v, transcript);
       let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
-      // Compute the commitment to the batched polynomial B(X)
-      let c_0: E::G1 = C[0].into();
-      let C_B = (c_0 + NE::GE::vartime_multiscalar_mul(&q_powers[1..k], &C[1..k])).affine();
-
-      // Compute the batched openings
-      // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
-      let B_u = v
-        .iter()
-        .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
-        .collect::<Vec<E::Fr>>();
-
       let d_0 = Self::verifier_second_challenge(W, transcript);
-      let d = [d_0, d_0 * d_0];
+      let d_1 = d_0 * d_0;
 
       assert!(t == 3);
+      assert!(W.len() == 3);
       // We write a special case for t=3, since this what is required for
       // mlkzg. Following the paper directly, we must compute:
       // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
@@ -323,21 +313,57 @@ where
       // let R0 = -W[0];
       // let R1 = -W[1];
       // let R2 = -W[2];
-      // let L = L0 + L1*d[0] + L2*d[1];
-      // let R = R0 + R1*d[0] + R2*d[1];
+      // let L = L0 + L1*d_0 + L2*d_1;
+      // let R = R0 + R1*d_0 + R2*d_1;
       //
       // We group terms to reduce the number of scalar mults (to seven):
       // In Rust, we could use MSMs for these, and speed up verification.
-      let L = E::G1::from(C_B) * (E::Fr::ONE + d[0] + d[1])
-        - E::G1::from(vk.g) * (B_u[0] + d[0] * B_u[1] + d[1] * B_u[2])
-        + E::G1::from(W[0]) * u[0]
-        + E::G1::from(W[1]) * (u[1] * d[0])
-        + E::G1::from(W[2]) * (u[2] * d[1]);
+      //
+      // Note, that while computing L, the intermediate computation of C_B together with computing
+      // L0, L1, L2 can be replaced by single MSM of C with the powers of q multiplied by (1 + d_0 + d_1)
+      // with additionally concatenated inputs for scalars/bases.
+
+      let q_power_multiplier = E::Fr::ONE + d_0 + d_1;
+
+      let q_powers_multiplied: Vec<E::Fr> = q_powers
+        .par_iter()
+        .map(|q_power| *q_power * q_power_multiplier)
+        .collect();
+
+      // Compute the batched openings
+      // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
+      let B_u = v
+        .into_par_iter()
+        .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
+        .collect::<Vec<E::Fr>>();
+
+      let L = NE::GE::vartime_multiscalar_mul(
+        &[
+          &q_powers_multiplied[..k],
+          &[
+            u[0],
+            (u[1] * d_0),
+            (u[2] * d_1),
+            (B_u[0] + d_0 * B_u[1] + d_1 * B_u[2]),
+          ],
+        ]
+        .concat(),
+        &[
+          &C[..k],
+          &[
+            E::G1::from(W[0]).into(),
+            E::G1::from(W[1]).into(),
+            E::G1::from(W[2]).into(),
+            (-E::G1::from(vk.g)).into(),
+          ],
+        ]
+        .concat(),
+      );
 
       let R0 = E::G1::from(W[0]);
       let R1 = E::G1::from(W[1]);
       let R2 = E::G1::from(W[2]);
-      let R = R0 + R1 * d[0] + R2 * d[1];
+      let R = R0 + R1 * d_0 + R2 * d_1;
 
       // Check that e(L, vk.H) == e(R, vk.tau_H)
       let pairing_inputs = [
