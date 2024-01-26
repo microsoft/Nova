@@ -5,9 +5,8 @@
 use crate::{
   errors::{NovaError, PCSError},
   provider::{
-    non_hiding_kzg::{
-      KZGProverKey, KZGVerifierKey, UVKZGCommitment, UVKZGEvaluation, UVKZGPoly, UVKZGProof,
-      UniversalKZGParam, UVKZGPCS,
+    kzg_commitment::{
+      KZGCommitmentEngine, KZGProverKey, KZGVerifierKey, UVKZGCommitment, UniversalKZGParam,
     },
     traits::DlogGroup,
   },
@@ -30,7 +29,82 @@ use ref_cast::RefCast;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{borrow::Borrow, iter, marker::PhantomData};
 
-use crate::provider::kzg_commitment::KZGCommitmentEngine;
+/// Polynomial Evaluation
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct UVKZGEvaluation<E: Engine>(pub E::Fr);
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+
+/// Proofs
+pub struct UVKZGProof<E: Engine> {
+  /// proof
+  pub proof: E::G1Affine,
+}
+
+/// Polynomial and its associated types
+pub type UVKZGPoly<F> = crate::spartan::polys::univariate::UniPoly<F>;
+
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+/// KZG Polynomial Commitment Scheme on univariate polynomial.
+/// Note: this is non-hiding, which is why we will implement traits on this token struct,
+/// as we expect to have several impls for the trait pegged on the same instance of a pairing::Engine.
+#[allow(clippy::upper_case_acronyms)]
+pub struct UVKZGPCS<E> {
+  #[doc(hidden)]
+  phantom: PhantomData<E>,
+}
+
+impl<E: MultiMillerLoop> UVKZGPCS<E>
+where
+  E::G1: DlogGroup<AffineGroupElement = E::G1Affine, Scalar = E::Fr>,
+{
+  /// Generate a commitment for a polynomial
+  /// Note that the scheme is not hidding
+  pub fn commit(
+    prover_param: impl Borrow<KZGProverKey<E>>,
+    poly: &UVKZGPoly<E::Fr>,
+  ) -> Result<UVKZGCommitment<E>, NovaError> {
+    let prover_param = prover_param.borrow();
+
+    if poly.degree() > prover_param.powers_of_g.len() {
+      return Err(NovaError::PCSError(PCSError::LengthError));
+    }
+    let C = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
+      poly.coeffs.as_slice(),
+      &prover_param.powers_of_g.as_slice()[..poly.coeffs.len()],
+    );
+    Ok(UVKZGCommitment(C.to_affine()))
+  }
+
+  /// On input a polynomial `p` and a point `point`, outputs a proof for the
+  /// same.
+  pub fn open(
+    prover_param: impl Borrow<KZGProverKey<E>>,
+    polynomial: &UVKZGPoly<E::Fr>,
+    point: &E::Fr,
+  ) -> Result<(UVKZGProof<E>, UVKZGEvaluation<E>), NovaError> {
+    let prover_param = prover_param.borrow();
+    let divisor = UVKZGPoly {
+      coeffs: vec![-*point, E::Fr::ONE],
+    };
+    let witness_polynomial = polynomial
+      .divide_with_q_and_r(&divisor)
+      .map(|(q, _r)| q)
+      .ok_or(NovaError::PCSError(PCSError::ZMError))?;
+    let proof = <E::G1 as DlogGroup>::vartime_multiscalar_mul(
+      witness_polynomial.coeffs.as_slice(),
+      &prover_param.powers_of_g.as_slice()[..witness_polynomial.coeffs.len()],
+    );
+    let evaluation = UVKZGEvaluation(polynomial.evaluate(point));
+
+    Ok((
+      UVKZGProof {
+        proof: proof.to_affine(),
+      },
+      evaluation,
+    ))
+  }
+}
 
 /// `ZMProverKey` is used to generate a proof
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -509,89 +583,25 @@ where
 
 #[cfg(test)]
 mod test {
-  use std::iter;
 
-  use ff::{Field, PrimeField, PrimeFieldBits};
+  use ff::{Field, PrimeField};
   use halo2curves::bn256::Bn256;
   use halo2curves::bn256::Fr as Scalar;
-  use halo2curves::pairing::MultiMillerLoop;
   use itertools::Itertools as _;
-  use rand::thread_rng;
   use rand_chacha::ChaCha20Rng;
   use rand_core::SeedableRng;
 
   use super::quotients;
   use crate::{
     provider::{
-      keccak::Keccak256Transcript,
-      non_hiding_kzg::{UVKZGPoly, UniversalKZGParam},
+      non_hiding_zeromorph::UVKZGPoly,
       non_hiding_zeromorph::{
-        batched_lifted_degree_quotient, eval_and_quotient_scalars, trim, ZMEvaluation, ZMPCS,
+        batched_lifted_degree_quotient, eval_and_quotient_scalars, ZMPCS,
       },
-      test_utils::prove_verify_from_num_vars,
-      traits::DlogGroup,
-      Bn256EngineZM,
+      test_utils::prove_verify_from_num_vars, Bn256EngineZM,
     },
     spartan::polys::multilinear::MultilinearPolynomial,
-    traits::{Engine as NovaEngine, Group, TranscriptEngineTrait, TranscriptReprTrait},
   };
-
-  fn commit_open_verify_with<E: MultiMillerLoop, NE: NovaEngine<GE = E::G1, Scalar = E::Fr>>()
-  where
-    E::G1: DlogGroup<AffineGroupElement = E::G1Affine, Scalar = E::Fr>,
-    <E::G1 as Group>::Base: TranscriptReprTrait<E::G1>, // Note: due to the move of the bound TranscriptReprTrait<G> on G::Base from Group to Engine
-    E::Fr: PrimeFieldBits,
-  {
-    let max_vars = 16;
-    let mut rng = thread_rng();
-    let max_poly_size = 1 << (max_vars + 1);
-    let universal_setup = UniversalKZGParam::<E>::gen_srs_for_testing(&mut rng, max_poly_size);
-
-    for num_vars in 3..max_vars {
-      // Setup
-      let (pp, vk) = {
-        let poly_size = 1 << (num_vars + 1);
-
-        trim(&universal_setup, poly_size)
-      };
-
-      // Commit and open
-      let mut transcript = Keccak256Transcript::<NE>::new(b"test");
-      let poly = MultilinearPolynomial::<E::Fr>::random(num_vars, &mut thread_rng());
-      let comm = ZMPCS::<E, NE>::commit(&pp, &poly).unwrap();
-      let point = iter::from_fn(|| transcript.squeeze(b"pt").ok())
-        .take(num_vars)
-        .collect::<Vec<_>>();
-      let eval = ZMEvaluation(poly.evaluate(&point));
-
-      let mut transcript_prover = Keccak256Transcript::<NE>::new(b"test");
-      let proof = ZMPCS::open(&pp, &comm, &poly, &point, &eval, &mut transcript_prover).unwrap();
-
-      // Verify
-      let mut transcript_verifier = Keccak256Transcript::<NE>::new(b"test");
-      let result = ZMPCS::verify(
-        &vk,
-        &mut transcript_verifier,
-        &comm,
-        point.as_slice(),
-        &eval,
-        &proof,
-      );
-
-      // check both random oracles are synced, as expected
-      assert_eq!(
-        transcript_prover.squeeze(b"test"),
-        transcript_verifier.squeeze(b"test")
-      );
-
-      result.unwrap();
-    }
-  }
-
-  #[test]
-  fn test_commit_open_verify() {
-    commit_open_verify_with::<Bn256, Bn256EngineZM>();
-  }
 
   #[test]
   fn test_multiple_polynomial_size() {
