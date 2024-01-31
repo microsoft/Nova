@@ -14,9 +14,9 @@ This repository provides `nova-snark,` a Rust library implementation of Nova ove
 
 At its core, Nova relies on a commitment scheme for vectors. Compressing IVC proofs using Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. Our code implements two commitment schemes and evaluation arguments: 
 1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
-2. Multilinear KZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
+2. HyperKZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
     
-For more details on using multilinear KZG, please see the test `test_ivc_nontrivial_with_compression`. The multilinear KZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/mlkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this](https://github.com/microsoft/Nova/issues/270) issue). 
+For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this](https://github.com/microsoft/Nova/issues/270) issue). 
 
 We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit.
 
