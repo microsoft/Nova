@@ -71,6 +71,10 @@ harness = false
 name = "sha256"
 harness = false
 
+[[bench]]
+name = "ppsnark"
+harness = false
+
 [features]
 default = []
 asm = ["halo2curves/asm"]

@@ -465,11 +465,10 @@ where
       let B = kzg_compute_batch_polynomial(f, q);
 
       // Now open B at u0, ..., u_{t-1}
-      let mut w = Vec::with_capacity(t);
-      for ui in u {
-        let wi = kzg_open(&B, *ui);
-        w.push(wi);
-      }
+      let w = u
+        .into_par_iter()
+        .map(|ui| kzg_open(&B, *ui))
+        .collect::<Vec<G1<E>>>();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
