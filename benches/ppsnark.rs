@@ -100,7 +100,7 @@ impl<F: PrimeField> NonTrivialCircuit<F> {
 impl<F: PrimeField> NonTrivialCircuit<F> {
   fn output(&self, z: &[F]) -> Vec<F> {
     let mut x = z[0];
-    let mut y = x.clone();
+    let mut y = x;
     for _ in 0..self.num_cons {
       y = x * x;
       x = y;
@@ -121,7 +121,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
     // Consider a an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
     let mut x = z[0].clone();
-    let mut y = x.clone();
+    let mut y = z[0].clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
       x = y.clone();
