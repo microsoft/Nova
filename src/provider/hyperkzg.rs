@@ -8,11 +8,7 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::{
-    keccak::Keccak256Transcript,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
-    traits::{CompressedGroup, DlogGroup, PairingGroup},
-  },
+  provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -25,7 +21,6 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-use halo2curves::bn256::{Fq as Bn256Fq, Fr as Bn256Fr, G1 as Bn256G1};
 use itertools::Itertools;
 use rand_core::OsRng;
 use rayon::prelude::*;
@@ -667,25 +662,12 @@ where
   }
 }
 
-/// An implementation of Nova traits with HyperKZG over the BN256 curve
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Bn256EngineKZG;
-
-impl Engine for Bn256EngineKZG {
-  type Base = Bn256Fq;
-  type Scalar = Bn256Fr;
-  type GE = Bn256G1;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
-  type ROCircuit = PoseidonROCircuit<Self::Base>;
-  type TE = Keccak256Transcript<Self>;
-  type CE = CommitmentEngine<Self>;
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::{
-    provider::keccak::Keccak256Transcript, spartan::polys::multilinear::MultilinearPolynomial,
+    provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
+    spartan::polys::multilinear::MultilinearPolynomial,
   };
   use bincode::Options;
   use group::Curve;

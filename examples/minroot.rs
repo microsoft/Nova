@@ -5,7 +5,7 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
-  provider::{hyperkzg::Bn256EngineKZG, GrumpkinEngine},
+  provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,

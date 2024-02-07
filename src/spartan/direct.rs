@@ -165,7 +165,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{Bn256Engine, PallasEngine, Secp256k1Engine};
+  use crate::provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
@@ -228,8 +228,8 @@ mod tests {
     type Spp = crate::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
     test_direct_snark_with::<E, Spp>();
 
-    type E2 = Bn256Engine;
-    type EE2 = crate::provider::ipa_pc::EvaluationEngine<E2>;
+    type E2 = Bn256EngineKZG;
+    type EE2 = crate::provider::hyperkzg::EvaluationEngine<E2>;
     type S2 = crate::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
     test_direct_snark_with::<E2, S2>();
 

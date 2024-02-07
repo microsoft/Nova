@@ -101,7 +101,7 @@ mod tests {
   use crate::{
     provider::keccak::Keccak256Transcript,
     provider::{
-      Bn256Engine, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
+      Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };
@@ -142,7 +142,7 @@ mod tests {
       "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
     );
 
-    test_keccak_transcript_with::<Bn256Engine>(
+    test_keccak_transcript_with::<Bn256EngineKZG>(
       "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
       "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
     );
@@ -246,7 +246,7 @@ mod tests {
   fn test_keccak_transcript_incremental_vs_explicit() {
     test_keccak_transcript_incremental_vs_explicit_with::<PallasEngine>();
     test_keccak_transcript_incremental_vs_explicit_with::<VestaEngine>();
-    test_keccak_transcript_incremental_vs_explicit_with::<Bn256Engine>();
+    test_keccak_transcript_incremental_vs_explicit_with::<Bn256EngineKZG>();
     test_keccak_transcript_incremental_vs_explicit_with::<GrumpkinEngine>();
     test_keccak_transcript_incremental_vs_explicit_with::<Secp256k1Engine>();
     test_keccak_transcript_incremental_vs_explicit_with::<Secq256k1Engine>();

@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use nova_snark::{
-  provider::{PallasEngine, VestaEngine},
+  provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
@@ -15,9 +15,9 @@ use nova_snark::{
 };
 use std::time::Duration;
 
-type E1 = PallasEngine;
-type E2 = VestaEngine;
-type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
+type E1 = Bn256EngineKZG;
+type E2 = GrumpkinEngine;
+type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>;
