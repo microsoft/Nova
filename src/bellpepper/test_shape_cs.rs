@@ -14,6 +14,7 @@ use ff::{Field, PrimeField};
 #[derive(Clone, Copy)]
 struct OrderedVariable(Variable);
 
+#[allow(unused)]
 #[derive(Debug)]
 enum NamedObject {
   Constraint(usize),
