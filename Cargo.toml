@@ -24,7 +24,7 @@ subtle = "2.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
 halo2curves = { version = "0.6.0", features = ["bits", "derive_serde"] }
 neptune = { version = "13.0.0", default-features = false }
-generic-array = "0.14"
+generic-array = "1.0.0"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"
 num-integer = "0.1"
@@ -41,14 +41,13 @@ itertools = "0.12.0"
 pasta-msm = { version = "0.1.4" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# see https://github.com/rust-random/rand/pull/948
 getrandom = { version = "0.2.0", default-features = false, features = ["js"] }
 
 [dev-dependencies]
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 flate2 = "1.0"
 hex = "0.4.3"
-pprof = { version = "0.11" }
+pprof = { version = "0.13" }
 cfg-if = "1.0.0"
 sha2 = "0.10.7"
 proptest = "1.2.0"
@@ -76,8 +75,7 @@ name = "ppsnark"
 harness = false
 
 [features]
-default = []
-asm = ["halo2curves/asm"]
+default = ["halo2curves/asm"]
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
 portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
