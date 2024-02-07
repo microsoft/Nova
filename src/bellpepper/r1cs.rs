@@ -111,17 +111,20 @@ fn add_constraint<S: PrimeField>(
   assert_eq!(n + 1, C.indptr.len(), "C: invalid shape");
 
   let add_constraint_component = |index: Index, coeff: &S, M: &mut SparseMatrix<S>| {
-    match index {
-      Index::Input(idx) => {
-        // Inputs come last, with input 0, representing 'one',
-        // at position num_vars within the witness vector.
-        let idx = idx + num_vars;
-        M.data.push(*coeff);
-        M.indices.push(idx);
-      }
-      Index::Aux(idx) => {
-        M.data.push(*coeff);
-        M.indices.push(idx);
+    // we add constraints to the matrix only if the associated coefficient is non-zero
+    if *coeff != S::ZERO {
+      match index {
+        Index::Input(idx) => {
+          // Inputs come last, with input 0, representing 'one',
+          // at position num_vars within the witness vector.
+          let idx = idx + num_vars;
+          M.data.push(*coeff);
+          M.indices.push(idx);
+        }
+        Index::Aux(idx) => {
+          M.data.push(*coeff);
+          M.indices.push(idx);
+        }
       }
     }
   };

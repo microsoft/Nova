@@ -947,13 +947,13 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &trivial_circuit1,
       &trivial_circuit2,
-      &expect!["9bc7ad2ab3f2a12455fdd21527598e365a14619c7f1e09f5cc3c78caa2fdd602"],
+      &expect!["a69d6cf6d014c3a5cc99b77afc86691f7460faa737207dd21b30e8241fae8002"],
     );
 
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &cubic_circuit1,
       &trivial_circuit2,
-      &expect!["8dea023ed642fd2d1a7bedb536cd96d22c0d25ea40961a4fe4a865169bf6ee01"],
+      &expect!["cfcae7544f7ecc7d205b69dfdc449c37f2b7586f86bfd72448d23b0d0cdf3c01"],
     );
 
     let trivial_circuit1_grumpkin = TrivialCircuit::<<Bn256EngineKZG as Engine>::Scalar>::default();
@@ -963,13 +963,13 @@ mod tests {
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &trivial_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      &expect!["89e746ed5055445a4aceb2b6fb0413fe0bf4d2efec387dee85613922a972a701"],
+      &expect!["b22ab3456df4bd391804a39fae582b37ed4a8d90ace377337940ac956d87f701"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &cubic_circuit1_grumpkin,
       &trivial_circuit2_grumpkin,
-      &expect!["941f55146ac21a3b4ff9863546bea95df48cb0069d2fa9e8249f8d0a00560401"],
+      &expect!["a04cc976eb5fdc613b8e4c6c1588a61ce8bec6118d92bf423279e0d96c0e4403"],
     );
 
     let trivial_circuit1_secp = TrivialCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
@@ -979,12 +979,12 @@ mod tests {
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &trivial_circuit1_secp,
       &trivial_circuit2_secp,
-      &expect!["c70782c49d3de831b3822081655cf61c7d53533f0effcd5c4166cd4fbe651e00"],
+      &expect!["c8aec89a3ea90317a0ecdc9150f4fc3648ca33f6660924a192cafd82e2939b02"],
     );
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &cubic_circuit1_secp,
       &trivial_circuit2_secp,
-      &expect!["148c5994c443174b67699cb6169aa4489babebb360ae5145bb4b09d77a3a9a01"],
+      &expect!["226ff33e01632c21e368da777f7762777d6e73deb3bcd09534e203b949eebf00"],
     );
   }
 
