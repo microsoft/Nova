@@ -461,7 +461,7 @@ mod tests {
   }
 
   #[test]
-  fn test_recursive_circuit_grumpkin() {
+  fn test_recursive_circuit_bn256_grumpkin() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<GrumpkinEngine> = PoseidonConstantsCircuit::default();
@@ -473,7 +473,7 @@ mod tests {
   }
 
   #[test]
-  fn test_recursive_circuit_secp() {
+  fn test_recursive_circuit_secpq() {
     let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<Secq256k1Engine> = PoseidonConstantsCircuit::default();
