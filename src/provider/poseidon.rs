@@ -192,7 +192,7 @@ where
 mod tests {
   use super::*;
   use crate::provider::{
-    Bn256Engine, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
+    Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
   };
   use crate::{
     bellpepper::solver::SatisfyingAssignment, constants::NUM_CHALLENGE_BITS,
@@ -237,7 +237,7 @@ mod tests {
   fn test_poseidon_ro() {
     test_poseidon_ro_with::<PallasEngine>();
     test_poseidon_ro_with::<VestaEngine>();
-    test_poseidon_ro_with::<Bn256Engine>();
+    test_poseidon_ro_with::<Bn256EngineKZG>();
     test_poseidon_ro_with::<GrumpkinEngine>();
     test_poseidon_ro_with::<Secp256k1Engine>();
     test_poseidon_ro_with::<Secq256k1Engine>();

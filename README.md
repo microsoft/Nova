@@ -32,12 +32,14 @@ A front-end is a tool to take a high-level program and turn it into an intermedi
 In the future, we plan to support [Noir](https://noir-lang.org/), a Rust-like DSL and a compiler to transform those programs into an IR. See [this](https://github.com/microsoft/Nova/issues/275) GitHub issue for details.
 
 ## Tests and examples
+By default, we enable the `asm` feature of an underlying library (which boosts performance by up to 50\%). If the library fails to build or run, one can pass `--no-default-features` to `cargo` commands noted below.
+
 To run tests (we recommend the release mode to drastically shorten run times):
 ```text
 cargo test --release
 ```
 
-To run example:
+To run an example:
 ```text
 cargo run --release --example minroot
 ```

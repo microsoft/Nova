@@ -846,7 +846,7 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      hyperkzg::Bn256EngineKZG, pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256Engine,
+      pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG,
       GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
@@ -857,6 +857,7 @@ mod tests {
   use ff::PrimeField;
 
   type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
+  type EEPrime<E> = provider::hyperkzg::EvaluationEngine<E>;
   type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
   type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
@@ -939,51 +940,22 @@ mod tests {
 
   #[test]
   fn test_pp_digest() {
-    let trivial_circuit1 = TrivialCircuit::<<PallasEngine as Engine>::Scalar>::default();
-    let trivial_circuit2 = TrivialCircuit::<<VestaEngine as Engine>::Scalar>::default();
-    let cubic_circuit1 = CubicCircuit::<<PallasEngine as Engine>::Scalar>::default();
-
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
-      &trivial_circuit1,
-      &trivial_circuit2,
-      &expect!["9bc7ad2ab3f2a12455fdd21527598e365a14619c7f1e09f5cc3c78caa2fdd602"],
+      &TrivialCircuit::<_>::default(),
+      &TrivialCircuit::<_>::default(),
+      &expect!["a69d6cf6d014c3a5cc99b77afc86691f7460faa737207dd21b30e8241fae8002"],
     );
 
-    test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
-      &cubic_circuit1,
-      &trivial_circuit2,
-      &expect!["8dea023ed642fd2d1a7bedb536cd96d22c0d25ea40961a4fe4a865169bf6ee01"],
+    test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
+      &TrivialCircuit::<_>::default(),
+      &TrivialCircuit::<_>::default(),
+      &expect!["b22ab3456df4bd391804a39fae582b37ed4a8d90ace377337940ac956d87f701"],
     );
-
-    let trivial_circuit1_grumpkin = TrivialCircuit::<<Bn256Engine as Engine>::Scalar>::default();
-    let trivial_circuit2_grumpkin = TrivialCircuit::<<GrumpkinEngine as Engine>::Scalar>::default();
-    let cubic_circuit1_grumpkin = CubicCircuit::<<Bn256Engine as Engine>::Scalar>::default();
-
-    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
-      &trivial_circuit1_grumpkin,
-      &trivial_circuit2_grumpkin,
-      &expect!["89e746ed5055445a4aceb2b6fb0413fe0bf4d2efec387dee85613922a972a701"],
-    );
-
-    test_pp_digest_with::<Bn256Engine, GrumpkinEngine, _, _>(
-      &cubic_circuit1_grumpkin,
-      &trivial_circuit2_grumpkin,
-      &expect!["941f55146ac21a3b4ff9863546bea95df48cb0069d2fa9e8249f8d0a00560401"],
-    );
-
-    let trivial_circuit1_secp = TrivialCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
-    let trivial_circuit2_secp = TrivialCircuit::<<Secq256k1Engine as Engine>::Scalar>::default();
-    let cubic_circuit1_secp = CubicCircuit::<<Secp256k1Engine as Engine>::Scalar>::default();
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
-      &trivial_circuit1_secp,
-      &trivial_circuit2_secp,
-      &expect!["c70782c49d3de831b3822081655cf61c7d53533f0effcd5c4166cd4fbe651e00"],
-    );
-    test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
-      &cubic_circuit1_secp,
-      &trivial_circuit2_secp,
-      &expect!["148c5994c443174b67699cb6169aa4489babebb360ae5145bb4b09d77a3a9a01"],
+      &TrivialCircuit::<_>::default(),
+      &TrivialCircuit::<_>::default(),
+      &expect!["c8aec89a3ea90317a0ecdc9150f4fc3648ca33f6660924a192cafd82e2939b02"],
     );
   }
 
@@ -1037,7 +1009,7 @@ mod tests {
   #[test]
   fn test_ivc_trivial() {
     test_ivc_trivial_with::<PallasEngine, VestaEngine>();
-    test_ivc_trivial_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_trivial_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_trivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
@@ -1117,7 +1089,7 @@ mod tests {
   #[test]
   fn test_ivc_nontrivial() {
     test_ivc_nontrivial_with::<PallasEngine, VestaEngine>();
-    test_ivc_nontrivial_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_nontrivial_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
@@ -1208,7 +1180,8 @@ mod tests {
   #[test]
   fn test_ivc_nontrivial_with_compression() {
     test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
+    );
     test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
 
     test_ivc_nontrivial_with_spark_compression_with::<
@@ -1311,7 +1284,12 @@ mod tests {
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
     test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_spark_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_spark_compression_with::<
+      Bn256EngineKZG,
+      GrumpkinEngine,
+      EEPrime<_>,
+      EE<_>,
+    >();
     test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
     );
   }
@@ -1451,7 +1429,7 @@ mod tests {
   #[test]
   fn test_ivc_nondet_with_compression() {
     test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<Bn256Engine, GrumpkinEngine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>();
     test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
   }
 
@@ -1516,7 +1494,7 @@ mod tests {
   #[test]
   fn test_ivc_base() {
     test_ivc_base_with::<PallasEngine, VestaEngine>();
-    test_ivc_base_with::<Bn256Engine, GrumpkinEngine>();
+    test_ivc_base_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_base_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 }

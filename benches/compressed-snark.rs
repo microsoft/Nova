@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use nova_snark::{
-  provider::{PallasEngine, VestaEngine},
+  provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
@@ -15,9 +15,9 @@ use nova_snark::{
 };
 use std::time::Duration;
 
-type E1 = PallasEngine;
-type E2 = VestaEngine;
-type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<E1>;
+type E1 = Bn256EngineKZG;
+type E2 = GrumpkinEngine;
+type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>;
@@ -50,8 +50,8 @@ cfg_if::cfg_if! {
 
 criterion_main!(compressed_snark);
 
-// This should match the value for the primary in test_recursive_circuit_pasta
-const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9817;
+// This should match the value for the primary in test_recursive_circuit_bn256_grumpkin
+const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9985;
 const NUM_SAMPLES: usize = 10;
 
 /// Benchmarks the compressed SNARK at a provided number of constraints

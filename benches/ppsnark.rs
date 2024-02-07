@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
-  provider::hyperkzg::Bn256EngineKZG,
+  provider::Bn256EngineKZG,
   spartan::direct::DirectSNARK,
   traits::{circuit::StepCircuit, Engine},
 };

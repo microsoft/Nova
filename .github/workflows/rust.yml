@@ -32,7 +32,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --target wasm32-unknown-unknown
+          args: --no-default-features --target wasm32-unknown-unknown
 
   test:
     runs-on: ubuntu-latest

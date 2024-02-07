@@ -15,7 +15,7 @@ mod tests {
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
     },
-    provider::{Bn256Engine, PallasEngine, Secp256k1Engine},
+    provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     traits::{snark::default_ck_hint, Engine},
   };
   use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
@@ -59,7 +59,7 @@ mod tests {
   #[test]
   fn test_alloc_bit() {
     test_alloc_bit_with::<PallasEngine>();
-    test_alloc_bit_with::<Bn256Engine>();
+    test_alloc_bit_with::<Bn256EngineKZG>();
     test_alloc_bit_with::<Secp256k1Engine>();
   }
 }

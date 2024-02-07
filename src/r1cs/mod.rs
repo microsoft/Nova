@@ -1,8 +1,4 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
-mod sparse;
-#[cfg(test)]
-mod util;
-
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
@@ -23,7 +19,8 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-pub(crate) use self::sparse::SparseMatrix;
+mod sparse;
+pub(crate) use sparse::SparseMatrix;
 
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
@@ -569,7 +566,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    provider::{Bn256Engine, PallasEngine, Secp256k1Engine},
+    provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::sparse::SparseMatrix,
     traits::Engine,
   };
@@ -652,7 +649,7 @@ mod tests {
   #[test]
   fn test_pad_tiny_r1cs() {
     test_pad_tiny_r1cs_with::<PallasEngine>();
-    test_pad_tiny_r1cs_with::<Bn256Engine>();
+    test_pad_tiny_r1cs_with::<Bn256EngineKZG>();
     test_pad_tiny_r1cs_with::<Secp256k1Engine>();
   }
 }

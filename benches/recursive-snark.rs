@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
-  provider::{PallasEngine, VestaEngine},
+  provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
@@ -15,8 +15,8 @@ use nova_snark::{
 };
 use std::time::Duration;
 
-type E1 = PallasEngine;
-type E2 = VestaEngine;
+type E1 = Bn256EngineKZG;
+type E2 = GrumpkinEngine;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
@@ -42,8 +42,8 @@ cfg_if::cfg_if! {
 
 criterion_main!(recursive_snark);
 
-// This should match the value for the primary in test_recursive_circuit_pasta
-const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9817;
+// This should match the value for the primary in test_recursive_circuit_bn256_grumpkin
+const NUM_CONS_VERIFIER_CIRCUIT_PRIMARY: usize = 9985;
 const NUM_SAMPLES: usize = 10;
 
 fn bench_recursive_snark(c: &mut Criterion) {
