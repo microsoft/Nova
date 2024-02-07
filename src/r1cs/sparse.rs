@@ -162,12 +162,12 @@ impl<'a, F: PrimeField> Iterator for Iter<'a, F> {
 
 #[cfg(test)]
 mod tests {
-  use super::SparseMatrix;
+  use super::*;
   use crate::{
     provider::PallasEngine,
-    r1cs::util::FWrap,
     traits::{Engine, Group},
   };
+  use ff::PrimeField;
   use proptest::{
     prelude::*,
     strategy::{BoxedStrategy, Just, Strategy},
@@ -175,6 +175,29 @@ mod tests {
 
   type G = <PallasEngine as Engine>::GE;
   type Fr = <G as Group>::Scalar;
+
+  /// Wrapper struct around a field element that implements additional traits
+  #[derive(Clone, Debug, PartialEq, Eq)]
+  pub struct FWrap<F: PrimeField>(pub F);
+
+  impl<F: PrimeField> Copy for FWrap<F> {}
+
+  #[cfg(not(target_arch = "wasm32"))]
+  /// Trait implementation for generating `FWrap<F>` instances with proptest
+  impl<F: PrimeField> Arbitrary for FWrap<F> {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+      use rand::rngs::StdRng;
+      use rand_core::SeedableRng;
+
+      let strategy = any::<[u8; 32]>()
+        .prop_map(|seed| FWrap(F::random(StdRng::from_seed(seed))))
+        .no_shrink();
+      strategy.boxed()
+    }
+  }
 
   #[test]
   fn test_matrix_creation() {
