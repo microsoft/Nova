@@ -26,8 +26,7 @@ use crate::{
   traits::Engine,
 };
 use pasta_curves::{pallas, vesta};
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// An implementation of the Nova `Engine` trait with BN254 curve and Pedersen commitment scheme
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

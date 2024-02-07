@@ -53,7 +53,7 @@ use traits::{
 };
 
 /// A type that holds public parameters of Nova
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct PublicParams<E1, E2, C1, C2>
 where
