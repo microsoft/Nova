@@ -9,9 +9,10 @@ pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range
   #[error("InvalidIndex")]
   InvalidIndex,
-  /// returned if the supplied input is not even-sized
-  #[error("OddInputLength")]
-  OddInputLength,
+  /// returned if the step circuit calls inputize or alloc_io in its synthesize method
+  /// instead of passing output with the return value
+  #[error("InvalidStepCircuitIO")]
+  InvalidStepCircuitIO,
   /// returned if the supplied input is not of the right length
   #[error("InvalidInputLength")]
   InvalidInputLength,
@@ -33,9 +34,9 @@ pub enum NovaError {
   /// returned if the provided number of steps is zero
   #[error("InvalidNumSteps")]
   InvalidNumSteps,
-  /// returned when an invalid inner product argument is provided
-  #[error("InvalidIPA")]
-  InvalidIPA,
+  /// returned when an invalid PCS evaluation argument is provided
+  #[error("InvalidPCS")]
+  InvalidPCS,
   /// returned when an invalid sum-check proof is provided
   #[error("InvalidSumcheckProof")]
   InvalidSumcheckProof,
