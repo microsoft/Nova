@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
 use crate::{
+  errors::NovaError,
   impl_traits,
   provider::traits::{CompressedGroup, DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},

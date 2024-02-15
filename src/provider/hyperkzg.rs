@@ -27,10 +27,10 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Alias to points on G1 that are in preprocessed form
-type G1<E> = <<E as Engine>::GE as DlogGroup>::PreprocessedGroupElement;
+type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
 
 /// Alias to points on G1 that are in preprocessed form
-type G2<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement;
+type G2Affine<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement;
 
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,8 +38,8 @@ pub struct CommitmentKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
-  tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::PreprocessedGroupElement, // needed only for the verifier key
+  ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement, // needed only for the verifier key
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -90,13 +90,8 @@ where
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm);
-    if comm.is_none() {
-      return Err(NovaError::DecompressionError);
-    }
-    Ok(Commitment {
-      comm: comm.unwrap(),
-    })
+    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm)?;
+    Ok(Commitment { comm })
   }
 }
 
@@ -235,12 +230,12 @@ where
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
 
-    let ck: Vec<G1<E>> = (0..num_gens)
+    let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
-      .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).preprocessed())
+      .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
 
-    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).preprocessed();
+    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
     Self::CommitmentKey { ck, tau_H }
   }
@@ -267,9 +262,9 @@ pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  G: G1<E>,
-  H: G2<E>,
-  tau_H: G2<E>,
+  G: G1Affine<E>,
+  H: G2Affine<E>,
+  tau_H: G2Affine<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
@@ -279,8 +274,8 @@ pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  com: Vec<G1<E>>,
-  w: Vec<G1<E>>,
+  com: Vec<G1Affine<E>>,
+  w: Vec<G1Affine<E>>,
   v: Vec<Vec<E::Scalar>>,
 }
 
@@ -297,7 +292,7 @@ where
 {
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait methods.
-  fn compute_challenge(com: &[G1<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
+  fn compute_challenge(com: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(b"c", &com.to_vec().as_slice());
 
     transcript.squeeze(b"c").unwrap()
@@ -327,7 +322,7 @@ where
     q_powers
   }
 
-  fn verifier_second_challenge(W: &[G1<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
+  fn verifier_second_challenge(W: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(b"W", &W.to_vec().as_slice());
 
     transcript.squeeze(b"d").unwrap()
@@ -351,8 +346,8 @@ where
     };
 
     let vk = VerifierKey {
-      G: E::GE::gen().preprocessed(),
-      H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().preprocessed(),
+      G: E::GE::gen().affine(),
+      H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().affine(),
       tau_H: ck.tau_H.clone(),
     };
 
@@ -371,7 +366,7 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1<E> {
+    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
       // On input f(x) and u compute the witness polynomial used to prove
       // that f(u) = v. The main part of this is to compute the
       // division (f(x) - f(u)) / (x - u), but we don't use a general
@@ -400,13 +395,13 @@ where
 
       let h = compute_witness_polynomial(f, u);
 
-      E::CE::commit(ck, &h).comm.preprocessed()
+      E::CE::commit(ck, &h).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
                           u: &[E::Scalar],
                           transcript: &mut <E as Engine>::TE|
-     -> (Vec<G1<E>>, Vec<Vec<E::Scalar>>) {
+     -> (Vec<G1Affine<E>>, Vec<Vec<E::Scalar>>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
         let mut v = f[0];
         let mut u_power = E::Scalar::ONE;
@@ -463,7 +458,7 @@ where
       let w = u
         .into_par_iter()
         .map(|ui| kzg_open(&B, *ui))
-        .collect::<Vec<G1<E>>>();
+        .collect::<Vec<G1Affine<E>>>();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
@@ -497,9 +492,9 @@ where
 
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
-    let com: Vec<G1<E>> = (1..polys.len())
+    let com: Vec<G1Affine<E>> = (1..polys.len())
       .into_par_iter()
-      .map(|i| E::CE::commit(ck, &polys[i]).comm.preprocessed())
+      .map(|i| E::CE::commit(ck, &polys[i]).comm.affine())
       .collect();
 
     // Phase 2
@@ -527,10 +522,9 @@ where
     let y = P_of_x;
 
     // vk is hashed in transcript already, so we do not add it here
-
     let kzg_verify_batch = |vk: &VerifierKey<E>,
-                            C: &Vec<G1<E>>,
-                            W: &Vec<G1<E>>,
+                            C: &Vec<G1Affine<E>>,
+                            W: &Vec<G1Affine<E>>,
                             u: &Vec<E::Scalar>,
                             v: &Vec<Vec<E::Scalar>>,
                             transcript: &mut <E as Engine>::TE|
@@ -545,9 +539,9 @@ where
       let d_1 = d_0 * d_0;
 
       // Shorthand to convert from preprocessed G1 elements to non-preprocessed
-      let from_ppG1 = |P: &G1<E>| <E::GE as DlogGroup>::group(P);
+      let from_ppG1 = |P: &G1Affine<E>| <E::GE as DlogGroup>::group(P);
       // Shorthand to convert from preprocessed G2 elements to non-preprocessed
-      let from_ppG2 = |P: &G2<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
+      let from_ppG2 = |P: &G2Affine<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
 
       assert_eq!(t, 3);
       assert_eq!(W.len(), 3);
@@ -623,7 +617,7 @@ where
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
       return Err(NovaError::ProofVerifyError);
     }
-    com.insert(0, C.comm.preprocessed()); // set com_0 = C, shifts other commitments to the right
+    com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
 
     let u = vec![r, -r, r * r];
 
@@ -670,7 +664,6 @@ mod tests {
     spartan::polys::multilinear::MultilinearPolynomial,
   };
   use bincode::Options;
-  use group::Curve;
   use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
@@ -728,7 +721,7 @@ mod tests {
   }
 
   #[test]
-  fn test_hyperkzg() {
+  fn test_hyperkzg_small() {
     let n = 4;
 
     // poly = [1, 2, 1, 4]
@@ -760,23 +753,19 @@ mod tests {
     );
     let post_c_v = verifier_transcript.squeeze(b"c").unwrap();
 
-    // check if the prover transcript and verifier transcript are kept in the
-    // same state
+    // check if the prover transcript and verifier transcript are kept in the same state
     assert_eq!(post_c_p, post_c_v);
 
-    let my_options = bincode::DefaultOptions::new()
+    let proof_bytes = bincode::DefaultOptions::new()
       .with_big_endian()
-      .with_fixint_encoding();
-    let mut output_bytes = my_options.serialize(&vk).unwrap();
-    output_bytes.append(&mut my_options.serialize(&C.compress()).unwrap());
-    output_bytes.append(&mut my_options.serialize(&point).unwrap());
-    output_bytes.append(&mut my_options.serialize(&eval).unwrap());
-    output_bytes.append(&mut my_options.serialize(&proof).unwrap());
-    println!("total output = {} bytes", output_bytes.len());
+      .with_fixint_encoding()
+      .serialize(&proof)
+      .unwrap();
+    assert_eq!(proof_bytes.len(), 368);
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.com[0] = (bad_proof.com[0] + bad_proof.com[0]).to_affine();
+    bad_proof.v[0] = bad_proof.v[1].clone();
     let mut verifier_transcript2 = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::verify(
       &vk,
@@ -790,7 +779,7 @@ mod tests {
   }
 
   #[test]
-  fn test_hyperkzg_more() {
+  fn test_hyperkzg_large() {
     // test the hyperkzg prover and verifier with random instances (derived from a seed)
     for ell in [4, 5, 6] {
       let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
@@ -819,7 +808,7 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
-      bad_proof.com[0] = (bad_proof.com[0] + bad_proof.com[1]).to_affine();
+      bad_proof.v[0] = bad_proof.v[1].clone();
       let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
       assert!(
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
