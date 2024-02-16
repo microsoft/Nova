@@ -75,7 +75,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       &c_secondary,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     // Bench time to produce a recursive SNARK;
     // we execute a certain number of warm-up steps since executing

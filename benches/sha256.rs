@@ -163,7 +163,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
       &ttc,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let circuit_secondary = TrivialCircuit::default();
     let z0_primary = vec![<E1 as Engine>::Scalar::from(2u64)];

@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
+  errors::NovaError,
   impl_traits,
   provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
@@ -56,7 +57,7 @@ impl PairingGroup for Bn256Point {
   type GT = Gt;
 
   fn pairing(p: &Self, q: &Self::G2) -> Self::GT {
-    pairing(&p.to_affine(), &q.to_affine())
+    pairing(&p.affine(), &q.affine())
   }
 }
 
@@ -84,20 +85,17 @@ impl Group for G2 {
 
 impl DlogGroup for G2 {
   type CompressedGroupElement = G2Compressed;
-  type PreprocessedGroupElement = G2Affine;
+  type AffineGroupElement = G2Affine;
 
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self {
+  fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
     best_multiexp(scalars, bases)
   }
 
-  fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+  fn affine(&self) -> Self::AffineGroupElement {
     self.to_affine()
   }
 
-  fn group(p: &Self::PreprocessedGroupElement) -> Self {
+  fn group(p: &Self::AffineGroupElement) -> Self {
     G2::from(*p)
   }
 
@@ -105,7 +103,7 @@ impl DlogGroup for G2 {
     self.to_bytes()
   }
 
-  fn from_label(_label: &'static [u8], _n: usize) -> Vec<Self::PreprocessedGroupElement> {
+  fn from_label(_label: &'static [u8], _n: usize) -> Vec<Self::AffineGroupElement> {
     unimplemented!()
   }
 
@@ -131,8 +129,13 @@ impl<G: DlogGroup> TranscriptReprTrait<G> for G2Compressed {
 impl CompressedGroup for G2Compressed {
   type GroupElement = G2;
 
-  fn decompress(&self) -> Option<G2> {
-    Some(G2::from_bytes(self).unwrap())
+  fn decompress(&self) -> Result<G2, NovaError> {
+    let d = G2::from_bytes(self);
+    if d.is_some().into() {
+      Ok(d.unwrap())
+    } else {
+      Err(NovaError::DecompressionError)
+    }
   }
 }
 

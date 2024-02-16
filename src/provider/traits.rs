@@ -1,4 +1,7 @@
-use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
+use crate::{
+  errors::NovaError,
+  traits::{commitment::ScalarMul, Group, TranscriptReprTrait},
+};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
@@ -22,7 +25,7 @@ pub trait CompressedGroup:
   type GroupElement: DlogGroup;
 
   /// Decompresses the compressed group element
-  fn decompress(&self) -> Option<Self::GroupElement>;
+  fn decompress(&self) -> Result<Self::GroupElement, NovaError>;
 }
 
 /// A helper trait for types with a group operation.
@@ -58,7 +61,7 @@ pub trait DlogGroup:
   type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
 
   /// A type representing preprocessed group element
-  type PreprocessedGroupElement: Clone
+  type AffineGroupElement: Clone
     + Debug
     + PartialEq
     + Eq
@@ -69,22 +72,19 @@ pub trait DlogGroup:
     + TranscriptReprTrait<Self>;
 
   /// A method to compute a multiexponentation
-  fn vartime_multiscalar_mul(
-    scalars: &[Self::Scalar],
-    bases: &[Self::PreprocessedGroupElement],
-  ) -> Self;
+  fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
 
   /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement>;
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
 
   /// Compresses the group element
   fn compress(&self) -> Self::CompressedGroupElement;
 
   /// Produces a preprocessed element
-  fn preprocessed(&self) -> Self::PreprocessedGroupElement;
+  fn affine(&self) -> Self::AffineGroupElement;
 
   /// Returns a group element from a preprocessed group element
-  fn group(p: &Self::PreprocessedGroupElement) -> Self;
+  fn group(p: &Self::AffineGroupElement) -> Self;
 
   /// Returns an element that is the additive identity of the group
   fn zero() -> Self;
@@ -139,20 +139,20 @@ macro_rules! impl_traits {
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
-      type PreprocessedGroupElement = $name::Affine;
+      type AffineGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
-        bases: &[Self::PreprocessedGroupElement],
+        bases: &[Self::AffineGroupElement],
       ) -> Self {
         best_multiexp(scalars, bases)
       }
 
-      fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+      fn affine(&self) -> Self::AffineGroupElement {
         self.to_affine()
       }
 
-      fn group(p: &Self::PreprocessedGroupElement) -> Self {
+      fn group(p: &Self::AffineGroupElement) -> Self {
         $name::Point::from(*p)
       }
 
@@ -160,7 +160,7 @@ macro_rules! impl_traits {
         self.to_bytes()
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement> {
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
@@ -215,9 +215,9 @@ macro_rules! impl_traits {
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
-        let coordinates = self.to_affine().coordinates();
+        let coordinates = self.affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1
-          && ($name_curve_affine::identity() != self.to_affine())
+          && ($name_curve_affine::identity() != self.affine())
         {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
@@ -242,8 +242,13 @@ macro_rules! impl_traits {
     impl CompressedGroup for $name_compressed {
       type GroupElement = $name::Point;
 
-      fn decompress(&self) -> Option<$name::Point> {
-        Some($name_curve::from_bytes(&self).unwrap())
+      fn decompress(&self) -> Result<$name::Point, NovaError> {
+        let d = $name_curve::from_bytes(&self);
+        if d.is_some().into() {
+          Ok(d.unwrap())
+        } else {
+          Err(NovaError::DecompressionError)
+        }
       }
     }
 

@@ -23,7 +23,7 @@ where
   E: Engine,
   E::GE: DlogGroup,
 {
-  ck: Vec<<E::GE as DlogGroup>::PreprocessedGroupElement>,
+  ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
 }
 
 impl<E> Len for CommitmentKey<E>
@@ -72,13 +72,8 @@ where
   }
 
   fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm);
-    if comm.is_none() {
-      return Err(NovaError::DecompressionError);
-    }
-    Ok(Commitment {
-      comm: comm.unwrap(),
-    })
+    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm)?;
+    Ok(Commitment { comm })
   }
 }
 
@@ -281,7 +276,7 @@ where
       .into_par_iter()
       .map(|i| {
         let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
-        E::GE::vartime_multiscalar_mul(&w, &bases).preprocessed()
+        E::GE::vartime_multiscalar_mul(&w, &bases).affine()
       })
       .collect();
 
@@ -294,7 +289,7 @@ where
       .ck
       .clone()
       .into_par_iter()
-      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).preprocessed())
+      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
       .collect();
 
     CommitmentKey { ck: ck_scaled }
@@ -308,7 +303,7 @@ where
       .collect::<Result<Vec<Commitment<E>>, NovaError>>()?;
     let ck = (0..d.len())
       .into_par_iter()
-      .map(|i| d[i].comm.preprocessed())
+      .map(|i| d[i].comm.affine())
       .collect();
     Ok(CommitmentKey { ck })
   }

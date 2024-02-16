@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
+  errors::NovaError,
   provider::traits::{CompressedGroup, DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -70,11 +71,11 @@ macro_rules! impl_traits {
 
     impl DlogGroup for $name::Point {
       type CompressedGroupElement = $name_compressed;
-      type PreprocessedGroupElement = $name::Affine;
+      type AffineGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
         scalars: &[Self::Scalar],
-        bases: &[Self::PreprocessedGroupElement],
+        bases: &[Self::AffineGroupElement],
       ) -> Self {
         #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
         if scalars.len() >= 128 {
@@ -86,11 +87,11 @@ macro_rules! impl_traits {
         best_multiexp(scalars, bases)
       }
 
-      fn preprocessed(&self) -> Self::PreprocessedGroupElement {
+      fn affine(&self) -> Self::AffineGroupElement {
         self.to_affine()
       }
 
-      fn group(p: &Self::PreprocessedGroupElement) -> Self {
+      fn group(p: &Self::AffineGroupElement) -> Self {
         $name::Point::from(*p)
       }
 
@@ -98,7 +99,7 @@ macro_rules! impl_traits {
         $name_compressed::new(self.to_bytes())
       }
 
-      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::PreprocessedGroupElement> {
+      fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement> {
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
@@ -153,7 +154,7 @@ macro_rules! impl_traits {
       }
 
       fn to_coordinates(&self) -> (Self::Base, Self::Base, bool) {
-        let coordinates = self.to_affine().coordinates();
+        let coordinates = self.affine().coordinates();
         if coordinates.is_some().unwrap_u8() == 1 {
           (*coordinates.unwrap().x(), *coordinates.unwrap().y(), false)
         } else {
@@ -172,8 +173,13 @@ macro_rules! impl_traits {
     impl CompressedGroup for $name_compressed {
       type GroupElement = $name::Point;
 
-      fn decompress(&self) -> Option<$name::Point> {
-        Some($name_curve::from_bytes(&self.repr).unwrap())
+      fn decompress(&self) -> Result<$name::Point, NovaError> {
+        let d = $name_curve::from_bytes(&self.repr);
+        if d.is_some().into() {
+          Ok(d.unwrap())
+        } else {
+          Err(NovaError::DecompressionError)
+        }
       }
     }
 

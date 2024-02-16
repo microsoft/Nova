@@ -143,7 +143,7 @@ where
     c_secondary: &C2,
     ck_hint1: &CommitmentKeyHint<E1>,
     ck_hint2: &CommitmentKeyHint<E2>,
-  ) -> Self {
+  ) -> Result<Self, NovaError> {
     let augmented_circuit_params_primary =
       NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
     let augmented_circuit_params_secondary =
@@ -181,7 +181,11 @@ where
     let _ = circuit_secondary.synthesize(&mut cs);
     let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape(ck_hint2);
 
-    PublicParams {
+    if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
+      return Err(NovaError::InvalidStepCircuitIO);
+    }
+
+    Ok(PublicParams {
       F_arity_primary,
       F_arity_secondary,
       ro_consts_primary,
@@ -196,7 +200,7 @@ where
       augmented_circuit_params_secondary,
       digest: OnceCell::new(),
       _p: Default::default(),
-    }
+    })
   }
 
   /// Retrieve the digest of the public parameters.
@@ -924,7 +928,7 @@ mod tests {
     // this tests public parameters with a size specifically intended for a spark-compressed SNARK
     let ck_hint1 = &*SPrime::<E1, EE<E1>>::ck_floor();
     let ck_hint2 = &*SPrime::<E2, EE<E2>>::ck_floor();
-    let pp = PublicParams::<E1, E2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2);
+    let pp = PublicParams::<E1, E2, T1, T2>::setup(circuit1, circuit2, ck_hint1, ck_hint2).unwrap();
 
     let digest_str = pp
       .digest()
@@ -978,7 +982,8 @@ mod tests {
       &test_circuit2,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 1;
 
@@ -1032,7 +1037,8 @@ mod tests {
       &circuit_secondary,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 3;
 
@@ -1114,7 +1120,8 @@ mod tests {
       &circuit_secondary,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 3;
 
@@ -1213,7 +1220,8 @@ mod tests {
       &circuit_secondary,
       &*SPrime::<E1, EE1>::ck_floor(),
       &*SPrime::<E2, EE2>::ck_floor(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 3;
 
@@ -1375,7 +1383,8 @@ mod tests {
       &circuit_secondary,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 3;
 
@@ -1452,7 +1461,8 @@ mod tests {
       &test_circuit2,
       &*default_ck_hint(),
       &*default_ck_hint(),
-    );
+    )
+    .unwrap();
 
     let num_steps = 1;
 
@@ -1496,5 +1506,62 @@ mod tests {
     test_ivc_base_with::<PallasEngine, VestaEngine>();
     test_ivc_base_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_base_with::<Secp256k1Engine, Secq256k1Engine>();
+  }
+
+  fn test_setup_with<E1, E2>()
+  where
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
+  {
+    #[derive(Clone, Debug, Default)]
+    struct CircuitWithInputize<F: PrimeField> {
+      _p: PhantomData<F>,
+    }
+
+    impl<F: PrimeField> StepCircuit<F> for CircuitWithInputize<F> {
+      fn arity(&self) -> usize {
+        1
+      }
+
+      fn synthesize<CS: ConstraintSystem<F>>(
+        &self,
+        cs: &mut CS,
+        z: &[AllocatedNum<F>],
+      ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+        let x = &z[0];
+        let y = x.square(cs.namespace(|| "x_sq"))?;
+        y.inputize(cs.namespace(|| "y"))?; // inputize y
+        Ok(vec![y])
+      }
+    }
+
+    // produce public parameters with trivial secondary
+    let circuit = CircuitWithInputize::<<E1 as Engine>::Scalar>::default();
+    let pp =
+      PublicParams::<E1, E2, CircuitWithInputize<E1::Scalar>, TrivialCircuit<E2::Scalar>>::setup(
+        &circuit,
+        &TrivialCircuit::default(),
+        &*default_ck_hint(),
+        &*default_ck_hint(),
+      );
+    assert!(pp.is_err());
+    assert_eq!(pp.err(), Some(NovaError::InvalidStepCircuitIO));
+
+    // produce public parameters with the trivial primary
+    let circuit = CircuitWithInputize::<E2::Scalar>::default();
+    let pp =
+      PublicParams::<E1, E2, TrivialCircuit<E1::Scalar>, CircuitWithInputize<E2::Scalar>>::setup(
+        &TrivialCircuit::default(),
+        &circuit,
+        &*default_ck_hint(),
+        &*default_ck_hint(),
+      );
+    assert!(pp.is_err());
+    assert_eq!(pp.err(), Some(NovaError::InvalidStepCircuitIO));
+  }
+
+  #[test]
+  fn test_setup() {
+    test_setup_with::<Bn256EngineKZG, GrumpkinEngine>();
   }
 }

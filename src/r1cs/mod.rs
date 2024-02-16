@@ -127,11 +127,6 @@ impl<E: Engine> R1CSShape<E> {
     is_valid(num_cons, num_vars, num_io, &B)?;
     is_valid(num_cons, num_vars, num_io, &C)?;
 
-    // We require the number of public inputs/outputs to be even
-    if num_io % 2 != 0 {
-      return Err(NovaError::OddInputLength);
-    }
-
     Ok(R1CSShape {
       num_cons,
       num_vars,
