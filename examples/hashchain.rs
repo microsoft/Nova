@@ -91,7 +91,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);
-      neptune::sponge::api::SpongeAPI::absorb(&mut sponge, num_absorbs as u32, &elt, acc);
+      neptune::sponge::api::SpongeAPI::absorb(&mut sponge, num_absorbs, &elt, acc);
 
       let output = neptune::sponge::api::SpongeAPI::squeeze(&mut sponge, 1, acc);
       sponge.finish(acc).unwrap();
@@ -158,7 +158,9 @@ fn main() {
     type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
     // produce a recursive SNARK
-    println!("Generating a RecursiveSNARK with {num_elts_per_step} field elements per hashchain node...");
+    println!(
+      "Generating a RecursiveSNARK with {num_elts_per_step} field elements per hashchain node..."
+    );
     let mut recursive_snark: RecursiveSNARK<E1, E2, C1, C2> =
       RecursiveSNARK::<E1, E2, C1, C2>::new(
         &pp,
