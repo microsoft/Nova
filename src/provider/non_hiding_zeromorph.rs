@@ -595,10 +595,9 @@ mod test {
   use crate::{
     provider::{
       non_hiding_zeromorph::UVKZGPoly,
-      non_hiding_zeromorph::{
-        batched_lifted_degree_quotient, eval_and_quotient_scalars, ZMPCS,
-      },
-      test_utils::prove_verify_from_num_vars, Bn256EngineZM,
+      non_hiding_zeromorph::{batched_lifted_degree_quotient, eval_and_quotient_scalars, ZMPCS},
+      test_utils::prove_verify_from_num_vars,
+      Bn256EngineZM,
     },
     spartan::polys::multilinear::MultilinearPolynomial,
   };

@@ -1,10 +1,10 @@
 #![allow(non_snake_case)]
 
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
-use halo2curves::bn256::Bn256;
 use core::marker::PhantomData;
 use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
+use halo2curves::bn256::Bn256;
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{

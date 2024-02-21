@@ -167,9 +167,9 @@ mod tests {
   use super::*;
   use crate::provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
-use halo2curves::bn256::Bn256;
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use halo2curves::bn256::Bn256;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
