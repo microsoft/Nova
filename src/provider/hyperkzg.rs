@@ -424,9 +424,10 @@ mod tests {
   use super::*;
   use crate::provider::test_utils::prove_verify_from_num_vars;
   use crate::{
-    provider::keccak::Keccak256Transcript, CommitmentKey,
+    provider::keccak::Keccak256Transcript, provider::kzg_commitment::KZGCommitmentEngine,
   };
   use bincode::Options;
+  use halo2curves::bn256::Bn256;
 
   type E = halo2curves::bn256::Bn256;
   type NE = crate::provider::Bn256EngineKZG;
@@ -497,23 +498,29 @@ mod tests {
     // eval = 28
     let eval = Fr::from(28);
 
-    let ck: CommitmentKey<NE> =
-      <KZGCommitmentEngine<E> as CommitmentEngineTrait<NE>>::setup(b"test", n);
-    let (pk, vk): (KZGProverKey<E>, KZGVerifierKey<E>) = EvaluationEngine::<E, NE>::setup(&ck);
+    let ck = <KZGCommitmentEngine<Bn256> as CommitmentEngineTrait<NE>>::setup(b"test", n);
+    let (pk, vk) = EvaluationEngine::<Bn256, NE>::setup(&ck);
 
     // make a commitment
-    let C = KZGCommitmentEngine::commit(&ck, &poly);
+    let C = <KZGCommitmentEngine<Bn256> as CommitmentEngineTrait<NE>>::commit(&ck, &poly);
 
     // prove an evaluation
     let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
-    let proof =
-      EvaluationEngine::<E, NE>::prove(&ck, &pk, &mut prover_transcript, &C, &poly, &point, &eval)
-        .unwrap();
+    let proof = EvaluationEngine::<Bn256, NE>::prove(
+      &ck,
+      &pk,
+      &mut prover_transcript,
+      &C,
+      &poly,
+      &point,
+      &eval,
+    )
+    .unwrap();
     let post_c_p = prover_transcript.squeeze(b"c").unwrap();
 
     // verify the evaluation
     let mut verifier_transcript = Keccak256Transcript::<NE>::new(b"TestEval");
-    assert!(EvaluationEngine::<E, NE>::verify(
+    assert!(EvaluationEngine::<Bn256, NE>::verify(
       &vk,
       &mut verifier_transcript,
       &C,
@@ -536,9 +543,9 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.comms[0] = (bad_proof.comms[0] + bad_proof.comms[0] * Fr::from(123)).to_affine();
+    bad_proof.evals[0] = bad_proof.evals[1].clone();
     let mut verifier_transcript2 = Keccak256Transcript::<NE>::new(b"TestEval");
-    assert!(EvaluationEngine::<E, NE>::verify(
+    assert!(EvaluationEngine::<Bn256, NE>::verify(
       &vk,
       &mut verifier_transcript2,
       &C,

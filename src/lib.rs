@@ -850,8 +850,8 @@ mod tests {
   use super::*;
   use crate::{
     provider::{
-      traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG, Bn256EngineZM,
-      GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine, non_hiding_zeromorph::ZMPCS,
+      non_hiding_zeromorph::ZMPCS, traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG,
+      Bn256EngineZM, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
