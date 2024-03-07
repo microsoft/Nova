@@ -9,6 +9,27 @@ use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Defines a trait for implementing sum-check in a generic manner
+pub trait SumcheckEngine<E: Engine>: Send + Sync {
+  /// returns the initial claims
+  fn initial_claims(&self) -> Vec<E::Scalar>;
+
+  /// degree of the sum-check polynomial
+  fn degree(&self) -> usize;
+
+  /// the size of the polynomials
+  fn size(&self) -> usize;
+
+  /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
+  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>>;
+
+  /// bounds a variable in the constituent polynomials
+  fn bound(&mut self, r: &E::Scalar);
+
+  /// returns the final claims
+  fn final_claims(&self) -> Vec<Vec<E::Scalar>>;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub(crate) struct SumcheckProof<E: Engine> {
@@ -298,7 +319,7 @@ impl<E: Engine> SumcheckProof<E> {
   }
 
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_cubic<F>(
+  pub fn compute_eval_points_cubic<F>(
     poly_A: &MultilinearPolynomial<E::Scalar>,
     poly_B: &MultilinearPolynomial<E::Scalar>,
     poly_C: &MultilinearPolynomial<E::Scalar>,
@@ -342,7 +363,7 @@ impl<E: Engine> SumcheckProof<E> {
   }
 
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_cubic_with_additive_term<F>(
+  pub fn compute_eval_points_cubic_with_additive_term<F>(
     poly_A: &MultilinearPolynomial<E::Scalar>,
     poly_B: &MultilinearPolynomial<E::Scalar>,
     poly_C: &MultilinearPolynomial<E::Scalar>,
