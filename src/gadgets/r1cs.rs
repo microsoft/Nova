@@ -56,6 +56,7 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
 }
 
 /// An Allocated Relaxed R1CS Instance
+#[derive(Clone)]
 pub struct AllocatedRelaxedR1CSInstance<E: Engine> {
   pub(crate) W: AllocatedPoint<E>,
   pub(crate) E: AllocatedPoint<E>,
@@ -325,45 +326,108 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   /// If the condition is true then returns this otherwise it returns the other
   pub fn conditionally_select<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
-    mut cs: CS,
+    cs: CS,
     other: &AllocatedRelaxedR1CSInstance<E>,
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
-    let W = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "W = cond ? self.W : other.W"),
-      &self.W,
-      &other.W,
-      condition,
-    )?;
-
-    let E = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "E = cond ? self.E : other.E"),
-      &self.E,
-      &other.E,
-      condition,
-    )?;
-
-    let u = conditionally_select(
-      cs.namespace(|| "u = cond ? self.u : other.u"),
-      &self.u,
-      &other.u,
-      condition,
-    )?;
-
-    let X0 = conditionally_select_bignat(
-      cs.namespace(|| "X[0] = cond ? self.X[0] : other.X[0]"),
-      &self.X0,
-      &other.X0,
-      condition,
-    )?;
-
-    let X1 = conditionally_select_bignat(
-      cs.namespace(|| "X[1] = cond ? self.X[1] : other.X[1]"),
-      &self.X1,
-      &other.X1,
-      condition,
-    )?;
-
-    Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
+    conditionally_select_alloc_relaxed_r1cs(cs, self, other, condition)
   }
+}
+
+/// c = cond ? a: b, where a, b: `AllocatedRelaxedR1CSInstance`
+pub fn conditionally_select_alloc_relaxed_r1cs<
+  E: Engine,
+  CS: ConstraintSystem<<E as Engine>::Base>,
+>(
+  mut cs: CS,
+  a: &AllocatedRelaxedR1CSInstance<E>,
+  b: &AllocatedRelaxedR1CSInstance<E>,
+  condition: &Boolean,
+) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
+  let c = AllocatedRelaxedR1CSInstance {
+    W: conditionally_select_point(
+      cs.namespace(|| "W = cond ? a.W : b.W"),
+      &a.W,
+      &b.W,
+      condition,
+    )?,
+    E: conditionally_select_point(
+      cs.namespace(|| "E = cond ? a.E : b.E"),
+      &a.E,
+      &b.E,
+      condition,
+    )?,
+    u: conditionally_select(
+      cs.namespace(|| "u = cond ? a.u : b.u"),
+      &a.u,
+      &b.u,
+      condition,
+    )?,
+    X0: conditionally_select_bignat(
+      cs.namespace(|| "X[0] = cond ? a.X[0] : b.X[0]"),
+      &a.X0,
+      &b.X0,
+      condition,
+    )?,
+    X1: conditionally_select_bignat(
+      cs.namespace(|| "X[1] = cond ? a.X[1] : b.X[1]"),
+      &a.X1,
+      &b.X1,
+      condition,
+    )?,
+  };
+  Ok(c)
+}
+
+/// c = cond ? a: b, where a, b: `Vec<AllocatedRelaxedR1CSInstance>`
+pub fn conditionally_select_vec_allocated_relaxed_r1cs_instance<
+  E: Engine,
+  CS: ConstraintSystem<<E as Engine>::Base>,
+>(
+  mut cs: CS,
+  a: &[AllocatedRelaxedR1CSInstance<E>],
+  b: &[AllocatedRelaxedR1CSInstance<E>],
+  condition: &Boolean,
+) -> Result<Vec<AllocatedRelaxedR1CSInstance<E>>, SynthesisError> {
+  a.iter()
+    .enumerate()
+    .zip(b.iter())
+    .map(|((i, a), b)| {
+      a.conditionally_select(
+        cs.namespace(|| format!("cond ? a[{}]: b[{}]", i, i)),
+        b,
+        condition,
+      )
+    })
+    .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<E>>, _>>()
+}
+
+/// c = cond ? a: b, where a, b: `AllocatedPoint`
+pub fn conditionally_select_point<E: Engine, CS: ConstraintSystem<<E as Engine>::Base>>(
+  mut cs: CS,
+  a: &AllocatedPoint<E>,
+  b: &AllocatedPoint<E>,
+  condition: &Boolean,
+) -> Result<AllocatedPoint<E>, SynthesisError> {
+  let c = AllocatedPoint {
+    x: conditionally_select(
+      cs.namespace(|| "x = cond ? a.x : b.x"),
+      &a.x,
+      &b.x,
+      condition,
+    )?,
+    y: conditionally_select(
+      cs.namespace(|| "y = cond ? a.y : b.y"),
+      &a.y,
+      &b.y,
+      condition,
+    )?,
+    is_infinity: conditionally_select(
+      cs.namespace(|| "is_infinity = cond ? a.is_infinity : b.is_infinity"),
+      &a.is_infinity,
+      &b.is_infinity,
+      condition,
+    )?,
+  };
+  Ok(c)
 }
