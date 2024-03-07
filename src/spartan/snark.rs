@@ -245,7 +245,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     ];
 
     let (batched_u, batched_w, sc_proof_batch, claims_batch_left) =
-      batch_eval_prove(u_vec, w_vec, &mut transcript)?;
+      batch_eval_reduce(u_vec, w_vec, &mut transcript)?;
 
     let eval_arg = EE::prove(
       ck,
@@ -410,8 +410,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 }
 
-/// Proves a batch of polynomial evaluation claims using Sumcheck
-/// reducing them to a single claim at the same point.
+/// Reduces a batch of polynomial evaluation claims using Sumcheck
+/// to a single claim at the same point.
 ///
 /// # Details
 ///
@@ -424,7 +424,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 ///
 /// We allow the polynomial Pᵢ to have different sizes, by appropriately scaling
 /// the claims and resulting evaluations from Sumcheck.
-pub(in crate::spartan) fn batch_eval_prove<E: Engine>(
+fn batch_eval_reduce<E: Engine>(
   u_vec: Vec<PolyEvalInstance<E>>,
   w_vec: Vec<PolyEvalWitness<E>>,
   transcript: &mut E::TE,
@@ -498,7 +498,7 @@ pub(in crate::spartan) fn batch_eval_prove<E: Engine>(
 
 /// Verifies a batch of polynomial evaluation claims using Sumcheck
 /// reducing them to a single claim at the same point.
-pub(in crate::spartan) fn batch_eval_verify<E: Engine>(
+fn batch_eval_verify<E: Engine>(
   u_vec: Vec<PolyEvalInstance<E>>,
   transcript: &mut E::TE,
   sc_proof_batch: &SumcheckProof<E>,

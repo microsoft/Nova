@@ -19,7 +19,7 @@ use crate::{
       univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
-    sumcheck::SumcheckProof,
+    sumcheck::{SumcheckEngine, SumcheckProof},
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
   traits::{
@@ -174,7 +174,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     }
   }
 
-  pub(in crate::spartan) fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
+  fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
     let comm_vec: Vec<Commitment<E>> = [
       &self.row,
       &self.col,
@@ -237,27 +237,6 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   }
 }
 
-/// Defines a trait for implementing sum-check in a generic manner
-pub trait SumcheckEngine<E: Engine>: Send + Sync {
-  /// returns the initial claims
-  fn initial_claims(&self) -> Vec<E::Scalar>;
-
-  /// degree of the sum-check polynomial
-  fn degree(&self) -> usize;
-
-  /// the size of the polynomials
-  fn size(&self) -> usize;
-
-  /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>>;
-
-  /// bounds a variable in the constituent polynomials
-  fn bound(&mut self, r: &E::Scalar);
-
-  /// returns the final claims
-  fn final_claims(&self) -> Vec<Vec<E::Scalar>>;
-}
-
 /// The [WitnessBoundSumcheck] ensures that the witness polynomial W defined over n = log(N) variables,
 /// is zero outside of the first `num_vars = 2^m` entries.
 ///
@@ -272,13 +251,13 @@ pub trait SumcheckEngine<E: Engine>: Send + Sync {
 /// It is equivalent to the expression
 ///  `0 = ∑_{2^m≤i<2^n} eq[i] * W[i]`
 /// Since `eq` is random, the instance is only satisfied if `W[2^{m}..] = 0`.
-pub(in crate::spartan) struct WitnessBoundSumcheck<E: Engine> {
+pub struct WitnessBoundSumcheck<E: Engine> {
   poly_W: MultilinearPolynomial<E::Scalar>,
   poly_masked_eq: MultilinearPolynomial<E::Scalar>,
 }
 
 impl<E: Engine> WitnessBoundSumcheck<E> {
-  pub fn new(tau: E::Scalar, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
+  fn new(tau: E::Scalar, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
     let num_vars_log = num_vars.log_2();
     // When num_vars = num_rounds, we shouldn't have to prove anything
     // but we still want this instance to compute the evaluation of W
@@ -336,7 +315,7 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 }
 
-pub(in crate::spartan) struct MemorySumcheckInstance<E: Engine> {
+struct MemorySumcheckInstance<E: Engine> {
   // row
   w_plus_r_row: MultilinearPolynomial<E::Scalar>,
   t_plus_r_row: MultilinearPolynomial<E::Scalar>,
@@ -1193,10 +1172,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
 
-    // we now need to prove three claims
+    // we now need to prove four claims
     // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
     // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
     // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
+    // (4) Check that the witness polynomial W is well-formed e.g., it is padded with only zeros
     let gamma = transcript.squeeze(b"g")?;
     let r = transcript.squeeze(b"r")?;
 

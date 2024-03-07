@@ -27,7 +27,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
 
   /// Create powers the following powers of `t`:
   /// [t^{2^0}, t^{2^1}, ..., t^{2^{ell-1}}]
-  pub(in crate::spartan) fn squares(t: &Scalar, ell: usize) -> Vec<Scalar> {
+  pub fn squares(t: &Scalar, ell: usize) -> Vec<Scalar> {
     successors(Some(*t), |p: &Scalar| Some(p.square()))
       .take(ell)
       .collect::<Vec<_>>()
