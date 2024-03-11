@@ -2,7 +2,7 @@
 use crate::{
   errors::NovaError,
   impl_traits,
-  provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
+  provider::traits::{CompressedGroup, DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
@@ -23,6 +23,8 @@ use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
+
+use super::traits::PairingGroup;
 
 /// Re-exports that give access to the standard aliases used in the code base, for bn256
 pub mod bn256 {

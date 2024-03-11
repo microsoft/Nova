@@ -1,6 +1,6 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
 use crate::{
-  errors::NovaError,
+  errors::{NovaError, PCSError},
   provider::{pedersen::CommitmentKeyExtTrait, traits::DlogGroup},
   spartan::polys::eq::EqPolynomial,
   traits::{
@@ -403,7 +403,21 @@ where
     if P_hat == CE::<E>::commit(&ck_hat.combine(&ck_c), &[self.a_hat, self.a_hat * b_hat]) {
       Ok(())
     } else {
-      Err(NovaError::InvalidPCS)
+      Err(NovaError::PCSError(PCSError::InvalidIPA))
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::provider::ipa_pc::EvaluationEngine;
+  use crate::provider::test_utils::prove_verify_from_num_vars;
+  use crate::provider::GrumpkinEngine;
+
+  #[test]
+  fn test_multiple_polynomial_size() {
+    for num_vars in [4, 5, 6] {
+      prove_verify_from_num_vars::<_, EvaluationEngine<GrumpkinEngine>>(num_vars);
     }
   }
 }
