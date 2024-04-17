@@ -14,13 +14,13 @@ use crate::{
       eq::EqPolynomial,
       identity::IdentityPolynomial,
       masked_eq::MaskedEqPolynomial,
-      multilinear::MultilinearPolynomial,
+      multilinear::{MultilinearPolynomial, SparsePolynomial},
       power::PowPolynomial,
       univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
     sumcheck::{SumcheckEngine, SumcheckProof},
-    PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
+    PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
@@ -1523,15 +1523,15 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           };
 
           let eval_X = {
-            // constant term
-            let mut poly_X = vec![(0, U.u)];
-            //remaining inputs
-            poly_X.extend(
-              (0..U.X.len())
-                .map(|i| (i + 1, U.X[i]))
-                .collect::<Vec<(usize, E::Scalar)>>(),
-            );
-            SparsePolynomial::new(vk.num_vars.log_2(), poly_X).evaluate(&rand_sc_unpad[1..])
+            // public IO is (u, X)
+            let X = vec![U.u]
+              .into_iter()
+              .chain(U.X.iter().cloned())
+              .collect::<Vec<E::Scalar>>();
+
+            // evaluate the sparse polynomial at rand_sc_unpad[1..]
+            let poly_X = SparsePolynomial::new(rand_sc_unpad.len() - 1, X);
+            poly_X.evaluate(&rand_sc_unpad[1..])
           };
 
           self.eval_W + factor * rand_sc_unpad[0] * eval_X

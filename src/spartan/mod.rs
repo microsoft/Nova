@@ -21,7 +21,6 @@ use crate::{
 };
 use ff::Field;
 use itertools::Itertools as _;
-use polys::multilinear::SparsePolynomial;
 use rayon::{iter::IntoParallelRefIterator, prelude::*};
 
 // Creates a vector of the first `n` powers of `s`.
