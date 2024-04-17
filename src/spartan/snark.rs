@@ -10,6 +10,7 @@ use crate::{
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness, SparseMatrix},
   spartan::{
     compute_eval_table_sparse,
+    math::Math,
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
     powers,
     sumcheck::SumcheckProof,
@@ -325,16 +326,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // verify claim_inner_final
     let eval_Z = {
       let eval_X = {
-        // constant term
-        let mut poly_X = vec![(0, U.u)];
-        //remaining inputs
-        poly_X.extend(
-          (0..U.X.len())
-            .map(|i| (i + 1, U.X[i]))
-            .collect::<Vec<(usize, E::Scalar)>>(),
-        );
-        SparsePolynomial::new(usize::try_from(vk.S.num_vars.ilog2()).unwrap(), poly_X)
-          .evaluate(&r_y[1..])
+        // public IO is (u, X)
+        let X = vec![U.u]
+          .into_iter()
+          .chain(U.X.iter().cloned())
+          .collect::<Vec<E::Scalar>>();
+        SparsePolynomial::new(vk.S.num_vars.log_2(), X).evaluate(&r_y[1..])
       };
       (E::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
     };

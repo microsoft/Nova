@@ -114,47 +114,36 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
 }
 
 /// Sparse multilinear polynomial, which means the $Z(\cdot)$ is zero at most points.
-/// So we do not have to store every evaluations of $Z(\cdot)$, only store the non-zero points.
-///
-/// For example, the evaluations are [0, 0, 0, 1, 0, 1, 0, 2].
-/// The sparse polynomial only store the non-zero values, [(3, 1), (5, 1), (7, 2)].
-/// In the tuple, the first is index, the second is value.
+/// In our context, sparse polynomials are non-zeros over the hypercube at locations that map to "small" integers
+/// We exploit this property to implement a time-optimal algorithm
 pub(crate) struct SparsePolynomial<Scalar: PrimeField> {
   num_vars: usize,
-  Z: Vec<(usize, Scalar)>,
+  Z: Vec<Scalar>,
 }
 
 impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
-  pub fn new(num_vars: usize, Z: Vec<(usize, Scalar)>) -> Self {
+  pub fn new(num_vars: usize, Z: Vec<Scalar>) -> Self {
     SparsePolynomial { num_vars, Z }
   }
 
-  /// Computes the $\tilde{eq}$ extension polynomial.
-  /// return 1 when a == r, otherwise return 0.
-  fn compute_chi(a: &[bool], r: &[Scalar]) -> Scalar {
-    assert_eq!(a.len(), r.len());
-    let mut chi_i = Scalar::ONE;
-    for j in 0..r.len() {
-      if a[j] {
-        chi_i *= r[j];
-      } else {
-        chi_i *= Scalar::ONE - r[j];
-      }
-    }
-    chi_i
-  }
-
-  // Takes O(m log n) where m is the number of non-zero evaluations and n is the number of variables.
+  // a time-optimal algorithm to evaluate sparse polynomials
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.num_vars, r.len());
 
-    (0..self.Z.len())
-      .into_par_iter()
-      .map(|i| {
-        let bits = (self.Z[i].0).get_bits(r.len());
-        SparsePolynomial::compute_chi(&bits, r) * self.Z[i].1
-      })
-      .sum()
+    let num_vars_z = self.Z.len().next_power_of_two().log_2();
+    let chis = EqPolynomial::evals_from_points(&r[self.num_vars - 1 - num_vars_z..]);
+    let eval_partial: Scalar = self
+      .Z
+      .iter()
+      .zip(chis.iter())
+      .map(|(z, chi)| *z * *chi)
+      .sum();
+
+    let common = (0..self.num_vars - 1 - num_vars_z)
+      .map(|i| (Scalar::ONE - r[i]))
+      .product::<Scalar>();
+
+    common * eval_partial
   }
 }
 
@@ -216,18 +205,21 @@ mod tests {
   }
 
   fn test_sparse_polynomial_with<F: PrimeField>() {
-    // Let the polynomial have 3 variables, p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
-    // Evaluations of the polynomial at boolean cube are [0, 0, 0, 1, 0, 1, 0, 2].
+    // Let the polynomial have 4 variables, but is non-zero at only 3 locations (out of 2^4 = 16) over the hypercube
+    let mut Z = vec![F::ONE, F::ONE, F::from(2)];
+    let m_poly = SparsePolynomial::<F>::new(4, Z.clone());
 
-    let TWO = F::from(2);
-    let Z = vec![(3, F::ONE), (5, F::ONE), (7, TWO)];
-    let m_poly = SparsePolynomial::<F>::new(3, Z);
+    Z.resize(16, F::ZERO); // append with zeros to make it a dense polynomial
+    let m_poly_dense = MultilinearPolynomial::new(Z);
 
-    let x = vec![F::ONE, F::ONE, F::ONE];
-    assert_eq!(m_poly.evaluate(x.as_slice()), TWO);
+    // evaluation point
+    let x = vec![F::from(5), F::from(8), F::from(5), F::from(3)];
 
-    let x = vec![F::ONE, F::ZERO, F::ONE];
-    assert_eq!(m_poly.evaluate(x.as_slice()), F::ONE);
+    // check evaluations
+    assert_eq!(
+      m_poly.evaluate(x.as_slice()),
+      m_poly_dense.evaluate(x.as_slice())
+    );
   }
 
   #[test]
