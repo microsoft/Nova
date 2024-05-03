@@ -169,6 +169,7 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use halo2curves::bn256::Bn256;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -229,7 +230,7 @@ mod tests {
     test_direct_snark_with::<E, Spp>();
 
     type E2 = Bn256EngineKZG;
-    type EE2 = crate::provider::hyperkzg::EvaluationEngine<E2>;
+    type EE2 = crate::provider::hyperkzg::EvaluationEngine<Bn256, E2>;
     type S2 = crate::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
     test_direct_snark_with::<E2, S2>();
 
@@ -277,7 +278,7 @@ mod tests {
       assert!(res.is_ok());
 
       // set input to the next step
-      z_i = z_i_plus_one.clone();
+      z_i.clone_from(&z_i_plus_one);
     }
 
     // sanity: check the claimed output with a direct computation of the same

@@ -4,6 +4,7 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
+use halo2curves::bn256::Bn256;
 use nova_snark::{
   provider::Bn256EngineKZG,
   spartan::direct::DirectSNARK,
@@ -12,7 +13,7 @@ use nova_snark::{
 use std::time::Duration;
 
 type E = Bn256EngineKZG;
-type EE = nova_snark::provider::hyperkzg::EvaluationEngine<E>;
+type EE = nova_snark::provider::hyperkzg::EvaluationEngine<Bn256, E>;
 type S = nova_snark::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
 // To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
@@ -124,7 +125,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
     let mut y = z[0].clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
+      x.clone_from(&y);
     }
     Ok(vec![y])
   }

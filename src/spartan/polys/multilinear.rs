@@ -1,15 +1,12 @@
 //! Main components:
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
-
 use std::ops::{Add, Index};
 
 use ff::PrimeField;
 use itertools::Itertools as _;
-use rayon::prelude::{
-  IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-  IntoParallelRefMutIterator, ParallelIterator,
-};
+use rand_core::{CryptoRng, RngCore};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::spartan::{math::Math, polys::eq::EqPolynomial};
@@ -36,6 +33,7 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
   pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///
@@ -47,6 +45,11 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     MultilinearPolynomial { num_vars, Z }
   }
 
+  /// evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  pub fn evaluations(&self) -> &[Scalar] {
+    &self.Z[..]
+  }
+
   /// Returns the number of variables in the multilinear polynomial
   pub const fn get_num_vars(&self) -> usize {
     self.num_vars
@@ -55,6 +58,15 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Returns the total number of evaluations.
   pub fn len(&self) -> usize {
     self.Z.len()
+  }
+
+  /// Returns a random polynomial
+  pub fn random<R: RngCore + CryptoRng>(num_vars: usize, mut rng: &mut R) -> Self {
+    MultilinearPolynomial::new(
+      std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
+        .take(1 << num_vars)
+        .collect(),
+    )
   }
 
   /// Binds the polynomial's top variable using the given scalar.
@@ -169,7 +181,7 @@ mod tests {
 
   use super::*;
   use rand_chacha::ChaCha20Rng;
-  use rand_core::{CryptoRng, RngCore, SeedableRng};
+  use rand_core::SeedableRng;
 
   fn make_mlp<F: PrimeField>(len: usize, value: F) -> MultilinearPolynomial<F> {
     MultilinearPolynomial {

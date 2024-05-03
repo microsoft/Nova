@@ -8,6 +8,7 @@ use core::marker::PhantomData;
 use ff::Field;
 use ff::{PrimeField, PrimeFieldBits};
 use flate2::{write::ZlibEncoder, Compression};
+use halo2curves::bn256::Bn256;
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
@@ -22,7 +23,7 @@ use std::time::Instant;
 
 type E1 = Bn256EngineKZG;
 type E2 = GrumpkinEngine;
-type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<E1>;
+type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>; // non-preprocessing SNARK
 type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>; // non-preprocessing SNARK

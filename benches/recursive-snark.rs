@@ -20,7 +20,7 @@ type E2 = GrumpkinEngine;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
-// To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
+// To run these benchmarks, first download `criterion` with `cargo install cargo-criterion`.
 // Then `cargo criterion --bench recursive-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
 // For flamegraphs, run `cargo criterion --bench recursive-snark --features flamegraph -- --profile-time <secs>`.
 // The results are located in `target/criterion/profile/<name-of-benchmark>`.
@@ -165,7 +165,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
     let mut y = x.clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
+      x.clone_from(&y);
     }
     Ok(vec![y])
   }

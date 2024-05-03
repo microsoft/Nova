@@ -36,6 +36,8 @@ thiserror = "1.0"
 group = "0.13.0"
 once_cell = "1.18.0"
 itertools = "0.12.0"
+rand = "0.8.5"
+ref-cast = "1.0.20"
 
 [target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
 pasta-msm = { version = "0.1.4" }
@@ -74,8 +76,15 @@ harness = false
 name = "ppsnark"
 harness = false
 
+
+[[bench]]
+name = "pcs"
+harness = false
+required-features = ["bench"]
+
 [features]
 default = ["halo2curves/asm"]
+bench = []
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
 portable = ["pasta-msm/portable"]
 cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]

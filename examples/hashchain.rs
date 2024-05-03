@@ -4,6 +4,7 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use generic_array::typenum::U24;
+use halo2curves::bn256::Bn256;
 use neptune::{
   circuit2::Elt,
   sponge::{
@@ -26,7 +27,7 @@ use std::time::Instant;
 
 type E1 = Bn256EngineKZG;
 type E2 = GrumpkinEngine;
-type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<E1>;
+type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>; // non-preprocessing SNARK
 type S2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>; // non-preprocessing SNARK

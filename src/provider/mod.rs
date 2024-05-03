@@ -3,6 +3,7 @@
 // public modules to be used as an evaluation engine with Spartan
 pub mod hyperkzg;
 pub mod ipa_pc;
+pub mod non_hiding_zeromorph;
 
 // crate-public modules, made crate-public mostly for tests
 pub(crate) mod bn256_grumpkin;
@@ -11,6 +12,11 @@ pub(crate) mod pedersen;
 pub(crate) mod poseidon;
 pub(crate) mod secp_secq;
 pub(crate) mod traits;
+// a non-hiding variant of {kzg, zeromorph}
+pub(crate) mod kzg_commitment;
+
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 // crate-private modules
 mod keccak;
@@ -18,7 +24,6 @@ mod keccak;
 use crate::{
   provider::{
     bn256_grumpkin::{bn256, grumpkin},
-    hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
     keccak::Keccak256Transcript,
     pedersen::CommitmentEngine as PedersenCommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
@@ -26,8 +31,11 @@ use crate::{
   },
   traits::Engine,
 };
+use halo2curves::bn256::Bn256;
 use pasta_curves::{pallas, vesta};
 use serde::{Deserialize, Serialize};
+
+use self::kzg_commitment::KZGCommitmentEngine;
 
 /// An implementation of Nova traits with HyperKZG over the BN256 curve
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -48,7 +56,7 @@ impl Engine for Bn256EngineKZG {
   type RO = PoseidonRO<Self::Base, Self::Scalar>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
   type TE = Keccak256Transcript<Self>;
-  type CE = HyperKZGCommitmentEngine<Self>;
+  type CE = KZGCommitmentEngine<Bn256>;
 }
 
 impl Engine for Bn256EngineIPA {
@@ -69,6 +77,20 @@ impl Engine for GrumpkinEngine {
   type ROCircuit = PoseidonROCircuit<Self::Base>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
+}
+
+/// An implementation of the Nova `Engine` trait with BN254 curve and Zeromorph commitment scheme
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Bn256EngineZM;
+
+impl Engine for Bn256EngineZM {
+  type Base = bn256::Base;
+  type Scalar = bn256::Scalar;
+  type GE = bn256::Point;
+  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type TE = Keccak256Transcript<Self>;
+  type CE = KZGCommitmentEngine<Bn256>;
 }
 
 /// An implementation of the Nova `Engine` trait with Secp256k1 curve and Pedersen commitment scheme
@@ -130,6 +152,7 @@ impl Engine for VestaEngine {
 #[cfg(test)]
 mod tests {
   use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
+
   use digest::{ExtendableOutput, Update};
   use group::Curve;
   use halo2curves::CurveExt;

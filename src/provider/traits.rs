@@ -96,19 +96,6 @@ pub trait DlogGroup:
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
-/// A trait that defines extensions to the DlogGroup trait, to be implemented for
-/// elliptic curve groups that are pairing friendly
-pub trait PairingGroup: DlogGroup {
-  /// A type representing the second group
-  type G2: DlogGroup<Scalar = Self::Scalar, Base = Self::Base>;
-
-  /// A type representing the target group
-  type GT: PartialEq + Eq;
-
-  /// A method to compute a pairing
-  fn pairing(p: &Self, q: &Self::G2) -> Self::GT;
-}
-
 /// This implementation behaves in ways specific to the halo2curves suite of curves in:
 // - to_coordinates,
 // - vartime_multiscalar_mul, where it does not call into accelerated implementations.

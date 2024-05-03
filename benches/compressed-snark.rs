@@ -4,6 +4,7 @@ use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
+use halo2curves::bn256::Bn256;
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
@@ -17,7 +18,7 @@ use std::time::Duration;
 
 type E1 = Bn256EngineKZG;
 type E2 = GrumpkinEngine;
-type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<E1>;
+type EE1 = nova_snark::provider::hyperkzg::EvaluationEngine<Bn256, E1>;
 type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<E2>;
 // SNARKs without computational commitments
 type S1 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E1, EE1>;
@@ -28,7 +29,7 @@ type SS2 = nova_snark::spartan::snark::RelaxedR1CSSNARK<E2, EE2>;
 type C1 = NonTrivialCircuit<<E1 as Engine>::Scalar>;
 type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
 
-// To run these benchmarks, first download `criterion` with `cargo install cargo install cargo-criterion`.
+// To run these benchmarks, first download `criterion` with `cargo install cargo-criterion`.
 // Then `cargo criterion --bench compressed-snark`. The results are located in `target/criterion/data/<name-of-benchmark>`.
 // For flamegraphs, run `cargo criterion --bench compressed-snark --features flamegraph -- --profile-time <secs>`.
 // The results are located in `target/criterion/profile/<name-of-benchmark>`.
@@ -216,7 +217,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
     let mut y = x.clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
+      x.clone_from(&y);
     }
     Ok(vec![y])
   }
