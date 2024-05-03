@@ -13,7 +13,7 @@ use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
 use halo2curves::{
   bn256::{
-    pairing, G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G2Affine, G2Compressed, Gt,
+    G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G2Affine, G2Compressed,
     G1 as Bn256Point, G2,
   },
   grumpkin::{G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint},
@@ -23,8 +23,6 @@ use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
-
-use super::traits::PairingGroup;
 
 /// Re-exports that give access to the standard aliases used in the code base, for bn256
 pub mod bn256 {
@@ -53,15 +51,6 @@ impl_traits!(
   "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
   "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001"
 );
-
-impl PairingGroup for Bn256Point {
-  type G2 = G2;
-  type GT = Gt;
-
-  fn pairing(p: &Self, q: &Self::G2) -> Self::GT {
-    pairing(&p.affine(), &q.affine())
-  }
-}
 
 impl Group for G2 {
   type Base = bn256::Base;

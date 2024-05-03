@@ -33,6 +33,7 @@ pub struct MultilinearPolynomial<Scalar: PrimeField> {
   pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///

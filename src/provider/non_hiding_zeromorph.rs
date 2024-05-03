@@ -308,7 +308,7 @@ where
 
     // Compute and send proof commitment pi
     let (uvproof, _uveval): (UVKZGProof<_>, UVKZGEvaluation<_>) =
-      UVKZGPCS::<E>::open(&pp.open_pp, &f, &x).map(|(proof, eval)| (proof, eval))?;
+      UVKZGPCS::<E>::open(&pp.open_pp, &f, &x)?;
 
     let proof = ZMProof {
       pi: uvproof.proof,
