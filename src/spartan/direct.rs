@@ -109,7 +109,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     let mut cs: ShapeCS<E> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
 
-    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
+    let (shape, ck) = cs.r1cs_shape_and_ck(&*S::ck_floor());
 
     let (pk, vk) = S::setup(&ck, &shape)?;
 
@@ -277,7 +277,7 @@ mod tests {
       assert!(res.is_ok());
 
       // set input to the next step
-      z_i = z_i_plus_one.clone();
+      z_i.clone_from(&z_i_plus_one);
     }
 
     // sanity: check the claimed output with a direct computation of the same

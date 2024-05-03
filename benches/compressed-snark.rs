@@ -216,7 +216,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
     let mut y = x.clone();
     for i in 0..self.num_cons {
       y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
+      x.clone_from(&y);
     }
     Ok(vec![y])
   }

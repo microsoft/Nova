@@ -721,6 +721,7 @@ mod tests {
   }
 
   #[test]
+  #[allow(clippy::assigning_clones)]
   fn test_hyperkzg_small() {
     let n = 4;
 
@@ -765,7 +766,9 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
+
     bad_proof.v[0] = bad_proof.v[1].clone();
+
     let mut verifier_transcript2 = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::verify(
       &vk,
@@ -779,6 +782,7 @@ mod tests {
   }
 
   #[test]
+  #[allow(clippy::assigning_clones)]
   fn test_hyperkzg_large() {
     // test the hyperkzg prover and verifier with random instances (derived from a seed)
     for ell in [4, 5, 6] {
@@ -808,7 +812,9 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
+
       bad_proof.v[0] = bad_proof.v[1].clone();
+
       let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
       assert!(
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
