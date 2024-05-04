@@ -765,7 +765,8 @@ mod tests {
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    bad_proof.v[0] = bad_proof.v[1].clone();
+    let v1 = bad_proof.v[1].clone();
+    bad_proof.v[0].clone_from(&v1);
     let mut verifier_transcript2 = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::verify(
       &vk,
@@ -808,7 +809,8 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
-      bad_proof.v[0] = bad_proof.v[1].clone();
+      let v1 = bad_proof.v[1].clone();
+      bad_proof.v[0].clone_from(&v1);
       let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
       assert!(
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
