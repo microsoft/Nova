@@ -185,7 +185,7 @@ where
       return Err(NovaError::InvalidStepCircuitIO);
     }
 
-    Ok(PublicParams {
+    let pp = PublicParams {
       F_arity_primary,
       F_arity_secondary,
       ro_consts_primary,
@@ -200,7 +200,12 @@ where
       augmented_circuit_params_secondary,
       digest: OnceCell::new(),
       _p: Default::default(),
-    })
+    };
+
+    // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
+    let _ = pp.digest();
+
+    Ok(pp)
   }
 
   /// Retrieve the digest of the public parameters.
