@@ -6,15 +6,11 @@ use ff::PrimeField;
 
 trait OptionExt<T> {
   fn grab(&self) -> Result<&T, SynthesisError>;
-  fn grab_mut(&mut self) -> Result<&mut T, SynthesisError>;
 }
 
 impl<T> OptionExt<T> for Option<T> {
   fn grab(&self) -> Result<&T, SynthesisError> {
     self.as_ref().ok_or(SynthesisError::AssignmentMissing)
-  }
-  fn grab_mut(&mut self) -> Result<&mut T, SynthesisError> {
-    self.as_mut().ok_or(SynthesisError::AssignmentMissing)
   }
 }
 
