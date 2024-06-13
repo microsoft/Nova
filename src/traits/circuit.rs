@@ -11,7 +11,7 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
   /// input a vector of size equal to arity and output a vector of size equal to arity
   fn arity(&self) -> usize;
 
-  /// Sythesize the circuit for a computation step and return variable
+  /// Synthesize the circuit for a computation step and return variable
   /// that corresponds to the output of the step `z_{i+1}`
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,
