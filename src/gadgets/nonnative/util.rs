@@ -14,8 +14,6 @@ use std::io::{self, Write};
 pub struct Bit<Scalar: PrimeField> {
   /// The linear combination which constrain the value of the bit
   pub bit: LinearCombination<Scalar>,
-  /// The value of the bit (filled at witness-time)
-  pub value: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -58,14 +56,13 @@ impl<Scalar: PrimeField> Bit<Scalar> {
 
     Ok(Self {
       bit: LinearCombination::zero() + var,
-      value,
     })
   }
 }
 
 pub struct Num<Scalar: PrimeField> {
-  pub num: LinearCombination<Scalar>,
-  pub value: Option<Scalar>,
+  pub(crate) num: LinearCombination<Scalar>,
+  pub(crate) value: Option<Scalar>,
 }
 
 impl<Scalar: PrimeField> Num<Scalar> {
