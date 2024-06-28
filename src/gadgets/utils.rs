@@ -92,7 +92,7 @@ where
   })
 }
 
-/// interepret scalar as base
+/// interpret scalar as base
 pub fn scalar_as_base<E: Engine>(input: E::Scalar) -> E::Base {
   let input_bits = input.to_le_bits();
   let mut mult = E::Base::ONE;

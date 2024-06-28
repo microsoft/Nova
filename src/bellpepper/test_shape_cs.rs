@@ -133,7 +133,7 @@ where
     result
   }
 
-  /// Print all iputs and a detailed representation of each constraint.
+  /// Print all inputs and a detailed representation of each constraint.
   #[allow(dead_code)]
   pub fn pretty_print(&self) -> String {
     let mut s = String::new();
