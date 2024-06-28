@@ -12,7 +12,7 @@ use crate::{
   },
   Commitment, CommitmentKey, CE,
 };
-use core::{cmp::max, marker::PhantomData};
+use core::cmp::max;
 use ff::Field;
 use once_cell::sync::OnceCell;
 
@@ -21,13 +21,6 @@ use serde::{Deserialize, Serialize};
 
 mod sparse;
 pub(crate) use sparse::SparseMatrix;
-
-/// Public parameters for a given R1CS
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct R1CS<E: Engine> {
-  _p: PhantomData<E>,
-}
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,26 +68,34 @@ pub struct RelaxedR1CSInstance<E: Engine> {
   pub(crate) u: E::Scalar,
 }
 
+/// A type for functions that hints commitment key sizing by returning the floor of the number of required generators.
 pub type CommitmentKeyHint<E> = dyn Fn(&R1CSShape<E>) -> usize;
 
-impl<E: Engine> R1CS<E> {
-  /// Generates public parameters for a Rank-1 Constraint System (R1CS).
-  ///
-  /// This function takes into consideration the shape of the R1CS matrices and a hint function
-  /// for the number of generators. It returns a `CommitmentKey`.
-  ///
-  /// # Arguments
-  ///
-  /// * `S`: The shape of the R1CS matrices.
-  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
-  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
-  ///
-  pub fn commitment_key(S: &R1CSShape<E>, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
-    let num_cons = S.num_cons;
-    let num_vars = S.num_vars;
-    let ck_hint = ck_floor(S);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
-  }
+/// Generates public parameters for a Rank-1 Constraint System (R1CS).
+///
+/// This function takes into consideration the shape of the R1CS matrices and a hint function
+/// for the number of generators. It returns a `CommitmentKey`.
+///
+/// # Arguments
+///
+/// * `S`: The shape of the R1CS matrices.
+/// * `ck_floor`: A function that provides a floor for the number of generators. A good function to
+///   provide is the `commitment_key_floor` field in the trait `RelaxedR1CSSNARKTrait`.
+///
+pub fn commitment_key<E: Engine>(
+  S: &R1CSShape<E>,
+  ck_floor: &CommitmentKeyHint<E>,
+) -> CommitmentKey<E> {
+  let size = commitment_key_size(S, ck_floor);
+  E::CE::setup(b"ck", size)
+}
+
+/// Computes the number of generators required for the commitment key corresponding to shape `S`.
+pub fn commitment_key_size<E: Engine>(S: &R1CSShape<E>, ck_floor: &CommitmentKeyHint<E>) -> usize {
+  let num_cons = S.num_cons;
+  let num_vars = S.num_vars;
+  let ck_hint = ck_floor(S);
+  max(max(num_cons, num_vars), ck_hint)
 }
 
 impl<E: Engine> R1CSShape<E> {
@@ -157,6 +158,7 @@ impl<E: Engine> R1CSShape<E> {
     cons_valid && vars_valid && io_lt_vars
   }
 
+  /// multiplies a vector with the matrix
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],

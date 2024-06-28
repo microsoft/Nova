@@ -92,7 +92,7 @@ where
   })
 }
 
-/// interepret scalar as base
+/// interpret scalar as base
 pub fn scalar_as_base<E: Engine>(input: E::Scalar) -> E::Base {
   let input_bits = input.to_le_bits();
   let mut mult = E::Base::ONE;
@@ -148,15 +148,15 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
 
   let r = AllocatedBit::alloc(cs.namespace(|| "r"), r_value)?;
 
-  // Allocate t s.t. t=1 if z1 == z2 else 1/(z1 - z2)
+  // Allocate t s.t. t=1 if a == b else 1/(a - b)
 
   let t = AllocatedNum::alloc(cs.namespace(|| "t"), || {
-    Ok(if *a.get_value().get()? == *b.get_value().get()? {
+    let a_val = *a.get_value().get()?;
+    let b_val = *b.get_value().get()?;
+    Ok(if a_val == b_val {
       F::ONE
     } else {
-      (*a.get_value().get()? - *b.get_value().get()?)
-        .invert()
-        .unwrap()
+      (a_val - b_val).invert().unwrap()
     })
   })?;
 
