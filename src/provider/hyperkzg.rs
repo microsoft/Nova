@@ -25,6 +25,9 @@ use itertools::Itertools;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::env::var;
+use std::io::BufWriter;
+use std::{fs::{self, File}, io::{self, BufReader}};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -48,6 +51,56 @@ where
 {
   fn length(&self) -> usize {
     self.ck.len()
+  }
+}
+/// This enum specifies how various types are serialized and deserialized.
+#[derive(Clone, Copy, Debug)]
+pub enum SerdeFormat {
+  /// Bincode format
+  Bincode,
+  /// JSON format
+  Json,
+}
+
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Write the commitment key to a writer
+  pub fn write_custom<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
+  where
+    E: Engine,
+    E::GE: PairingGroup,
+  {
+    match format {
+      SerdeFormat::Bincode => {
+        unimplemented!("Bincode serialization is not yet supported");
+      }
+      SerdeFormat::Json => {
+        let ser = serde_json::to_string(&self)?;
+        writer.write_all(ser.as_bytes())?;
+      }
+    }
+    Ok(())
+  }
+
+  /// Read the commitment key from a reader
+  pub fn read_custom<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
+  where
+    E: Engine,
+    E::GE: PairingGroup,
+  {
+    match format {
+      SerdeFormat::Bincode => {
+        unimplemented!("Bincode serialization is not yet supported");
+      }
+      SerdeFormat::Json => {
+        let mut ser = String::new();
+        reader.read_to_string(&mut ser)?;
+        let res: Self = serde_json::from_str(&ser)?;
+        Ok(res)
+      }
+    }
   }
 }
 
@@ -217,27 +270,42 @@ where
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
 
+  /// Attempts to read the srs from a file found in `./params/kzg_bn254_{k}.srs` or `{dir}/kzg_bn254_{k}.srs` if `PARAMS_DIR` env var is specified, creates a file it if it does not exist.
   fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    // NOTE: this is for testing purposes and should not be used in production
-    // TODO: we need to decide how to generate load/store parameters
-    let tau = E::Scalar::random(OsRng);
     let num_gens = n.next_power_of_two();
+    let k = num_gens.trailing_zeros();
+    let dir = var("PARAMS_DIR").unwrap_or_else(|_| "./params".to_string());
+    let path = format!("{dir}/kzg_bn254_{k}.srs");
+    match File::open(path.as_str()) {
+      Ok(f) => {
+        let mut reader = BufReader::new(f);
+        Self::CommitmentKey::read_custom(&mut reader, SerdeFormat::Json).unwrap()
+      }
+      Err(_) => {
+        fs::create_dir_all(dir).unwrap();
+        let tau = E::Scalar::random(OsRng);
 
-    // Compute powers of tau in E::Scalar, then scalar muls in parallel
-    let mut powers_of_tau: Vec<E::Scalar> = Vec::with_capacity(num_gens);
-    powers_of_tau.insert(0, E::Scalar::ONE);
-    for i in 1..num_gens {
-      powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
+        // Compute powers of tau in E::Scalar, then scalar muls in parallel
+        let mut powers_of_tau: Vec<E::Scalar> = Vec::with_capacity(num_gens);
+        powers_of_tau.insert(0, E::Scalar::ONE);
+        for i in 1..num_gens {
+          powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
+        }
+
+        let ck: Vec<G1Affine<E>> = (0..num_gens)
+          .into_par_iter()
+          .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
+          .collect();
+
+        let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
+
+        let params = Self::CommitmentKey { ck, tau_H };
+        params
+          .write_custom(&mut BufWriter::new(File::create(path).unwrap()), SerdeFormat::Json)
+          .unwrap();
+        params
+      }
     }
-
-    let ck: Vec<G1Affine<E>> = (0..num_gens)
-      .into_par_iter()
-      .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
-      .collect();
-
-    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
-
-    Self::CommitmentKey { ck, tau_H }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
