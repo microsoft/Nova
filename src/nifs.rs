@@ -6,8 +6,8 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
-  traits::{commitment::CommitmentTrait, AbsorbInROTrait, Engine, ROTrait},
-  Commitment, CommitmentKey, CompressedCommitment,
+  traits::{AbsorbInROTrait, Engine, ROTrait},
+  Commitment, CommitmentKey,
 };
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NIFS<E: Engine> {
-  pub(crate) comm_T: CompressedCommitment<E>,
+  pub(crate) comm_T: Commitment<E>,
 }
 
 type ROConstants<E> =
@@ -70,12 +70,7 @@ impl<E: Engine> NIFS<E> {
     let W = W1.fold(W2, &T, &r)?;
 
     // return the folded instance and witness
-    Ok((
-      Self {
-        comm_T: comm_T.compress(),
-      },
-      (U, W),
-    ))
+    Ok((Self { comm_T }, (U, W)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -100,14 +95,13 @@ impl<E: Engine> NIFS<E> {
     U2.absorb_in_ro(&mut ro);
 
     // append `comm_T` to the transcript and obtain a challenge
-    let comm_T = Commitment::<E>::decompress(&self.comm_T)?;
-    comm_T.absorb_in_ro(&mut ro);
+    self.comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r);
+    let U = U1.fold(U2, &self.comm_T, &r);
 
     // return the folded instance
     Ok(U)

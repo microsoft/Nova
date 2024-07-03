@@ -1,17 +1,16 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
 use crate::{
-  errors::NovaError,
   impl_traits,
-  provider::traits::{CompressedGroup, DlogGroup},
+  provider::traits::DlogGroup,
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
+use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup};
 use halo2curves::{
   msm::best_multiexp,
-  secp256k1::{Secp256k1, Secp256k1Affine, Secp256k1Compressed},
-  secq256k1::{Secq256k1, Secq256k1Affine, Secq256k1Compressed},
+  secp256k1::{Secp256k1, Secp256k1Affine},
+  secq256k1::{Secq256k1, Secq256k1Affine},
 };
 use num_bigint::BigInt;
 use num_traits::Num;
@@ -36,7 +35,6 @@ pub mod secq256k1 {
 
 impl_traits!(
   secp256k1,
-  Secp256k1Compressed,
   Secp256k1,
   Secp256k1Affine,
   "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
@@ -45,7 +43,6 @@ impl_traits!(
 
 impl_traits!(
   secq256k1,
-  Secq256k1Compressed,
   Secq256k1,
   Secq256k1Affine,
   "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f",

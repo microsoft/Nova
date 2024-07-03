@@ -1,7 +1,6 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
-  errors::NovaError,
-  provider::traits::{CompressedGroup, DlogGroup},
+  provider::traits::DlogGroup,
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
@@ -12,44 +11,16 @@ use num_traits::Num;
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
-  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding},
+  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
   pallas, vesta, Ep, EpAffine, Eq, EqAffine,
 };
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use sha3::Shake256;
 use std::io::Read;
-
-/// A wrapper for compressed group elements of pallas
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct PallasCompressedElementWrapper {
-  repr: [u8; 32],
-}
-
-impl PallasCompressedElementWrapper {
-  /// Wraps repr into the wrapper
-  pub const fn new(repr: [u8; 32]) -> Self {
-    Self { repr }
-  }
-}
-
-/// A wrapper for compressed group elements of vesta
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct VestaCompressedElementWrapper {
-  repr: [u8; 32],
-}
-
-impl VestaCompressedElementWrapper {
-  /// Wraps repr into the wrapper
-  pub const fn new(repr: [u8; 32]) -> Self {
-    Self { repr }
-  }
-}
 
 macro_rules! impl_traits {
   (
     $name:ident,
-    $name_compressed:ident,
     $name_curve:ident,
     $name_curve_affine:ident,
     $order_str:literal,
@@ -70,7 +41,6 @@ macro_rules! impl_traits {
     }
 
     impl DlogGroup for $name::Point {
-      type CompressedGroupElement = $name_compressed;
       type AffineGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
@@ -93,10 +63,6 @@ macro_rules! impl_traits {
 
       fn group(p: &Self::AffineGroupElement) -> Self {
         $name::Point::from(*p)
-      }
-
-      fn compress(&self) -> Self::CompressedGroupElement {
-        $name_compressed::new(self.to_bytes())
       }
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement> {
@@ -170,25 +136,6 @@ macro_rules! impl_traits {
       }
     }
 
-    impl CompressedGroup for $name_compressed {
-      type GroupElement = $name::Point;
-
-      fn decompress(&self) -> Result<$name::Point, NovaError> {
-        let d = $name_curve::from_bytes(&self.repr);
-        if d.is_some().into() {
-          Ok(d.unwrap())
-        } else {
-          Err(NovaError::DecompressionError)
-        }
-      }
-    }
-
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
-      fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.repr.to_vec()
-      }
-    }
-
     impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_repr().to_vec()
@@ -207,7 +154,6 @@ macro_rules! impl_traits {
 
 impl_traits!(
   pallas,
-  PallasCompressedElementWrapper,
   Ep,
   EpAffine,
   "40000000000000000000000000000000224698fc0994a8dd8c46eb2100000001",
@@ -216,7 +162,6 @@ impl_traits!(
 
 impl_traits!(
   vesta,
-  VestaCompressedElementWrapper,
   Eq,
   EqAffine,
   "40000000000000000000000000000000224698fc094cf91b992d30ed00000001",

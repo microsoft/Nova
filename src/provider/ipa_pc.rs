@@ -4,11 +4,10 @@ use crate::{
   provider::{pedersen::CommitmentKeyExtTrait, traits::DlogGroup},
   spartan::polys::eq::EqPolynomial,
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait},
-    evaluation::EvaluationEngineTrait,
-    Engine, TranscriptEngineTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, evaluation::EvaluationEngineTrait, Engine,
+    TranscriptEngineTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CompressedCommitment, CE,
+  Commitment, CommitmentKey, CE,
 };
 use core::iter;
 use ff::Field;
@@ -156,8 +155,8 @@ impl<E: Engine> InnerProductWitness<E> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct InnerProductArgument<E: Engine> {
-  L_vec: Vec<CompressedCommitment<E>>,
-  R_vec: Vec<CompressedCommitment<E>>,
+  L_vec: Vec<Commitment<E>>,
+  R_vec: Vec<Commitment<E>>,
   a_hat: E::Scalar,
 }
 
@@ -200,8 +199,8 @@ where
                        transcript: &mut E::TE|
      -> Result<
       (
-        CompressedCommitment<E>,
-        CompressedCommitment<E>,
+        Commitment<E>,
+        Commitment<E>,
         Vec<E::Scalar>,
         Vec<E::Scalar>,
         CommitmentKey<E>,
@@ -221,8 +220,7 @@ where
           .chain(iter::once(&c_L))
           .copied()
           .collect::<Vec<E::Scalar>>(),
-      )
-      .compress();
+      );
       let R = CE::<E>::commit(
         &ck_L.combine(&ck_c),
         &a_vec[n / 2..n]
@@ -230,8 +228,7 @@ where
           .chain(iter::once(&c_R))
           .copied()
           .collect::<Vec<E::Scalar>>(),
-      )
-      .compress();
+      );
 
       transcript.absorb(b"L", &L);
       transcript.absorb(b"R", &R);
@@ -258,8 +255,8 @@ where
     };
 
     // two vectors to hold the logarithmic number of group elements
-    let mut L_vec: Vec<CompressedCommitment<E>> = Vec::new();
-    let mut R_vec: Vec<CompressedCommitment<E>> = Vec::new();
+    let mut L_vec: Vec<Commitment<E>> = Vec::new();
+    let mut R_vec: Vec<Commitment<E>> = Vec::new();
 
     // we create mutable copies of vectors and generators
     let mut a_vec = W.a_vec.to_vec();
@@ -375,7 +372,7 @@ where
     };
 
     let ck_hat = {
-      let c = CE::<E>::commit(&ck, &s).compress();
+      let c = CE::<E>::commit(&ck, &s);
       CommitmentKey::<E>::reinterpret_commitments_as_ck(&[c])?
     };
 
@@ -385,7 +382,7 @@ where
       let ck_folded = {
         let ck_L = CommitmentKey::<E>::reinterpret_commitments_as_ck(&self.L_vec)?;
         let ck_R = CommitmentKey::<E>::reinterpret_commitments_as_ck(&self.R_vec)?;
-        let ck_P = CommitmentKey::<E>::reinterpret_commitments_as_ck(&[P.compress()])?;
+        let ck_P = CommitmentKey::<E>::reinterpret_commitments_as_ck(&[P])?;
         ck_L.combine(&ck_R).combine(&ck_P)
       };
 

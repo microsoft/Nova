@@ -1,22 +1,18 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
-  errors::NovaError,
   impl_traits,
-  provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
+  provider::traits::{DlogGroup, PairingGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup, GroupEncoding};
+use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup};
 use num_bigint::BigInt;
 use num_traits::Num;
 // Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
 use halo2curves::{
-  bn256::{
-    pairing, G1Affine as Bn256Affine, G1Compressed as Bn256Compressed, G2Affine, G2Compressed, Gt,
-    G1 as Bn256Point, G2,
-  },
-  grumpkin::{G1Affine as GrumpkinAffine, G1Compressed as GrumpkinCompressed, G1 as GrumpkinPoint},
+  bn256::{pairing, G1Affine as Bn256Affine, G2Affine, G2Compressed, Gt, G1 as Bn256Point, G2},
+  grumpkin::{G1Affine as GrumpkinAffine, G1 as GrumpkinPoint},
   msm::best_multiexp,
 };
 use pasta_curves::arithmetic::{CurveAffine, CurveExt};
@@ -36,7 +32,6 @@ pub mod grumpkin {
 
 impl_traits!(
   bn256,
-  Bn256Compressed,
   Bn256Point,
   Bn256Affine,
   "30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
@@ -45,7 +40,6 @@ impl_traits!(
 
 impl_traits!(
   grumpkin,
-  GrumpkinCompressed,
   GrumpkinPoint,
   GrumpkinAffine,
   "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47",
@@ -84,7 +78,6 @@ impl Group for G2 {
 }
 
 impl DlogGroup for G2 {
-  type CompressedGroupElement = G2Compressed;
   type AffineGroupElement = G2Affine;
 
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
@@ -97,10 +90,6 @@ impl DlogGroup for G2 {
 
   fn group(p: &Self::AffineGroupElement) -> Self {
     G2::from(*p)
-  }
-
-  fn compress(&self) -> Self::CompressedGroupElement {
-    self.to_bytes()
   }
 
   fn from_label(_label: &'static [u8], _n: usize) -> Vec<Self::AffineGroupElement> {
@@ -123,19 +112,6 @@ impl DlogGroup for G2 {
 impl<G: DlogGroup> TranscriptReprTrait<G> for G2Compressed {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.as_ref().to_vec()
-  }
-}
-
-impl CompressedGroup for G2Compressed {
-  type GroupElement = G2;
-
-  fn decompress(&self) -> Result<G2, NovaError> {
-    let d = G2::from_bytes(self);
-    if d.is_some().into() {
-      Ok(d.unwrap())
-    } else {
-      Err(NovaError::DecompressionError)
-    }
   }
 }
 
