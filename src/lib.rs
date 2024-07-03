@@ -46,9 +46,7 @@ use r1cs::{
 };
 use serde::{Deserialize, Serialize};
 use traits::{
-  circuit::StepCircuit,
-  commitment::{CommitmentEngineTrait, CommitmentTrait},
-  snark::RelaxedR1CSSNARKTrait,
+  circuit::StepCircuit, commitment::CommitmentEngineTrait, snark::RelaxedR1CSSNARKTrait,
   AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
 };
 
@@ -399,7 +397,7 @@ where
       Some(self.zi_primary.clone()),
       Some(self.r_U_secondary.clone()),
       Some(self.l_u_secondary.clone()),
-      Some(Commitment::<E2>::decompress(&nifs_secondary.comm_T)?),
+      Some(nifs_secondary.comm_T),
     );
 
     let circuit_primary: NovaAugmentedCircuit<'_, E2, C1> = NovaAugmentedCircuit::new(
@@ -433,7 +431,7 @@ where
       Some(self.zi_secondary.clone()),
       Some(self.r_U_primary.clone()),
       Some(l_u_primary),
-      Some(Commitment::<E1>::decompress(&nifs_primary.comm_T)?),
+      Some(nifs_primary.comm_T),
     );
 
     let circuit_secondary: NovaAugmentedCircuit<'_, E1, C2> = NovaAugmentedCircuit::new(
@@ -847,7 +845,6 @@ where
 
 type CommitmentKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey;
 type Commitment<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment;
-type CompressedCommitment<E> = <<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment as CommitmentTrait<E>>::CompressedCommitment;
 type CE<E> = <E as Engine>::CE;
 
 #[cfg(test)]

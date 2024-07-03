@@ -1,32 +1,9 @@
-use crate::{
-  errors::NovaError,
-  traits::{commitment::ScalarMul, Group, TranscriptReprTrait},
-};
+use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
 use serde::{Deserialize, Serialize};
-
-/// Represents a compressed version of a group element
-pub trait CompressedGroup:
-  Clone
-  + Copy
-  + Debug
-  + Eq
-  + Send
-  + Sync
-  + TranscriptReprTrait<Self::GroupElement>
-  + Serialize
-  + for<'de> Deserialize<'de>
-  + 'static
-{
-  /// A type that holds the decompressed version of the compressed group element
-  type GroupElement: DlogGroup;
-
-  /// Decompresses the compressed group element
-  fn decompress(&self) -> Result<Self::GroupElement, NovaError>;
-}
 
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:
@@ -57,9 +34,6 @@ pub trait DlogGroup:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
-  /// A type representing the compressed version of the group element
-  type CompressedGroupElement: CompressedGroup<GroupElement = Self>;
-
   /// A type representing preprocessed group element
   type AffineGroupElement: Clone
     + Debug
@@ -76,9 +50,6 @@ pub trait DlogGroup:
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
-
-  /// Compresses the group element
-  fn compress(&self) -> Self::CompressedGroupElement;
 
   /// Produces a preprocessed element
   fn affine(&self) -> Self::AffineGroupElement;
@@ -117,7 +88,6 @@ pub trait PairingGroup: DlogGroup {
 macro_rules! impl_traits {
   (
     $name:ident,
-    $name_compressed:ident,
     $name_curve:ident,
     $name_curve_affine:ident,
     $order_str:literal,
@@ -138,7 +108,6 @@ macro_rules! impl_traits {
     }
 
     impl DlogGroup for $name::Point {
-      type CompressedGroupElement = $name_compressed;
       type AffineGroupElement = $name::Affine;
 
       fn vartime_multiscalar_mul(
@@ -154,10 +123,6 @@ macro_rules! impl_traits {
 
       fn group(p: &Self::AffineGroupElement) -> Self {
         $name::Point::from(*p)
-      }
-
-      fn compress(&self) -> Self::CompressedGroupElement {
-        self.to_bytes()
       }
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement> {
@@ -230,25 +195,6 @@ macro_rules! impl_traits {
       fn from_uniform(bytes: &[u8]) -> Self {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
         $name::Scalar::from_uniform_bytes(&bytes_arr)
-      }
-    }
-
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name_compressed {
-      fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.as_ref().to_vec()
-      }
-    }
-
-    impl CompressedGroup for $name_compressed {
-      type GroupElement = $name::Point;
-
-      fn decompress(&self) -> Result<$name::Point, NovaError> {
-        let d = $name_curve::from_bytes(&self);
-        if d.is_some().into() {
-          Ok(d.unwrap())
-        } else {
-          Err(NovaError::DecompressionError)
-        }
       }
     }
 

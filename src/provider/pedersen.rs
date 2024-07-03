@@ -1,7 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
-  provider::traits::{CompressedGroup, DlogGroup},
+  provider::traits::DlogGroup,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -43,37 +43,13 @@ pub struct Commitment<E: Engine> {
   pub(crate) comm: E::GE,
 }
 
-/// A type that holds a compressed commitment
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct CompressedCommitment<E>
-where
-  E: Engine,
-  E::GE: DlogGroup,
-{
-  comm: <E::GE as DlogGroup>::CompressedGroupElement,
-}
-
 impl<E> CommitmentTrait<E> for Commitment<E>
 where
   E: Engine,
   E::GE: DlogGroup,
 {
-  type CompressedCommitment = CompressedCommitment<E>;
-
-  fn compress(&self) -> Self::CompressedCommitment {
-    CompressedCommitment {
-      comm: self.comm.compress(),
-    }
-  }
-
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
     self.comm.to_coordinates()
-  }
-
-  fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm)?;
-    Ok(Commitment { comm })
   }
 }
 
@@ -120,16 +96,6 @@ where
     } else {
       E::Base::ZERO
     });
-  }
-}
-
-impl<E> TranscriptReprTrait<E::GE> for CompressedCommitment<E>
-where
-  E: Engine,
-  E::GE: DlogGroup,
-{
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.comm.to_transcript_bytes()
   }
 }
 
@@ -236,7 +202,7 @@ where
 
   /// Reinterprets commitments as commitment keys
   fn reinterpret_commitments_as_ck(
-    c: &[<<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment as CommitmentTrait<E>>::CompressedCommitment],
+    c: &[<E::CE as CommitmentEngineTrait<E>>::Commitment],
   ) -> Result<Self, NovaError>
   where
     Self: Sized;
@@ -296,14 +262,10 @@ where
   }
 
   /// reinterprets a vector of commitments as a set of generators
-  fn reinterpret_commitments_as_ck(c: &[CompressedCommitment<E>]) -> Result<Self, NovaError> {
-    let d = (0..c.len())
+  fn reinterpret_commitments_as_ck(c: &[Commitment<E>]) -> Result<Self, NovaError> {
+    let ck = (0..c.len())
       .into_par_iter()
-      .map(|i| Commitment::<E>::decompress(&c[i]))
-      .collect::<Result<Vec<Commitment<E>>, NovaError>>()?;
-    let ck = (0..d.len())
-      .into_par_iter()
-      .map(|i| d[i].comm.affine())
+      .map(|i| c[i].comm.affine())
       .collect();
     Ok(CommitmentKey { ck })
   }
