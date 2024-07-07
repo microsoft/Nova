@@ -35,7 +35,7 @@ pub trait CommitmentTrait<E: Engine>:
 }
 
 /// A trait that helps determine the length of a structure.
-/// Note this does not impose any memory representation contraints on the structure.
+/// Note this does not impose any memory representation constraints on the structure.
 pub trait Len {
   /// Returns the length of the structure.
   fn length(&self) -> usize;
