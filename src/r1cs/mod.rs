@@ -253,7 +253,7 @@ impl<E: Engine> R1CSShape<E> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
 
-    // The following code uses the optimization suggested in 
+    // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
     let Z = Z1
       .into_par_iter()
