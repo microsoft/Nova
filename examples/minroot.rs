@@ -49,7 +49,7 @@ impl<G: Group> MinRootIteration<G> {
     let mut x_i = *x_0;
     let mut y_i = *y_0;
     for _i in 0..num_iters {
-      let x_i_plus_1 = (x_i + y_i).pow_vartime(&exp.to_u64_digits()); // computes the fifth root of x_i + y_i
+      let x_i_plus_1 = (x_i + y_i).pow_vartime(exp.to_u64_digits()); // computes the fifth root of x_i + y_i
 
       // sanity check
       if cfg!(debug_assertions) {

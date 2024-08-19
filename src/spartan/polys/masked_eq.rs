@@ -85,6 +85,7 @@ mod tests {
   use rand_chacha::ChaCha20Rng;
   use rand_core::{CryptoRng, RngCore, SeedableRng};
 
+  #[allow(clippy::needless_borrows_for_generic_args)]
   fn test_masked_eq_polynomial_with<F: PrimeField, R: RngCore + CryptoRng>(
     num_vars: usize,
     num_masked_vars: usize,

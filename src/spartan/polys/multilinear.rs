@@ -278,6 +278,7 @@ mod tests {
   }
 
   /// Returns a random ML polynomial
+  #[allow(clippy::needless_borrows_for_generic_args)]
   fn random<R: RngCore + CryptoRng, Scalar: PrimeField>(
     num_vars: usize,
     mut rng: &mut R,
