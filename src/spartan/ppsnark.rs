@@ -23,12 +23,12 @@ use crate::{
     PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, Len},
     evaluation::EvaluationEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait, TranscriptReprTrait,
   },
-  zip_with, Commitment, CommitmentKey, CompressedCommitment,
+  zip_with, Commitment, CommitmentKey,
 };
 use core::cmp::max;
 use ff::Field;
@@ -869,17 +869,17 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> SimpleDigestible for VerifierKey<E
 pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   // commitment to oracles: the first three are for Az, Bz, Cz,
   // and the last two are for memory reads
-  comm_Az: CompressedCommitment<E>,
-  comm_Bz: CompressedCommitment<E>,
-  comm_Cz: CompressedCommitment<E>,
-  comm_L_row: CompressedCommitment<E>,
-  comm_L_col: CompressedCommitment<E>,
+  comm_Az: Commitment<E>,
+  comm_Bz: Commitment<E>,
+  comm_Cz: Commitment<E>,
+  comm_L_row: Commitment<E>,
+  comm_L_col: Commitment<E>,
 
   // commitments to aid the memory checks
-  comm_t_plus_r_inv_row: CompressedCommitment<E>,
-  comm_w_plus_r_inv_row: CompressedCommitment<E>,
-  comm_t_plus_r_inv_col: CompressedCommitment<E>,
-  comm_w_plus_r_inv_col: CompressedCommitment<E>,
+  comm_t_plus_r_inv_row: Commitment<E>,
+  comm_w_plus_r_inv_row: Commitment<E>,
+  comm_t_plus_r_inv_col: Commitment<E>,
+  comm_w_plus_r_inv_col: Commitment<E>,
 
   // claims about Az, Bz, and Cz polynomials
   eval_Az_at_tau: E::Scalar,
@@ -1367,16 +1367,16 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_arg = EE::prove(ck, &pk.pk_ee, &mut transcript, &u.c, &w.p, &rand_sc, &u.e)?;
 
     Ok(RelaxedR1CSSNARK {
-      comm_Az: comm_Az.compress(),
-      comm_Bz: comm_Bz.compress(),
-      comm_Cz: comm_Cz.compress(),
-      comm_L_row: comm_L_row.compress(),
-      comm_L_col: comm_L_col.compress(),
+      comm_Az,
+      comm_Bz,
+      comm_Cz,
+      comm_L_row,
+      comm_L_col,
 
-      comm_t_plus_r_inv_row: comm_mem_oracles[0].compress(),
-      comm_w_plus_r_inv_row: comm_mem_oracles[1].compress(),
-      comm_t_plus_r_inv_col: comm_mem_oracles[2].compress(),
-      comm_w_plus_r_inv_col: comm_mem_oracles[3].compress(),
+      comm_t_plus_r_inv_row: comm_mem_oracles[0],
+      comm_w_plus_r_inv_row: comm_mem_oracles[1],
+      comm_t_plus_r_inv_col: comm_mem_oracles[2],
+      comm_w_plus_r_inv_col: comm_mem_oracles[3],
 
       eval_Az_at_tau,
       eval_Bz_at_tau,
@@ -1418,17 +1418,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"U", U);
 
-    let comm_Az = Commitment::<E>::decompress(&self.comm_Az)?;
-    let comm_Bz = Commitment::<E>::decompress(&self.comm_Bz)?;
-    let comm_Cz = Commitment::<E>::decompress(&self.comm_Cz)?;
-    let comm_L_row = Commitment::<E>::decompress(&self.comm_L_row)?;
-    let comm_L_col = Commitment::<E>::decompress(&self.comm_L_col)?;
-    let comm_t_plus_r_inv_row = Commitment::<E>::decompress(&self.comm_t_plus_r_inv_row)?;
-    let comm_w_plus_r_inv_row = Commitment::<E>::decompress(&self.comm_w_plus_r_inv_row)?;
-    let comm_t_plus_r_inv_col = Commitment::<E>::decompress(&self.comm_t_plus_r_inv_col)?;
-    let comm_w_plus_r_inv_col = Commitment::<E>::decompress(&self.comm_w_plus_r_inv_col)?;
-
-    transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
+    transcript.absorb(b"c", &[self.comm_Az, self.comm_Bz, self.comm_Cz].as_slice());
 
     let num_rounds_sc = vk.S_comm.N.log_2();
     let tau = transcript.squeeze(b"t")?;
@@ -1445,8 +1435,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     transcript.absorb(b"e", &eval_vec.as_slice());
 
-    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
-    let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
+    transcript.absorb(b"e", &vec![self.comm_L_row, self.comm_L_col].as_slice());
+    let comm_vec = vec![self.comm_Az, self.comm_Bz, self.comm_Cz];
     let c = transcript.squeeze(b"c")?;
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
     let claim = u.e;
@@ -1458,10 +1448,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(
       b"l",
       &vec![
-        comm_t_plus_r_inv_row,
-        comm_w_plus_r_inv_row,
-        comm_t_plus_r_inv_col,
-        comm_w_plus_r_inv_col,
+        self.comm_t_plus_r_inv_row,
+        self.comm_w_plus_r_inv_row,
+        self.comm_t_plus_r_inv_col,
+        self.comm_w_plus_r_inv_col,
       ]
       .as_slice(),
     );
@@ -1608,22 +1598,22 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     .collect::<Vec<E::Scalar>>();
     let comm_vec = [
       U.comm_W,
-      comm_Az,
-      comm_Bz,
-      comm_Cz,
+      self.comm_Az,
+      self.comm_Bz,
+      self.comm_Cz,
       U.comm_E,
-      comm_L_row,
-      comm_L_col,
+      self.comm_L_row,
+      self.comm_L_col,
       vk.S_comm.comm_val_A,
       vk.S_comm.comm_val_B,
       vk.S_comm.comm_val_C,
-      comm_t_plus_r_inv_row,
+      self.comm_t_plus_r_inv_row,
       vk.S_comm.comm_row,
-      comm_w_plus_r_inv_row,
+      self.comm_w_plus_r_inv_row,
       vk.S_comm.comm_ts_row,
-      comm_t_plus_r_inv_col,
+      self.comm_t_plus_r_inv_col,
       vk.S_comm.comm_col,
-      comm_w_plus_r_inv_col,
+      self.comm_w_plus_r_inv_col,
       vk.S_comm.comm_ts_col,
     ];
     transcript.absorb(b"e", &eval_vec.as_slice()); // comm_vec is already in the transcript

@@ -356,7 +356,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   ) -> Result<(), SynthesisError> {
     self.enforce_limb_width_agreement(other, "equal_when_carried")?;
 
-    // We'll propegate carries over the first `n` limbs.
+    // We'll propagate carries over the first `n` limbs.
     let n = min(self.limbs.len(), other.limbs.len());
     let target_base = BigInt::from(1u8) << self.params.limb_width as u32;
     let mut accumulated_extra = BigInt::from(0usize);

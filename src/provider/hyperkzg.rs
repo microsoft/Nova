@@ -8,7 +8,7 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::traits::{CompressedGroup, DlogGroup, PairingGroup},
+  provider::traits::{DlogGroup, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -62,36 +62,13 @@ where
   comm: <E as Engine>::GE,
 }
 
-/// A compressed commitment (suitable for serialization)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CompressedCommitment<E>
-where
-  E: Engine,
-  E::GE: PairingGroup,
-{
-  comm: <E::GE as DlogGroup>::CompressedGroupElement,
-}
-
 impl<E> CommitmentTrait<E> for Commitment<E>
 where
   E: Engine,
   E::GE: PairingGroup,
 {
-  type CompressedCommitment = CompressedCommitment<E>;
-
-  fn compress(&self) -> Self::CompressedCommitment {
-    CompressedCommitment {
-      comm: self.comm.compress(),
-    }
-  }
-
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
     self.comm.to_coordinates()
-  }
-
-  fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError> {
-    let comm = <<E as Engine>::GE as DlogGroup>::CompressedGroupElement::decompress(&c.comm)?;
-    Ok(Commitment { comm })
   }
 }
 
@@ -138,15 +115,6 @@ where
     } else {
       E::Base::ZERO
     });
-  }
-}
-
-impl<E: Engine> TranscriptReprTrait<E::GE> for CompressedCommitment<E>
-where
-  E::GE: PairingGroup,
-{
-  fn to_transcript_bytes(&self) -> Vec<u8> {
-    self.comm.to_transcript_bytes()
   }
 }
 

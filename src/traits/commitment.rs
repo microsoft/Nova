@@ -1,9 +1,6 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::{
-  errors::NovaError,
-  traits::{AbsorbInROTrait, Engine, TranscriptReprTrait},
-};
+use crate::traits::{AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
@@ -33,25 +30,8 @@ pub trait CommitmentTrait<E: Engine>:
   + Add<Self, Output = Self>
   + ScalarMul<E::Scalar>
 {
-  /// Holds the type of the compressed commitment
-  type CompressedCommitment: Clone
-    + Debug
-    + PartialEq
-    + Eq
-    + Send
-    + Sync
-    + TranscriptReprTrait<E::GE>
-    + Serialize
-    + for<'de> Deserialize<'de>;
-
-  /// Compresses self into a compressed commitment
-  fn compress(&self) -> Self::CompressedCommitment;
-
   /// Returns the coordinate representation of the commitment
   fn to_coordinates(&self) -> (E::Base, E::Base, bool);
-
-  /// Decompresses a compressed commitment into a commitment
-  fn decompress(c: &Self::CompressedCommitment) -> Result<Self, NovaError>;
 }
 
 /// A trait that helps determine the length of a structure.
