@@ -15,7 +15,7 @@ use crate::{
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use once_cell::sync::OnceCell;
-
+use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -337,6 +337,53 @@ impl<E: Engine> R1CSShape<E> {
       digest: OnceCell::new(),
     }
   }
+
+  /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
+  pub fn sample_random_instance_witness(
+    &self,
+    ck: &CommitmentKey<E>,
+  ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
+    // sample
+    let mut W = Vec::new();
+    for _i in 0..self.num_vars {
+      // probably don't use this in production
+      W.push(E::Scalar::random(&mut OsRng));
+    }
+
+    let mut X = Vec::new();
+    for _i in 0..self.num_io {
+      X.push(E::Scalar::random(&mut OsRng));
+    }
+
+    let u = E::Scalar::random(&mut OsRng);
+
+    // Z
+    let Z = [W.clone(), vec![u], X.clone()].concat();
+
+    // compute E <- AZ o BZ - u * CZ
+    let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
+
+    let E = AZ
+      .par_iter()
+      .zip(BZ.par_iter())
+      .zip(CZ.par_iter())
+      .map(|((az, bz), cz)| *az * *bz - u * *cz)
+      .collect::<Vec<E::Scalar>>();
+
+    // compute commitments to W,E
+    let comm_W = CE::<E>::commit(ck, &W);
+    let comm_E = CE::<E>::commit(ck, &E);
+
+    Ok((
+      RelaxedR1CSInstance {
+        comm_W,
+        comm_E,
+        u,
+        X,
+      },
+      RelaxedR1CSWitness { W, E },
+    ))
+  }
 }
 
 impl<E: Engine> R1CSWitness<E> {
@@ -548,7 +595,7 @@ mod tests {
   use crate::{
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::sparse::SparseMatrix,
-    traits::Engine,
+    traits::{snark::default_ck_hint, Engine},
   };
 
   fn tiny_r1cs<E: Engine>(num_vars: usize) -> R1CSShape<E> {
@@ -631,5 +678,19 @@ mod tests {
     test_pad_tiny_r1cs_with::<PallasEngine>();
     test_pad_tiny_r1cs_with::<Bn256EngineKZG>();
     test_pad_tiny_r1cs_with::<Secp256k1Engine>();
+  }
+
+  fn test_random_sample_with<E: Engine>() {
+    let r1cs = tiny_r1cs::<E>(4);
+    let ck = R1CS::<E>::commitment_key(&r1cs, &*default_ck_hint());
+    let (inst, wit) = r1cs.sample_random_instance_witness(&ck).unwrap();
+    assert!(r1cs.is_sat_relaxed(&ck, &inst, &wit).is_ok());
+  }
+
+  #[test]
+  fn test_random_sample() {
+    test_random_sample_with::<PallasEngine>();
+    test_random_sample_with::<Bn256EngineKZG>();
+    test_random_sample_with::<Secp256k1Engine>();
   }
 }
