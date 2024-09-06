@@ -121,7 +121,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
 
     // X0 and X1 are allocated and in the honest prover case set to zero
     // If the prover is malicious, it can set to arbitrary values, but the resulting
-    // relaxed R1CS instance with the the checked default values of W, E, and u must still be satisfying
+    // relaxed R1CS instance with the checked default values of W, E, and u must still be satisfying
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&E::Scalar::ZERO)),
