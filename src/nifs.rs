@@ -73,6 +73,45 @@ impl<E: Engine> NIFS<E> {
     Ok((Self { comm_T }, (U, W)))
   }
 
+  /// Same as `prove`, but takes two Relaxed R1CS Instance/Witness pairs
+  pub fn prove_relaxed(
+    ck: &CommitmentKey<E>,
+    ro_consts: &ROConstants<E>,
+    pp_digest: &E::Scalar,
+    S: &R1CSShape<E>,
+    U1: &RelaxedR1CSInstance<E>,
+    W1: &RelaxedR1CSWitness<E>,
+    U2: &RelaxedR1CSInstance<E>,
+    W2: &RelaxedR1CSWitness<E>,
+  ) -> Result<(NIFS<E>, (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>)), NovaError> {
+    // initialize a new RO
+    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<E>(*pp_digest));
+
+    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
+    U2.absorb_in_ro(&mut ro);
+
+    // compute a commitment to the cross-term
+    let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2)?;
+
+    // append `comm_T` to the transcript and obtain a challenge
+    comm_T.absorb_in_ro(&mut ro);
+
+    // compute a challenge from the RO
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // fold the instance using `r` and `comm_T`
+    let U = U1.fold_relaxed(U2, &comm_T, &r);
+
+    // fold the witness using `r` and `T`
+    let W = W1.fold_relaxed(W2, &T, &r)?;
+
+    // return the folded instance and witness
+    Ok((Self { comm_T }, (U, W)))
+  }
+
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,
   /// and outputs a folded instance `U` with the same shape,
@@ -102,6 +141,36 @@ impl<E: Engine> NIFS<E> {
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &self.comm_T, &r);
+
+    // return the folded instance
+    Ok(U)
+  }
+
+  /// Same as `prove`, but takes two Relaxed R1CS Instance/Witness pairs
+  pub fn verify_relaxed(
+    &self,
+    ro_consts: &ROConstants<E>,
+    pp_digest: &E::Scalar,
+    U1: &RelaxedR1CSInstance<E>,
+    U2: &RelaxedR1CSInstance<E>,
+  ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
+    // initialize a new RO
+    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<E>(*pp_digest));
+
+    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
+    U2.absorb_in_ro(&mut ro);
+
+    // append `comm_T` to the transcript and obtain a challenge
+    self.comm_T.absorb_in_ro(&mut ro);
+
+    // compute a challenge from the RO
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // fold the instance using `r` and `comm_T`
+    let U = U1.fold_relaxed(U2, &self.comm_T, &r);
 
     // return the folded instance
     Ok(U)

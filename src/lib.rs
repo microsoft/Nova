@@ -256,6 +256,37 @@ where
   _p: PhantomData<(C1, C2)>,
 }
 
+/// Final randomized fold
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct RandomRecursiveSNARK<E1, E2, C1, C2>
+where
+  E1: Engine<Base = <E2 as Engine>::Scalar>,
+  E2: Engine<Base = <E1 as Engine>::Scalar>,
+  C1: StepCircuit<E1::Scalar>,
+  C2: StepCircuit<E2::Scalar>,
+{
+  z0_primary: Vec<E1::Scalar>,
+  z0_secondary: Vec<E2::Scalar>,
+  r_U_primary: RelaxedR1CSInstance<E1>,
+  r_U_secondary: RelaxedR1CSInstance<E2>,
+  l_u_primary: R1CSInstance<E1>,
+  l_u_secondary: R1CSInstance<E2>,
+  // no r_i ??
+  l_Ur_primary: RelaxedR1CSInstance<E1>,
+  l_Ur_secondary: RelaxedR1CSInstance<E2>,
+  nifs_Uf_primary: Commitment<E1>,
+  nifs_Uf_secondary: Commitment<E2>,
+  nifs_Ui_prime_primary: Commitment<E1>,
+  nifs_Ui_prime_secondary: Commitment<E2>,
+  r_Wi_prime_primary: RelaxedR1CSWitness<E2>,
+  r_Wi_prime_secondary: RelaxedR1CSWitness<E2>,
+  i: usize,
+  zi_primary: Vec<E1::Scalar>,
+  zi_secondary: Vec<E2::Scalar>,
+  _p: PhantomData<(C1, C2)>,
+}
+
 impl<E1, E2, C1, C2> RecursiveSNARK<E1, E2, C1, C2>
 where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
@@ -468,6 +499,184 @@ where
     self.r_W_secondary = r_W_secondary;
 
     Ok(())
+  }
+
+  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
+  /// by executing a step of the incremental computation + randomizing step
+  pub fn prove_step_randomizing(
+    &mut self,
+    pp: &PublicParams<E1, E2, C1, C2>,
+    c_primary: &C1,
+    c_secondary: &C2,
+  ) -> Result<RandomRecursiveSNARK, NovaError> {
+
+    let r_Ui_primary = self.r_U_primary;
+    let r_Ui_secondary = self.r_U_secondary;
+
+    let r_Wi_primary = self.r_W_primary;
+    let r_Wi_secondary = self.r_W_secondary;
+
+    let l_ui_secondary = self.l_u_secondary;
+    let l_wi_secondary = self.l_w_secondary;
+
+    let zim1_primary = self.zi_primary;
+    let zim1_secondary = self.zi_secondary;
+
+    // 1. regular fold (z_i from this fold remains the same below)
+    
+    // first step was already done in the constructor
+    if self.i == 0 {
+      self.i = 1;
+      return Ok(());
+    }
+
+    // fold the secondary circuit's instance
+    let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &r_Ui_secondary,
+      &r_Wi_secondary,
+      &l_ui_secondary,
+      &l_wi_secondary,
+    )?;
+
+    let mut cs_primary = SatisfyingAssignment::<E1>::new();
+    let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
+      scalar_as_base::<E1>(pp.digest()),
+      E1::Scalar::from(self.i as u64),
+      self.z0_primary.to_vec(),
+      Some(self.zi_primary.clone()),
+      Some(r_Ui_secondary.clone()),
+      Some(l_ui_secondary.clone()),
+      Some(nifs_Uf_secondary.comm_T),
+    );
+
+    let circuit_primary: NovaAugmentedCircuit<'_, E2, C1> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_primary,
+      Some(inputs_primary),
+      c_primary,
+      pp.ro_consts_circuit_primary.clone(),
+    );
+    let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
+
+    let (l_ui_primary, l_wi_primary) =
+      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
+
+    // fold the primary circuit's instance
+    let (nifs_Uf_primary, (r_Uf_primary, r_Wf_primary)) = NIFS::prove(
+      &pp.ck_primary,
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &pp.r1cs_shape_primary,
+      &r_Ui_primary,
+      &r_Wi_primary,
+      &l_ui_primary,
+      &l_wi_primary,
+    )?;
+
+    let mut cs_secondary = SatisfyingAssignment::<E2>::new();
+    let inputs_secondary: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
+      pp.digest(),
+      E2::Scalar::from(self.i as u64),
+      self.z0_secondary.to_vec(),
+      Some(self.zi_secondary.clone()),
+      Some(r_Ui_primary.clone()),
+      Some(l_ui_primary),
+      Some(nifs_Uf_primary.comm_T),
+    );
+
+    let circuit_secondary: NovaAugmentedCircuit<'_, E1, C2> = NovaAugmentedCircuit::new(
+      &pp.augmented_circuit_params_secondary,
+      Some(inputs_secondary),
+      c_secondary,
+      pp.ro_consts_circuit_secondary.clone(),
+    );
+    let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
+
+    let (l_uip1_secondary, l_wip1_secondary) = cs_secondary
+      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
+      .map_err(|_e| NovaError::UnSat)?;
+
+    // update the running instances and witnesses
+      self.zi_primary = zi_primary
+      .iter()
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
+    self.zi_secondary = zi_secondary
+      .iter()
+      .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
+      .collect::<Result<Vec<<E2 as Engine>::Scalar>, _>>()?;
+
+      // this ip1 stuff gets thrown out ....? TODO: think about this, what's in here? need V()?
+    self.l_u_secondary = l_uip1_secondary;
+    self.l_w_secondary = l_wip1_secondary;
+
+    self.r_U_primary = r_Uf_primary;
+    self.r_W_primary = r_Wf_primary;
+
+    self.i += 1;
+
+    self.r_U_secondary = r_Uf_secondary;
+    self.r_W_secondary = r_Wf_secondary;
+
+
+    // 2. Randomly sample Relaxed R1CS
+    let (l_Ur_primary,l_Wr_primary) = pp.r1cs_shape_primary.sample_random_instance_witness(&pp.ck_primary);
+    let (l_Ur_secondary, l_Wr_secondary) = pp.r1cs_shape_secondary.sample_random_instance_witness(&pp.ck_secondary);
+
+    // 3. random fold
+
+    // fold the secondary circuit's instance
+    let (nifs_Ui_prime_secondary, (r_Ui_prime_secondary, r_Wi_prime_secondary)) = NIFS::prove_relaxed(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &r_Uf_secondary,
+      &r_Wf_secondary,
+      &l_Ur_secondary,
+      &l_Wr_secondary,
+    )?;
+
+    // fold the primary circuit's instance
+    let (nifs_primary, (r_Ui_primary, r_Wi_prime_primary)) = NIFS::prove_relaxed(
+      &pp.ck_primary,
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &pp.r1cs_shape_primary,
+      &r_Uf_primary,
+      &r_Wf_primary,
+      &l_Ur_primary,
+      &l_Ur_secondary,
+    )?;
+
+    // 4. output randomized IVC Proof
+    Ok(RandomRecursiveSNARK
+{
+  z0_primary: self.z0_primary,
+  z0_secondary: self.z0_secondary,
+  r_U_primary: self.r_U_primary,
+  r_U_secondary: self.r_U_secondary,
+  l_u_primary,
+  l_u_secondary,
+  // no r_i ??
+  l_Ur_primary,
+  l_Ur_secondary,
+  // commitments to cross terms
+  nifs_Uf_primary,
+  nifs_Uf_secondary,
+  nifs_Ui_prime_primary,
+  nifs_Ui_prime_secondary,
+  r_Wi_prime_primary,
+  r_Wi_prime_secondary,
+  self.i,
+  zi_primary: self.zi_primary,
+  zi_secondary: self.zi_secondary,
+})
+
+
   }
 
   /// Verify the correctness of the `RecursiveSNARK`

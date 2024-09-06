@@ -277,6 +277,45 @@ impl<E: Engine> R1CSShape<E> {
     Ok((T, comm_T))
   }
 
+  /// A method to compute a commitment to the cross-term `T` given two
+  /// Relaxed R1CS instance-witness pairs
+  pub fn commit_T_relaxed(
+    &self,
+    ck: &CommitmentKey<E>,
+    U1: &RelaxedR1CSInstance<E>,
+    W1: &RelaxedR1CSWitness<E>,
+    U2: &RelaxedR1CSInstance<E>,
+    W2: &RelaxedR1CSWitness<E>,
+  ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
+    let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+    let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
+
+    // TODO JESS - NOT DONE CHANGING
+
+    // The following code uses the optimization suggested in
+    // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
+    let Z = Z1
+      .into_par_iter()
+      .zip(Z2.into_par_iter())
+      .map(|(z1, z2)| z1 + z2)
+      .collect::<Vec<E::Scalar>>();
+    let u = U1.u + E::Scalar::ONE; // U2.u = 1
+
+    let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
+
+    let T = AZ
+      .par_iter()
+      .zip(BZ.par_iter())
+      .zip(CZ.par_iter())
+      .zip(W1.E.par_iter())
+      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+      .collect::<Vec<E::Scalar>>();
+
+    let comm_T = CE::<E>::commit(ck, &T);
+
+    Ok((T, comm_T))
+  }
+
   /// Pads the `R1CSShape` so that the shape passes `is_regular_shape`
   /// Renumbers variables to accommodate padded variables
   pub fn pad(&self) -> Self {
@@ -478,6 +517,36 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     Ok(RelaxedR1CSWitness { W, E })
   }
 
+  /// Folds an incoming `RelaxedR1CSWitness` into the current one
+  /// E2 is not necessarily zero vec  
+  pub fn fold_relaxed(
+    &self,
+    W2: &RelaxedR1CSWitness<E>,
+    T: &[E::Scalar],
+    r: &E::Scalar,
+  ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
+    let (W1, E1) = (&self.W, &self.E);
+    let (W2, E2) = (&W2.W, &W2.E);
+
+    if W1.len() != W2.len() {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    let W = W1
+      .par_iter()
+      .zip(W2)
+      .map(|(a, b)| *a + *r * *b)
+      .collect::<Vec<E::Scalar>>();
+    let E = E1
+      .par_iter()
+      .zip(T)
+      .zip(E2.par_iter())
+      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
+      .collect::<Vec<E::Scalar>>();
+
+    Ok(RelaxedR1CSWitness { W, E })
+  }
+
   /// Pads the provided witness to the correct length
   pub fn pad(&self, S: &R1CSShape<E>) -> RelaxedR1CSWitness<E> {
     let mut W = self.W.clone();
@@ -529,7 +598,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     }
   }
 
-  /// Folds an incoming `RelaxedR1CSInstance` into the current one
+  /// Folds an incoming `R1CSInstance` into the current one
   pub fn fold(
     &self,
     U2: &R1CSInstance<E>,
@@ -549,6 +618,35 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
+
+    RelaxedR1CSInstance {
+      comm_W,
+      comm_E,
+      X,
+      u,
+    }
+  }
+
+  /// Folds an incoming `RelaxedR1CSInstance` into the current one
+  pub fn fold_relaxed(
+    &self,
+    U2: &RelaxedR1CSInstance<E>,
+    comm_T: &Commitment<E>,
+    r: &E::Scalar,
+  ) -> RelaxedR1CSInstance<E> {
+    let (X1, u1, comm_W_1, comm_E_1) =
+      (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
+    let (X2, u2, comm_W_2, comm_E_2) = (&U2.X, &U2.u, &U2.comm_W, &U2.comm_E);
+
+    // weighted sum of X, comm_W, comm_E, and u
+    let X = X1
+      .par_iter()
+      .zip(X2)
+      .map(|(a, b)| *a + *r * *b)
+      .collect::<Vec<E::Scalar>>();
+    let comm_W = *comm_W_1 + *comm_W_2 * *r;
+    let comm_E = *comm_E_1 + *comm_T * *r + *comm_E_2 * *r * *r;
+    let u = *u1 + *r * *u2;
 
     RelaxedR1CSInstance {
       comm_W,
