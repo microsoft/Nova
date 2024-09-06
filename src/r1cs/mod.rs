@@ -290,8 +290,6 @@ impl<E: Engine> R1CSShape<E> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
 
-    // TODO JESS - NOT DONE CHANGING
-
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
     let Z = Z1
@@ -299,7 +297,7 @@ impl<E: Engine> R1CSShape<E> {
       .zip(Z2.into_par_iter())
       .map(|(z1, z2)| z1 + z2)
       .collect::<Vec<E::Scalar>>();
-    let u = U1.u + E::Scalar::ONE; // U2.u = 1
+    let u = U1.u + U2.u;
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
@@ -308,7 +306,8 @@ impl<E: Engine> R1CSShape<E> {
       .zip(BZ.par_iter())
       .zip(CZ.par_iter())
       .zip(W1.E.par_iter())
-      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+      .zip(W2.E.par_iter())
+      .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
       .collect::<Vec<E::Scalar>>();
 
     let comm_T = CE::<E>::commit(ck, &T);
