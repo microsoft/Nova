@@ -2,7 +2,7 @@
 #![allow(non_snake_case)]
 
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_RELAXED},
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
@@ -85,7 +85,7 @@ impl<E: Engine> NIFS<E> {
     W2: &RelaxedR1CSWitness<E>,
   ) -> Result<(NIFS<E>, (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>)), NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_RELAXED);
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -155,7 +155,7 @@ impl<E: Engine> NIFS<E> {
     U2: &RelaxedR1CSInstance<E>,
   ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_RELAXED);
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -319,6 +319,195 @@ mod tests {
 
     // check if the running instance is satisfiable
     assert!(shape.is_sat_relaxed(ck, &r_U, &r_W).is_ok());
+  }
+
+  fn execute_sequence_relaxed<E: Engine>(
+    ck: &CommitmentKey<E>,
+    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    pp_digest: &<E as Engine>::Scalar,
+    shape: &R1CSShape<E>,
+    U1: &RelaxedR1CSInstance<E>,
+    W1: &RelaxedR1CSWitness<E>,
+    U2: &RelaxedR1CSInstance<E>,
+    W2: &RelaxedR1CSWitness<E>,
+  ) {
+    // produce a default running instance
+    let mut r_W = RelaxedR1CSWitness::default(shape);
+    let mut r_U = RelaxedR1CSInstance::default(ck, shape);
+
+    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
+    let res = NIFS::prove_relaxed(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U1, W1);
+    assert!(res.is_ok());
+    let (nifs, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let res = nifs.verify_relaxed(ro_consts, pp_digest, &r_U, U1);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
+    // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
+    let res = NIFS::prove_relaxed(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U2, W2);
+    assert!(res.is_ok());
+    let (nifs, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let res = nifs.verify_relaxed(ro_consts, pp_digest, &r_U, U2);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+
+    // update the running witness and instance
+    r_W = W;
+    r_U = U;
+
+    // check if the running instance is satisfiable
+    assert!(shape.is_sat_relaxed(ck, &r_U, &r_W).is_ok());
+  }
+
+  fn test_tiny_r1cs_relaxed_with<E: Engine>() {
+    let one = <E::Scalar as Field>::ONE;
+    let (num_cons, num_vars, num_io, A, B, C) = {
+      let num_cons = 4;
+      let num_vars = 3;
+      let num_io = 2;
+
+      // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
+      // The R1CS for this problem consists of the following constraints:
+      // `I0 * I0 - Z0 = 0`
+      // `Z0 * I0 - Z1 = 0`
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      // `(Z2 + 5) * 1 - I1 = 0`
+
+      // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
+      // constraint and a column for every entry in z = (vars, u, inputs)
+      // An R1CS instance is satisfiable iff:
+      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
+      let mut A: Vec<(usize, usize, E::Scalar)> = Vec::new();
+      let mut B: Vec<(usize, usize, E::Scalar)> = Vec::new();
+      let mut C: Vec<(usize, usize, E::Scalar)> = Vec::new();
+
+      // constraint 0 entries in (A,B,C)
+      // `I0 * I0 - Z0 = 0`
+      A.push((0, num_vars + 1, one));
+      B.push((0, num_vars + 1, one));
+      C.push((0, 0, one));
+
+      // constraint 1 entries in (A,B,C)
+      // `Z0 * I0 - Z1 = 0`
+      A.push((1, 0, one));
+      B.push((1, num_vars + 1, one));
+      C.push((1, 1, one));
+
+      // constraint 2 entries in (A,B,C)
+      // `(Z1 + I0) * 1 - Z2 = 0`
+      A.push((2, 1, one));
+      A.push((2, num_vars + 1, one));
+      B.push((2, num_vars, one));
+      C.push((2, 2, one));
+
+      // constraint 3 entries in (A,B,C)
+      // `(Z2 + 5) * 1 - I1 = 0`
+      A.push((3, 2, one));
+      A.push((3, num_vars, one + one + one + one + one));
+      B.push((3, num_vars, one));
+      C.push((3, num_vars + 2, one));
+
+      (num_cons, num_vars, num_io, A, B, C)
+    };
+
+    // create a shape object
+    let rows = num_cons;
+    let num_inputs = num_io + 1;
+    let cols = num_vars + num_inputs;
+    let S = {
+      let res = R1CSShape::new(
+        num_cons,
+        num_vars,
+        num_inputs - 1,
+        SparseMatrix::new(&A, rows, cols),
+        SparseMatrix::new(&B, rows, cols),
+        SparseMatrix::new(&C, rows, cols),
+      );
+      assert!(res.is_ok());
+      res.unwrap()
+    };
+
+    // generate generators and ro constants
+    let ck = R1CS::<E>::commitment_key(&S, &*default_ck_hint());
+    let ro_consts =
+      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+
+    let rand_inst_witness_generator =
+      |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {
+        let i0 = *I;
+
+        // compute a satisfying (vars, X) tuple
+        let (O, vars, X) = {
+          let z0 = i0 * i0; // constraint 0
+          let z1 = i0 * z0; // constraint 1
+          let z2 = z1 + i0; // constraint 2
+          let i1 = z2 + one + one + one + one + one; // constraint 3
+
+          // store the witness and IO for the instance
+          let W = vec![z0, z1, z2];
+          let X = vec![i0, i1];
+          (i1, W, X)
+        };
+
+        let W = {
+          let res = R1CSWitness::new(&S, &vars);
+          assert!(res.is_ok());
+          res.unwrap()
+        };
+        let U = {
+          let comm_W = W.commit(ck);
+          let res = R1CSInstance::new(&S, &comm_W, &X);
+          assert!(res.is_ok());
+          res.unwrap()
+        };
+
+        // check that generated instance is satisfiable
+        assert!(S.is_sat(ck, &U, &W).is_ok());
+
+        (O, U, W)
+      };
+
+    let mut csprng: OsRng = OsRng;
+    let I = E::Scalar::random(&mut csprng); // the first input is picked randomly for the first instance
+    let (_O, U1, W1) = rand_inst_witness_generator(&ck, &I);
+    let (U2, W2) = S.sample_random_instance_witness(&ck).unwrap(); // random fold
+
+    //let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
+
+    println!("INSTANCE {:#?}", U1.clone());
+
+    // execute a sequence of folds
+    execute_sequence_relaxed(
+      &ck,
+      &ro_consts,
+      &<E as Engine>::Scalar::ZERO,
+      &S,
+      &RelaxedR1CSInstance::from_r1cs_instance(&ck, &S, &U1),
+      &RelaxedR1CSWitness::from_r1cs_witness(&S, &W1),
+      &U2,
+      &W2,
+      //&RelaxedR1CSInstance::from_r1cs_instance(&ck, &S, &U2),
+      //&RelaxedR1CSWitness::from_r1cs_witness(&S, &W2),
+    );
+  }
+
+  #[test]
+  fn test_tiny_r1cs_relaxed() {
+    test_tiny_r1cs_relaxed_with::<PallasEngine>();
+    test_tiny_r1cs_relaxed_with::<Bn256EngineKZG>();
+    test_tiny_r1cs_relaxed_with::<Secp256k1Engine>();
   }
 
   fn test_tiny_r1cs_with<E: Engine>() {
