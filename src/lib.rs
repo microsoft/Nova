@@ -272,7 +272,6 @@ where
   r_Ui_secondary: RelaxedR1CSInstance<E2>,
   l_ui_primary: R1CSInstance<E1>,
   l_ui_secondary: R1CSInstance<E2>,
-  // no r_i ??
   l_Ur_primary: RelaxedR1CSInstance<E1>,
   l_Ur_secondary: RelaxedR1CSInstance<E2>,
   nifs_Uf_primary: NIFS<E1>,
@@ -776,6 +775,155 @@ where
     res_r_primary?;
     res_r_secondary?;
     res_l_secondary?;
+
+    Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
+  }
+
+  /// Get the outputs after the last step of computation.
+  pub fn outputs(&self) -> (&[E1::Scalar], &[E2::Scalar]) {
+    (&self.zi_primary, &self.zi_secondary)
+  }
+
+  /// The number of steps which have been executed thus far.
+  pub fn num_steps(&self) -> usize {
+    self.i
+  }
+}
+
+impl<E1, E2, C1, C2> RandomRecursiveSNARK<E1, E2, C1, C2>
+where
+  E1: Engine<Base = <E2 as Engine>::Scalar>,
+  E2: Engine<Base = <E1 as Engine>::Scalar>,
+  C1: StepCircuit<E1::Scalar>,
+  C2: StepCircuit<E2::Scalar>,
+{
+  /// Verify the correctness of the `RecursiveSNARK` randomizing layer
+  pub fn verify(
+    &self,
+    pp: &PublicParams<E1, E2, C1, C2>,
+    num_steps: usize,
+    z0_primary: &[E1::Scalar],
+    z0_secondary: &[E2::Scalar],
+  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    // number of steps cannot be zero
+    let is_num_steps_zero = num_steps == 0;
+
+    // check if the provided proof has executed num_steps
+    let is_num_steps_not_match = self.i != num_steps;
+
+    // check if the initial inputs match
+    let is_inputs_not_match = self.z0_primary != z0_primary || self.z0_secondary != z0_secondary;
+
+    // TODO - WHY? check if the (relaxed) R1CS instances have two public outputs
+    //let is_instance_has_two_outpus = self.l_u_secondary.X.len() != 2
+    let is_instance_has_two_outpus = self.r_Ui_primary.X.len() != 2
+      || self.r_Ui_secondary.X.len() != 2
+      || self.l_Ur_primary.X.len() != 2
+      || self.l_Ur_secondary.X.len() != 2;
+
+    if is_num_steps_zero
+      || is_num_steps_not_match
+      || is_inputs_not_match
+      || is_instance_has_two_outpus
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // check if the output hashes in R1CS instances point to the right running instances
+    let (hash_primary, hash_secondary) = {
+      let mut hasher = <E2 as Engine>::RO::new(
+        pp.ro_consts_secondary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
+      );
+      hasher.absorb(pp.digest());
+      hasher.absorb(E1::Scalar::from(num_steps as u64));
+      for e in z0_primary {
+        hasher.absorb(*e);
+      }
+      for e in &self.zi_primary {
+        hasher.absorb(*e);
+      }
+      self.r_Ui_secondary.absorb_in_ro(&mut hasher);
+
+      let mut hasher2 = <E1 as Engine>::RO::new(
+        pp.ro_consts_primary.clone(),
+        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
+      );
+      hasher2.absorb(scalar_as_base::<E1>(pp.digest()));
+      hasher2.absorb(E2::Scalar::from(num_steps as u64));
+      for e in z0_secondary {
+        hasher2.absorb(*e);
+      }
+      for e in &self.zi_secondary {
+        hasher2.absorb(*e);
+      }
+      self.r_Ui_primary.absorb_in_ro(&mut hasher2);
+
+      (
+        hasher.squeeze(NUM_HASH_BITS),
+        hasher2.squeeze(NUM_HASH_BITS),
+      )
+    };
+
+    // TODO - what is this?
+    if hash_primary != self.l_ui_secondary.X[0]
+      || hash_secondary != scalar_as_base::<E2>(self.l_ui_secondary.X[1])
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    // Check that (ui.E, ui.u) = (u⊥.E, 1). not necesssary for regular R1CSInstance
+
+    // Fold the instance Ui with ui using T to get a folded instance Uf .
+    let r_Uf_primary = self.nifs_Uf_primary.verify(
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &self.r_Ui_primary,
+      &self.l_ui_primary,
+    )?;
+    let r_Uf_secondary = self.nifs_Uf_secondary.verify(
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &self.r_Ui_secondary,
+      &self.l_ui_secondary,
+    )?;
+
+    // Fold the instance Uf with Ur using T′ to get a folded instance Ui′
+    let r_Ui_prime_primary = self.nifs_Ui_prime_primary.verify_relaxed(
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &r_Uf_primary,
+      &self.l_Ur_primary,
+    )?;
+    let r_Ui_prime_secondary = self.nifs_Ui_prime_secondary.verify_relaxed(
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &r_Uf_secondary,
+      &self.l_Ur_secondary,
+    )?;
+
+    // Check that Wi′ is a satisfying witness to Ui′
+    let (res_r_secondary, res_r_primary) = rayon::join(
+      || {
+        pp.r1cs_shape_secondary.is_sat_relaxed(
+          &pp.ck_secondary,
+          &r_Ui_prime_secondary,
+          &self.r_Wi_prime_secondary,
+        )
+      },
+      || {
+        pp.r1cs_shape_primary.is_sat_relaxed(
+          &pp.ck_primary,
+          &r_Ui_prime_primary,
+          &self.r_Wi_prime_primary,
+        )
+      },
+    );
+
+    // check the returned res objects
+    res_r_primary?;
+    res_r_secondary?;
+    //res_l_secondary?;
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
