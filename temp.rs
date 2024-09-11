@@ -265,13 +265,14 @@ where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
   E2: Engine<Base = <E1 as Engine>::Scalar>,
 {
-  l_ur_primary: RelaxedR1CSInstance<E1>,
-  l_ur_secondary: RelaxedR1CSInstance<E2>,
+  l_Ur_primary: RelaxedR1CSInstance<E1>,
+  l_Ur_secondary: RelaxedR1CSInstance<E2>,
+  nifs_Uf_primary: NIFS<E1>,
   nifs_Uf_secondary: NIFS<E2>,
-  nifs_Un_primary: NIFS<E1>,
-  nifs_Un_secondary: NIFS<E2>,
-  r_Wn_primary: RelaxedR1CSWitness<E1>,
-  r_Wn_secondary: RelaxedR1CSWitness<E2>,
+  nifs_Ui_prime_primary: NIFS<E1>,
+  nifs_Ui_prime_secondary: NIFS<E2>,
+  r_Wi_prime_primary: RelaxedR1CSWitness<E1>,
+  r_Wi_prime_secondary: RelaxedR1CSWitness<E2>,
 }
 
 impl<E1, E2, C1, C2> RecursiveSNARK<E1, E2, C1, C2>
@@ -490,14 +491,17 @@ where
   }
 
   /// randomize the last step computed
-  pub fn randomizing_fold(&mut self, pp: &PublicParams<E1, E2, C1, C2>) -> Result<(), NovaError> {
+  pub fn randomizing_fold(
+    &mut self,
+    pp: &PublicParams<E1, E2, C1, C2>,
+  ) -> Result<RandomRecursiveSNARK<E1, E2, C1, C2>, NovaError> {
     if self.i == 0 {
       // don't call this until we have something to randomize
       return Err(NovaError::InvalidNumSteps);
     }
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
-    let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
+    let (nifs_Uf_secondary, (Uf_secondary, Wf_secondary)) = NIFS::prove_relaxed(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
@@ -509,48 +513,50 @@ where
     )?;
 
     // fold Uf/Wf with random inst/wit to get U1/W1
-    let (l_ur_secondary, l_wr_secondary) = pp
+    let (ur_secondary, wr_secondary) = pp
       .r1cs_shape_secondary
       .sample_random_instance_witness(&pp.ck_secondary)?;
 
-    let (nifs_Un_secondary, (_r_Un_secondary, r_Wn_secondary)) = NIFS::prove_relaxed(
+    let (nifs_Un_secondary, (Un_secondary, Wn_secondary)) = NIFS::prove_relaxed(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
       &pp.r1cs_shape_secondary,
-      &r_Uf_secondary,
-      &r_Wf_secondary,
-      &l_ur_secondary,
-      &l_wr_secondary,
+      &Uf_secondary,
+      &Wf_secondary,
+      &ur_secondary,
+      &wr_secondary,
     )?;
 
     // fold primary U/W with random inst/wit to get U2/W2
-    let (l_ur_primary, l_wr_primary) = pp
+    let (ur_primary, wr_primary) = pp
       .r1cs_shape_primary
       .sample_random_instance_witness(&pp.ck_primary)?;
 
-    let (nifs_Un_primary, (_r_Un_primary, r_Wn_primary)) = NIFS::prove_relaxed(
+    let (nifs_Un_primary, (Un_primary, Wn_primary)) = NIFS::prove_relaxed(
       &pp.ck_primary,
       &pp.ro_consts_primary,
       &pp.digest(),
       &pp.r1cs_shape_primary,
       &self.r_U_primary,
       &self.r_W_primary,
-      &l_ur_primary,
-      &l_wr_primary,
+      &ur_primary,
+      &wr_primary,
     )?;
 
-    // output randomized IVC Proof
-    self.random_layer = Some(RandomLayer {
-      l_ur_primary,
-      l_ur_secondary,
+    // 4. output randomized IVC Proof
+    self.random_layer = Some(Random {
+      l_Ur_primary,
+      l_Ur_secondary,
       // commitments to cross terms
+      nifs_Uf_primary,
       nifs_Uf_secondary,
-      nifs_Un_primary,
-      nifs_Un_secondary,
-      r_Wn_primary,
-      r_Wn_secondary,
-    });
+      nifs_Ui_prime_primary,
+      nifs_Ui_prime_secondary,
+      r_Wi_prime_primary,
+      r_Wi_prime_secondary,
+      _p: Default::default(),
+    })
 
     Ok(())
   }
@@ -682,7 +688,7 @@ where
     if self.random_layer.is_none() {
       return Err(NovaError::ProofVerifyError);
     }
-    let random_layer = self.random_layer.as_ref().unwrap();
+    let random_layer = self.random_layer.unwrap();
 
     // number of steps cannot be zero
     let is_num_steps_zero = num_steps == 0;
@@ -748,13 +754,14 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    // fold secondary U/W with secondary u/w to get Uf/Wf
-    let r_Uf_secondary = random_layer.nifs_Uf_secondary.verify(
+     // fold secondary U/W with secondary u/w to get Uf/Wf
+    let r_Uf_secondary = random_layer.nifs_Uf_secondary.verify_relaxed(
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
+
 
     // fold Uf/Wf with random inst/wit to get U1/W1
     let r_Un_secondary = random_layer.nifs_Un_secondary.verify_relaxed(
@@ -762,10 +769,11 @@ where
       &scalar_as_base::<E1>(pp.digest()),
       &r_Uf_secondary,
       &random_layer.l_ur_secondary,
-    )?;
+    )?;    
+
 
     // fold primary U/W with random inst/wit to get U2/W2
-    let r_Un_primary = random_layer.nifs_Un_primary.verify_relaxed(
+let r_Un_primary = random_layer.nifs_Un_primary.verify_relaxed(
       &pp.ro_consts_primary,
       &pp.digest(),
       &self.r_U_primary,
@@ -774,20 +782,20 @@ where
 
     // check the satisfiability of U1, U2
     let (res_primary, res_secondary) = rayon::join(
-      || {
-        pp.r1cs_shape_primary.is_sat_relaxed(
-          &pp.ck_primary,
-          &r_Un_primary,
-          &random_layer.r_Wn_primary,
-        )
-      },
-      || {
-        pp.r1cs_shape_secondary.is_sat_relaxed(
-          &pp.ck_secondary,
-          &r_Un_secondary,
-          &random_layer.r_Wn_secondary,
-        )
-      },
+          || {
+            pp.r1cs_shape_primary.is_sat_relaxed(
+              &pp.ck_primary,
+              &r_Un_primary,
+              &random_layer.r_Wn_secondary,
+            )
+          },
+          || {
+            pp.r1cs_shape_secondary.is_sat(
+              &pp.ck_secondary,
+              &r_Un_secondary,
+              &random_layer.r_Wn_secondary,
+            )
+          },
     );
 
     // check the returned res objects
