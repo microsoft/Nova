@@ -396,6 +396,11 @@ where
       return Ok(());
     }
 
+    // already applied randomizing layer
+    if self.random_layer.is_some() {
+      return Err(NovaError::ProofVerifyError);
+    }
+
     // fold the secondary circuit's instance
     let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
@@ -563,6 +568,21 @@ where
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    if self.random_layer.is_none() {
+      self.verify_regular(pp, num_steps, z0_primary, z0_secondary)
+    } else {
+      self.verify_randomizing(pp, num_steps, z0_primary, z0_secondary)
+    }
+  }
+
+  /// Verify the correctness of the `RecursiveSNARK` (no randomizing layer)
+  fn verify_regular(
+    &self,
+    pp: &PublicParams<E1, E2, C1, C2>,
+    num_steps: usize,
+    z0_primary: &[E1::Scalar],
+    z0_secondary: &[E2::Scalar],
+  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
     // number of steps cannot be zero
     let is_num_steps_zero = num_steps == 0;
 
@@ -661,27 +681,14 @@ where
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
 
-  /// Get the outputs after the last step of computation.
-  pub fn outputs(&self) -> (&[E1::Scalar], &[E2::Scalar]) {
-    (&self.zi_primary, &self.zi_secondary)
-  }
-
-  /// The number of steps which have been executed thus far.
-  pub fn num_steps(&self) -> usize {
-    self.i
-  }
-
   /// Verify the correctness of the `RecursiveSNARK` randomizing layer
-  pub fn verify_randomizing(
+  fn verify_randomizing(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
     num_steps: usize,
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
-    if self.random_layer.is_none() {
-      return Err(NovaError::ProofVerifyError);
-    }
     let random_layer = self.random_layer.as_ref().unwrap();
 
     // number of steps cannot be zero
@@ -795,6 +802,16 @@ where
     res_secondary?;
 
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
+  }
+
+  /// Get the outputs after the last step of computation.
+  pub fn outputs(&self) -> (&[E1::Scalar], &[E2::Scalar]) {
+    (&self.zi_primary, &self.zi_secondary)
+  }
+
+  /// The number of steps which have been executed thus far.
+  pub fn num_steps(&self) -> usize {
+    self.i
   }
 }
 
@@ -1310,6 +1327,90 @@ mod tests {
     test_ivc_nontrivial_with::<PallasEngine, VestaEngine>();
     test_ivc_nontrivial_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();
+  }
+
+  fn test_ivc_nontrivial_randomizing_with<E1, E2>()
+  where
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
+  {
+    let circuit_primary = TrivialCircuit::default();
+    let circuit_secondary = CubicCircuit::default();
+
+    // produce public parameters
+    let pp = PublicParams::<
+      E1,
+      E2,
+      TrivialCircuit<<E1 as Engine>::Scalar>,
+      CubicCircuit<<E2 as Engine>::Scalar>,
+    >::setup(
+      &circuit_primary,
+      &circuit_secondary,
+      &*default_ck_hint(),
+      &*default_ck_hint(),
+    )
+    .unwrap();
+
+    let num_steps = 3;
+
+    // produce a recursive SNARK
+    let mut recursive_snark = RecursiveSNARK::<
+      E1,
+      E2,
+      TrivialCircuit<<E1 as Engine>::Scalar>,
+      CubicCircuit<<E2 as Engine>::Scalar>,
+    >::new(
+      &pp,
+      &circuit_primary,
+      &circuit_secondary,
+      &[<E1 as Engine>::Scalar::ONE],
+      &[<E2 as Engine>::Scalar::ZERO],
+    )
+    .unwrap();
+
+    for i in 0..num_steps {
+      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
+      assert!(res.is_ok());
+
+      // verify the recursive snark at each step of recursion
+      let res = recursive_snark.verify(
+        &pp,
+        i + 1,
+        &[<E1 as Engine>::Scalar::ONE],
+        &[<E2 as Engine>::Scalar::ZERO],
+      );
+      assert!(res.is_ok());
+    }
+
+    let res = recursive_snark.randomizing_fold(&pp);
+    assert!(res.is_ok());
+
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
+      &pp,
+      num_steps,
+      &[<E1 as Engine>::Scalar::ONE],
+      &[<E2 as Engine>::Scalar::ZERO],
+    );
+    assert!(res.is_ok());
+
+    let (zn_primary, zn_secondary) = res.unwrap();
+
+    // sanity: check the claimed output with a direct computation of the same
+    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::ONE]);
+    let mut zn_secondary_direct = vec![<E2 as Engine>::Scalar::ZERO];
+    for _i in 0..num_steps {
+      zn_secondary_direct = circuit_secondary.clone().output(&zn_secondary_direct);
+    }
+    assert_eq!(zn_secondary, zn_secondary_direct);
+    assert_eq!(zn_secondary, vec![<E2 as Engine>::Scalar::from(2460515u64)]);
+  }
+
+  #[test]
+  fn test_ivc_nontrivial_randomizing() {
+    test_ivc_nontrivial_randomizing_with::<PallasEngine, VestaEngine>();
+    test_ivc_nontrivial_randomizing_with::<Bn256EngineKZG, GrumpkinEngine>();
+    test_ivc_nontrivial_randomizing_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
   fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
