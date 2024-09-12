@@ -256,14 +256,15 @@ where
   _p: PhantomData<(C1, C2)>,
 }
 
-/// Final randomized fold
+/// Final randomized fold of `RecursiveSNARK`
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct RandomLayer<E1, E2>
+pub struct RandomLayerRecursive<E1, E2>
 where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
   E2: Engine<Base = <E1 as Engine>::Scalar>,
 {
+  last_i: usize,
   l_ur_primary: RelaxedR1CSInstance<E1>,
   l_ur_secondary: RelaxedR1CSInstance<E2>,
   nifs_Uf_secondary: NIFS<E2>,
@@ -491,16 +492,17 @@ where
     Ok(())
   }
 
-  /// randomize the last step computed
+  /// add a randomizing fold to a `RecursiveSNARK`
   /// if you plan on using a randomized CompressedSNARK, you don't need to call this
   fn randomizing_fold(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
-  ) -> Result<RandomLayer<E1, E2>, NovaError> {
+  ) -> Result<RandomLayerRecursive<E1, E2>, NovaError> {
     if self.i == 0 {
       // don't call this until we have something to randomize
       return Err(NovaError::InvalidNumSteps);
     }
+    let last_i = self.i;
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
     let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
@@ -547,7 +549,8 @@ where
     )?;
 
     // output randomized IVC Proof
-    Ok(RandomLayer {
+    Ok(RandomLayerRecursive {
+      last_i,
       // random istances
       l_ur_primary,
       l_ur_secondary,
@@ -677,10 +680,15 @@ where
     num_steps: usize,
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
-    random_layer: RandomLayer<E1, E2>,
+    random_layer: RandomLayerRecursive<E1, E2>,
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
     // number of steps cannot be zero
     let is_num_steps_zero = num_steps == 0;
+
+    // there should not have been more folds after randomizing layer
+    if random_layer.last_i != self.i {
+      return Err(NovaError::ProofVerifyError);
+    }
 
     // check if the provided proof has executed num_steps
     let is_num_steps_not_match = self.i != num_steps;
@@ -691,7 +699,11 @@ where
     // check if the (relaxed) R1CS instances have two public outputs
     let is_instance_has_two_outpus = self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
-      || self.r_U_secondary.X.len() != 2;
+      || self.r_U_secondary.X.len() != 2
+      || random_layer.l_ur_primary.X.len() != 2
+      || random_layer.l_ur_secondary.X.len() != 2
+      || random_layer.r_Un_primary.X.len() != 2
+      || random_layer.r_Un_secondary.X.len() != 2;
 
     if is_num_steps_zero
       || is_num_steps_not_match
@@ -869,7 +881,7 @@ where
   _p: PhantomData<(C1, C2)>,
 }
 
-/// Final randomized fold info for CompressedSNARK
+/// Final randomized fold info for `CompressedSNARK`
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RandomLayerCompressed<E1, E2>
@@ -939,7 +951,7 @@ where
     }
   }
 
-  /// Create a new `CompressedSNARK`
+  /// Create a new `CompressedSNARK` (without randomizing layer)
   fn prove_regular(
     pp: &PublicParams<E1, E2, C1, C2>,
     pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
@@ -996,7 +1008,7 @@ where
     })
   }
 
-  /// Create a new `CompressedSNARK`
+  /// Create a new `CompressedSNARK` (with randomizing layer)
   fn prove_randomizing(
     pp: &PublicParams<E1, E2, C1, C2>,
     pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
@@ -1066,10 +1078,9 @@ where
     } else {
       self.verify_randomizing(vk, num_steps, z0_primary, z0_secondary)
     }
-    // TODO ^^
   }
 
-  /// Verify the correctness of the `CompressedSNARK`
+  /// Verify the correctness of the `CompressedSNARK` (without randomizing layer)
   fn verify_regular(
     &self,
     vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
@@ -1161,9 +1172,7 @@ where
     Ok((self.zn_primary.clone(), self.zn_secondary.clone()))
   }
 
-  // TODO JESS: look at all of the hashing code everywhere and make sure the right crap is hashed
-
-  /// Verify the correctness of the `CompressedSNARK`
+  /// Verify the correctness of the `CompressedSNARK` (with randomizing layer)
   fn verify_randomizing(
     &self,
     vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
@@ -1171,6 +1180,8 @@ where
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    let random_layer = self.random_layer.as_ref().unwrap();
+
     // the number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -1180,6 +1191,8 @@ where
     if self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
       || self.r_U_secondary.X.len() != 2
+      || random_layer.l_ur_primary.X.len() != 2
+      || random_layer.l_ur_secondary.X.len() != 2
     {
       return Err(NovaError::ProofVerifyError);
     }
@@ -1225,8 +1238,6 @@ where
     {
       return Err(NovaError::ProofVerifyError);
     }
-
-    let random_layer = self.random_layer.as_ref().unwrap();
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
     let r_Uf_secondary = self.nifs_secondary.verify(
