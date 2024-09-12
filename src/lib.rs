@@ -1614,7 +1614,7 @@ mod tests {
     test_ivc_nontrivial_randomizing_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
-  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
+  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1688,7 +1688,7 @@ mod tests {
       &pp,
       &pk,
       &recursive_snark,
-      false,
+      randomizing,
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
@@ -1705,20 +1705,41 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(false);
     test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
+      false,
     );
-    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
+      false,
+    );
 
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
       provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
-    >();
+    >(false);
   }
 
-  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
+  #[test]
+  fn test_ivc_nontrivial_randomizing_with_compression() {
+    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(true);
+    test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
+      true,
+    );
+    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
+      true,
+    );
+
+    test_ivc_nontrivial_with_spark_compression_with::<
+      Bn256EngineKZG,
+      GrumpkinEngine,
+      provider::hyperkzg::EvaluationEngine<_>,
+      EE<_>,
+    >(true);
+  }
+
+  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1794,7 +1815,7 @@ mod tests {
       &pp,
       &pk,
       &recursive_snark,
-      false,
+      randomizing,
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
@@ -1811,18 +1832,37 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
-    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(
+      false,
+    );
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
       EEPrime<_>,
       EE<_>,
-    >();
+    >(false);
     test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
+      false,
     );
   }
 
-  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
+  #[test]
+  fn test_ivc_nontrivial_randomizing_with_spark_compression() {
+    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(
+      true,
+    );
+    test_ivc_nontrivial_with_spark_compression_with::<
+      Bn256EngineKZG,
+      GrumpkinEngine,
+      EEPrime<_>,
+      EE<_>,
+    >(true);
+    test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
+      true,
+    );
+  }
+
+  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1949,7 +1989,7 @@ mod tests {
       &pp,
       &pk,
       &recursive_snark,
-      false,
+      randomizing,
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
@@ -1961,9 +2001,20 @@ mod tests {
 
   #[test]
   fn test_ivc_nondet_with_compression() {
-    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(false);
+    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
+      false,
+    );
+    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(false);
+  }
+
+  #[test]
+  fn test_ivc_nondet_randomizing_with_compression() {
+    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(true);
+    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
+      true,
+    );
+    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(true);
   }
 
   fn test_ivc_base_with<E1, E2>()

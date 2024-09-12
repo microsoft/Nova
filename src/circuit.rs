@@ -252,58 +252,6 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     Ok((U_fold, check_pass))
   }
-
-  /*  /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
-    /// And a boolean indicating if all checks pass
-    fn synthesize_last_random_case<CS: ConstraintSystem<<E as Engine>::Base>>(
-      &self,
-      mut cs: CS,
-      params: &AllocatedNum<E::Base>,
-      i: &AllocatedNum<E::Base>,
-      z_0: &[AllocatedNum<E::Base>],
-      z_i: &[AllocatedNum<E::Base>],
-      U: &AllocatedRelaxedR1CSInstance<E>,
-      u: &AllocatedR1CSInstance<E>,
-      T: &AllocatedPoint<E>,
-      arity: usize,
-    ) -> Result<(AllocatedRelaxedR1CSInstance<E>, AllocatedBit), SynthesisError> {
-      // Check that u.x[0] = Hash(params, U, i, z0, zi)
-      let mut ro = E::ROCircuit::new(
-        self.ro_consts.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
-      );
-      ro.absorb(params);
-      ro.absorb(i);
-      for e in z_0 {
-        ro.absorb(e);
-      }
-      for e in z_i {
-        ro.absorb(e);
-      }
-      U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
-
-      let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-      let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
-      let check_pass = alloc_num_equals(
-        cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
-        &u.X0,
-        &hash,
-      )?;
-
-      // Run NIFS Verifier
-      let U_fold = U.fold_with_r1cs(
-        cs.namespace(|| "compute fold of U and u"),
-        params,
-        u,
-        T,
-        self.ro_consts.clone(),
-        self.params.limb_width,
-        self.params.n_limbs,
-      )?;
-
-      Ok((U_fold, check_pass))
-    }
-  */
 }
 
 impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
