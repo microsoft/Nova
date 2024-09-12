@@ -253,6 +253,7 @@ where
   i: usize,
   zi_primary: Vec<E1::Scalar>,
   zi_secondary: Vec<E2::Scalar>,
+  random_layer: Option<RandomLayer<E1, E2>>,
   _p: PhantomData<(C1, C2)>,
 }
 
@@ -271,10 +272,6 @@ where
   nifs_Un_secondary: NIFS<E2>,
   r_Wn_primary: RelaxedR1CSWitness<E1>,
   r_Wn_secondary: RelaxedR1CSWitness<E2>,
-  // needed for CompressedSNARK proving,
-  // but not technically part of RecursiveSNARK proof
-  r_Un_primary: RelaxedR1CSInstance<E1>,
-  r_Un_secondary: RelaxedR1CSInstance<E2>,
 }
 
 impl<E1, E2, C1, C2> RecursiveSNARK<E1, E2, C1, C2>
@@ -380,6 +377,7 @@ where
       i: 0,
       zi_primary,
       zi_secondary,
+      random_layer: None,
       _p: Default::default(),
     })
   }
@@ -396,6 +394,11 @@ where
     if self.i == 0 {
       self.i = 1;
       return Ok(());
+    }
+
+    // already applied randomizing layer
+    if self.random_layer.is_some() {
+      return Err(NovaError::ProofVerifyError);
     }
 
     // fold the secondary circuit's instance
@@ -493,10 +496,7 @@ where
 
   /// randomize the last step computed
   /// if you plan on using a randomized CompressedSNARK, you don't need to call this
-  fn randomizing_fold(
-    &self,
-    pp: &PublicParams<E1, E2, C1, C2>,
-  ) -> Result<RandomLayer<E1, E2>, NovaError> {
+  pub fn randomizing_fold(&mut self, pp: &PublicParams<E1, E2, C1, C2>) -> Result<(), NovaError> {
     if self.i == 0 {
       // don't call this until we have something to randomize
       return Err(NovaError::InvalidNumSteps);
@@ -519,7 +519,7 @@ where
       .r1cs_shape_secondary
       .sample_random_instance_witness(&pp.ck_secondary)?;
 
-    let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFS::prove_relaxed(
+    let (nifs_Un_secondary, (_r_Un_secondary, r_Wn_secondary)) = NIFS::prove_relaxed(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
@@ -535,7 +535,7 @@ where
       .r1cs_shape_primary
       .sample_random_instance_witness(&pp.ck_primary)?;
 
-    let (nifs_Un_primary, (r_Un_primary, r_Wn_primary)) = NIFS::prove_relaxed(
+    let (nifs_Un_primary, (_r_Un_primary, r_Wn_primary)) = NIFS::prove_relaxed(
       &pp.ck_primary,
       &pp.ro_consts_primary,
       &pp.digest(),
@@ -547,25 +547,37 @@ where
     )?;
 
     // output randomized IVC Proof
-    Ok(RandomLayer {
-      // random istances
+    self.random_layer = Some(RandomLayer {
       l_ur_primary,
       l_ur_secondary,
       // commitments to cross terms
       nifs_Uf_secondary,
       nifs_Un_primary,
       nifs_Un_secondary,
-      // witnesses
       r_Wn_primary,
       r_Wn_secondary,
-      // needed for CompressedSNARK proving
-      r_Un_primary,
-      r_Un_secondary,
-    })
+    });
+
+    Ok(())
+  }
+
+  /// Verify the correctness of the `RecursiveSNARK`
+  pub fn verify(
+    &self,
+    pp: &PublicParams<E1, E2, C1, C2>,
+    num_steps: usize,
+    z0_primary: &[E1::Scalar],
+    z0_secondary: &[E2::Scalar],
+  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    if self.random_layer.is_none() {
+      self.verify_regular(pp, num_steps, z0_primary, z0_secondary)
+    } else {
+      self.verify_randomizing(pp, num_steps, z0_primary, z0_secondary)
+    }
   }
 
   /// Verify the correctness of the `RecursiveSNARK` (no randomizing layer)
-  pub fn verify(
+  fn verify_regular(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
     num_steps: usize,
@@ -671,14 +683,15 @@ where
   }
 
   /// Verify the correctness of the `RecursiveSNARK` randomizing layer
-  pub fn verify_randomizing(
+  fn verify_randomizing(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
     num_steps: usize,
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
-    random_layer: RandomLayer<E1, E2>,
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
+    let random_layer = self.random_layer.as_ref().unwrap();
+
     // number of steps cannot be zero
     let is_num_steps_zero = num_steps == 0;
 
@@ -865,22 +878,7 @@ where
   zn_primary: Vec<E1::Scalar>,
   zn_secondary: Vec<E2::Scalar>,
 
-  random_layer: Option<RandomLayerCompressed<E1, E2>>,
   _p: PhantomData<(C1, C2)>,
-}
-
-/// Final randomized fold info for CompressedSNARK
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct RandomLayerCompressed<E1, E2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-{
-  l_ur_primary: RelaxedR1CSInstance<E1>,
-  l_ur_secondary: RelaxedR1CSInstance<E2>,
-  nifs_Un_primary: NIFS<E1>,
-  nifs_Un_secondary: NIFS<E2>,
 }
 
 impl<E1, E2, C1, C2, S1, S2> CompressedSNARK<E1, E2, C1, C2, S1, S2>
@@ -891,6 +889,7 @@ where
   C2: StepCircuit<E2::Scalar>,
   S1: RelaxedR1CSSNARKTrait<E1>,
   S2: RelaxedR1CSSNARKTrait<E2>,
+  random_layer: RandomLayer<E1, E2>,
 {
   /// Creates prover and verifier keys for `CompressedSNARK`
   pub fn setup(
@@ -932,10 +931,14 @@ where
     recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
     randomizing: bool,
   ) -> Result<Self, NovaError> {
+    if recursive_snark.random_layer.is_some() {
+      // don't randomize before, we take care of that here
+      return Err(NovaError::ProofVerifyError);
+    }
     if randomizing {
-      Self::prove_randomizing(pp, pk, recursive_snark)
+      self.prove_randomizing(pp, pk, recursive_snark)
     } else {
-      Self::prove_regular(pp, pk, recursive_snark)
+      self.prove_regular(pp, pk, recursive_snark)
     }
   }
 
@@ -992,7 +995,7 @@ where
       zn_secondary: recursive_snark.zi_secondary.clone(),
 
       _p: Default::default(),
-      random_layer: None,
+      None,
     })
   }
 
@@ -1003,7 +1006,8 @@ where
     recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
   ) -> Result<Self, NovaError> {
     // prove three foldings
-    let random_layer = recursive_snark.randomizing_fold(pp)?;
+    let (r_Un_primary, r_Un_secondary) = recursive_snark.randomizing_fold(pp)?;
+    let random_layer = recursive_snark?;
 
     // create SNARKs proving the knowledge of Wn primary/secondary
     let (snark_primary, snark_secondary) = rayon::join(
@@ -1012,7 +1016,7 @@ where
           &pp.ck_primary,
           &pk.pk_primary,
           &pp.r1cs_shape_primary,
-          &random_layer.r_Un_primary,
+          &r_Un_primary,
           &random_layer.r_Wn_primary,
         )
       },
@@ -1027,15 +1031,6 @@ where
       },
     );
 
-    let random_layer_compressed = Some(RandomLayerCompressed {
-      l_ur_primary: random_layer.l_ur_primary.clone(),
-      l_ur_secondary: random_layer.l_ur_secondary.clone(),
-      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
-      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
-    });
-
-    let nifs_secondary = random_layer.nifs_Uf_secondary.clone();
-
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
       r_W_snark_primary: snark_primary?,
@@ -1043,12 +1038,11 @@ where
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
-      f_W_snark_secondary: snark_secondary?,
+      f_W_snark_secondary: f_W_snark_secondary?,
 
       zn_primary: recursive_snark.zi_primary.clone(),
       zn_secondary: recursive_snark.zi_secondary.clone(),
 
-      random_layer: random_layer_compressed,
       _p: Default::default(),
     })
   }
@@ -1226,29 +1220,26 @@ where
       return Err(NovaError::ProofVerifyError);
     }
 
-    let random_layer = self.random_layer.as_ref().unwrap();
-
     // fold secondary U/W with secondary u/w to get Uf/Wf
-    let r_Uf_secondary = self.nifs_secondary.verify(
-      //random_layer.nifs_Uf_secondary.verify(
-      &vk.ro_consts_secondary,
-      &scalar_as_base::<E1>(vk.pp_digest),
+    let r_Uf_secondary = random_layer.nifs_Uf_secondary.verify(
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
 
     // fold Uf/Wf with random inst/wit to get U1/W1
     let r_Un_secondary = random_layer.nifs_Un_secondary.verify_relaxed(
-      &vk.ro_consts_secondary,
-      &scalar_as_base::<E1>(vk.pp_digest),
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
       &r_Uf_secondary,
       &random_layer.l_ur_secondary,
     )?;
 
     // fold primary U/W with random inst/wit to get U2/W2
     let r_Un_primary = random_layer.nifs_Un_primary.verify_relaxed(
-      &vk.ro_consts_primary,
-      &vk.pp_digest,
+      &pp.ro_consts_primary,
+      &pp.digest(),
       &self.r_U_primary,
       &random_layer.l_ur_primary,
     )?;
@@ -1585,13 +1576,12 @@ mod tests {
     let res = recursive_snark.randomizing_fold(&pp);
     assert!(res.is_ok());
 
-    // verify the randomized recursive SNARK
-    let res = recursive_snark.verify_randomizing(
+    // verify the recursive SNARK
+    let res = recursive_snark.verify(
       &pp,
       num_steps,
       &[<E1 as Engine>::Scalar::ONE],
       &[<E2 as Engine>::Scalar::ZERO],
-      res.unwrap(),
     );
     assert!(res.is_ok());
 
@@ -1684,12 +1674,8 @@ mod tests {
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(
-      &pp,
-      &pk,
-      &recursive_snark,
-      false,
-    );
+    let res =
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1794,7 +1780,6 @@ mod tests {
       &pp,
       &pk,
       &recursive_snark,
-      false,
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
@@ -1945,12 +1930,8 @@ mod tests {
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(
-      &pp,
-      &pk,
-      &recursive_snark,
-      false,
-    );
+    let res =
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
