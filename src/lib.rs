@@ -494,7 +494,7 @@ where
 
   /// add a randomizing fold to a `RecursiveSNARK`
   /// if you plan on using a randomized CompressedSNARK, you don't need to call this
-  fn randomizing_fold(
+  pub fn randomizing_fold(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
   ) -> Result<RandomLayerRecursive<E1, E2>, NovaError> {
