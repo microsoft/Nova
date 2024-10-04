@@ -185,7 +185,7 @@ where
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
 
-  fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(_label: &'static [u8], _blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);
@@ -210,9 +210,26 @@ where
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
+
     Commitment {
       comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
+  }
+
+  fn commit_with_blinding(
+    _ck: &Self::CommitmentKey,
+    _v: &[E::Scalar],
+    _r: &E::Scalar,
+  ) -> Self::Commitment {
+    unimplemented!()
+  }
+
+  fn derandomize(
+    _ck: &Self::CommitmentKey,
+    _commit: &Self::Commitment,
+    _r: &E::Scalar,
+  ) -> Self::Commitment {
+    unimplemented!()
   }
 }
 

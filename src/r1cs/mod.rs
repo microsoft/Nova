@@ -48,6 +48,7 @@ impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
   W: Vec<E::Scalar>,
+  r_W: E::Scalar,
 }
 
 /// A type that holds an R1CS instance
@@ -62,7 +63,9 @@ pub struct R1CSInstance<E: Engine> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RelaxedR1CSWitness<E: Engine> {
   pub(crate) W: Vec<E::Scalar>,
+  pub(crate) r_W: E::Scalar,
   pub(crate) E: Vec<E::Scalar>,
+  pub(crate) r_E: E::Scalar,
 }
 
 /// A type that holds a Relaxed R1CS instance
@@ -93,7 +96,7 @@ impl<E: Engine> R1CS<E> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
     let ck_hint = ck_floor(S);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
+    E::CE::setup(b"ck", b"ck blinding", max(max(num_cons, num_vars), ck_hint))
   }
 }
 
@@ -197,8 +200,10 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm = {
-      let (comm_W, comm_E) =
-        rayon::join(|| CE::<E>::commit(ck, &W.W), || CE::<E>::commit(ck, &W.E));
+      let (comm_W, comm_E) = rayon::join(
+        || CE::<E>::commit_with_blinding(ck, &W.W, &W.r_W),
+        || CE::<E>::commit_with_blinding(ck, &W.E, &W.r_E),
+      );
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
@@ -231,7 +236,7 @@ impl<E: Engine> R1CSShape<E> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm = U.comm_W == CE::<E>::commit(ck, &W.W);
+    let res_comm = U.comm_W == CE::<E>::commit_with_blinding(ck, &W.W, &W.r_W);
 
     if res_eq && res_comm {
       Ok(())
@@ -249,6 +254,7 @@ impl<E: Engine> R1CSShape<E> {
     W1: &RelaxedR1CSWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
+    r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
@@ -272,7 +278,7 @@ impl<E: Engine> R1CSShape<E> {
       .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
       .collect::<Vec<E::Scalar>>();
 
-    let comm_T = CE::<E>::commit(ck, &T);
+    let comm_T = CE::<E>::commit_with_blinding(ck, &T, r_T);
 
     Ok((T, comm_T))
   }
@@ -286,6 +292,7 @@ impl<E: Engine> R1CSShape<E> {
     W1: &RelaxedR1CSWitness<E>,
     U2: &RelaxedR1CSInstance<E>,
     W2: &RelaxedR1CSWitness<E>,
+    r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
@@ -310,7 +317,7 @@ impl<E: Engine> R1CSShape<E> {
       .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
       .collect::<Vec<E::Scalar>>();
 
-    let comm_T = CE::<E>::commit(ck, &T);
+    let comm_T = CE::<E>::commit_with_blinding(ck, &T, r_T);
 
     Ok((T, comm_T))
   }
@@ -395,6 +402,9 @@ impl<E: Engine> R1CSShape<E> {
 
     let u = E::Scalar::random(&mut OsRng);
 
+    let r_W = E::Scalar::random(&mut OsRng);
+    let r_E = E::Scalar::random(&mut OsRng);
+
     // Z
     let Z = [W.clone(), vec![u], X.clone()].concat();
 
@@ -409,8 +419,8 @@ impl<E: Engine> R1CSShape<E> {
       .collect::<Vec<E::Scalar>>();
 
     // compute commitments to W,E
-    let comm_W = CE::<E>::commit(ck, &W);
-    let comm_E = CE::<E>::commit(ck, &E);
+    let comm_W = CE::<E>::commit_with_blinding(ck, &W, &r_W);
+    let comm_E = CE::<E>::commit_with_blinding(ck, &E, &r_E);
 
     Ok((
       RelaxedR1CSInstance {
@@ -419,7 +429,7 @@ impl<E: Engine> R1CSShape<E> {
         u,
         X,
       },
-      RelaxedR1CSWitness { W, E },
+      RelaxedR1CSWitness { W, r_W, E, r_E },
     ))
   }
 }
@@ -430,13 +440,16 @@ impl<E: Engine> R1CSWitness<E> {
     if S.num_vars != W.len() {
       Err(NovaError::InvalidWitnessLength)
     } else {
-      Ok(R1CSWitness { W: W.to_owned() })
+      Ok(R1CSWitness {
+        W: W.to_owned(),
+        r_W: E::Scalar::random(&mut OsRng),
+      })
     }
   }
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
-    CE::<E>::commit(ck, &self.W)
+    CE::<E>::commit_with_blinding(ck, &self.W, &self.r_W)
   }
 }
 
@@ -472,7 +485,9 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
   pub fn default(S: &R1CSShape<E>) -> RelaxedR1CSWitness<E> {
     RelaxedR1CSWitness {
       W: vec![E::Scalar::ZERO; S.num_vars],
+      r_W: E::Scalar::ZERO,
       E: vec![E::Scalar::ZERO; S.num_cons],
+      r_E: E::Scalar::ZERO,
     }
   }
 
@@ -480,13 +495,18 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
   pub fn from_r1cs_witness(S: &R1CSShape<E>, witness: &R1CSWitness<E>) -> RelaxedR1CSWitness<E> {
     RelaxedR1CSWitness {
       W: witness.W.clone(),
+      r_W: witness.r_W,
       E: vec![E::Scalar::ZERO; S.num_cons],
+      r_E: E::Scalar::ZERO,
     }
   }
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> (Commitment<E>, Commitment<E>) {
-    (CE::<E>::commit(ck, &self.W), CE::<E>::commit(ck, &self.E))
+    (
+      CE::<E>::commit_with_blinding(ck, &self.W, &self.r_W),
+      CE::<E>::commit_with_blinding(ck, &self.E, &self.r_E),
+    )
   }
 
   /// Folds an incoming `R1CSWitness` into the current one
@@ -494,10 +514,11 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     &self,
     W2: &R1CSWitness<E>,
     T: &[E::Scalar],
+    r_T: &E::Scalar,
     r: &E::Scalar,
   ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
-    let (W1, E1) = (&self.W, &self.E);
-    let W2 = &W2.W;
+    let (W1, r_W1, E1, r_E1) = (&self.W, &self.r_W, &self.E, &self.r_E);
+    let (W2, r_W2) = (&W2.W, &W2.r_W);
 
     if W1.len() != W2.len() {
       return Err(NovaError::InvalidWitnessLength);
@@ -513,7 +534,11 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
-    Ok(RelaxedR1CSWitness { W, E })
+
+    let r_W = *r_W1 + *r * r_W2;
+    let r_E = *r_E1 + *r * r_T;
+
+    Ok(RelaxedR1CSWitness { W, r_W, E, r_E })
   }
 
   /// Folds an incoming `RelaxedR1CSWitness` into the current one
@@ -522,10 +547,11 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     &self,
     W2: &RelaxedR1CSWitness<E>,
     T: &[E::Scalar],
+    r_T: &E::Scalar,
     r: &E::Scalar,
   ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
-    let (W1, E1) = (&self.W, &self.E);
-    let (W2, E2) = (&W2.W, &W2.E);
+    let (W1, r_W1, E1, r_E1) = (&self.W, &self.r_W, &self.E, &self.r_E);
+    let (W2, r_W2, E2, r_E2) = (&W2.W, &W2.r_W, &W2.E, &W2.r_E);
 
     if W1.len() != W2.len() {
       return Err(NovaError::InvalidWitnessLength);
@@ -543,7 +569,10 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
       .collect::<Vec<E::Scalar>>();
 
-    Ok(RelaxedR1CSWitness { W, E })
+    let r_W = *r_W1 + *r * r_W2;
+    let r_E = *r_E1 + *r * r_T + *r * *r * *r_E2;
+
+    Ok(RelaxedR1CSWitness { W, r_W, E, r_E })
   }
 
   /// Pads the provided witness to the correct length
@@ -554,7 +583,12 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     let mut E = self.E.clone();
     E.extend(vec![E::Scalar::ZERO; S.num_cons - E.len()]);
 
-    Self { W, E }
+    Self {
+      W,
+      r_W: self.r_W,
+      E,
+      r_E: self.r_E,
+    }
   }
 }
 
