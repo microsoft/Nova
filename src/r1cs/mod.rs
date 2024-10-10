@@ -688,6 +688,41 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
       u,
     }
   }
+
+  pub fn derandomize_commits(
+    &self,
+    ck: &CommitmentKey<E>,
+    r_W: &E::Scalar,
+    r_E: &E::Scalar,
+  ) -> RelaxedR1CSInstance<E> {
+    RelaxedR1CSInstance {
+      comm_W: CE::<E>::derandomize(ck, &self.comm_W, &r_W),
+      comm_E: CE::<E>::derandomize(ck, &self.comm_E, &r_E),
+      X: self.X.clone(),
+      u: self.u.clone(),
+    }
+  }
+
+  pub fn derandomize_commits_and_witnesses(
+    &self,
+    ck: &CommitmentKey<E>,
+    wit: &RelaxedR1CSWitness<E>,
+  ) -> (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>) {
+    (
+      RelaxedR1CSInstance {
+        comm_W: CE::<E>::derandomize(ck, &self.comm_W, &wit.r_W),
+        comm_E: CE::<E>::derandomize(ck, &self.comm_E, &wit.r_E),
+        X: self.X.clone(),
+        u: self.u.clone(),
+      },
+      RelaxedR1CSWitness {
+        W: wit.W.clone(),
+        r_W: E::Scalar::ZERO,
+        E: wit.E.clone(),
+        r_E: E::Scalar::ZERO,
+      },
+    )
+  }
 }
 
 impl<E: Engine> TranscriptReprTrait<E::GE> for RelaxedR1CSInstance<E> {

@@ -851,6 +851,8 @@ where
   pp_digest: E1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
+  vk_primary_commitment_key: CommitmentKey<E1>,
+  vk_secondary_commitment_key: CommitmentKey<E2>,
   _p: PhantomData<(C1, C2)>,
 }
 
@@ -877,6 +879,10 @@ where
   zn_primary: Vec<E1::Scalar>,
   zn_secondary: Vec<E2::Scalar>,
 
+  primary_blind_r_W: E1::Scalar,
+  primary_blind_r_E: E1::Scalar,
+  secondary_blind_r_W: E2::Scalar,
+  secondary_blind_r_E: E2::Scalar,
   random_layer: Option<RandomLayerCompressed<E1, E2>>,
   _p: PhantomData<(C1, C2)>,
 }
@@ -931,6 +937,8 @@ where
       pp_digest: pp.digest(),
       vk_primary,
       vk_secondary,
+      vk_primary_commitment_key: pp.ck_primary.clone(),
+      vk_secondary_commitment_key: pp.ck_secondary.clone(),
       _p: Default::default(),
     };
 
@@ -969,6 +977,13 @@ where
       &recursive_snark.l_w_secondary,
     )?;
 
+    // derandomize/unblind commitments
+    let (derandom_r_U_primary, derandom_r_W_primary) = recursive_snark
+      .r_U_primary
+      .derandomize_commits_and_witnesses(&pp.ck_primary, &recursive_snark.r_W_primary);
+    let (derandom_f_U_secondary, derandom_f_W_secondary) =
+      f_U_secondary.derandomize_commits_and_witnesses(&pp.ck_secondary, &f_W_secondary);
+
     // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
     let (r_W_snark_primary, f_W_snark_secondary) = rayon::join(
       || {
@@ -976,8 +991,8 @@ where
           &pp.ck_primary,
           &pk.pk_primary,
           &pp.r1cs_shape_primary,
-          &recursive_snark.r_U_primary,
-          &recursive_snark.r_W_primary,
+          &derandom_r_U_primary,
+          &derandom_r_W_primary,
         )
       },
       || {
@@ -985,8 +1000,8 @@ where
           &pp.ck_secondary,
           &pk.pk_secondary,
           &pp.r1cs_shape_secondary,
-          &f_U_secondary,
-          &f_W_secondary,
+          &derandom_f_U_secondary,
+          &derandom_f_W_secondary,
         )
       },
     );
@@ -1003,8 +1018,12 @@ where
       zn_primary: recursive_snark.zi_primary.clone(),
       zn_secondary: recursive_snark.zi_secondary.clone(),
 
-      _p: Default::default(),
+      primary_blind_r_W: recursive_snark.r_W_primary.r_W,
+      primary_blind_r_E: recursive_snark.r_W_primary.r_E,
+      secondary_blind_r_W: f_W_secondary.r_W,
+      secondary_blind_r_E: f_W_secondary.r_E,
       random_layer: None,
+      _p: Default::default(),
     })
   }
 
@@ -1017,6 +1036,14 @@ where
     // prove three foldings
     let random_layer = recursive_snark.randomizing_fold(pp)?;
 
+    // derandomize/unblind commitments
+    let (derandom_r_Un_primary, derandom_r_Wn_primary) = random_layer
+      .r_Un_primary
+      .derandomize_commits_and_witnesses(&pp.ck_primary, &random_layer.r_Wn_primary);
+    let (derandom_r_Un_secondary, derandom_r_Wn_secondary) = random_layer
+      .r_Un_secondary
+      .derandomize_commits_and_witnesses(&pp.ck_secondary, &random_layer.r_Wn_secondary);
+
     // create SNARKs proving the knowledge of Wn primary/secondary
     let (snark_primary, snark_secondary) = rayon::join(
       || {
@@ -1024,8 +1051,8 @@ where
           &pp.ck_primary,
           &pk.pk_primary,
           &pp.r1cs_shape_primary,
-          &random_layer.r_Un_primary,
-          &random_layer.r_Wn_primary,
+          &derandom_r_Un_primary,
+          &derandom_r_Wn_primary,
         )
       },
       || {
@@ -1033,8 +1060,8 @@ where
           &pp.ck_secondary,
           &pk.pk_secondary,
           &pp.r1cs_shape_secondary,
-          &random_layer.r_Un_secondary,
-          &random_layer.r_Wn_secondary,
+          &derandom_r_Un_secondary,
+          &derandom_r_Wn_secondary,
         )
       },
     );
@@ -1060,6 +1087,10 @@ where
       zn_primary: recursive_snark.zi_primary.clone(),
       zn_secondary: recursive_snark.zi_secondary.clone(),
 
+      primary_blind_r_W: random_layer.r_Wn_primary.r_W,
+      primary_blind_r_E: random_layer.r_Wn_primary.r_E,
+      secondary_blind_r_W: random_layer.r_Wn_secondary.r_W,
+      secondary_blind_r_E: random_layer.r_Wn_secondary.r_E,
       random_layer: random_layer_compressed,
       _p: Default::default(),
     })
@@ -1151,18 +1182,30 @@ where
       &self.l_u_secondary,
     )?;
 
+    // derandomize/unblind commitments
+    let derandom_r_U_primary = self.r_U_primary.derandomize_commits(
+      &vk.vk_primary_commitment_key,
+      &self.primary_blind_r_W,
+      &self.primary_blind_r_E,
+    );
+    let derandom_f_U_secondary = f_U_secondary.derandomize_commits(
+      &vk.vk_secondary_commitment_key,
+      &self.secondary_blind_r_W,
+      &self.secondary_blind_r_E,
+    );
+
     // check the satisfiability of the folded instances using
     // SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
       || {
         self
           .r_W_snark_primary
-          .verify(&vk.vk_primary, &self.r_U_primary)
+          .verify(&vk.vk_primary, &derandom_r_U_primary)
       },
       || {
         self
           .f_W_snark_secondary
-          .verify(&vk.vk_secondary, &f_U_secondary)
+          .verify(&vk.vk_secondary, &derandom_f_U_secondary)
       },
     );
 
@@ -1241,7 +1284,6 @@ where
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
     let r_Uf_secondary = self.nifs_secondary.verify(
-      //random_layer.nifs_Uf_secondary.verify(
       &vk.ro_consts_secondary,
       &scalar_as_base::<E1>(vk.pp_digest),
       &self.r_U_secondary,
@@ -1264,14 +1306,30 @@ where
       &random_layer.l_ur_primary,
     )?;
 
+    // derandomize/unblind commitments
+    let derandom_r_Un_primary = r_Un_primary.derandomize_commits(
+      &vk.vk_primary_commitment_key,
+      &self.primary_blind_r_W,
+      &self.primary_blind_r_E,
+    );
+    let derandom_r_Un_secondary = r_Un_secondary.derandomize_commits(
+      &vk.vk_secondary_commitment_key,
+      &self.secondary_blind_r_W,
+      &self.secondary_blind_r_E,
+    );
+
     // check the satisfiability of the folded instances using
     // SNARKs proving the knowledge of their satisfying witnesses
     let (res_primary, res_secondary) = rayon::join(
-      || self.r_W_snark_primary.verify(&vk.vk_primary, &r_Un_primary),
+      || {
+        self
+          .r_W_snark_primary
+          .verify(&vk.vk_primary, &derandom_r_Un_primary)
+      },
       || {
         self
           .f_W_snark_secondary
-          .verify(&vk.vk_secondary, &r_Un_secondary)
+          .verify(&vk.vk_secondary, &derandom_r_Un_secondary)
       },
     );
 

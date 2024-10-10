@@ -98,6 +98,7 @@ impl<E: Engine> NIFS<E> {
 
     // compute a commitment to the cross-term
     let r_T = E::Scalar::random(&mut OsRng);
+    E::Scalar::random(&mut OsRng);
     let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
@@ -338,7 +339,7 @@ mod tests {
     W1: &RelaxedR1CSWitness<E>,
     U2: &RelaxedR1CSInstance<E>,
     W2: &RelaxedR1CSWitness<E>,
-  ) {
+  ) -> (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>) {
     // produce a default running instance
     let mut running_W = RelaxedR1CSWitness::default(shape);
     let mut running_U = RelaxedR1CSInstance::default(ck, shape);
@@ -381,9 +382,34 @@ mod tests {
 
     // check if the running instance is satisfiable
     assert!(shape.is_sat_relaxed(ck, &running_U, &running_W).is_ok());
+
+    (running_U, running_W)
   }
 
-  fn test_tiny_r1cs_relaxed_with<E: Engine>() {
+  fn test_tiny_r1cs_relaxed_derandomize_with<E: Engine>() {
+    let (ck, S, final_U, final_W) = test_tiny_r1cs_relaxed_with::<E>();
+    assert!(S.is_sat_relaxed(&ck, &final_U, &final_W).is_ok());
+
+    let (derandom_final_U, derandom_final_W) =
+      final_U.derandomize_commits_and_witnesses(&ck, &final_W);
+    assert!(S
+      .is_sat_relaxed(&ck, &derandom_final_U, &derandom_final_W)
+      .is_ok());
+  }
+
+  #[test]
+  fn test_tiny_r1cs_relaxed_derandomize() {
+    test_tiny_r1cs_relaxed_derandomize_with::<PallasEngine>();
+    test_tiny_r1cs_relaxed_derandomize_with::<Bn256EngineKZG>();
+    test_tiny_r1cs_relaxed_derandomize_with::<Secp256k1Engine>();
+  }
+
+  fn test_tiny_r1cs_relaxed_with<E: Engine>() -> (
+    CommitmentKey<E>,
+    R1CSShape<E>,
+    RelaxedR1CSInstance<E>,
+    RelaxedR1CSWitness<E>,
+  ) {
     let one = <E::Scalar as Field>::ONE;
     let (num_cons, num_vars, num_io, A, B, C) = {
       let num_cons = 4;
@@ -496,12 +522,10 @@ mod tests {
     let (_O, U1, W1) = rand_inst_witness_generator(&ck, &I);
     let (U2, W2) = S.sample_random_instance_witness(&ck).unwrap(); // random fold
 
-    //let (_O, U2, W2) = rand_inst_witness_generator(&ck, &O);
-
     println!("INSTANCE {:#?}", U1.clone());
 
     // execute a sequence of folds
-    execute_sequence_relaxed(
+    let (final_U, final_W) = execute_sequence_relaxed(
       &ck,
       &ro_consts,
       &<E as Engine>::Scalar::ZERO,
@@ -510,9 +534,9 @@ mod tests {
       &RelaxedR1CSWitness::from_r1cs_witness(&S, &W1),
       &U2,
       &W2,
-      //&RelaxedR1CSInstance::from_r1cs_instance(&ck, &S, &U2),
-      //&RelaxedR1CSWitness::from_r1cs_witness(&S, &W2),
     );
+
+    (ck, S, final_U, final_W)
   }
 
   #[test]
