@@ -185,7 +185,7 @@ where
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
 
-  fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(_label: &'static [u8], _blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);
@@ -210,9 +210,26 @@ where
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
+
     Commitment {
       comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
+  }
+
+  fn commit_with_blinding(
+    ck: &Self::CommitmentKey,
+    v: &[E::Scalar],
+    _r: &E::Scalar,
+  ) -> Self::Commitment {
+    Self::commit(ck, v)
+  }
+
+  fn derandomize(
+    _ck: &Self::CommitmentKey,
+    commit: &Self::Commitment,
+    _r: &E::Scalar,
+  ) -> Self::Commitment {
+    commit.clone()
   }
 }
 
@@ -641,7 +658,7 @@ mod tests {
   fn test_hyperkzg_eval() {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
     let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
@@ -701,7 +718,7 @@ mod tests {
     // eval = 28
     let eval = Fr::from(28);
 
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
     let (pk, vk) = EvaluationEngine::setup(&ck);
 
     // make a commitment
@@ -759,7 +776,7 @@ mod tests {
       let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
-      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
       let (pk, vk) = EvaluationEngine::setup(&ck);
 
       // make a commitment

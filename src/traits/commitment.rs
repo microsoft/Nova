@@ -51,8 +51,22 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   type Commitment: CommitmentTrait<E>;
 
   /// Samples a new commitment key of a specified size
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
+  fn setup(label: &'static [u8], blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey;
 
   /// Commits to the provided vector using the provided generators
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment;
+
+  /// Commits to the provided vector using the provided generators and random blind
+  fn commit_with_blinding(
+    ck: &Self::CommitmentKey,
+    v: &[E::Scalar],
+    r: &E::Scalar,
+  ) -> Self::Commitment;
+
+  /// Remove given blind from commitment
+  fn derandomize(
+    ck: &Self::CommitmentKey,
+    commit: &Self::Commitment,
+    r: &E::Scalar,
+  ) -> Self::Commitment;
 }

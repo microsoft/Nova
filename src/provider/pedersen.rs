@@ -24,6 +24,7 @@ where
   E::GE: DlogGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  h: Option<<E::GE as DlogGroup>::AffineGroupElement>,
 }
 
 impl<E> Len for CommitmentKey<E>
@@ -166,9 +167,13 @@ where
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
 
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(label: &'static [u8], blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    let blinding = E::GE::from_label(blinding_label, 1);
+    let h = blinding.first().unwrap().clone();
+
     Self::CommitmentKey {
       ck: E::GE::from_label(label, n.next_power_of_two()),
+      h: Some(h),
     }
   }
 
@@ -176,6 +181,41 @@ where
     assert!(ck.ck.len() >= v.len());
     Commitment {
       comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+    }
+  }
+
+  fn commit_with_blinding(
+    ck: &Self::CommitmentKey,
+    v: &[E::Scalar],
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    assert!(ck.h.is_some());
+
+    let mut scalars: Vec<E::Scalar> = v.to_vec();
+    scalars.push(*r);
+    let mut bases = ck.ck[..v.len()].to_vec();
+    bases.push(ck.h.as_ref().unwrap().clone());
+
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+    }
+  }
+
+  fn derandomize(
+    ck: &Self::CommitmentKey,
+    commit: &Self::Commitment,
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    assert!(ck.h.is_some());
+    // g^m * h^r * h^(-r)
+    let neg_r = *r * (E::Scalar::from(0) - E::Scalar::from(1));
+
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul(
+        &[E::Scalar::from(1), neg_r],
+        &[commit.comm.affine(), ck.h.as_ref().unwrap().clone()],
+      ),
     }
   }
 }
@@ -217,9 +257,11 @@ where
     (
       CommitmentKey {
         ck: self.ck[0..n].to_vec(),
+        h: self.h.clone(),
       },
       CommitmentKey {
         ck: self.ck[n..].to_vec(),
+        h: self.h.clone(),
       },
     )
   }
@@ -230,7 +272,10 @@ where
       c.extend(other.ck.clone());
       c
     };
-    CommitmentKey { ck }
+    CommitmentKey {
+      ck,
+      h: self.h.clone(),
+    }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
@@ -246,7 +291,10 @@ where
       })
       .collect();
 
-    CommitmentKey { ck }
+    CommitmentKey {
+      ck,
+      h: self.h.clone(),
+    }
   }
 
   /// Scales each element in `self` by `r`
@@ -258,7 +306,10 @@ where
       .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
       .collect();
 
-    CommitmentKey { ck: ck_scaled }
+    CommitmentKey {
+      ck: ck_scaled,
+      h: self.h.clone(),
+    }
   }
 
   /// reinterprets a vector of commitments as a set of generators
@@ -267,6 +318,13 @@ where
       .into_par_iter()
       .map(|i| c[i].comm.affine())
       .collect();
-    Ok(CommitmentKey { ck })
+
+    // cmt is derandomized by the point that this is called
+    Ok(CommitmentKey {
+      ck,
+      h: None, // this is okay, since this method is used in IPA only,
+               // and we only use `commit` after, not `commit_with_blind`
+               // bc we don't use ZK IPA
+    })
   }
 }

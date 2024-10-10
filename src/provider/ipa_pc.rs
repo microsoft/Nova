@@ -49,7 +49,7 @@ where
   fn setup(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
-    let ck_c = E::CE::setup(b"ipa", 1);
+    let ck_c = E::CE::setup(b"ipa", b"no blind", 1);
 
     let pk = ProverKey { ck_s: ck_c.clone() };
     let vk = VerifierKey {

@@ -37,13 +37,14 @@ cfg_if::cfg_if! {
     criterion_group! {
       name = compressed_snark;
       config = Criterion::default().warm_up_time(Duration::from_millis(3000)).with_profiler(pprof::criterion::PProfProfiler::new(100, pprof::criterion::Output::Flamegraph(None)));
-      targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments
+      targets = bench_compressed_snark, bench_randomizing_compressed_snark, bench_compressed_snark_with_computational_commitments, bench_randomizing_compressed_snark_with_computational_commitments
     }
   } else {
     criterion_group! {
       name = compressed_snark;
       config = Criterion::default().warm_up_time(Duration::from_millis(3000));
-      targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments
+    targets = bench_compressed_snark, bench_randomizing_compressed_snark, bench_compressed_snark_with_computational_commitments,
+bench_randomizing_compressed_snark_with_computational_commitments
     }
   }
 }
@@ -59,9 +60,11 @@ const NUM_SAMPLES: usize = 10;
 /// Parameters
 /// - `group``: the criterion benchmark group
 /// - `num_cons`: the number of constraints in the step circuit
+/// - `randomizing`: if there is a zk layer added before compression
 fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1CSSNARKTrait<E2>>(
   group: &mut BenchmarkGroup<'_, WallTime>,
   num_cons: usize,
+  randomizing: bool,
 ) {
   let c_primary = NonTrivialCircuit::new(num_cons);
   let c_secondary = TrivialCircuit::default();
@@ -109,12 +112,13 @@ fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1C
       assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
         black_box(&pp),
         black_box(&pk),
-        black_box(&recursive_snark)
+        black_box(&recursive_snark),
+        black_box(randomizing)
       )
       .is_ok());
     })
   });
-  let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
+  let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark, randomizing);
   assert!(res.is_ok());
   let compressed_snark = res.unwrap();
 
@@ -153,7 +157,7 @@ fn bench_compressed_snark(c: &mut Criterion) {
     let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
     group.sample_size(NUM_SAMPLES);
 
-    bench_compressed_snark_internal::<S1, S2>(&mut group, num_cons);
+    bench_compressed_snark_internal::<S1, S2>(&mut group, num_cons, false);
 
     group.finish();
   }
@@ -181,7 +185,61 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
       .sampling_mode(SamplingMode::Flat)
       .sample_size(NUM_SAMPLES);
 
-    bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons);
+    bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons, false);
+
+    group.finish();
+  }
+}
+
+fn bench_randomizing_compressed_snark(c: &mut Criterion) {
+  // we vary the number of constraints in the step circuit
+  for &num_cons_in_augmented_circuit in [
+    NUM_CONS_VERIFIER_CIRCUIT_PRIMARY,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+    524288,
+    1048576,
+  ]
+  .iter()
+  {
+    // number of constraints in the step circuit
+    let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
+
+    let mut group = c.benchmark_group(format!("CompressedSNARK-StepCircuitSize-{num_cons}"));
+    group.sample_size(NUM_SAMPLES);
+
+    bench_compressed_snark_internal::<S1, S2>(&mut group, num_cons, true);
+
+    group.finish();
+  }
+}
+
+fn bench_randomizing_compressed_snark_with_computational_commitments(c: &mut Criterion) {
+  // we vary the number of constraints in the step circuit
+  for &num_cons_in_augmented_circuit in [
+    NUM_CONS_VERIFIER_CIRCUIT_PRIMARY,
+    16384,
+    32768,
+    65536,
+    131072,
+    262144,
+  ]
+  .iter()
+  {
+    // number of constraints in the step circuit
+    let num_cons = num_cons_in_augmented_circuit - NUM_CONS_VERIFIER_CIRCUIT_PRIMARY;
+
+    let mut group = c.benchmark_group(format!(
+      "CompressedSNARK-Commitments-StepCircuitSize-{num_cons}"
+    ));
+    group
+      .sampling_mode(SamplingMode::Flat)
+      .sample_size(NUM_SAMPLES);
+
+    bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons, true);
 
     group.finish();
   }

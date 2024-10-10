@@ -11,6 +11,7 @@ use crate::{
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     circuit::StepCircuit,
+    commitment::CommitmentEngineTrait,
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine,
   },
@@ -76,6 +77,7 @@ where
   E: Engine,
   S: RelaxedR1CSSNARKTrait<E>,
 {
+  ck: CommitmentKey<E>,
   vk: S::VerifierKey,
 }
 
@@ -96,7 +98,8 @@ where
   C: StepCircuit<E::Scalar>,
 {
   comm_W: Commitment<E>, // commitment to the witness
-  snark: S,              // snark proving the witness is satisfying
+  blind_r_W: E::Scalar,
+  snark: S, // snark proving the witness is satisfying
   _p: PhantomData<C>,
 }
 
@@ -113,9 +116,13 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
     let (pk, vk) = S::setup(&ck, &shape)?;
 
-    let pk = ProverKey { S: shape, ck, pk };
+    let pk = ProverKey {
+      S: shape,
+      ck: ck.clone(),
+      pk,
+    };
 
-    let vk = VerifierKey { vk };
+    let vk = VerifierKey { ck, vk };
 
     Ok((pk, vk))
   }
@@ -140,11 +147,22 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
       RelaxedR1CSWitness::from_r1cs_witness(&pk.S, &w),
     );
 
+    // derandomize/unblind commitments
+    let (derandom_u_relaxed, derandom_w_relaxed) =
+      u_relaxed.derandomize_commits_and_witnesses(&pk.ck, &w_relaxed);
+
     // prove the instance using Spartan
-    let snark = S::prove(&pk.ck, &pk.pk, &pk.S, &u_relaxed, &w_relaxed)?;
+    let snark = S::prove(
+      &pk.ck,
+      &pk.pk,
+      &pk.S,
+      &derandom_u_relaxed,
+      &derandom_w_relaxed,
+    )?;
 
     Ok(DirectSNARK {
       comm_W: u.comm_W,
+      blind_r_W: w_relaxed.r_W,
       snark,
       _p: PhantomData,
     })
@@ -152,8 +170,11 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
   /// Verifies a proof of satisfiability
   pub fn verify(&self, vk: &VerifierKey<E, S>, io: &[E::Scalar]) -> Result<(), NovaError> {
+    // derandomize/unblind commitments
+    let comm_W = E::CE::derandomize(&vk.ck, &self.comm_W, &self.blind_r_W);
+
     // construct an instance using the provided commitment to the witness and z_i and z_{i+1}
-    let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(&self.comm_W, io);
+    let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(&comm_W, io);
 
     // verify the snark using the constructed instance
     self.snark.verify(&vk.vk, &u_relaxed)?;
