@@ -44,6 +44,7 @@ use nifs::NIFS;
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
+use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use traits::{
   circuit::StepCircuit, commitment::CommitmentEngineTrait, snark::RelaxedR1CSSNARKTrait,
@@ -246,8 +247,10 @@ where
   z0_secondary: Vec<E2::Scalar>,
   r_W_primary: RelaxedR1CSWitness<E1>,
   r_U_primary: RelaxedR1CSInstance<E1>,
+  ri_primary: E1::Scalar,
   r_W_secondary: RelaxedR1CSWitness<E2>,
   r_U_secondary: RelaxedR1CSInstance<E2>,
+  ri_secondary: E2::Scalar,
   l_w_secondary: R1CSWitness<E2>,
   l_u_secondary: R1CSInstance<E2>,
   i: usize,
@@ -297,6 +300,9 @@ where
       return Err(NovaError::InvalidInitialInputLength);
     }
 
+    let ri_primary = E1::Scalar::random(&mut OsRng);
+    let ri_secondary = E2::Scalar::random(&mut OsRng);
+
     // base case for the primary
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
@@ -305,6 +311,8 @@ where
       z0_primary.to_vec(),
       None,
       None,
+      None,
+      ri_primary, // "r next"
       None,
       None,
     );
@@ -327,6 +335,8 @@ where
       z0_secondary.to_vec(),
       None,
       None,
+      None,
+      ri_secondary, // "r next"
       Some(u_primary.clone()),
       None,
     );
@@ -374,8 +384,10 @@ where
       z0_secondary: z0_secondary.to_vec(),
       r_W_primary,
       r_U_primary,
+      ri_primary,
       r_W_secondary,
       r_U_secondary,
+      ri_secondary,
       l_w_secondary,
       l_u_secondary,
       i: 0,
@@ -411,6 +423,8 @@ where
       &self.l_w_secondary,
     )?;
 
+    let r_next_primary = E1::Scalar::random(&mut OsRng);
+
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<E1>(pp.digest()),
@@ -418,6 +432,8 @@ where
       self.z0_primary.to_vec(),
       Some(self.zi_primary.clone()),
       Some(self.r_U_secondary.clone()),
+      Some(self.ri_primary),
+      r_next_primary,
       Some(self.l_u_secondary.clone()),
       Some(nifs_secondary.comm_T),
     );
@@ -445,6 +461,8 @@ where
       &l_w_primary,
     )?;
 
+    let r_next_secondary = E2::Scalar::random(&mut OsRng);
+
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
     let inputs_secondary: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
       pp.digest(),
@@ -452,6 +470,8 @@ where
       self.z0_secondary.to_vec(),
       Some(self.zi_secondary.clone()),
       Some(self.r_U_primary.clone()),
+      Some(self.ri_secondary),
+      r_next_secondary,
       Some(l_u_primary),
       Some(nifs_primary.comm_T),
     );
@@ -488,6 +508,9 @@ where
 
     self.r_U_secondary = r_U_secondary;
     self.r_W_secondary = r_W_secondary;
+
+    self.ri_primary = r_next_primary;
+    self.ri_secondary = r_next_secondary;
 
     Ok(())
   }
@@ -612,6 +635,7 @@ where
         hasher.absorb(*e);
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
+      hasher.absorb(self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(
         pp.ro_consts_primary.clone(),
@@ -626,6 +650,7 @@ where
         hasher2.absorb(*e);
       }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
+      hasher2.absorb(self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),
@@ -728,6 +753,7 @@ where
         hasher.absorb(*e);
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
+      hasher.absorb(self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(
         pp.ro_consts_primary.clone(),
@@ -742,6 +768,7 @@ where
         hasher2.absorb(*e);
       }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
+      hasher2.absorb(self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),
@@ -869,9 +896,11 @@ where
   S2: RelaxedR1CSSNARKTrait<E2>,
 {
   r_U_primary: RelaxedR1CSInstance<E1>,
+  ri_primary: E1::Scalar,
   r_W_snark_primary: S1,
 
   r_U_secondary: RelaxedR1CSInstance<E2>,
+  ri_secondary: E2::Scalar,
   l_u_secondary: R1CSInstance<E2>,
   nifs_secondary: NIFS<E2>,
   f_W_snark_secondary: S2,
@@ -1008,9 +1037,11 @@ where
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
+      ri_primary: recursive_snark.ri_primary.clone(),
       r_W_snark_primary: r_W_snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
+      ri_secondary: recursive_snark.ri_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
       f_W_snark_secondary: f_W_snark_secondary?,
@@ -1077,9 +1108,11 @@ where
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
+      ri_primary: recursive_snark.ri_primary.clone(),
       r_W_snark_primary: snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
+      ri_secondary: recursive_snark.ri_secondary.clone(),
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
       f_W_snark_secondary: snark_secondary?,
@@ -1147,6 +1180,7 @@ where
         hasher.absorb(*e);
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
+      hasher.absorb(self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(
         vk.ro_consts_primary.clone(),
@@ -1161,6 +1195,7 @@ where
         hasher2.absorb(*e);
       }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
+      hasher2.absorb(self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),
@@ -1255,6 +1290,7 @@ where
         hasher.absorb(*e);
       }
       self.r_U_secondary.absorb_in_ro(&mut hasher);
+      hasher.absorb(self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(
         vk.ro_consts_primary.clone(),
@@ -1269,6 +1305,7 @@ where
         hasher2.absorb(*e);
       }
       self.r_U_primary.absorb_in_ro(&mut hasher2);
+      hasher2.absorb(self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),

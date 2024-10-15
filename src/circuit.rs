@@ -53,6 +53,8 @@ pub struct NovaAugmentedCircuitInputs<E: Engine> {
   z0: Vec<E::Base>,
   zi: Option<Vec<E::Base>>,
   U: Option<RelaxedR1CSInstance<E>>,
+  ri: Option<E::Base>,
+  r_next: E::Base,
   u: Option<R1CSInstance<E>>,
   T: Option<Commitment<E>>,
 }
@@ -65,6 +67,8 @@ impl<E: Engine> NovaAugmentedCircuitInputs<E> {
     z0: Vec<E::Base>,
     zi: Option<Vec<E::Base>>,
     U: Option<RelaxedR1CSInstance<E>>,
+    ri: Option<E::Base>,
+    r_next: E::Base,
     u: Option<R1CSInstance<E>>,
     T: Option<Commitment<E>>,
   ) -> Self {
@@ -74,6 +78,8 @@ impl<E: Engine> NovaAugmentedCircuitInputs<E> {
       z0,
       zi,
       U,
+      ri,
+      r_next,
       u,
       T,
     }
@@ -117,6 +123,8 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       Vec<AllocatedNum<E::Base>>,
       Vec<AllocatedNum<E::Base>>,
       AllocatedRelaxedR1CSInstance<E>,
+      AllocatedNum<E::Base>,
+      AllocatedNum<E::Base>,
       AllocatedR1CSInstance<E>,
       AllocatedPoint<E>,
     ),
@@ -158,6 +166,14 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       self.params.n_limbs,
     )?;
 
+    // Allocate ri
+    let r_i = AllocatedNum::alloc(cs.namespace(|| "ri"), || {
+      Ok(self.inputs.get()?.ri.unwrap_or(E::Base::ZERO))
+    })?;
+
+    // Allocate r_i+1
+    let r_next = AllocatedNum::alloc(cs.namespace(|| "r_i+1"), || Ok(self.inputs.get()?.r_next))?;
+
     // Allocate the instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "allocate instance u to fold"),
@@ -174,7 +190,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     )?;
     T.check_on_curve(cs.namespace(|| "check T on curve"))?;
 
-    Ok((params, i, z_0, z_i, U, u, T))
+    Ok((params, i, z_0, z_i, U, r_i, r_next, u, T))
   }
 
   /// Synthesizes base case and returns the new relaxed `R1CSInstance`
@@ -212,6 +228,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     z_0: &[AllocatedNum<E::Base>],
     z_i: &[AllocatedNum<E::Base>],
     U: &AllocatedRelaxedR1CSInstance<E>,
+    r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
     T: &AllocatedPoint<E>,
     arity: usize,
@@ -230,6 +247,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       ro.absorb(e);
     }
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+    ro.absorb(r_i);
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
@@ -263,7 +281,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, u, T) =
+    let (params, i, z_0, z_i, U, r_i, r_next, u, T) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -282,6 +300,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       &z_0,
       &z_i,
       &U,
+      &r_i,
       &u,
       &T,
       arity,
@@ -347,6 +366,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       ro.absorb(e);
     }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
+    ro.absorb(&r_next);
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
 
@@ -410,6 +430,7 @@ mod tests {
 
     // Execute the base case for the primary
     let zero1 = <<E2 as Engine>::Base as Field>::ZERO;
+    let ri_1 = <<E2 as Engine>::Base as Field>::ZERO;
     let mut cs1 = SatisfyingAssignment::<E1>::new();
     let inputs1: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<E1>(zero1), // pass zero for testing
@@ -417,6 +438,8 @@ mod tests {
       vec![zero1],
       None,
       None,
+      None,
+      ri_1,
       None,
       None,
     );
@@ -429,6 +452,7 @@ mod tests {
 
     // Execute the base case for the secondary
     let zero2 = <<E1 as Engine>::Base as Field>::ZERO;
+    let ri_2 = <<E1 as Engine>::Base as Field>::ZERO;
     let mut cs2 = SatisfyingAssignment::<E2>::new();
     let inputs2: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
       scalar_as_base::<E2>(zero2), // pass zero for testing
@@ -436,6 +460,8 @@ mod tests {
       vec![zero2],
       None,
       None,
+      None,
+      ri_2,
       Some(inst1),
       None,
     );
