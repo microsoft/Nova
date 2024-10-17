@@ -1037,11 +1037,11 @@ where
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
-      ri_primary: recursive_snark.ri_primary.clone(),
+      ri_primary: recursive_snark.ri_primary,
       r_W_snark_primary: r_W_snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
-      ri_secondary: recursive_snark.ri_secondary.clone(),
+      ri_secondary: recursive_snark.ri_secondary,
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
       f_W_snark_secondary: f_W_snark_secondary?,
@@ -1108,11 +1108,11 @@ where
 
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
-      ri_primary: recursive_snark.ri_primary.clone(),
+      ri_primary: recursive_snark.ri_primary,
       r_W_snark_primary: snark_primary?,
 
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
-      ri_secondary: recursive_snark.ri_secondary.clone(),
+      ri_secondary: recursive_snark.ri_secondary,
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_secondary,
       f_W_snark_secondary: snark_secondary?,
@@ -1483,19 +1483,19 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["a69d6cf6d014c3a5cc99b77afc86691f7460faa737207dd21b30e8241fae8002"],
+      &expect!["cfd726c95effd42b68bb22dda539eaefe4483601e207aa92f4970e7d6d215702"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["b22ab3456df4bd391804a39fae582b37ed4a8d90ace377337940ac956d87f701"],
+      &expect!["c90a30a806b9b320bc7777cfadc21a9d133c196d9ab50d2237c5f15edcbd3a03"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["c8aec89a3ea90317a0ecdc9150f4fc3648ca33f6660924a192cafd82e2939b02"],
+      &expect!["88fc7d72e9a6e6e872bd08135ecbdbb13f4b829976e026c81f8feae89cf57802"],
     );
   }
 

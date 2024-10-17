@@ -229,7 +229,7 @@ where
     commit: &Self::Commitment,
     _r: &E::Scalar,
   ) -> Self::Commitment {
-    commit.clone()
+    *commit
   }
 }
 

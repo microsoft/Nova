@@ -696,10 +696,10 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     r_E: &E::Scalar,
   ) -> RelaxedR1CSInstance<E> {
     RelaxedR1CSInstance {
-      comm_W: CE::<E>::derandomize(ck, &self.comm_W, &r_W),
-      comm_E: CE::<E>::derandomize(ck, &self.comm_E, &r_E),
+      comm_W: CE::<E>::derandomize(ck, &self.comm_W, r_W),
+      comm_E: CE::<E>::derandomize(ck, &self.comm_E, r_E),
       X: self.X.clone(),
-      u: self.u.clone(),
+      u: self.u,
     }
   }
 
@@ -713,7 +713,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
         comm_W: CE::<E>::derandomize(ck, &self.comm_W, &wit.r_W),
         comm_E: CE::<E>::derandomize(ck, &self.comm_E, &wit.r_E),
         X: self.X.clone(),
-        u: self.u.clone(),
+        u: self.u,
       },
       RelaxedR1CSWitness {
         W: wit.W.clone(),
