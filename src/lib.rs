@@ -761,29 +761,29 @@ where
   S1: RelaxedR1CSSNARKTrait<E1>,
   S2: RelaxedR1CSSNARKTrait<E2>,
 {
-  r_U_primary: RelaxedR1CSInstance<E1>,
-  ri_primary: E1::Scalar,
-  r_W_snark_primary: S1,
-
   r_U_secondary: RelaxedR1CSInstance<E2>,
   ri_secondary: E2::Scalar,
   l_u_secondary: R1CSInstance<E2>,
   nifs_Uf_secondary: NIFS<E2>,
-  f_W_snark_secondary: S2,
 
-  zn_primary: Vec<E1::Scalar>,
-  zn_secondary: Vec<E2::Scalar>,
+  l_ur_secondary: RelaxedR1CSInstance<E2>,
+  nifs_Un_secondary: NIFS<E2>,
+
+  r_U_primary: RelaxedR1CSInstance<E1>,
+  ri_primary: E1::Scalar,
+  l_ur_primary: RelaxedR1CSInstance<E1>,
+  nifs_Un_primary: NIFS<E1>,
 
   primary_blind_r_W: E1::Scalar,
   primary_blind_r_E: E1::Scalar,
   secondary_blind_r_W: E2::Scalar,
   secondary_blind_r_E: E2::Scalar,
 
-  // randomizing layer
-  l_ur_primary: RelaxedR1CSInstance<E1>,
-  l_ur_secondary: RelaxedR1CSInstance<E2>,
-  nifs_Un_primary: NIFS<E1>,
-  nifs_Un_secondary: NIFS<E2>,
+  snark_primary: S1,
+  snark_secondary: S2,
+
+  zn_primary: Vec<E1::Scalar>,
+  zn_secondary: Vec<E2::Scalar>,
 
   _p: PhantomData<(C1, C2)>,
 }
@@ -872,28 +872,30 @@ where
     );
 
     Ok(Self {
-      r_U_primary: recursive_snark.r_U_primary.clone(),
-      ri_primary: recursive_snark.ri_primary,
-      r_W_snark_primary: snark_primary?,
-
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       ri_secondary: recursive_snark.ri_secondary,
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
       nifs_Uf_secondary: random_layer.nifs_Uf_secondary.clone(),
-      f_W_snark_secondary: snark_secondary?,
 
-      zn_primary: recursive_snark.zi_primary.clone(),
-      zn_secondary: recursive_snark.zi_secondary.clone(),
+      l_ur_secondary: random_layer.l_ur_secondary.clone(),
+      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
+
+      r_U_primary: recursive_snark.r_U_primary.clone(),
+      ri_primary: recursive_snark.ri_primary,
+      l_ur_primary: random_layer.l_ur_primary.clone(),
+      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
 
       primary_blind_r_W: random_layer.r_Wn_primary.r_W,
       primary_blind_r_E: random_layer.r_Wn_primary.r_E,
       secondary_blind_r_W: random_layer.r_Wn_secondary.r_W,
       secondary_blind_r_E: random_layer.r_Wn_secondary.r_E,
 
-      l_ur_primary: random_layer.l_ur_primary.clone(),
-      l_ur_secondary: random_layer.l_ur_secondary.clone(),
-      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
-      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
+      snark_primary: snark_primary?,
+      snark_secondary: snark_secondary?,
+
+      zn_primary: recursive_snark.zi_primary.clone(),
+      zn_secondary: recursive_snark.zi_secondary.clone(),
+
       _p: Default::default(),
     })
   }
@@ -1006,12 +1008,12 @@ where
     let (res_primary, res_secondary) = rayon::join(
       || {
         self
-          .r_W_snark_primary
+          .snark_primary
           .verify(&vk.vk_primary, &derandom_r_Un_primary)
       },
       || {
         self
-          .f_W_snark_secondary
+          .snark_secondary
           .verify(&vk.vk_secondary, &derandom_r_Un_secondary)
       },
     );
