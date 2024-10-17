@@ -208,20 +208,12 @@ where
     Self::CommitmentKey { ck, tau_H }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], _r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
 
     Commitment {
       comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
     }
-  }
-
-  fn commit_with_blinding(
-    ck: &Self::CommitmentKey,
-    v: &[E::Scalar],
-    _r: &E::Scalar,
-  ) -> Self::Commitment {
-    Self::commit(ck, v)
   }
 
   fn derandomize(
@@ -380,7 +372,7 @@ where
 
       let h = compute_witness_polynomial(f, u);
 
-      E::CE::commit(ck, &h).comm.affine()
+      E::CE::commit(ck, &h, &E::Scalar::ZERO).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -479,7 +471,7 @@ where
     // Compute commitments in parallel
     let com: Vec<G1Affine<E>> = (1..polys.len())
       .into_par_iter()
-      .map(|i| E::CE::commit(ck, &polys[i]).comm.affine())
+      .map(|i| E::CE::commit(ck, &polys[i], &E::Scalar::ZERO).comm.affine())
       .collect();
 
     // Phase 2
@@ -664,7 +656,7 @@ mod tests {
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
-    let C = CommitmentEngine::commit(&ck, &poly);
+    let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
     let test_inner = |point: Vec<Fr>, eval: Fr| -> Result<(), NovaError> {
       let mut tr = Keccak256Transcript::new(b"TestEval");
@@ -722,7 +714,7 @@ mod tests {
     let (pk, vk) = EvaluationEngine::setup(&ck);
 
     // make a commitment
-    let C = CommitmentEngine::commit(&ck, &poly);
+    let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
     // prove an evaluation
     let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
@@ -780,7 +772,7 @@ mod tests {
       let (pk, vk) = EvaluationEngine::setup(&ck);
 
       // make a commitment
-      let C = CommitmentEngine::commit(&ck, &poly);
+      let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
       // prove an evaluation
       let mut prover_transcript = Keccak256Transcript::new(b"TestEval");

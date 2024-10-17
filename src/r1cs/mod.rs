@@ -201,8 +201,8 @@ impl<E: Engine> R1CSShape<E> {
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm = {
       let (comm_W, comm_E) = rayon::join(
-        || CE::<E>::commit_with_blinding(ck, &W.W, &W.r_W),
-        || CE::<E>::commit_with_blinding(ck, &W.E, &W.r_E),
+        || CE::<E>::commit(ck, &W.W, &W.r_W),
+        || CE::<E>::commit(ck, &W.E, &W.r_E),
       );
       U.comm_W == comm_W && U.comm_E == comm_E
     };
@@ -236,7 +236,7 @@ impl<E: Engine> R1CSShape<E> {
     };
 
     // verify if comm_W is a commitment to W
-    let res_comm = U.comm_W == CE::<E>::commit_with_blinding(ck, &W.W, &W.r_W);
+    let res_comm = U.comm_W == CE::<E>::commit(ck, &W.W, &W.r_W);
 
     if res_eq && res_comm {
       Ok(())
@@ -278,7 +278,7 @@ impl<E: Engine> R1CSShape<E> {
       .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
       .collect::<Vec<E::Scalar>>();
 
-    let comm_T = CE::<E>::commit_with_blinding(ck, &T, r_T);
+    let comm_T = CE::<E>::commit(ck, &T, r_T);
 
     Ok((T, comm_T))
   }
@@ -317,7 +317,7 @@ impl<E: Engine> R1CSShape<E> {
       .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
       .collect::<Vec<E::Scalar>>();
 
-    let comm_T = CE::<E>::commit_with_blinding(ck, &T, r_T);
+    let comm_T = CE::<E>::commit(ck, &T, r_T);
 
     Ok((T, comm_T))
   }
@@ -419,8 +419,8 @@ impl<E: Engine> R1CSShape<E> {
       .collect::<Vec<E::Scalar>>();
 
     // compute commitments to W,E
-    let comm_W = CE::<E>::commit_with_blinding(ck, &W, &r_W);
-    let comm_E = CE::<E>::commit_with_blinding(ck, &E, &r_E);
+    let comm_W = CE::<E>::commit(ck, &W, &r_W);
+    let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
     Ok((
       RelaxedR1CSInstance {
@@ -449,7 +449,7 @@ impl<E: Engine> R1CSWitness<E> {
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
-    CE::<E>::commit_with_blinding(ck, &self.W, &self.r_W)
+    CE::<E>::commit(ck, &self.W, &self.r_W)
   }
 }
 
@@ -504,8 +504,8 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> (Commitment<E>, Commitment<E>) {
     (
-      CE::<E>::commit_with_blinding(ck, &self.W, &self.r_W),
-      CE::<E>::commit_with_blinding(ck, &self.E, &self.r_E),
+      CE::<E>::commit(ck, &self.W, &self.r_W),
+      CE::<E>::commit(ck, &self.E, &self.r_E),
     )
   }
 

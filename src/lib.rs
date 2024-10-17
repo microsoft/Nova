@@ -516,8 +516,7 @@ where
   }
 
   /// add a randomizing fold to a `RecursiveSNARK`
-  /// if you plan on using a randomized CompressedSNARK, you don't need to call this
-  pub fn randomizing_fold(
+  fn randomizing_fold(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
   ) -> Result<RandomLayerRecursive<E1, E2>, NovaError> {
@@ -698,139 +697,6 @@ where
     Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
   }
 
-  /// Verify the correctness of the `RecursiveSNARK` randomizing layer
-  pub fn verify_randomizing(
-    &self,
-    pp: &PublicParams<E1, E2, C1, C2>,
-    num_steps: usize,
-    z0_primary: &[E1::Scalar],
-    z0_secondary: &[E2::Scalar],
-    random_layer: RandomLayerRecursive<E1, E2>,
-  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
-    // number of steps cannot be zero
-    let is_num_steps_zero = num_steps == 0;
-
-    // there should not have been more folds after randomizing layer
-    if random_layer.last_i != self.i {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // check if the provided proof has executed num_steps
-    let is_num_steps_not_match = self.i != num_steps;
-
-    // check if the initial inputs match
-    let is_inputs_not_match = self.z0_primary != z0_primary || self.z0_secondary != z0_secondary;
-
-    // check if the (relaxed) R1CS instances have two public outputs
-    let is_instance_has_two_outpus = self.l_u_secondary.X.len() != 2
-      || self.r_U_primary.X.len() != 2
-      || self.r_U_secondary.X.len() != 2
-      || random_layer.l_ur_primary.X.len() != 2
-      || random_layer.l_ur_secondary.X.len() != 2
-      || random_layer.r_Un_primary.X.len() != 2
-      || random_layer.r_Un_secondary.X.len() != 2;
-
-    if is_num_steps_zero
-      || is_num_steps_not_match
-      || is_inputs_not_match
-      || is_instance_has_two_outpus
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // check if the output hashes in R1CS instances point to the right running instances
-    let (hash_primary, hash_secondary) = {
-      let mut hasher = <E2 as Engine>::RO::new(
-        pp.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
-      );
-      hasher.absorb(pp.digest());
-      hasher.absorb(E1::Scalar::from(num_steps as u64));
-      for e in z0_primary {
-        hasher.absorb(*e);
-      }
-      for e in &self.zi_primary {
-        hasher.absorb(*e);
-      }
-      self.r_U_secondary.absorb_in_ro(&mut hasher);
-      hasher.absorb(self.ri_primary);
-
-      let mut hasher2 = <E1 as Engine>::RO::new(
-        pp.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
-      );
-      hasher2.absorb(scalar_as_base::<E1>(pp.digest()));
-      hasher2.absorb(E2::Scalar::from(num_steps as u64));
-      for e in z0_secondary {
-        hasher2.absorb(*e);
-      }
-      for e in &self.zi_secondary {
-        hasher2.absorb(*e);
-      }
-      self.r_U_primary.absorb_in_ro(&mut hasher2);
-      hasher2.absorb(self.ri_secondary);
-
-      (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
-      )
-    };
-
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // fold secondary U/W with secondary u/w to get Uf/Wf
-    let r_Uf_secondary = random_layer.nifs_Uf_secondary.verify(
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &self.r_U_secondary,
-      &self.l_u_secondary,
-    )?;
-
-    // fold Uf/Wf with random inst/wit to get U1/W1
-    let r_Un_secondary = random_layer.nifs_Un_secondary.verify_relaxed(
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &r_Uf_secondary,
-      &random_layer.l_ur_secondary,
-    )?;
-
-    // fold primary U/W with random inst/wit to get U2/W2
-    let r_Un_primary = random_layer.nifs_Un_primary.verify_relaxed(
-      &pp.ro_consts_primary,
-      &pp.digest(),
-      &self.r_U_primary,
-      &random_layer.l_ur_primary,
-    )?;
-
-    // check the satisfiability of U1, U2
-    let (res_primary, res_secondary) = rayon::join(
-      || {
-        pp.r1cs_shape_primary.is_sat_relaxed(
-          &pp.ck_primary,
-          &r_Un_primary,
-          &random_layer.r_Wn_primary,
-        )
-      },
-      || {
-        pp.r1cs_shape_secondary.is_sat_relaxed(
-          &pp.ck_secondary,
-          &r_Un_secondary,
-          &random_layer.r_Wn_secondary,
-        )
-      },
-    );
-
-    // check the returned res objects
-    res_primary?;
-    res_secondary?;
-
-    Ok((self.zi_primary.clone(), self.zi_secondary.clone()))
-  }
-
   /// Get the outputs after the last step of computation.
   pub fn outputs(&self) -> (&[E1::Scalar], &[E2::Scalar]) {
     (&self.zi_primary, &self.zi_secondary)
@@ -902,7 +768,7 @@ where
   r_U_secondary: RelaxedR1CSInstance<E2>,
   ri_secondary: E2::Scalar,
   l_u_secondary: R1CSInstance<E2>,
-  nifs_secondary: NIFS<E2>,
+  nifs_Uf_secondary: NIFS<E2>,
   f_W_snark_secondary: S2,
 
   zn_primary: Vec<E1::Scalar>,
@@ -912,22 +778,14 @@ where
   primary_blind_r_E: E1::Scalar,
   secondary_blind_r_W: E2::Scalar,
   secondary_blind_r_E: E2::Scalar,
-  random_layer: Option<RandomLayerCompressed<E1, E2>>,
-  _p: PhantomData<(C1, C2)>,
-}
 
-/// Final randomized fold info for `CompressedSNARK`
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct RandomLayerCompressed<E1, E2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-{
+  // randomizing layer
   l_ur_primary: RelaxedR1CSInstance<E1>,
   l_ur_secondary: RelaxedR1CSInstance<E2>,
   nifs_Un_primary: NIFS<E1>,
   nifs_Un_secondary: NIFS<E2>,
+
+  _p: PhantomData<(C1, C2)>,
 }
 
 impl<E1, E2, C1, C2, S1, S2> CompressedSNARK<E1, E2, C1, C2, S1, S2>
@@ -974,92 +832,8 @@ where
     Ok((pk, vk))
   }
 
-  /// Create a new `CompressedSNARK`
-  pub fn prove(
-    pp: &PublicParams<E1, E2, C1, C2>,
-    pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
-    recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
-    randomizing: bool,
-  ) -> Result<Self, NovaError> {
-    if randomizing {
-      Self::prove_randomizing(pp, pk, recursive_snark)
-    } else {
-      Self::prove_regular(pp, pk, recursive_snark)
-    }
-  }
-
-  /// Create a new `CompressedSNARK` (without randomizing layer)
-  fn prove_regular(
-    pp: &PublicParams<E1, E2, C1, C2>,
-    pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
-    recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
-  ) -> Result<Self, NovaError> {
-    // fold the secondary circuit's instance with its running instance
-    let (nifs_secondary, (f_U_secondary, f_W_secondary)) = NIFS::prove(
-      &pp.ck_secondary,
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
-      &recursive_snark.r_U_secondary,
-      &recursive_snark.r_W_secondary,
-      &recursive_snark.l_u_secondary,
-      &recursive_snark.l_w_secondary,
-    )?;
-
-    // derandomize/unblind commitments
-    let (derandom_r_U_primary, derandom_r_W_primary) = recursive_snark
-      .r_U_primary
-      .derandomize_commits_and_witnesses(&pp.ck_primary, &recursive_snark.r_W_primary);
-    let (derandom_f_U_secondary, derandom_f_W_secondary) =
-      f_U_secondary.derandomize_commits_and_witnesses(&pp.ck_secondary, &f_W_secondary);
-
-    // create SNARKs proving the knowledge of f_W_primary and f_W_secondary
-    let (r_W_snark_primary, f_W_snark_secondary) = rayon::join(
-      || {
-        S1::prove(
-          &pp.ck_primary,
-          &pk.pk_primary,
-          &pp.r1cs_shape_primary,
-          &derandom_r_U_primary,
-          &derandom_r_W_primary,
-        )
-      },
-      || {
-        S2::prove(
-          &pp.ck_secondary,
-          &pk.pk_secondary,
-          &pp.r1cs_shape_secondary,
-          &derandom_f_U_secondary,
-          &derandom_f_W_secondary,
-        )
-      },
-    );
-
-    Ok(Self {
-      r_U_primary: recursive_snark.r_U_primary.clone(),
-      ri_primary: recursive_snark.ri_primary,
-      r_W_snark_primary: r_W_snark_primary?,
-
-      r_U_secondary: recursive_snark.r_U_secondary.clone(),
-      ri_secondary: recursive_snark.ri_secondary,
-      l_u_secondary: recursive_snark.l_u_secondary.clone(),
-      nifs_secondary,
-      f_W_snark_secondary: f_W_snark_secondary?,
-
-      zn_primary: recursive_snark.zi_primary.clone(),
-      zn_secondary: recursive_snark.zi_secondary.clone(),
-
-      primary_blind_r_W: recursive_snark.r_W_primary.r_W,
-      primary_blind_r_E: recursive_snark.r_W_primary.r_E,
-      secondary_blind_r_W: f_W_secondary.r_W,
-      secondary_blind_r_E: f_W_secondary.r_E,
-      random_layer: None,
-      _p: Default::default(),
-    })
-  }
-
   /// Create a new `CompressedSNARK` (with randomizing layer)
-  fn prove_randomizing(
+  pub fn prove(
     pp: &PublicParams<E1, E2, C1, C2>,
     pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
     recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
@@ -1097,15 +871,6 @@ where
       },
     );
 
-    let random_layer_compressed = Some(RandomLayerCompressed {
-      l_ur_primary: random_layer.l_ur_primary.clone(),
-      l_ur_secondary: random_layer.l_ur_secondary.clone(),
-      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
-      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
-    });
-
-    let nifs_secondary = random_layer.nifs_Uf_secondary.clone();
-
     Ok(Self {
       r_U_primary: recursive_snark.r_U_primary.clone(),
       ri_primary: recursive_snark.ri_primary,
@@ -1114,7 +879,7 @@ where
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       ri_secondary: recursive_snark.ri_secondary,
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
-      nifs_secondary,
+      nifs_Uf_secondary: random_layer.nifs_Uf_secondary.clone(),
       f_W_snark_secondary: snark_secondary?,
 
       zn_primary: recursive_snark.zi_primary.clone(),
@@ -1124,12 +889,16 @@ where
       primary_blind_r_E: random_layer.r_Wn_primary.r_E,
       secondary_blind_r_W: random_layer.r_Wn_secondary.r_W,
       secondary_blind_r_E: random_layer.r_Wn_secondary.r_E,
-      random_layer: random_layer_compressed,
+
+      l_ur_primary: random_layer.l_ur_primary.clone(),
+      l_ur_secondary: random_layer.l_ur_secondary.clone(),
+      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
+      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
       _p: Default::default(),
     })
   }
 
-  /// Verify the correctness of the `CompressedSNARK`
+  /// Verify the correctness of the `CompressedSNARK` (with randomizing layer)
   pub fn verify(
     &self,
     vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
@@ -1137,21 +906,6 @@ where
     z0_primary: &[E1::Scalar],
     z0_secondary: &[E2::Scalar],
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
-    if self.random_layer.is_none() {
-      self.verify_regular(vk, num_steps, z0_primary, z0_secondary)
-    } else {
-      self.verify_randomizing(vk, num_steps, z0_primary, z0_secondary)
-    }
-  }
-
-  /// Verify the correctness of the `CompressedSNARK` (without randomizing layer)
-  fn verify_regular(
-    &self,
-    vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
-    num_steps: usize,
-    z0_primary: &[E1::Scalar],
-    z0_secondary: &[E2::Scalar],
-  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
     // the number of steps cannot be zero
     if num_steps == 0 {
       return Err(NovaError::ProofVerifyError);
@@ -1161,116 +915,8 @@ where
     if self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
       || self.r_U_secondary.X.len() != 2
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // check if the output hashes in R1CS instances point to the right running instances
-    let (hash_primary, hash_secondary) = {
-      let mut hasher = <E2 as Engine>::RO::new(
-        vk.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
-      );
-      hasher.absorb(vk.pp_digest);
-      hasher.absorb(E1::Scalar::from(num_steps as u64));
-      for e in z0_primary {
-        hasher.absorb(*e);
-      }
-      for e in &self.zn_primary {
-        hasher.absorb(*e);
-      }
-      self.r_U_secondary.absorb_in_ro(&mut hasher);
-      hasher.absorb(self.ri_primary);
-
-      let mut hasher2 = <E1 as Engine>::RO::new(
-        vk.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_secondary,
-      );
-      hasher2.absorb(scalar_as_base::<E1>(vk.pp_digest));
-      hasher2.absorb(E2::Scalar::from(num_steps as u64));
-      for e in z0_secondary {
-        hasher2.absorb(*e);
-      }
-      for e in &self.zn_secondary {
-        hasher2.absorb(*e);
-      }
-      self.r_U_primary.absorb_in_ro(&mut hasher2);
-      hasher2.absorb(self.ri_secondary);
-
-      (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
-      )
-    };
-
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // fold the secondary's running instance with the last instance to get a folded instance
-    let f_U_secondary = self.nifs_secondary.verify(
-      &vk.ro_consts_secondary,
-      &scalar_as_base::<E1>(vk.pp_digest),
-      &self.r_U_secondary,
-      &self.l_u_secondary,
-    )?;
-
-    // derandomize/unblind commitments
-    let derandom_r_U_primary = self.r_U_primary.derandomize_commits(
-      &vk.vk_primary_commitment_key,
-      &self.primary_blind_r_W,
-      &self.primary_blind_r_E,
-    );
-    let derandom_f_U_secondary = f_U_secondary.derandomize_commits(
-      &vk.vk_secondary_commitment_key,
-      &self.secondary_blind_r_W,
-      &self.secondary_blind_r_E,
-    );
-
-    // check the satisfiability of the folded instances using
-    // SNARKs proving the knowledge of their satisfying witnesses
-    let (res_primary, res_secondary) = rayon::join(
-      || {
-        self
-          .r_W_snark_primary
-          .verify(&vk.vk_primary, &derandom_r_U_primary)
-      },
-      || {
-        self
-          .f_W_snark_secondary
-          .verify(&vk.vk_secondary, &derandom_f_U_secondary)
-      },
-    );
-
-    res_primary?;
-    res_secondary?;
-
-    Ok((self.zn_primary.clone(), self.zn_secondary.clone()))
-  }
-
-  /// Verify the correctness of the `CompressedSNARK` (with randomizing layer)
-  fn verify_randomizing(
-    &self,
-    vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
-    num_steps: usize,
-    z0_primary: &[E1::Scalar],
-    z0_secondary: &[E2::Scalar],
-  ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
-    let random_layer = self.random_layer.as_ref().unwrap();
-
-    // the number of steps cannot be zero
-    if num_steps == 0 {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    // check if the (relaxed) R1CS instances have two public outputs
-    if self.l_u_secondary.X.len() != 2
-      || self.r_U_primary.X.len() != 2
-      || self.r_U_secondary.X.len() != 2
-      || random_layer.l_ur_primary.X.len() != 2
-      || random_layer.l_ur_secondary.X.len() != 2
+      || self.l_ur_primary.X.len() != 2
+      || self.l_ur_secondary.X.len() != 2
     {
       return Err(NovaError::ProofVerifyError);
     }
@@ -1320,7 +966,7 @@ where
     }
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
-    let r_Uf_secondary = self.nifs_secondary.verify(
+    let r_Uf_secondary = self.nifs_Uf_secondary.verify(
       &vk.ro_consts_secondary,
       &scalar_as_base::<E1>(vk.pp_digest),
       &self.r_U_secondary,
@@ -1328,19 +974,19 @@ where
     )?;
 
     // fold Uf/Wf with random inst/wit to get U1/W1
-    let r_Un_secondary = random_layer.nifs_Un_secondary.verify_relaxed(
+    let r_Un_secondary = self.nifs_Un_secondary.verify_relaxed(
       &vk.ro_consts_secondary,
       &scalar_as_base::<E1>(vk.pp_digest),
       &r_Uf_secondary,
-      &random_layer.l_ur_secondary,
+      &self.l_ur_secondary,
     )?;
 
     // fold primary U/W with random inst/wit to get U2/W2
-    let r_Un_primary = random_layer.nifs_Un_primary.verify_relaxed(
+    let r_Un_primary = self.nifs_Un_primary.verify_relaxed(
       &vk.ro_consts_primary,
       &vk.pp_digest,
       &self.r_U_primary,
-      &random_layer.l_ur_primary,
+      &self.l_ur_primary,
     )?;
 
     // derandomize/unblind commitments
@@ -1635,92 +1281,7 @@ mod tests {
     test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
-  fn test_ivc_nontrivial_randomizing_with<E1, E2>()
-  where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
-  {
-    let circuit_primary = TrivialCircuit::default();
-    let circuit_secondary = CubicCircuit::default();
-
-    // produce public parameters
-    let pp = PublicParams::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::setup(
-      &circuit_primary,
-      &circuit_secondary,
-      &*default_ck_hint(),
-      &*default_ck_hint(),
-    )
-    .unwrap();
-
-    let num_steps = 3;
-
-    // produce a recursive SNARK
-    let mut recursive_snark = RecursiveSNARK::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::new(
-      &pp,
-      &circuit_primary,
-      &circuit_secondary,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    )
-    .unwrap();
-
-    for i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
-      assert!(res.is_ok());
-
-      // verify the recursive snark at each step of recursion
-      let res = recursive_snark.verify(
-        &pp,
-        i + 1,
-        &[<E1 as Engine>::Scalar::ONE],
-        &[<E2 as Engine>::Scalar::ZERO],
-      );
-      assert!(res.is_ok());
-    }
-
-    let res = recursive_snark.randomizing_fold(&pp);
-    assert!(res.is_ok());
-
-    // verify the randomized recursive SNARK
-    let res = recursive_snark.verify_randomizing(
-      &pp,
-      num_steps,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-      res.unwrap(),
-    );
-    assert!(res.is_ok());
-
-    let (zn_primary, zn_secondary) = res.unwrap();
-
-    // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<E2 as Engine>::Scalar::ZERO];
-    for _i in 0..num_steps {
-      zn_secondary_direct = circuit_secondary.clone().output(&zn_secondary_direct);
-    }
-    assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(zn_secondary, vec![<E2 as Engine>::Scalar::from(2460515u64)]);
-  }
-
-  #[test]
-  fn test_ivc_nontrivial_randomizing() {
-    test_ivc_nontrivial_randomizing_with::<PallasEngine, VestaEngine>();
-    test_ivc_nontrivial_randomizing_with::<Bn256EngineKZG, GrumpkinEngine>();
-    test_ivc_nontrivial_randomizing_with::<Secp256k1Engine, Secq256k1Engine>();
-  }
-
-  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
+  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1790,12 +1351,8 @@ mod tests {
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(
-      &pp,
-      &pk,
-      &recursive_snark,
-      randomizing,
-    );
+    let res =
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -1811,41 +1368,20 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_compression() {
-    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(false);
+    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
     test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
-      false,
     );
-    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
-      false,
-    );
+    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
 
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
       provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
-    >(false);
+    >();
   }
 
-  #[test]
-  fn test_ivc_nontrivial_randomizing_with_compression() {
-    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(true);
-    test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
-      true,
-    );
-    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
-      true,
-    );
-
-    test_ivc_nontrivial_with_spark_compression_with::<
-      Bn256EngineKZG,
-      GrumpkinEngine,
-      provider::hyperkzg::EvaluationEngine<_>,
-      EE<_>,
-    >(true);
-  }
-
-  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
+  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -1921,7 +1457,6 @@ mod tests {
       &pp,
       &pk,
       &recursive_snark,
-      randomizing,
     );
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
@@ -1938,37 +1473,18 @@ mod tests {
 
   #[test]
   fn test_ivc_nontrivial_with_spark_compression() {
-    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(
-      false,
-    );
+    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
       EEPrime<_>,
       EE<_>,
-    >(false);
+    >();
     test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
-      false,
     );
   }
 
-  #[test]
-  fn test_ivc_nontrivial_randomizing_with_spark_compression() {
-    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(
-      true,
-    );
-    test_ivc_nontrivial_with_spark_compression_with::<
-      Bn256EngineKZG,
-      GrumpkinEngine,
-      EEPrime<_>,
-      EE<_>,
-    >(true);
-    test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
-      true,
-    );
-  }
-
-  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>(randomizing: bool)
+  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -2091,12 +1607,8 @@ mod tests {
     let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(
-      &pp,
-      &pk,
-      &recursive_snark,
-      randomizing,
-    );
+    let res =
+      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
@@ -2107,20 +1619,9 @@ mod tests {
 
   #[test]
   fn test_ivc_nondet_with_compression() {
-    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(false);
-    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
-      false,
-    );
-    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(false);
-  }
-
-  #[test]
-  fn test_ivc_nondet_randomizing_with_compression() {
-    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>(true);
-    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
-      true,
-    );
-    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(true);
+    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>();
+    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
   }
 
   fn test_ivc_base_with<E1, E2>()

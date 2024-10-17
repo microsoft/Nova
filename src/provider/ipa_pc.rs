@@ -220,6 +220,7 @@ where
           .chain(iter::once(&c_L))
           .copied()
           .collect::<Vec<E::Scalar>>(),
+        &E::Scalar::ZERO,
       );
       let R = CE::<E>::commit(
         &ck_L.combine(&ck_c),
@@ -228,6 +229,7 @@ where
           .chain(iter::once(&c_R))
           .copied()
           .collect::<Vec<E::Scalar>>(),
+        &E::Scalar::ZERO,
       );
 
       transcript.absorb(b"L", &L);
@@ -306,7 +308,7 @@ where
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
 
-    let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c]);
+    let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c], &E::Scalar::ZERO);
 
     let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
       let mut products = vec![E::Scalar::ZERO; v.len()];
@@ -372,7 +374,7 @@ where
     };
 
     let ck_hat = {
-      let c = CE::<E>::commit(&ck, &s);
+      let c = CE::<E>::commit(&ck, &s, &E::Scalar::ZERO);
       CommitmentKey::<E>::reinterpret_commitments_as_ck(&[c])?
     };
 
@@ -394,10 +396,17 @@ where
           .chain(iter::once(&E::Scalar::ONE))
           .copied()
           .collect::<Vec<E::Scalar>>(),
+        &E::Scalar::ZERO,
       )
     };
 
-    if P_hat == CE::<E>::commit(&ck_hat.combine(&ck_c), &[self.a_hat, self.a_hat * b_hat]) {
+    if P_hat
+      == CE::<E>::commit(
+        &ck_hat.combine(&ck_c),
+        &[self.a_hat, self.a_hat * b_hat],
+        &E::Scalar::ZERO,
+      )
+    {
       Ok(())
     } else {
       Err(NovaError::InvalidPCS)

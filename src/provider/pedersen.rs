@@ -177,28 +177,24 @@ where
     }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
-    Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
-    }
-  }
 
-  fn commit_with_blinding(
-    ck: &Self::CommitmentKey,
-    v: &[E::Scalar],
-    r: &E::Scalar,
-  ) -> Self::Commitment {
-    assert!(ck.ck.len() >= v.len());
-    assert!(ck.h.is_some());
+    if ck.h.is_some() {
+      let mut scalars: Vec<E::Scalar> = v.to_vec();
+      scalars.push(*r);
+      let mut bases = ck.ck[..v.len()].to_vec();
+      bases.push(ck.h.as_ref().unwrap().clone());
 
-    let mut scalars: Vec<E::Scalar> = v.to_vec();
-    scalars.push(*r);
-    let mut bases = ck.ck[..v.len()].to_vec();
-    bases.push(ck.h.as_ref().unwrap().clone());
+      Commitment {
+        comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+      }
+    } else {
+      assert_eq!(*r, E::Scalar::ZERO);
 
-    Commitment {
-      comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+      Commitment {
+        comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      }
     }
   }
 
@@ -323,7 +319,7 @@ where
     Ok(CommitmentKey {
       ck,
       h: None, // this is okay, since this method is used in IPA only,
-               // and we only use `commit` after, not `commit_with_blind`
+               // and we only use non-blinding commits afterwards
                // bc we don't use ZK IPA
     })
   }

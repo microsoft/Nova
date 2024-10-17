@@ -196,7 +196,7 @@ fn main() {
 
     let start = Instant::now();
 
-    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark, false);
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
     println!(
       "CompressedSNARK::prove: {:?}, took {:?}",
       res.is_ok(),
