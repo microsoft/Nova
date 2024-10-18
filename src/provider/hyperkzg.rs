@@ -185,7 +185,7 @@ where
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
 
-  fn setup(_label: &'static [u8], _blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);

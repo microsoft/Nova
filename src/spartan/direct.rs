@@ -148,8 +148,8 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     );
 
     // derandomize/unblind commitments
-    let (derandom_u_relaxed, derandom_w_relaxed) =
-      u_relaxed.derandomize_commits_and_witnesses(&pk.ck, &w_relaxed);
+    let (derandom_w_relaxed, blind_W, blind_E) = w_relaxed.derandomize();
+    let derandom_u_relaxed = u_relaxed.derandomize(&pk.ck, &blind_W, &blind_E);
 
     // prove the instance using Spartan
     let snark = S::prove(

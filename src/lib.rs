@@ -40,7 +40,7 @@ use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
 use gadgets::utils::scalar_as_base;
-use nifs::NIFS;
+use nifs::{NIFSRelaxed, NIFS};
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
@@ -271,8 +271,8 @@ where
   l_ur_primary: RelaxedR1CSInstance<E1>,
   l_ur_secondary: RelaxedR1CSInstance<E2>,
   nifs_Uf_secondary: NIFS<E2>,
-  nifs_Un_primary: NIFS<E1>,
-  nifs_Un_secondary: NIFS<E2>,
+  nifs_Un_primary: NIFSRelaxed<E1>,
+  nifs_Un_secondary: NIFSRelaxed<E2>,
   r_Wn_primary: RelaxedR1CSWitness<E1>,
   r_Wn_secondary: RelaxedR1CSWitness<E2>,
   // needed for CompressedSNARK proving,
@@ -543,7 +543,7 @@ where
       .r1cs_shape_secondary
       .sample_random_instance_witness(&pp.ck_secondary)?;
 
-    let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFS::prove_relaxed(
+    let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFSRelaxed::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
@@ -559,7 +559,7 @@ where
       .r1cs_shape_primary
       .sample_random_instance_witness(&pp.ck_primary)?;
 
-    let (nifs_Un_primary, (r_Un_primary, r_Wn_primary)) = NIFS::prove_relaxed(
+    let (nifs_Un_primary, (r_Un_primary, r_Wn_primary)) = NIFSRelaxed::prove(
       &pp.ck_primary,
       &pp.ro_consts_primary,
       &pp.digest(),
@@ -767,12 +767,12 @@ where
   nifs_Uf_secondary: NIFS<E2>,
 
   l_ur_secondary: RelaxedR1CSInstance<E2>,
-  nifs_Un_secondary: NIFS<E2>,
+  nifs_Un_secondary: NIFSRelaxed<E2>,
 
   r_U_primary: RelaxedR1CSInstance<E1>,
   ri_primary: E1::Scalar,
   l_ur_primary: RelaxedR1CSInstance<E1>,
-  nifs_Un_primary: NIFS<E1>,
+  nifs_Un_primary: NIFSRelaxed<E1>,
 
   primary_blind_r_W: E1::Scalar,
   primary_blind_r_E: E1::Scalar,
@@ -842,12 +842,21 @@ where
     let random_layer = recursive_snark.randomizing_fold(pp)?;
 
     // derandomize/unblind commitments
-    let (derandom_r_Un_primary, derandom_r_Wn_primary) = random_layer
-      .r_Un_primary
-      .derandomize_commits_and_witnesses(&pp.ck_primary, &random_layer.r_Wn_primary);
-    let (derandom_r_Un_secondary, derandom_r_Wn_secondary) = random_layer
-      .r_Un_secondary
-      .derandomize_commits_and_witnesses(&pp.ck_secondary, &random_layer.r_Wn_secondary);
+    let (derandom_r_Wn_primary, r_Wn_primary_blind_W, r_Wn_primary_blind_E) =
+      random_layer.r_Wn_primary.derandomize();
+    let derandom_r_Un_primary = random_layer.r_Un_primary.derandomize(
+      &pp.ck_primary,
+      &r_Wn_primary_blind_W,
+      &r_Wn_primary_blind_E,
+    );
+
+    let (derandom_r_Wn_secondary, r_Wn_secondary_blind_W, r_Wn_secondary_blind_E) =
+      random_layer.r_Wn_secondary.derandomize();
+    let derandom_r_Un_secondary = random_layer.r_Un_secondary.derandomize(
+      &pp.ck_secondary,
+      &r_Wn_secondary_blind_W,
+      &r_Wn_secondary_blind_E,
+    );
 
     // create SNARKs proving the knowledge of Wn primary/secondary
     let (snark_primary, snark_secondary) = rayon::join(
@@ -885,10 +894,10 @@ where
       l_ur_primary: random_layer.l_ur_primary.clone(),
       nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
 
-      primary_blind_r_W: random_layer.r_Wn_primary.r_W,
-      primary_blind_r_E: random_layer.r_Wn_primary.r_E,
-      secondary_blind_r_W: random_layer.r_Wn_secondary.r_W,
-      secondary_blind_r_E: random_layer.r_Wn_secondary.r_E,
+      primary_blind_r_W: r_Wn_primary_blind_W,
+      primary_blind_r_E: r_Wn_primary_blind_E,
+      secondary_blind_r_W: r_Wn_secondary_blind_W,
+      secondary_blind_r_E: r_Wn_secondary_blind_E,
 
       snark_primary: snark_primary?,
       snark_secondary: snark_secondary?,
@@ -976,7 +985,7 @@ where
     )?;
 
     // fold Uf/Wf with random inst/wit to get U1/W1
-    let r_Un_secondary = self.nifs_Un_secondary.verify_relaxed(
+    let r_Un_secondary = self.nifs_Un_secondary.verify(
       &vk.ro_consts_secondary,
       &scalar_as_base::<E1>(vk.pp_digest),
       &r_Uf_secondary,
@@ -984,7 +993,7 @@ where
     )?;
 
     // fold primary U/W with random inst/wit to get U2/W2
-    let r_Un_primary = self.nifs_Un_primary.verify_relaxed(
+    let r_Un_primary = self.nifs_Un_primary.verify(
       &vk.ro_consts_primary,
       &vk.pp_digest,
       &self.r_U_primary,
@@ -992,12 +1001,12 @@ where
     )?;
 
     // derandomize/unblind commitments
-    let derandom_r_Un_primary = r_Un_primary.derandomize_commits(
+    let derandom_r_Un_primary = r_Un_primary.derandomize(
       &vk.vk_primary_commitment_key,
       &self.primary_blind_r_W,
       &self.primary_blind_r_E,
     );
-    let derandom_r_Un_secondary = r_Un_secondary.derandomize_commits(
+    let derandom_r_Un_secondary = r_Un_secondary.derandomize(
       &vk.vk_secondary_commitment_key,
       &self.secondary_blind_r_W,
       &self.secondary_blind_r_E,

@@ -96,7 +96,7 @@ impl<E: Engine> R1CS<E> {
     let num_cons = S.num_cons;
     let num_vars = S.num_vars;
     let ck_hint = ck_floor(S);
-    E::CE::setup(b"ck", b"ck blinding", max(max(num_cons, num_vars), ck_hint))
+    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 }
 
@@ -590,6 +590,19 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       r_E: self.r_E,
     }
   }
+
+  pub fn derandomize(&self) -> (Self, E::Scalar, E::Scalar) {
+    (
+      RelaxedR1CSWitness {
+        W: self.W.clone(),
+        r_W: E::Scalar::ZERO,
+        E: self.E.clone(),
+        r_E: E::Scalar::ZERO,
+      },
+      self.r_W.clone(),
+      self.r_E.clone(),
+    )
+  }
 }
 
 impl<E: Engine> RelaxedR1CSInstance<E> {
@@ -689,7 +702,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     }
   }
 
-  pub fn derandomize_commits(
+  pub fn derandomize(
     &self,
     ck: &CommitmentKey<E>,
     r_W: &E::Scalar,
@@ -701,27 +714,6 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
       X: self.X.clone(),
       u: self.u,
     }
-  }
-
-  pub fn derandomize_commits_and_witnesses(
-    &self,
-    ck: &CommitmentKey<E>,
-    wit: &RelaxedR1CSWitness<E>,
-  ) -> (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>) {
-    (
-      RelaxedR1CSInstance {
-        comm_W: CE::<E>::derandomize(ck, &self.comm_W, &wit.r_W),
-        comm_E: CE::<E>::derandomize(ck, &self.comm_E, &wit.r_E),
-        X: self.X.clone(),
-        u: self.u,
-      },
-      RelaxedR1CSWitness {
-        W: wit.W.clone(),
-        r_W: E::Scalar::ZERO,
-        E: wit.E.clone(),
-        r_E: E::Scalar::ZERO,
-      },
-    )
   }
 }
 

@@ -167,13 +167,14 @@ where
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
 
-  fn setup(label: &'static [u8], blinding_label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    let blinding = E::GE::from_label(blinding_label, 1);
-    let h = blinding.first().unwrap().clone();
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
+
+    let (h, ck) = gens.split_first().unwrap();
 
     Self::CommitmentKey {
-      ck: E::GE::from_label(label, n.next_power_of_two()),
-      h: Some(h),
+      ck: ck.to_vec(),
+      h: Some(h.clone()),
     }
   }
 

@@ -43,7 +43,7 @@ cfg_if::cfg_if! {
     criterion_group! {
       name = compressed_snark;
       config = Criterion::default().warm_up_time(Duration::from_millis(3000));
-    targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments,
+      targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments,
     }
   }
 }
