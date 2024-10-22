@@ -369,14 +369,14 @@ mod tests {
     let mut running_U = RelaxedR1CSInstance::default(ck, shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
-    let res = NIFS::prove_relaxed(
+    let res = NIFSRelaxed::prove(
       ck, ro_consts, pp_digest, shape, &running_U, &running_W, U1, W1,
     );
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify_relaxed(ro_consts, pp_digest, &running_U, U1);
+    let res = nifs.verify(ro_consts, pp_digest, &running_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -387,14 +387,14 @@ mod tests {
     running_U = U;
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
-    let res = NIFS::prove_relaxed(
+    let res = NIFSRelaxed::prove(
       ck, ro_consts, pp_digest, shape, &running_U, &running_W, U2, W2,
     );
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
     // verify the step SNARK with U1 as the first incoming instance
-    let res = nifs.verify_relaxed(ro_consts, pp_digest, &running_U, U2);
+    let res = nifs.verify(ro_consts, pp_digest, &running_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
 
@@ -414,8 +414,9 @@ mod tests {
     let (ck, S, final_U, final_W) = test_tiny_r1cs_relaxed_with::<E>();
     assert!(S.is_sat_relaxed(&ck, &final_U, &final_W).is_ok());
 
-    let (derandom_final_U, derandom_final_W) =
-      final_U.derandomize_commits_and_witnesses(&ck, &final_W);
+    let (derandom_final_W, final_blind_W, final_blind_E) = final_W.derandomize();
+    let derandom_final_U = final_U.derandomize(&ck, &final_blind_W, &final_blind_E);
+
     assert!(S
       .is_sat_relaxed(&ck, &derandom_final_U, &derandom_final_W)
       .is_ok());

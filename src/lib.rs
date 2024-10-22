@@ -259,28 +259,6 @@ where
   _p: PhantomData<(C1, C2)>,
 }
 
-/// Final randomized fold of `RecursiveSNARK`
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct RandomLayerRecursive<E1, E2>
-where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
-{
-  last_i: usize,
-  l_ur_primary: RelaxedR1CSInstance<E1>,
-  l_ur_secondary: RelaxedR1CSInstance<E2>,
-  nifs_Uf_secondary: NIFS<E2>,
-  nifs_Un_primary: NIFSRelaxed<E1>,
-  nifs_Un_secondary: NIFSRelaxed<E2>,
-  r_Wn_primary: RelaxedR1CSWitness<E1>,
-  r_Wn_secondary: RelaxedR1CSWitness<E2>,
-  // needed for CompressedSNARK proving,
-  // but not technically part of RecursiveSNARK proof
-  r_Un_primary: RelaxedR1CSInstance<E1>,
-  r_Un_secondary: RelaxedR1CSInstance<E2>,
-}
-
 impl<E1, E2, C1, C2> RecursiveSNARK<E1, E2, C1, C2>
 where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
@@ -515,81 +493,7 @@ where
     Ok(())
   }
 
-  /// add a randomizing fold to a `RecursiveSNARK`
-  fn randomizing_fold(
-    &self,
-    pp: &PublicParams<E1, E2, C1, C2>,
-  ) -> Result<RandomLayerRecursive<E1, E2>, NovaError> {
-    if self.i == 0 {
-      // don't call this until we have something to randomize
-      return Err(NovaError::InvalidNumSteps);
-    }
-    let last_i = self.i;
-
-    // fold secondary U/W with secondary u/w to get Uf/Wf
-    let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
-      &pp.ck_secondary,
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
-      &self.r_U_secondary,
-      &self.r_W_secondary,
-      &self.l_u_secondary,
-      &self.l_w_secondary,
-    )?;
-
-    // fold Uf/Wf with random inst/wit to get U1/W1
-    let (l_ur_secondary, l_wr_secondary) = pp
-      .r1cs_shape_secondary
-      .sample_random_instance_witness(&pp.ck_secondary)?;
-
-    let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFSRelaxed::prove(
-      &pp.ck_secondary,
-      &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
-      &r_Uf_secondary,
-      &r_Wf_secondary,
-      &l_ur_secondary,
-      &l_wr_secondary,
-    )?;
-
-    // fold primary U/W with random inst/wit to get U2/W2
-    let (l_ur_primary, l_wr_primary) = pp
-      .r1cs_shape_primary
-      .sample_random_instance_witness(&pp.ck_primary)?;
-
-    let (nifs_Un_primary, (r_Un_primary, r_Wn_primary)) = NIFSRelaxed::prove(
-      &pp.ck_primary,
-      &pp.ro_consts_primary,
-      &pp.digest(),
-      &pp.r1cs_shape_primary,
-      &self.r_U_primary,
-      &self.r_W_primary,
-      &l_ur_primary,
-      &l_wr_primary,
-    )?;
-
-    // output randomized IVC Proof
-    Ok(RandomLayerRecursive {
-      last_i,
-      // random istances
-      l_ur_primary,
-      l_ur_secondary,
-      // commitments to cross terms
-      nifs_Uf_secondary,
-      nifs_Un_primary,
-      nifs_Un_secondary,
-      // witnesses
-      r_Wn_primary,
-      r_Wn_secondary,
-      // needed for CompressedSNARK proving
-      r_Un_primary,
-      r_Un_secondary,
-    })
-  }
-
-  /// Verify the correctness of the `RecursiveSNARK` (no randomizing layer)
+  /// Verify the correctness of the `RecursiveSNARK`
   pub fn verify(
     &self,
     pp: &PublicParams<E1, E2, C1, C2>,
@@ -839,20 +743,60 @@ where
     recursive_snark: &RecursiveSNARK<E1, E2, C1, C2>,
   ) -> Result<Self, NovaError> {
     // prove three foldings
-    let random_layer = recursive_snark.randomizing_fold(pp)?;
+
+    // fold secondary U/W with secondary u/w to get Uf/Wf
+    let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &recursive_snark.r_U_secondary,
+      &recursive_snark.r_W_secondary,
+      &recursive_snark.l_u_secondary,
+      &recursive_snark.l_w_secondary,
+    )?;
+
+    // fold Uf/Wf with random inst/wit to get U1/W1
+    let (l_ur_secondary, l_wr_secondary) = pp
+      .r1cs_shape_secondary
+      .sample_random_instance_witness(&pp.ck_secondary)?;
+
+    let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFSRelaxed::prove(
+      &pp.ck_secondary,
+      &pp.ro_consts_secondary,
+      &scalar_as_base::<E1>(pp.digest()),
+      &pp.r1cs_shape_secondary,
+      &r_Uf_secondary,
+      &r_Wf_secondary,
+      &l_ur_secondary,
+      &l_wr_secondary,
+    )?;
+
+    // fold primary U/W with random inst/wit to get U2/W2
+    let (l_ur_primary, l_wr_primary) = pp
+      .r1cs_shape_primary
+      .sample_random_instance_witness(&pp.ck_primary)?;
+
+    let (nifs_Un_primary, (r_Un_primary, r_Wn_primary)) = NIFSRelaxed::prove(
+      &pp.ck_primary,
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &pp.r1cs_shape_primary,
+      &recursive_snark.r_U_primary,
+      &recursive_snark.r_W_primary,
+      &l_ur_primary,
+      &l_wr_primary,
+    )?;
 
     // derandomize/unblind commitments
     let (derandom_r_Wn_primary, r_Wn_primary_blind_W, r_Wn_primary_blind_E) =
-      random_layer.r_Wn_primary.derandomize();
-    let derandom_r_Un_primary = random_layer.r_Un_primary.derandomize(
-      &pp.ck_primary,
-      &r_Wn_primary_blind_W,
-      &r_Wn_primary_blind_E,
-    );
+      r_Wn_primary.derandomize();
+    let derandom_r_Un_primary =
+      r_Un_primary.derandomize(&pp.ck_primary, &r_Wn_primary_blind_W, &r_Wn_primary_blind_E);
 
     let (derandom_r_Wn_secondary, r_Wn_secondary_blind_W, r_Wn_secondary_blind_E) =
-      random_layer.r_Wn_secondary.derandomize();
-    let derandom_r_Un_secondary = random_layer.r_Un_secondary.derandomize(
+      r_Wn_secondary.derandomize();
+    let derandom_r_Un_secondary = r_Un_secondary.derandomize(
       &pp.ck_secondary,
       &r_Wn_secondary_blind_W,
       &r_Wn_secondary_blind_E,
@@ -884,15 +828,15 @@ where
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       ri_secondary: recursive_snark.ri_secondary,
       l_u_secondary: recursive_snark.l_u_secondary.clone(),
-      nifs_Uf_secondary: random_layer.nifs_Uf_secondary.clone(),
+      nifs_Uf_secondary: nifs_Uf_secondary.clone(),
 
-      l_ur_secondary: random_layer.l_ur_secondary.clone(),
-      nifs_Un_secondary: random_layer.nifs_Un_secondary.clone(),
+      l_ur_secondary: l_ur_secondary.clone(),
+      nifs_Un_secondary: nifs_Un_secondary.clone(),
 
       r_U_primary: recursive_snark.r_U_primary.clone(),
       ri_primary: recursive_snark.ri_primary,
-      l_ur_primary: random_layer.l_ur_primary.clone(),
-      nifs_Un_primary: random_layer.nifs_Un_primary.clone(),
+      l_ur_primary: l_ur_primary.clone(),
+      nifs_Un_primary: nifs_Un_primary.clone(),
 
       primary_blind_r_W: r_Wn_primary_blind_W,
       primary_blind_r_E: r_Wn_primary_blind_E,
@@ -1140,19 +1084,19 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["cfd726c95effd42b68bb22dda539eaefe4483601e207aa92f4970e7d6d215702"],
+      &expect!["ba7ff40bc60f95f7157350608b2f1892dc33b2470ccf52c3fae0464c61db9501"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["c90a30a806b9b320bc7777cfadc21a9d133c196d9ab50d2237c5f15edcbd3a03"],
+      &expect!["e0d75ecff901aee5b22223a4be82af30d7988a5f2cbd40815fda88dd79a22a01"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["88fc7d72e9a6e6e872bd08135ecbdbb13f4b829976e026c81f8feae89cf57802"],
+      &expect!["ee4bd444ffe1f1be8224a09dae09bdf4532035655fd3f25e70955eaa13c48d03"],
     );
   }
 

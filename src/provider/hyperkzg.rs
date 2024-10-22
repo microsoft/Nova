@@ -650,7 +650,7 @@ mod tests {
   fn test_hyperkzg_eval() {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
@@ -710,7 +710,7 @@ mod tests {
     // eval = 28
     let eval = Fr::from(28);
 
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
     let (pk, vk) = EvaluationEngine::setup(&ck);
 
     // make a commitment
@@ -768,7 +768,7 @@ mod tests {
       let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
-      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", b"test blind", n);
+      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
       let (pk, vk) = EvaluationEngine::setup(&ck);
 
       // make a commitment

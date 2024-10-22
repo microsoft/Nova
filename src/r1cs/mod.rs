@@ -599,8 +599,8 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
         E: self.E.clone(),
         r_E: E::Scalar::ZERO,
       },
-      self.r_W.clone(),
-      self.r_E.clone(),
+      self.r_W,
+      self.r_E,
     )
   }
 }
