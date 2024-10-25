@@ -15,7 +15,7 @@ use crate::{
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine,
   },
-  Commitment, CommitmentKey,
+  Commitment, CommitmentKey, DerandKey,
 };
 use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
@@ -77,7 +77,7 @@ where
   E: Engine,
   S: RelaxedR1CSSNARKTrait<E>,
 {
-  ck: CommitmentKey<E>,
+  dk: DerandKey<E>,
   vk: S::VerifierKey,
 }
 
@@ -116,13 +116,11 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
     let (pk, vk) = S::setup(&ck, &shape)?;
 
-    let pk = ProverKey {
-      S: shape,
-      ck: ck.clone(),
-      pk,
-    };
+    let dk = E::CE::derand_key(&ck);
 
-    let vk = VerifierKey { ck, vk };
+    let pk = ProverKey { S: shape, ck, pk };
+
+    let vk = VerifierKey { dk, vk };
 
     Ok((pk, vk))
   }
@@ -149,7 +147,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
     // derandomize/unblind commitments
     let (derandom_w_relaxed, blind_W, blind_E) = w_relaxed.derandomize();
-    let derandom_u_relaxed = u_relaxed.derandomize(&pk.ck, &blind_W, &blind_E);
+    let derandom_u_relaxed = u_relaxed.derandomize(&E::CE::derand_key(&pk.ck), &blind_W, &blind_E);
 
     // prove the instance using Spartan
     let snark = S::prove(
@@ -171,7 +169,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
   /// Verifies a proof of satisfiability
   pub fn verify(&self, vk: &VerifierKey<E, S>, io: &[E::Scalar]) -> Result<(), NovaError> {
     // derandomize/unblind commitments
-    let comm_W = E::CE::derandomize(&vk.ck, &self.comm_W, &self.blind_r_W);
+    let comm_W = E::CE::derandomize(&vk.dk, &self.comm_W, &self.blind_r_W);
 
     // construct an instance using the provided commitment to the witness and z_i and z_{i+1}
     let u_relaxed = RelaxedR1CSInstance::from_r1cs_instance_unchecked(&comm_W, io);

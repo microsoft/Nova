@@ -39,6 +39,7 @@ where
   E::GE: PairingGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  h: <E::GE as DlogGroup>::AffineGroupElement,
   tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement, // needed only for the verifier key
 }
 
@@ -49,6 +50,16 @@ where
   fn length(&self) -> usize {
     self.ck.len()
   }
+}
+
+/// A type that holds blinding generator
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerandKey<E>
+where
+  E: Engine,
+  E::GE: DlogGroup,
+{
+  h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A KZG commitment
@@ -184,8 +195,9 @@ where
 {
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
+  type DerandKey = DerandKey<E>;
 
-  fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);
@@ -203,25 +215,38 @@ where
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
 
+    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
-    Self::CommitmentKey { ck, tau_H }
+    Self::CommitmentKey { ck, h, tau_H }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], _r: &E::Scalar) -> Self::Commitment {
+  fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
+    Self::DerandKey { h: ck.h.clone() }
+  }
+
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
 
+    let mut scalars: Vec<E::Scalar> = v.to_vec();
+    scalars.push(*r);
+    let mut bases = ck.ck[..v.len()].to_vec();
+    bases.push(ck.h.clone());
+
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
     }
   }
 
   fn derandomize(
-    _ck: &Self::CommitmentKey,
+    dk: &Self::DerandKey,
     commit: &Self::Commitment,
-    _r: &E::Scalar,
+    r: &E::Scalar,
   ) -> Self::Commitment {
-    *commit
+    Commitment {
+      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
+    }
   }
 }
 

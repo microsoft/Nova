@@ -217,7 +217,7 @@ mod tests {
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::{SparseMatrix, R1CS},
-    traits::{snark::default_ck_hint, Engine},
+    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
   };
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
@@ -414,8 +414,9 @@ mod tests {
     let (ck, S, final_U, final_W) = test_tiny_r1cs_relaxed_with::<E>();
     assert!(S.is_sat_relaxed(&ck, &final_U, &final_W).is_ok());
 
+    let dk = E::CE::derand_key(&ck);
     let (derandom_final_W, final_blind_W, final_blind_E) = final_W.derandomize();
-    let derandom_final_U = final_U.derandomize(&ck, &final_blind_W, &final_blind_E);
+    let derandom_final_U = final_U.derandomize(&dk, &final_blind_W, &final_blind_E);
 
     assert!(S
       .is_sat_relaxed(&ck, &derandom_final_U, &derandom_final_W)

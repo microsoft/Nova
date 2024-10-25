@@ -10,7 +10,7 @@ use crate::{
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
-  Commitment, CommitmentKey, CE,
+  Commitment, CommitmentKey, DerandKey, CE,
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
@@ -704,13 +704,13 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
 
   pub fn derandomize(
     &self,
-    ck: &CommitmentKey<E>,
+    dk: &DerandKey<E>,
     r_W: &E::Scalar,
     r_E: &E::Scalar,
   ) -> RelaxedR1CSInstance<E> {
     RelaxedR1CSInstance {
-      comm_W: CE::<E>::derandomize(ck, &self.comm_W, r_W),
-      comm_E: CE::<E>::derandomize(ck, &self.comm_E, r_E),
+      comm_W: CE::<E>::derandomize(dk, &self.comm_W, r_W),
+      comm_E: CE::<E>::derandomize(dk, &self.comm_E, r_E),
       X: self.X.clone(),
       u: self.u,
     }

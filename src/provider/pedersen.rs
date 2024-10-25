@@ -37,6 +37,16 @@ where
   }
 }
 
+/// A type that holds blinding generator
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerandKey<E>
+where
+  E: Engine,
+  E::GE: DlogGroup,
+{
+  h: <E::GE as DlogGroup>::AffineGroupElement,
+}
+
 /// A type that holds a commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
@@ -166,6 +176,7 @@ where
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
+  type DerandKey = DerandKey<E>;
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
@@ -175,6 +186,13 @@ where
     Self::CommitmentKey {
       ck: ck.to_vec(),
       h: Some(h.clone()),
+    }
+  }
+
+  fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
+    assert!(ck.h.is_some());
+    Self::DerandKey {
+      h: ck.h.as_ref().unwrap().clone(),
     }
   }
 
@@ -200,19 +218,12 @@ where
   }
 
   fn derandomize(
-    ck: &Self::CommitmentKey,
+    dk: &Self::DerandKey,
     commit: &Self::Commitment,
     r: &E::Scalar,
   ) -> Self::Commitment {
-    assert!(ck.h.is_some());
-    // g^m * h^r * h^(-r)
-    let neg_r = *r * (E::Scalar::from(0) - E::Scalar::from(1));
-
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(
-        &[E::Scalar::from(1), neg_r],
-        &[commit.comm.affine(), ck.h.as_ref().unwrap().clone()],
-      ),
+      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
   }
 }

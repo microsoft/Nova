@@ -648,8 +648,8 @@ where
   pp_digest: E1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
-  vk_primary_commitment_key: CommitmentKey<E1>,
-  vk_secondary_commitment_key: CommitmentKey<E2>,
+  vk_primary_derand_key: DerandKey<E1>,
+  vk_secondary_derand_key: DerandKey<E2>,
   _p: PhantomData<(C1, C2)>,
 }
 
@@ -678,10 +678,10 @@ where
   l_ur_primary: RelaxedR1CSInstance<E1>,
   nifs_Un_primary: NIFSRelaxed<E1>,
 
-  primary_blind_r_W: E1::Scalar,
-  primary_blind_r_E: E1::Scalar,
-  secondary_blind_r_W: E2::Scalar,
-  secondary_blind_r_E: E2::Scalar,
+  wit_blind_r_Wn_primary: E1::Scalar,
+  err_blind_r_Wn_primary: E1::Scalar,
+  wit_blind_r_Wn_secondary: E2::Scalar,
+  err_blind_r_Wn_secondary: E2::Scalar,
 
   snark_primary: S1,
   snark_secondary: S2,
@@ -728,8 +728,8 @@ where
       pp_digest: pp.digest(),
       vk_primary,
       vk_secondary,
-      vk_primary_commitment_key: pp.ck_primary.clone(),
-      vk_secondary_commitment_key: pp.ck_secondary.clone(),
+      vk_primary_derand_key: E1::CE::derand_key(&pp.ck_primary),
+      vk_secondary_derand_key: E2::CE::derand_key(&pp.ck_secondary),
       _p: Default::default(),
     };
 
@@ -789,17 +789,20 @@ where
     )?;
 
     // derandomize/unblind commitments
-    let (derandom_r_Wn_primary, r_Wn_primary_blind_W, r_Wn_primary_blind_E) =
+    let (derandom_r_Wn_primary, wit_blind_r_Wn_primary, err_blind_r_Wn_primary) =
       r_Wn_primary.derandomize();
-    let derandom_r_Un_primary =
-      r_Un_primary.derandomize(&pp.ck_primary, &r_Wn_primary_blind_W, &r_Wn_primary_blind_E);
+    let derandom_r_Un_primary = r_Un_primary.derandomize(
+      &E1::CE::derand_key(&pp.ck_primary),
+      &wit_blind_r_Wn_primary,
+      &err_blind_r_Wn_primary,
+    );
 
-    let (derandom_r_Wn_secondary, r_Wn_secondary_blind_W, r_Wn_secondary_blind_E) =
+    let (derandom_r_Wn_secondary, wit_blind_r_Wn_secondary, err_blind_r_Wn_secondary) =
       r_Wn_secondary.derandomize();
     let derandom_r_Un_secondary = r_Un_secondary.derandomize(
-      &pp.ck_secondary,
-      &r_Wn_secondary_blind_W,
-      &r_Wn_secondary_blind_E,
+      &E2::CE::derand_key(&pp.ck_secondary),
+      &wit_blind_r_Wn_secondary,
+      &err_blind_r_Wn_secondary,
     );
 
     // create SNARKs proving the knowledge of Wn primary/secondary
@@ -838,10 +841,10 @@ where
       l_ur_primary: l_ur_primary.clone(),
       nifs_Un_primary: nifs_Un_primary.clone(),
 
-      primary_blind_r_W: r_Wn_primary_blind_W,
-      primary_blind_r_E: r_Wn_primary_blind_E,
-      secondary_blind_r_W: r_Wn_secondary_blind_W,
-      secondary_blind_r_E: r_Wn_secondary_blind_E,
+      wit_blind_r_Wn_primary,
+      err_blind_r_Wn_primary,
+      wit_blind_r_Wn_secondary,
+      err_blind_r_Wn_secondary,
 
       snark_primary: snark_primary?,
       snark_secondary: snark_secondary?,
@@ -946,14 +949,14 @@ where
 
     // derandomize/unblind commitments
     let derandom_r_Un_primary = r_Un_primary.derandomize(
-      &vk.vk_primary_commitment_key,
-      &self.primary_blind_r_W,
-      &self.primary_blind_r_E,
+      &vk.vk_primary_derand_key,
+      &self.wit_blind_r_Wn_primary,
+      &self.err_blind_r_Wn_primary,
     );
     let derandom_r_Un_secondary = r_Un_secondary.derandomize(
-      &vk.vk_secondary_commitment_key,
-      &self.secondary_blind_r_W,
-      &self.secondary_blind_r_E,
+      &vk.vk_secondary_derand_key,
+      &self.wit_blind_r_Wn_secondary,
+      &self.err_blind_r_Wn_secondary,
     );
 
     // check the satisfiability of the folded instances using
@@ -979,6 +982,7 @@ where
 }
 
 type CommitmentKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey;
+type DerandKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::DerandKey;
 type Commitment<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment;
 type CE<E> = <E as Engine>::CE;
 
