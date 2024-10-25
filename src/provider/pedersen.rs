@@ -18,22 +18,30 @@ use serde::{Deserialize, Serialize};
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommitmentKey<E>
+pub struct CommitmentKey<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  h: Option<<E::GE as DlogGroup>::AffineGroupElement>,
 }
 
-impl<E> Len for CommitmentKey<E>
+impl<E: Engine> Len for CommitmentKey<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn length(&self) -> usize {
     self.ck.len()
   }
+}
+
+/// A type that holds blinding generator
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerandKey<E: Engine>
+where
+  E::GE: DlogGroup,
+{
+  h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A type that holds a commitment
@@ -43,9 +51,8 @@ pub struct Commitment<E: Engine> {
   pub(crate) comm: E::GE,
 }
 
-impl<E> CommitmentTrait<E> for Commitment<E>
+impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
@@ -55,7 +62,6 @@ where
 
 impl<E: Engine> Default for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn default() -> Self {
@@ -65,9 +71,8 @@ where
   }
 }
 
-impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
+impl<E: Engine> TranscriptReprTrait<E::GE> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
@@ -82,9 +87,8 @@ where
   }
 }
 
-impl<E> AbsorbInROTrait<E> for Commitment<E>
+impl<E: Engine> AbsorbInROTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
@@ -99,9 +103,8 @@ where
   }
 }
 
-impl<E> MulAssign<E::Scalar> for Commitment<E>
+impl<E: Engine> MulAssign<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
@@ -111,9 +114,8 @@ where
   }
 }
 
-impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
+impl<'a, 'b, E: Engine> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -124,9 +126,8 @@ where
   }
 }
 
-impl<E> Mul<E::Scalar> for Commitment<E>
+impl<E: Engine> Mul<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -138,9 +139,8 @@ where
   }
 }
 
-impl<E> Add for Commitment<E>
+impl<E: Engine> Add for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -158,32 +158,67 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
+  type DerandKey = DerandKey<E>;
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
+
+    let (h, ck) = gens.split_first().unwrap();
+
     Self::CommitmentKey {
-      ck: E::GE::from_label(label, n.next_power_of_two()),
+      ck: ck.to_vec(),
+      h: Some(h.clone()),
     }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
+  fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
+    assert!(ck.h.is_some());
+    Self::DerandKey {
+      h: ck.h.as_ref().unwrap().clone(),
+    }
+  }
+
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
+
+    if ck.h.is_some() {
+      let mut scalars: Vec<E::Scalar> = v.to_vec();
+      scalars.push(*r);
+      let mut bases = ck.ck[..v.len()].to_vec();
+      bases.push(ck.h.as_ref().unwrap().clone());
+
+      Commitment {
+        comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+      }
+    } else {
+      assert_eq!(*r, E::Scalar::ZERO);
+
+      Commitment {
+        comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      }
+    }
+  }
+
+  fn derandomize(
+    dk: &Self::DerandKey,
+    commit: &Self::Commitment,
+    r: &E::Scalar,
+  ) -> Self::Commitment {
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
   }
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
-pub trait CommitmentKeyExtTrait<E>
+pub trait CommitmentKeyExtTrait<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   /// Splits the commitment key into two pieces at a specified point
@@ -217,9 +252,11 @@ where
     (
       CommitmentKey {
         ck: self.ck[0..n].to_vec(),
+        h: self.h.clone(),
       },
       CommitmentKey {
         ck: self.ck[n..].to_vec(),
+        h: self.h.clone(),
       },
     )
   }
@@ -230,7 +267,10 @@ where
       c.extend(other.ck.clone());
       c
     };
-    CommitmentKey { ck }
+    CommitmentKey {
+      ck,
+      h: self.h.clone(),
+    }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
@@ -246,7 +286,10 @@ where
       })
       .collect();
 
-    CommitmentKey { ck }
+    CommitmentKey {
+      ck,
+      h: self.h.clone(),
+    }
   }
 
   /// Scales each element in `self` by `r`
@@ -258,7 +301,10 @@ where
       .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
       .collect();
 
-    CommitmentKey { ck: ck_scaled }
+    CommitmentKey {
+      ck: ck_scaled,
+      h: self.h.clone(),
+    }
   }
 
   /// reinterprets a vector of commitments as a set of generators
@@ -267,6 +313,13 @@ where
       .into_par_iter()
       .map(|i| c[i].comm.affine())
       .collect();
-    Ok(CommitmentKey { ck })
+
+    // cmt is derandomized by the point that this is called
+    Ok(CommitmentKey {
+      ck,
+      h: None, // this is okay, since this method is used in IPA only,
+               // and we only use non-blinding commits afterwards
+               // bc we don't use ZK IPA
+    })
   }
 }

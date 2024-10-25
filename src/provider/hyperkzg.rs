@@ -39,6 +39,7 @@ where
   E::GE: PairingGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  h: <E::GE as DlogGroup>::AffineGroupElement,
   tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement, // needed only for the verifier key
 }
 
@@ -51,20 +52,27 @@ where
   }
 }
 
+/// A type that holds blinding generator
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DerandKey<E: Engine>
+where
+  E::GE: DlogGroup,
+{
+  h: <E::GE as DlogGroup>::AffineGroupElement,
+}
+
 /// A KZG commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Commitment<E>
+pub struct Commitment<E: Engine>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   comm: <E as Engine>::GE,
 }
 
-impl<E> CommitmentTrait<E> for Commitment<E>
+impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
@@ -72,9 +80,8 @@ where
   }
 }
 
-impl<E> Default for Commitment<E>
+impl<E: Engine> Default for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn default() -> Self {
@@ -84,9 +91,8 @@ where
   }
 }
 
-impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
+impl<E: Engine> TranscriptReprTrait<E::GE> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
@@ -101,9 +107,8 @@ where
   }
 }
 
-impl<E> AbsorbInROTrait<E> for Commitment<E>
+impl<E: Engine> AbsorbInROTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
@@ -118,9 +123,8 @@ where
   }
 }
 
-impl<E> MulAssign<E::Scalar> for Commitment<E>
+impl<E: Engine> MulAssign<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
@@ -129,9 +133,8 @@ where
   }
 }
 
-impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
+impl<'a, 'b, E: Engine> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -143,9 +146,8 @@ where
   }
 }
 
-impl<E> Mul<E::Scalar> for Commitment<E>
+impl<E: Engine> Mul<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -157,9 +159,8 @@ where
   }
 }
 
-impl<E> Add for Commitment<E>
+impl<E: Engine> Add for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -177,15 +178,15 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Commitment = Commitment<E>;
   type CommitmentKey = CommitmentKey<E>;
+  type DerandKey = DerandKey<E>;
 
-  fn setup(_label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
     let tau = E::Scalar::random(OsRng);
@@ -203,15 +204,37 @@ where
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
 
+    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
-    Self::CommitmentKey { ck, tau_H }
+    Self::CommitmentKey { ck, h, tau_H }
   }
 
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment {
+  fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
+    Self::DerandKey { h: ck.h.clone() }
+  }
+
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
+
+    let mut scalars: Vec<E::Scalar> = v.to_vec();
+    scalars.push(*r);
+    let mut bases = ck.ck[..v.len()].to_vec();
+    bases.push(ck.h.clone());
+
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
+      comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+    }
+  }
+
+  fn derandomize(
+    dk: &Self::DerandKey,
+    commit: &Self::Commitment,
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    Commitment {
+      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
   }
 }
@@ -253,9 +276,8 @@ pub struct EvaluationEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> EvaluationEngine<E>
+impl<E: Engine> EvaluationEngine<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   // This impl block defines helper functions that are not a part of
@@ -363,7 +385,7 @@ where
 
       let h = compute_witness_polynomial(f, u);
 
-      E::CE::commit(ck, &h).comm.affine()
+      E::CE::commit(ck, &h, &E::Scalar::ZERO).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -462,7 +484,7 @@ where
     // Compute commitments in parallel
     let com: Vec<G1Affine<E>> = (1..polys.len())
       .into_par_iter()
-      .map(|i| E::CE::commit(ck, &polys[i]).comm.affine())
+      .map(|i| E::CE::commit(ck, &polys[i], &E::Scalar::ZERO).comm.affine())
       .collect();
 
     // Phase 2
@@ -647,7 +669,7 @@ mod tests {
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
 
-    let C = CommitmentEngine::commit(&ck, &poly);
+    let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
     let test_inner = |point: Vec<Fr>, eval: Fr| -> Result<(), NovaError> {
       let mut tr = Keccak256Transcript::new(b"TestEval");
@@ -705,7 +727,7 @@ mod tests {
     let (pk, vk) = EvaluationEngine::setup(&ck);
 
     // make a commitment
-    let C = CommitmentEngine::commit(&ck, &poly);
+    let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
     // prove an evaluation
     let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
@@ -763,7 +785,7 @@ mod tests {
       let (pk, vk) = EvaluationEngine::setup(&ck);
 
       // make a commitment
-      let C = CommitmentEngine::commit(&ck, &poly);
+      let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
 
       // prove an evaluation
       let mut prover_transcript = Keccak256Transcript::new(b"TestEval");

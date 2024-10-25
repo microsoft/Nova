@@ -185,7 +185,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
       &self.ts_col,
     ]
     .par_iter()
-    .map(|v| E::CE::commit(ck, v))
+    .map(|v| E::CE::commit(ck, v, &E::Scalar::ZERO))
     .collect();
 
     R1CSShapeSparkCommitment {
@@ -482,14 +482,14 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     ) = rayon::join(
       || {
         rayon::join(
-          || E::CE::commit(ck, &t_plus_r_inv_row),
-          || E::CE::commit(ck, &w_plus_r_inv_row),
+          || E::CE::commit(ck, &t_plus_r_inv_row, &E::Scalar::ZERO),
+          || E::CE::commit(ck, &w_plus_r_inv_row, &E::Scalar::ZERO),
         )
       },
       || {
         rayon::join(
-          || E::CE::commit(ck, &t_plus_r_inv_col),
-          || E::CE::commit(ck, &w_plus_r_inv_col),
+          || E::CE::commit(ck, &t_plus_r_inv_col, &E::Scalar::ZERO),
+          || E::CE::commit(ck, &w_plus_r_inv_col, &E::Scalar::ZERO),
         )
       },
     );
@@ -1122,8 +1122,13 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // commit to Az, Bz, Cz
     let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
-      || E::CE::commit(ck, &Az),
-      || rayon::join(|| E::CE::commit(ck, &Bz), || E::CE::commit(ck, &Cz)),
+      || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
+      || {
+        rayon::join(
+          || E::CE::commit(ck, &Bz, &E::Scalar::ZERO),
+          || E::CE::commit(ck, &Cz, &E::Scalar::ZERO),
+        )
+      },
     );
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
@@ -1155,8 +1160,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // L_row(i) = eq(tau, row(i)) for all i
     // L_col(i) = z(col(i)) for all i
     let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
-    let (comm_L_row, comm_L_col) =
-      rayon::join(|| E::CE::commit(ck, &L_row), || E::CE::commit(ck, &L_col));
+    let (comm_L_row, comm_L_col) = rayon::join(
+      || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
+      || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
+    );
 
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau

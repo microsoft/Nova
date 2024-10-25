@@ -47,12 +47,25 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// The key should quantify its length in terms of group generators.
   type CommitmentKey: Len + Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
+  /// Holds the type of the derandomization key
+  type DerandKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<E>;
 
   /// Samples a new commitment key of a specified size
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
 
-  /// Commits to the provided vector using the provided generators
-  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar]) -> Self::Commitment;
+  /// Extracts the blinding generator
+  fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey;
+
+  /// Commits to the provided vector using the provided generators and random blind
+  fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment;
+
+  /// Remove given blind from commitment
+  fn derandomize(
+    dk: &Self::DerandKey,
+    commit: &Self::Commitment,
+    r: &E::Scalar,
+  ) -> Self::Commitment;
 }

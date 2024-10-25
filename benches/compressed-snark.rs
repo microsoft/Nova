@@ -43,7 +43,7 @@ cfg_if::cfg_if! {
     criterion_group! {
       name = compressed_snark;
       config = Criterion::default().warm_up_time(Duration::from_millis(3000));
-      targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments
+      targets = bench_compressed_snark, bench_compressed_snark_with_computational_commitments,
     }
   }
 }
@@ -109,7 +109,7 @@ fn bench_compressed_snark_internal<S1: RelaxedR1CSSNARKTrait<E1>, S2: RelaxedR1C
       assert!(CompressedSNARK::<_, _, _, _, S1, S2>::prove(
         black_box(&pp),
         black_box(&pk),
-        black_box(&recursive_snark)
+        black_box(&recursive_snark),
       )
       .is_ok());
     })
