@@ -18,18 +18,16 @@ use serde::{Deserialize, Serialize};
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommitmentKey<E>
+pub struct CommitmentKey<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
   h: Option<<E::GE as DlogGroup>::AffineGroupElement>,
 }
 
-impl<E> Len for CommitmentKey<E>
+impl<E: Engine> Len for CommitmentKey<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn length(&self) -> usize {
@@ -39,9 +37,8 @@ where
 
 /// A type that holds blinding generator
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DerandKey<E>
+pub struct DerandKey<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   h: <E::GE as DlogGroup>::AffineGroupElement,
@@ -54,9 +51,8 @@ pub struct Commitment<E: Engine> {
   pub(crate) comm: E::GE,
 }
 
-impl<E> CommitmentTrait<E> for Commitment<E>
+impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
@@ -66,7 +62,6 @@ where
 
 impl<E: Engine> Default for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn default() -> Self {
@@ -76,9 +71,8 @@ where
   }
 }
 
-impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
+impl<E: Engine> TranscriptReprTrait<E::GE> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
@@ -93,9 +87,8 @@ where
   }
 }
 
-impl<E> AbsorbInROTrait<E> for Commitment<E>
+impl<E: Engine> AbsorbInROTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
@@ -110,9 +103,8 @@ where
   }
 }
 
-impl<E> MulAssign<E::Scalar> for Commitment<E>
+impl<E: Engine> MulAssign<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
@@ -122,9 +114,8 @@ where
   }
 }
 
-impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
+impl<'a, 'b, E: Engine> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -135,9 +126,8 @@ where
   }
 }
 
-impl<E> Mul<E::Scalar> for Commitment<E>
+impl<E: Engine> Mul<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -149,9 +139,8 @@ where
   }
 }
 
-impl<E> Add for Commitment<E>
+impl<E: Engine> Add for Commitment<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type Output = Commitment<E>;
@@ -169,9 +158,8 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   type CommitmentKey = CommitmentKey<E>;
@@ -229,9 +217,8 @@ where
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
-pub trait CommitmentKeyExtTrait<E>
+pub trait CommitmentKeyExtTrait<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   /// Splits the commitment key into two pieces at a specified point

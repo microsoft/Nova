@@ -54,9 +54,8 @@ where
 
 /// A type that holds blinding generator
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DerandKey<E>
+pub struct DerandKey<E: Engine>
 where
-  E: Engine,
   E::GE: DlogGroup,
 {
   h: <E::GE as DlogGroup>::AffineGroupElement,
@@ -65,17 +64,15 @@ where
 /// A KZG commitment
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Commitment<E>
+pub struct Commitment<E: Engine>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   comm: <E as Engine>::GE,
 }
 
-impl<E> CommitmentTrait<E> for Commitment<E>
+impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
@@ -83,9 +80,8 @@ where
   }
 }
 
-impl<E> Default for Commitment<E>
+impl<E: Engine> Default for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn default() -> Self {
@@ -95,9 +91,8 @@ where
   }
 }
 
-impl<E> TranscriptReprTrait<E::GE> for Commitment<E>
+impl<E: Engine> TranscriptReprTrait<E::GE> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
@@ -112,9 +107,8 @@ where
   }
 }
 
-impl<E> AbsorbInROTrait<E> for Commitment<E>
+impl<E: Engine> AbsorbInROTrait<E> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
@@ -129,9 +123,8 @@ where
   }
 }
 
-impl<E> MulAssign<E::Scalar> for Commitment<E>
+impl<E: Engine> MulAssign<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
@@ -140,9 +133,8 @@ where
   }
 }
 
-impl<'a, 'b, E> Mul<&'b E::Scalar> for &'a Commitment<E>
+impl<'a, 'b, E: Engine> Mul<&'b E::Scalar> for &'a Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -154,9 +146,8 @@ where
   }
 }
 
-impl<E> Mul<E::Scalar> for Commitment<E>
+impl<E: Engine> Mul<E::Scalar> for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -168,9 +159,8 @@ where
   }
 }
 
-impl<E> Add for Commitment<E>
+impl<E: Engine> Add for Commitment<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Output = Commitment<E>;
@@ -188,9 +178,8 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   type Commitment = Commitment<E>;
@@ -287,9 +276,8 @@ pub struct EvaluationEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E> EvaluationEngine<E>
+impl<E: Engine> EvaluationEngine<E>
 where
-  E: Engine,
   E::GE: PairingGroup,
 {
   // This impl block defines helper functions that are not a part of

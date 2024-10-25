@@ -648,8 +648,8 @@ where
   pp_digest: E1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
-  vk_primary_derand_key: DerandKey<E1>,
-  vk_secondary_derand_key: DerandKey<E2>,
+  dk_primary: DerandKey<E1>,
+  dk_secondary: DerandKey<E2>,
   _p: PhantomData<(C1, C2)>,
 }
 
@@ -728,15 +728,15 @@ where
       pp_digest: pp.digest(),
       vk_primary,
       vk_secondary,
-      vk_primary_derand_key: E1::CE::derand_key(&pp.ck_primary),
-      vk_secondary_derand_key: E2::CE::derand_key(&pp.ck_secondary),
+      dk_primary: E1::CE::derand_key(&pp.ck_primary),
+      dk_secondary: E2::CE::derand_key(&pp.ck_secondary),
       _p: Default::default(),
     };
 
     Ok((pk, vk))
   }
 
-  /// Create a new `CompressedSNARK` (with randomizing layer)
+  /// Create a new `CompressedSNARK` (provides zero-knowledge)
   pub fn prove(
     pp: &PublicParams<E1, E2, C1, C2>,
     pk: &ProverKey<E1, E2, C1, C2, S1, S2>,
@@ -856,7 +856,7 @@ where
     })
   }
 
-  /// Verify the correctness of the `CompressedSNARK` (with randomizing layer)
+  /// Verify the correctness of the `CompressedSNARK` (provides zero-knowledge)
   pub fn verify(
     &self,
     vk: &VerifierKey<E1, E2, C1, C2, S1, S2>,
@@ -949,12 +949,12 @@ where
 
     // derandomize/unblind commitments
     let derandom_r_Un_primary = r_Un_primary.derandomize(
-      &vk.vk_primary_derand_key,
+      &vk.dk_primary,
       &self.wit_blind_r_Wn_primary,
       &self.err_blind_r_Wn_primary,
     );
     let derandom_r_Un_secondary = r_Un_secondary.derandomize(
-      &vk.vk_secondary_derand_key,
+      &vk.dk_secondary,
       &self.wit_blind_r_Wn_secondary,
       &self.err_blind_r_Wn_secondary,
     );
