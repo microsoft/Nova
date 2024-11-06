@@ -209,8 +209,9 @@ impl<E: Engine> NIFSRelaxed<E> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use crate::{
-    bellpepper::{
+    frontend::{
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
@@ -219,7 +220,6 @@ mod tests {
     r1cs::{SparseMatrix, R1CS},
     traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
   };
-  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 

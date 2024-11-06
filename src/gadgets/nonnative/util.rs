@@ -1,5 +1,5 @@
 use super::{BitAccess, OptionExt};
-use bellpepper_core::{
+use crate::frontend::{
   num::AllocatedNum,
   {ConstraintSystem, LinearCombination, SynthesisError, Variable},
 };

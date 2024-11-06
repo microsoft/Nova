@@ -1,12 +1,12 @@
 //! This module implements various low-level gadgets
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
-use crate::traits::Engine;
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::{
+use crate::frontend::gadgets::Assignment;
+use crate::frontend::{
   boolean::{AllocatedBit, Boolean},
   num::AllocatedNum,
   ConstraintSystem, LinearCombination, SynthesisError,
 };
+use crate::traits::Engine;
 use ff::{Field, PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 

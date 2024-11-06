@@ -3,6 +3,8 @@ use super::nonnative::{
   bignat::BigNat,
   util::{f_to_nat, Num},
 };
+use crate::frontend::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
+use crate::frontend::{ConstraintSystem, SynthesisError};
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   gadgets::{
@@ -15,8 +17,6 @@ use crate::{
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
-use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
-use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
 
 /// An Allocated R1CS Instance

@@ -4,6 +4,12 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
+use crate::frontend::gadgets::Assignment;
+use crate::frontend::{
+  boolean::{AllocatedBit, Boolean},
+  num::AllocatedNum,
+  ConstraintSystem, SynthesisError,
+};
 use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
   gadgets::{
@@ -18,12 +24,6 @@ use crate::{
     circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
   },
   Commitment,
-};
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::{
-  boolean::{AllocatedBit, Boolean},
-  num::AllocatedNum,
-  ConstraintSystem, SynthesisError,
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -383,12 +383,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 mod tests {
   use super::*;
   use crate::{
-    bellpepper::{
+    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+    frontend::{
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
     },
-    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
     gadgets::utils::scalar_as_base,
     provider::{
       poseidon::PoseidonConstantsCircuit,

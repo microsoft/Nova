@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]
 
-use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
+use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use nova_snark::{
   provider::Bn256EngineKZG,
   spartan::direct::DirectSNARK,

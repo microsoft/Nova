@@ -1,9 +1,9 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
 //! iterations of the `MinRoot` function, thereby realizing a Nova-based verifiable delay function (VDF).
 //! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
-use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
+use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{

@@ -9,11 +9,9 @@ readme = "README.md"
 repository = "https://github.com/Microsoft/Nova"
 license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
-rust-version="1.79.0"
+rust-version = "1.79.0"
 
 [dependencies]
-bellpepper-core = { version="0.4.0", default-features = false }
-bellpepper = { version="0.4.0", default-features = false }
 ff = { version = "0.13.0", features = ["derive"] }
 digest = "0.10"
 sha3 = "0.10"
@@ -23,7 +21,6 @@ rand_chacha = "0.3"
 subtle = "2.5"
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
 halo2curves = { version = "0.6.0", features = ["bits", "derive_serde"] }
-neptune = { version = "13.0.0", default-features = false }
 generic-array = "1.0.0"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-traits = "0.2"
@@ -78,6 +75,4 @@ harness = false
 default = ["halo2curves/asm"]
 # Compiles in portable mode, w/o ISA extensions => binary can be executed on all systems.
 portable = ["pasta-msm/portable"]
-cuda = ["neptune/cuda", "neptune/pasta", "neptune/arity24"]
-opencl = ["neptune/opencl", "neptune/pasta", "neptune/arity24"]
 flamegraph = ["pprof/flamegraph", "pprof/criterion"]
