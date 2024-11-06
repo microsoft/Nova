@@ -1,5 +1,5 @@
 //! This module defines traits that a step function must implement
-use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
+use crate::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::PrimeField;
 

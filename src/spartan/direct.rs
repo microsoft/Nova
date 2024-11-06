@@ -1,13 +1,14 @@
 //! This module provides interfaces to directly prove a step circuit by using Spartan SNARK.
 //! In particular, it supports any SNARK that implements `RelaxedR1CSSNARK` trait
 //! (e.g., with the SNARKs implemented in ppsnark.rs or snark.rs).
+use crate::frontend::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use crate::{
-  bellpepper::{
+  errors::NovaError,
+  frontend::{
     r1cs::{NovaShape, NovaWitness},
     shape_cs::ShapeCS,
     solver::SatisfyingAssignment,
   },
-  errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     circuit::StepCircuit,
@@ -17,7 +18,6 @@ use crate::{
   },
   Commitment, CommitmentKey, DerandKey,
 };
-use bellpepper_core::{num::AllocatedNum, Circuit, ConstraintSystem, SynthesisError};
 use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -184,8 +184,8 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use crate::provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine};
-  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
 

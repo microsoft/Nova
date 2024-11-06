@@ -69,8 +69,8 @@ pub enum NovaError {
   InternalError,
 }
 
-impl From<bellpepper_core::SynthesisError> for NovaError {
-  fn from(err: bellpepper_core::SynthesisError) -> Self {
+impl From<crate::frontend::SynthesisError> for NovaError {
+  fn from(err: crate::frontend::SynthesisError) -> Self {
     Self::SynthesisError {
       reason: err.to_string(),
     }

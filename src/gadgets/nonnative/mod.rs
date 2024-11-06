@@ -1,7 +1,7 @@
 //! This module implements various gadgets necessary for doing non-native arithmetic
 //! Code in this module is adapted from [bellman-bignat](https://github.com/alex-ozdemir/bellman-bignat), which is licenced under MIT
 
-use bellpepper_core::SynthesisError;
+use crate::frontend::SynthesisError;
 use ff::PrimeField;
 
 trait OptionExt<T> {

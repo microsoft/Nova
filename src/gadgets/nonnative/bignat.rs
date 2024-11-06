@@ -4,7 +4,7 @@ use super::{
   },
   OptionExt,
 };
-use bellpepper_core::{ConstraintSystem, LinearCombination, SynthesisError};
+use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
 use ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -782,7 +782,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use bellpepper_core::{test_cs::TestConstraintSystem, Circuit};
+  use crate::frontend::{test_cs::TestConstraintSystem, Circuit};
   use pasta_curves::pallas::Scalar;
   use proptest::prelude::*;
 

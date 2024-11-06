@@ -1,6 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
 use crate::errors::NovaError;
-use bellpepper_core::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
+use crate::frontend::{boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, SynthesisError};
 use core::fmt::Debug;
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;

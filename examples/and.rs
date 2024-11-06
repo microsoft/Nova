@@ -1,13 +1,13 @@
 //! This example executes a batch of 64-bit AND operations.
 //! It performs the AND operation by first decomposing the operands into bits and then performing the operation bit-by-bit.
 //! We execute a configurable number of AND operations per step of Nova's recursion.
-use bellpepper_core::{
-  boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError,
-};
 use core::marker::PhantomData;
 use ff::Field;
 use ff::{PrimeField, PrimeFieldBits};
 use flate2::{write::ZlibEncoder, Compression};
+use nova_snark::frontend::{
+  boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError,
+};
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{

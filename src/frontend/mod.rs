@@ -1,7 +1,13 @@
-//! Support for generating R1CS from [Bellpepper].
-//!
-//! [Bellpepper]: https://github.com/lurk-lab/bellpepper
+//! Support for generating R1CS
 
+mod constraint_system;
+pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};
+pub mod gadgets;
+pub use gadgets::{boolean, num};
+mod lc;
+pub use lc::{Index, LinearCombination, Variable};
+pub mod util_cs;
+pub use util_cs::test_cs;
 pub mod r1cs;
 pub mod shape_cs;
 pub mod solver;
@@ -9,8 +15,9 @@ pub mod test_shape_cs;
 
 #[cfg(test)]
 mod tests {
+  use crate::frontend::{num::AllocatedNum, ConstraintSystem};
   use crate::{
-    bellpepper::{
+    frontend::{
       r1cs::{NovaShape, NovaWitness},
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
@@ -18,7 +25,6 @@ mod tests {
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     traits::{snark::default_ck_hint, Engine},
   };
-  use bellpepper_core::{num::AllocatedNum, ConstraintSystem};
   use ff::PrimeField;
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(cs: &mut CS) {

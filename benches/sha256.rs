@@ -3,16 +3,16 @@
 //! This code invokes a hand-written SHA-256 gadget from bellman/bellperson.
 //! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
 #![allow(non_snake_case)]
-use bellpepper::gadgets::{sha256::sha256, Assignment};
-use bellpepper_core::{
-  boolean::{AllocatedBit, Boolean},
-  num::{AllocatedNum, Num},
-  ConstraintSystem, SynthesisError,
-};
 use core::marker::PhantomData;
 use core::time::Duration;
 use criterion::*;
 use ff::{PrimeField, PrimeFieldBits};
+use nova_snark::frontend::gadgets::{sha256::sha256, Assignment};
+use nova_snark::frontend::{
+  boolean::{AllocatedBit, Boolean},
+  num::{AllocatedNum, Num},
+  ConstraintSystem, SynthesisError,
+};
 use nova_snark::{
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
