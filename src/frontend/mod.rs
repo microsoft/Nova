@@ -1,4 +1,6 @@
 //! Support for generating R1CS
+//!
+//! Most of the code is ported from https://github.com/argumentcomputer/bellpepper.
 
 mod constraint_system;
 pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};
@@ -7,6 +9,7 @@ pub use gadgets::{boolean, num};
 mod lc;
 pub use lc::{Index, LinearCombination, Variable};
 pub mod util_cs;
+#[cfg(test)]
 pub use util_cs::test_cs;
 pub mod r1cs;
 pub mod shape_cs;

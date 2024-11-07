@@ -1,7 +1,6 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-
-// TODO: remove this
-#![allow(unused)]
+//!
+//! The underlying Poseidon sponge code is ported from https://github.com/argumentcomputer/neptune.
 
 use ff::PrimeField;
 use round_constants::generate_constants;

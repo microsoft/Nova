@@ -1,8 +1,5 @@
 //! Test constraint system for use in tests.
 
-#![allow(dead_code)]
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use super::Comparable;
@@ -12,7 +9,7 @@ use ff::PrimeField;
 
 #[derive(Debug)]
 enum NamedObject {
-  Constraint(usize),
+  Constraint,
   Var(Variable),
   Namespace,
 }
@@ -32,66 +29,6 @@ pub struct TestConstraintSystem<Scalar: PrimeField> {
   inputs: Vec<(Scalar, String)>,
   aux: Vec<(Scalar, String)>,
   precommitted: Vec<(Scalar, String)>,
-}
-
-#[derive(Clone, Copy)]
-struct OrderedVariable(Variable);
-
-impl Eq for OrderedVariable {}
-impl PartialEq for OrderedVariable {
-  fn eq(&self, other: &OrderedVariable) -> bool {
-    match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a == b,
-      (Index::Aux(ref a), Index::Aux(ref b)) => a == b,
-      _ => false,
-    }
-  }
-}
-impl PartialOrd for OrderedVariable {
-  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-    Some(self.cmp(other))
-  }
-}
-impl Ord for OrderedVariable {
-  fn cmp(&self, other: &Self) -> Ordering {
-    match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b)) => a.cmp(b),
-      (Index::Aux(ref a), Index::Aux(ref b)) => a.cmp(b),
-      (Index::Precommitted(ref a), Index::Precommitted(ref b)) => a.cmp(b),
-      (Index::Input(_), Index::Aux(_)) => Ordering::Less,
-      (Index::Aux(_), Index::Input(_)) => Ordering::Greater,
-      (Index::Precommitted(_), Index::Aux(_)) => Ordering::Less,
-      (Index::Aux(_), Index::Precommitted(_)) => Ordering::Greater,
-      (Index::Input(_), Index::Precommitted(_)) => Ordering::Less,
-      (Index::Precommitted(_), Index::Input(_)) => Ordering::Greater,
-    }
-  }
-}
-
-fn proc_lc<Scalar: PrimeField>(
-  terms: &LinearCombination<Scalar>,
-) -> BTreeMap<OrderedVariable, Scalar> {
-  let mut map = BTreeMap::new();
-  for (var, &coeff) in terms.iter() {
-    map
-      .entry(OrderedVariable(var))
-      .or_insert_with(|| Scalar::ZERO)
-      .add_assign(&coeff);
-  }
-
-  // Remove terms that have a zero coefficient to normalize
-  let mut to_remove = vec![];
-  for (var, coeff) in map.iter() {
-    if coeff.is_zero().into() {
-      to_remove.push(*var)
-    }
-  }
-
-  for var in to_remove {
-    map.remove(&var);
-  }
-
-  map
 }
 
 fn _eval_lc2<Scalar: PrimeField>(
@@ -414,8 +351,7 @@ impl<Scalar: PrimeField> ConstraintSystem<Scalar> for TestConstraintSystem<Scala
     LC: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
   {
     let path = compute_path(&self.current_namespace, &annotation().into());
-    let index = self.constraints.len();
-    self.set_named_obj(path.clone(), NamedObject::Constraint(index));
+    self.set_named_obj(path.clone(), NamedObject::Constraint);
 
     let a = a(LinearCombination::zero());
     let b = b(LinearCombination::zero());

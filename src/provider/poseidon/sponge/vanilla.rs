@@ -29,13 +29,6 @@ remaining unsqueezed elements are queued. Otherwise they would be lost when perm
 
 */
 
-pub enum SpongeMode {
-  SimplexAbsorb,
-  SimplexSqueeze,
-  DuplexAbsorb,
-  DuplexSqueeze,
-}
-
 /// Mode of the sponge
 #[derive(Clone, Copy)]
 pub enum Mode {

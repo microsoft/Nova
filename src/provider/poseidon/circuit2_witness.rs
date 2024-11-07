@@ -1,50 +1,11 @@
 /// The `circuit2_witness` module implements witness-generation for the optimal Poseidon hash circuit.
-use super::poseidon_inner::{Arity, Poseidon, PoseidonConstants};
+use super::poseidon_inner::{Arity, Poseidon};
 use crate::frontend::util_cs::witness_cs::SizedWitness;
 
-use crate::frontend::num::AllocatedNum;
-
-use crate::frontend::{ConstraintSystem, SynthesisError};
 use ff::PrimeField;
 use generic_array::sequence::GenericSequence;
 use generic_array::typenum::Unsigned;
 use generic_array::GenericArray;
-
-/// Create circuit for Poseidon hash, returning an `AllocatedNum` at the cost of one constraint.
-pub fn poseidon_hash_allocated_witness<CS, Scalar, A>(
-  cs: &mut CS,
-  preimage: &[AllocatedNum<Scalar>],
-  constants: &PoseidonConstants<Scalar, A>,
-) -> Result<AllocatedNum<Scalar>, SynthesisError>
-where
-  CS: ConstraintSystem<Scalar>,
-  Scalar: PrimeField,
-  A: Arity<Scalar>,
-{
-  assert!(cs.is_witness_generator());
-  let result = poseidon_hash_witness_into_cs(cs, preimage, constants);
-
-  AllocatedNum::alloc(&mut cs.namespace(|| "result"), || Ok(result))
-}
-
-pub fn poseidon_hash_witness_into_cs<Scalar, A, CS>(
-  cs: &mut CS,
-  preimage: &[AllocatedNum<Scalar>],
-  constants: &PoseidonConstants<Scalar, A>,
-) -> Scalar
-where
-  CS: ConstraintSystem<Scalar>,
-  Scalar: PrimeField,
-  A: Arity<Scalar>,
-{
-  let scalar_preimage = preimage
-    .iter()
-    .map(|elt| elt.get_value().unwrap())
-    .collect::<Vec<_>>();
-  let mut p = Poseidon::new_with_preimage(&scalar_preimage, constants);
-
-  p.generate_witness_into_cs(cs)
-}
 
 impl<'a, Scalar, A> SizedWitness<Scalar> for Poseidon<'a, Scalar, A>
 where
