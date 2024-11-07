@@ -2,6 +2,7 @@
 use crate::frontend::LinearCombination;
 use ff::PrimeField;
 
+#[cfg(test)]
 pub mod test_cs;
 pub mod witness_cs;
 

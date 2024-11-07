@@ -1,5 +1,5 @@
 //! The `circuit2` module implements the optimal Poseidon hash circuit.
-use super::circuit2_witness::poseidon_hash_allocated_witness;
+
 use super::hash_type::HashType;
 use super::matrix::Matrix;
 use super::mds::SparseMatrix;
@@ -244,21 +244,6 @@ where
     }
   }
 
-  pub fn hash_to_allocated<CS: ConstraintSystem<Scalar>>(
-    &mut self,
-    mut cs: CS,
-  ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-    let elt = self.hash(&mut cs).unwrap();
-    elt.ensure_allocated(&mut cs, true)
-  }
-
-  fn hash_to_num<CS: ConstraintSystem<Scalar>>(
-    &mut self,
-    mut cs: CS,
-  ) -> Result<num::Num<Scalar>, SynthesisError> {
-    self.hash(&mut cs).map(|elt| elt.num())
-  }
-
   fn full_round<CS: ConstraintSystem<Scalar>>(
     &mut self,
     mut cs: CS,
@@ -424,82 +409,12 @@ where
       .take(A::to_usize() + 1)
       .collect()
   }
-  pub fn reset<CS: ConstraintSystem<Scalar>>(&mut self) {
-    self.reset_offsets();
-    self.elements = Self::initial_elements::<CS>();
-  }
 
   pub fn reset_offsets(&mut self) {
     self.constants_offset = 0;
     self.current_round = 0;
     self.pos = 1;
   }
-}
-
-/// Create circuit for Poseidon hash, returning an allocated `Num` at the cost of one constraint.
-pub fn poseidon_hash_allocated<CS, Scalar, A>(
-  cs: CS,
-  preimage: Vec<AllocatedNum<Scalar>>,
-  constants: &PoseidonConstants<Scalar, A>,
-) -> Result<AllocatedNum<Scalar>, SynthesisError>
-where
-  CS: ConstraintSystem<Scalar>,
-  Scalar: PrimeField,
-  A: Arity<Scalar>,
-{
-  if cs.is_witness_generator() {
-    let mut cs = cs;
-    poseidon_hash_allocated_witness(&mut cs, &preimage, constants)
-  } else {
-    let arity = A::to_usize();
-    let tag_element = Elt::num_from_fr::<CS>(constants.domain_tag);
-    let mut elements = Vec::with_capacity(arity + 1);
-    elements.push(tag_element);
-    elements.extend(preimage.into_iter().map(Elt::Allocated));
-
-    if let HashType::ConstantLength(length) = constants.hash_type {
-      assert!(length <= arity, "illegal length: constants are malformed");
-      // Add zero-padding.
-      for _ in 0..(arity - length) {
-        let elt = Elt::Num(num::Num::zero());
-        elements.push(elt);
-      }
-    }
-    let mut p = PoseidonCircuit2::new(elements, constants);
-
-    p.hash_to_allocated(cs)
-  }
-}
-
-/// Create circuit for Poseidon hash, minimizing constraints by returning an unallocated `Num`.
-pub fn poseidon_hash_num<CS, Scalar, A>(
-  cs: CS,
-  preimage: Vec<AllocatedNum<Scalar>>,
-  constants: &PoseidonConstants<Scalar, A>,
-) -> Result<num::Num<Scalar>, SynthesisError>
-where
-  CS: ConstraintSystem<Scalar>,
-  Scalar: PrimeField,
-  A: Arity<Scalar>,
-{
-  let arity = A::to_usize();
-  let tag_element = Elt::num_from_fr::<CS>(constants.domain_tag);
-  let mut elements = Vec::with_capacity(arity + 1);
-  elements.push(tag_element);
-  elements.extend(preimage.into_iter().map(Elt::Allocated));
-
-  if let HashType::ConstantLength(length) = constants.hash_type {
-    assert!(length <= arity, "illegal length: constants are malformed");
-    // Add zero-padding.
-    for _ in 0..(arity - length) {
-      let elt = Elt::Num(num::Num::zero());
-      elements.push(elt);
-    }
-  }
-
-  let mut p = PoseidonCircuit2::new(elements, constants);
-
-  p.hash_to_num(cs)
 }
 
 /// Compute l^5 and enforce constraint. If round_key is supplied, add it to result.

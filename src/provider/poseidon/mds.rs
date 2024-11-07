@@ -63,21 +63,6 @@ impl<F: PrimeField> SparseMatrix<F> {
   pub fn is_sparse_matrix(m: &Matrix<F>) -> bool {
     is_square(m) && is_identity(&minor(m, 0, 0))
   }
-
-  pub fn size(&self) -> usize {
-    self.w_hat.len()
-  }
-
-  pub fn to_matrix(&self) -> Matrix<F> {
-    let mut m = matrix::make_identity(self.size());
-    for (j, elt) in self.w_hat.iter().enumerate() {
-      m[j][0] = *elt;
-    }
-    for (i, elt) in self.v_rest.iter().enumerate() {
-      m[0][i + 1] = *elt;
-    }
-    m
-  }
 }
 
 // - Having effectively moved the round-key additions into the S-boxes, refactor MDS matrices used for partial-round mix layer to use sparse matrices.
