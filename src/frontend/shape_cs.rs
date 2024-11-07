@@ -17,7 +17,6 @@ where
   )>,
   inputs: usize,
   aux: usize,
-  precommitted: usize,
 }
 
 impl<E: Engine> ShapeCS<E> {
@@ -48,7 +47,6 @@ impl<E: Engine> Default for ShapeCS<E> {
       constraints: vec![],
       inputs: 1,
       aux: 0,
-      precommitted: 0,
     }
   }
 }
@@ -65,23 +63,6 @@ impl<E: Engine> ConstraintSystem<E::Scalar> for ShapeCS<E> {
     self.aux += 1;
 
     Ok(Variable::new_unchecked(Index::Aux(self.aux - 1)))
-  }
-
-  fn alloc_precommitted<F, A, AR>(
-    &mut self,
-    _annotation: A,
-    _f: F,
-  ) -> Result<Variable, SynthesisError>
-  where
-    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
-    A: FnOnce() -> AR,
-    AR: Into<String>,
-  {
-    self.precommitted += 1;
-
-    Ok(Variable::new_unchecked(Index::Precommitted(
-      self.precommitted - 1,
-    )))
   }
 
   fn alloc_input<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>

@@ -125,7 +125,6 @@ fn add_constraint<S: PrimeField>(
           M.data.push(*coeff);
           M.indices.push(idx);
         }
-        _ => todo!(),
       }
     }
   };

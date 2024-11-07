@@ -29,8 +29,6 @@ pub enum Index {
   Input(usize),
   /// Private auxiliary variable
   Aux(usize),
-  /// Precommitted variable
-  Precommitted(usize),
 }
 
 /// This represents a linear combination of some variables, with coefficients
@@ -155,11 +153,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
         aux: Indexer::from_value(i, coeff),
         precommitted: Default::default(),
       },
-      Variable(Index::Precommitted(i)) => Self {
-        inputs: Default::default(),
-        aux: Default::default(),
-        precommitted: Indexer::from_value(i, coeff),
-      },
     }
   }
 
@@ -223,13 +216,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
       .insert_or_update(new_var, || coeff, |val| *val += coeff);
   }
 
-  #[inline]
-  fn add_assign_unsimplified_precommitted(&mut self, new_var: usize, coeff: Scalar) {
-    self
-      .precommitted
-      .insert_or_update(new_var, || coeff, |val| *val += coeff);
-  }
-
   /// Add unsimplified
   pub fn add_unsimplified(mut self, (coeff, var): (Scalar, Variable)) -> LinearCombination<Scalar> {
     match var.0 {
@@ -238,9 +224,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
       }
       Index::Aux(new_var) => {
         self.add_assign_unsimplified_aux(new_var, coeff);
-      }
-      Index::Precommitted(new_var) => {
-        self.add_assign_unsimplified_precommitted(new_var, coeff);
       }
     }
 
@@ -257,11 +240,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
     self.add_assign_unsimplified_aux(new_var, -coeff);
   }
 
-  #[inline]
-  fn sub_assign_unsimplified_precommitted(&mut self, new_var: usize, coeff: Scalar) {
-    self.add_assign_unsimplified_precommitted(new_var, -coeff);
-  }
-
   /// Sub unsimplified
   pub fn sub_unsimplified(mut self, (coeff, var): (Scalar, Variable)) -> LinearCombination<Scalar> {
     match var.0 {
@@ -270,9 +248,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
       }
       Index::Aux(new_var) => {
         self.sub_assign_unsimplified_aux(new_var, coeff);
-      }
-      Index::Precommitted(new_var) => {
-        self.sub_assign_unsimplified_precommitted(new_var, -coeff);
       }
     }
 
