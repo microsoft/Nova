@@ -39,15 +39,11 @@ impl PartialOrd for OrderedVariable {
 impl Ord for OrderedVariable {
   fn cmp(&self, other: &Self) -> Ordering {
     match (self.0.get_unchecked(), other.0.get_unchecked()) {
-      (Index::Input(ref a), Index::Input(ref b))
-      | (Index::Aux(ref a), Index::Aux(ref b))
-      | (Index::Precommitted(ref a), Index::Precommitted(ref b)) => a.cmp(b),
+      (Index::Input(ref a), Index::Input(ref b)) | (Index::Aux(ref a), Index::Aux(ref b)) => {
+        a.cmp(b)
+      }
       (Index::Input(_), Index::Aux(_)) => Ordering::Less,
       (Index::Aux(_), Index::Input(_)) => Ordering::Greater,
-      (Index::Precommitted(_), Index::Aux(_)) => Ordering::Less,
-      (Index::Aux(_), Index::Precommitted(_)) => Ordering::Greater,
-      (Index::Input(_), Index::Precommitted(_)) => Ordering::Less,
-      (Index::Precommitted(_), Index::Input(_)) => Ordering::Greater,
     }
   }
 }
@@ -65,7 +61,6 @@ pub struct TestShapeCS<E: Engine> {
   )>,
   inputs: Vec<String>,
   aux: Vec<String>,
-  precommitted: Vec<String>,
 }
 
 fn proc_lc<Scalar: PrimeField>(
@@ -182,9 +177,6 @@ where
           Index::Aux(i) => {
             write!(s, "`A{}`", &self.aux[i]).unwrap();
           }
-          Index::Precommitted(i) => {
-            write!(s, "`P{}`", &self.precommitted[i]).unwrap();
-          }
         }
       }
       if is_first {
@@ -232,7 +224,6 @@ impl<E: Engine> Default for TestShapeCS<E> {
       constraints: vec![],
       inputs: vec![String::from("ONE")],
       aux: vec![],
-      precommitted: vec![],
     }
   }
 }
@@ -253,24 +244,6 @@ where
     self.aux.push(path);
 
     Ok(Variable::new_unchecked(Index::Aux(self.aux.len() - 1)))
-  }
-
-  fn alloc_precommitted<F, A, AR>(
-    &mut self,
-    annotation: A,
-    _f: F,
-  ) -> Result<Variable, SynthesisError>
-  where
-    F: FnOnce() -> Result<E::Scalar, SynthesisError>,
-    A: FnOnce() -> AR,
-    AR: Into<String>,
-  {
-    let path = compute_path(&self.current_namespace, &annotation().into());
-    self.precommitted.push(path);
-
-    Ok(Variable::new_unchecked(Index::Precommitted(
-      self.precommitted.len() - 1,
-    )))
   }
 
   fn alloc_input<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
