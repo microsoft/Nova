@@ -37,7 +37,6 @@ pub enum Index {
 pub struct LinearCombination<Scalar: PrimeField> {
   inputs: Indexer<Scalar>,
   aux: Indexer<Scalar>,
-  precommitted: Indexer<Scalar>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -136,7 +135,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
     LinearCombination {
       inputs: Default::default(),
       aux: Default::default(),
-      precommitted: Default::default(),
     }
   }
 
@@ -146,12 +144,10 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
       Variable(Index::Input(i)) => Self {
         inputs: Indexer::from_value(i, coeff),
         aux: Default::default(),
-        precommitted: Default::default(),
       },
       Variable(Index::Aux(i)) => Self {
         inputs: Default::default(),
         aux: Indexer::from_value(i, coeff),
-        precommitted: Default::default(),
       },
     }
   }
@@ -180,12 +176,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
   #[inline]
   pub fn iter_aux(&self) -> impl Iterator<Item = (&usize, &Scalar)> + '_ {
     self.aux.iter()
-  }
-
-  /// Iter precommitted for the [`LinearCombination`]
-  #[inline]
-  pub fn iter_precommitted(&self) -> impl Iterator<Item = (&usize, &Scalar)> + '_ {
-    self.precommitted.iter()
   }
 
   /// Iter mut for the [`LinearCombination`]
@@ -256,21 +246,16 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
 
   /// len of the [`LinearCombination`]
   pub fn len(&self) -> usize {
-    self.inputs.len() + self.aux.len() + self.precommitted.len()
+    self.inputs.len() + self.aux.len()
   }
 
   /// Check if the [`LinearCombination`] is empty
   pub fn is_empty(&self) -> bool {
-    self.inputs.is_empty() && self.aux.is_empty() && self.precommitted.is_empty()
+    self.inputs.is_empty() && self.aux.is_empty()
   }
 
   /// Evaluate the [`LinearCombination`] with the given input and aux assignments.
-  pub fn eval(
-    &self,
-    input_assignment: &[Scalar],
-    aux_assignment: &[Scalar],
-    precommitted_assignment: &[Scalar],
-  ) -> Scalar {
+  pub fn eval(&self, input_assignment: &[Scalar], aux_assignment: &[Scalar]) -> Scalar {
     let mut acc = Scalar::ZERO;
 
     let one = Scalar::ONE;
@@ -285,14 +270,6 @@ impl<Scalar: PrimeField> LinearCombination<Scalar> {
 
     for (index, coeff) in self.iter_aux() {
       let mut tmp = aux_assignment[*index];
-      if coeff != &one {
-        tmp *= coeff;
-      }
-      acc += tmp;
-    }
-
-    for (index, coeff) in self.iter_precommitted() {
-      let mut tmp = precommitted_assignment[*index];
       if coeff != &one {
         tmp *= coeff;
       }

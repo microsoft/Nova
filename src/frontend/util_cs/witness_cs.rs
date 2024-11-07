@@ -56,7 +56,6 @@ where
   // Assignments of variables
   pub(crate) input_assignment: Vec<Scalar>,
   pub(crate) aux_assignment: Vec<Scalar>,
-  pub(crate) precommitted_assignment: Vec<Scalar>,
 }
 
 impl<Scalar> WitnessCS<Scalar>
@@ -74,28 +73,21 @@ where
   }
 
   /// Create a new [`WitnessCS`] with the specified capacity.
-  pub fn with_capacity(input_size: usize, aux_size: usize, precommitted_size: usize) -> Self {
+  pub fn with_capacity(input_size: usize, aux_size: usize) -> Self {
     let mut input_assignment = Vec::with_capacity(input_size);
     input_assignment.push(Scalar::ONE);
     let aux_assignment = Vec::with_capacity(aux_size);
-    let precommitted_assignment = Vec::with_capacity(precommitted_size);
     Self {
       input_assignment,
       aux_assignment,
-      precommitted_assignment,
     }
   }
 
   /// Create a new [`WitnessCS`] from the specified assignments.
-  pub fn from_assignments(
-    input_assignment: Vec<Scalar>,
-    aux_assignment: Vec<Scalar>,
-    precommitted_assignment: Vec<Scalar>,
-  ) -> Self {
+  pub fn from_assignments(input_assignment: Vec<Scalar>, aux_assignment: Vec<Scalar>) -> Self {
     Self {
       input_assignment,
       aux_assignment,
-      precommitted_assignment,
     }
   }
 
@@ -117,7 +109,6 @@ where
     Self {
       input_assignment,
       aux_assignment: vec![],
-      precommitted_assignment: vec![],
     }
   }
 
