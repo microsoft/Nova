@@ -1,6 +1,8 @@
-use super::matrix::{left_apply_matrix, vec_add};
-use super::mds::MdsMatrices;
-use super::quintic_s_box;
+use super::{
+  matrix::{left_apply_matrix, vec_add},
+  mds::MdsMatrices,
+  quintic_s_box,
+};
 use ff::PrimeField;
 
 // - Compress constants by pushing them back through linear layers and through the identity components of partial layers.

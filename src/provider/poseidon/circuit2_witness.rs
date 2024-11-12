@@ -3,9 +3,7 @@ use super::poseidon_inner::{Arity, Poseidon};
 use crate::frontend::util_cs::witness_cs::SizedWitness;
 
 use ff::PrimeField;
-use generic_array::sequence::GenericSequence;
-use generic_array::typenum::Unsigned;
-use generic_array::GenericArray;
+use generic_array::{sequence::GenericSequence, typenum::Unsigned, GenericArray};
 
 impl<'a, Scalar, A> SizedWitness<Scalar> for Poseidon<'a, Scalar, A>
 where

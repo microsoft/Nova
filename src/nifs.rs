@@ -209,12 +209,13 @@ impl<E: Engine> NIFSRelaxed<E> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use crate::{
     frontend::{
+      num::AllocatedNum,
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
+      ConstraintSystem, SynthesisError,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::{SparseMatrix, R1CS},

@@ -1,16 +1,16 @@
 use super::{
-  util::{
-    Bitvector, Num, {f_to_nat, nat_to_f},
-  },
+  util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
 use ff::PrimeField;
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
-use std::borrow::Borrow;
-use std::cmp::{max, min};
-use std::convert::From;
+use std::{
+  borrow::Borrow,
+  cmp::{max, min},
+  convert::From,
+};
 
 /// Compute the natural number represented by an array of limbs.
 /// The limbs are assumed to be based the `limb_width` power of 2.

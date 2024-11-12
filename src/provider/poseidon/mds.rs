@@ -4,10 +4,12 @@
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 
-use super::matrix;
-use super::matrix::{
-  invert, is_identity, is_invertible, is_square, left_apply_matrix, mat_mul, minor, transpose,
-  Matrix,
+use super::{
+  matrix,
+  matrix::{
+    invert, is_identity, is_invertible, is_square, left_apply_matrix, mat_mul, minor, transpose,
+    Matrix,
+  },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -28,17 +28,17 @@ pub mod traits;
 use once_cell::sync::OnceCell;
 
 use crate::digest::{DigestComputer, SimpleDigestible};
-use crate::frontend::{
-  r1cs::{NovaShape, NovaWitness},
-  shape_cs::ShapeCS,
-  solver::SatisfyingAssignment,
-};
-use crate::frontend::{ConstraintSystem, SynthesisError};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
+use frontend::{
+  r1cs::{NovaShape, NovaWitness},
+  shape_cs::ShapeCS,
+  solver::SatisfyingAssignment,
+  ConstraintSystem, SynthesisError,
+};
 use gadgets::utils::scalar_as_base;
 use nifs::{NIFSRelaxed, NIFS};
 use r1cs::{

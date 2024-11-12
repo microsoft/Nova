@@ -15,21 +15,6 @@ pub trait SizedWitness<Scalar: PrimeField> {
 
   /// Generate a witness for the constraint system
   fn generate_witness_into(&mut self, aux: &mut [Scalar], inputs: &mut [Scalar]) -> Scalar;
-  /// Generate a witness for the constraint system
-  fn generate_witness(&mut self) -> (Vec<Scalar>, Vec<Scalar>, Scalar) {
-    let aux_count = self.num_aux();
-    let inputs_count = self.num_inputs();
-
-    let mut aux = Vec::with_capacity(aux_count);
-    let mut inputs = Vec::with_capacity(inputs_count);
-
-    aux.resize(aux_count, Scalar::ZERO);
-    inputs.resize(inputs_count, Scalar::ZERO);
-
-    let result = self.generate_witness_into(&mut aux, &mut inputs);
-
-    (aux, inputs, result)
-  }
 
   /// Generate a witness for the constraint system
   fn generate_witness_into_cs<CS: ConstraintSystem<Scalar>>(&mut self, cs: &mut CS) -> Scalar {
@@ -70,30 +55,6 @@ where
   /// Get aux assignment
   pub fn aux_assignment(&self) -> &[Scalar] {
     &self.aux_assignment
-  }
-
-  /// Create a new [`WitnessCS`] with the specified capacity.
-  pub fn with_capacity(input_size: usize, aux_size: usize) -> Self {
-    let mut input_assignment = Vec::with_capacity(input_size);
-    input_assignment.push(Scalar::ONE);
-    let aux_assignment = Vec::with_capacity(aux_size);
-    Self {
-      input_assignment,
-      aux_assignment,
-    }
-  }
-
-  /// Create a new [`WitnessCS`] from the specified assignments.
-  pub fn from_assignments(input_assignment: Vec<Scalar>, aux_assignment: Vec<Scalar>) -> Self {
-    Self {
-      input_assignment,
-      aux_assignment,
-    }
-  }
-
-  /// Convert the [`WitnessCS`] into a tuple of input and aux assignments.
-  pub fn to_assignments(self) -> (Vec<Scalar>, Vec<Scalar>) {
-    (self.input_assignment, self.aux_assignment)
   }
 }
 

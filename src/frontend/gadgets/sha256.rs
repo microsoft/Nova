@@ -7,9 +7,7 @@
 
 use ff::PrimeField;
 
-use super::boolean::Boolean;
-use super::multieq::MultiEq;
-use super::uint32::UInt32;
+use super::{boolean::Boolean, multieq::MultiEq, uint32::UInt32};
 use crate::frontend::{ConstraintSystem, SynthesisError};
 
 #[allow(clippy::unreadable_literal)]
@@ -28,25 +26,6 @@ const ROUND_CONSTANTS: [u32; 64] = [
 const IV: [u32; 8] = [
   0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
-
-/// Compute the SHA-256 hash of the given input.
-pub fn sha256_block_no_padding<Scalar, CS>(
-  mut cs: CS,
-  input: &[Boolean],
-) -> Result<Vec<Boolean>, SynthesisError>
-where
-  Scalar: PrimeField,
-  CS: ConstraintSystem<Scalar>,
-{
-  assert_eq!(input.len(), 512);
-
-  Ok(
-    sha256_compression_function(&mut cs, input, &get_sha256_iv())?
-      .into_iter()
-      .flat_map(|e| e.into_bits_be())
-      .collect(),
-  )
-}
 
 /// Compute the SHA-256 hash of the given input.
 pub fn sha256<Scalar, CS>(mut cs: CS, input: &[Boolean]) -> Result<Vec<Boolean>, SynthesisError>

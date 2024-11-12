@@ -3,8 +3,8 @@
 //! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
-use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use nova_snark::{
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
