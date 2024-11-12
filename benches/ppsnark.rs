@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 use criterion::*;
 use ff::PrimeField;
-use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use nova_snark::{
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   provider::Bn256EngineKZG,
   spartan::direct::DirectSNARK,
   traits::{circuit::StepCircuit, Engine},

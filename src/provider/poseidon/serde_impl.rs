@@ -4,12 +4,12 @@ use serde::{
   ser::{SerializeStruct, Serializer},
   Deserialize, Serialize,
 };
-use std::fmt;
-use std::marker::PhantomData;
+use std::{fmt, marker::PhantomData};
 
-use super::hash_type::HashType;
-use super::poseidon_inner::Arity;
-use super::poseidon_inner::PoseidonConstants;
+use super::{
+  hash_type::HashType,
+  poseidon_inner::{Arity, PoseidonConstants},
+};
 
 impl<F, A> Serialize for PoseidonConstants<F, A>
 where

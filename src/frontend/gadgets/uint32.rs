@@ -5,8 +5,10 @@ use ff::PrimeField;
 
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
 
-use super::boolean::{AllocatedBit, Boolean};
-use super::multieq::MultiEq;
+use super::{
+  boolean::{AllocatedBit, Boolean},
+  multieq::MultiEq,
+};
 
 /// Represents an interpretation of 32 `Boolean` objects as an
 /// unsigned integer.
@@ -37,40 +39,6 @@ impl UInt32 {
       bits,
       value: Some(value),
     }
-  }
-
-  /// Allocate a `UInt32` in the constraint system
-  pub fn alloc<Scalar, CS>(mut cs: CS, value: Option<u32>) -> Result<Self, SynthesisError>
-  where
-    Scalar: PrimeField,
-    CS: ConstraintSystem<Scalar>,
-  {
-    let values = match value {
-      Some(mut val) => {
-        let mut v = Vec::with_capacity(32);
-
-        for _ in 0..32 {
-          v.push(Some(val & 1 == 1));
-          val >>= 1;
-        }
-
-        v
-      }
-      None => vec![None; 32],
-    };
-
-    let bits = values
-      .into_iter()
-      .enumerate()
-      .map(|(i, v)| {
-        Ok(Boolean::from(AllocatedBit::alloc(
-          cs.namespace(|| format!("allocated bit {}", i)),
-          v,
-        )?))
-      })
-      .collect::<Result<Vec<_>, SynthesisError>>()?;
-
-    Ok(UInt32 { bits, value })
   }
 
   pub fn into_bits_be(self) -> Vec<Boolean> {
@@ -104,59 +72,6 @@ impl UInt32 {
     UInt32 {
       value,
       bits: bits.iter().rev().cloned().collect(),
-    }
-  }
-
-  /// Turns this `UInt32` into its little-endian byte order representation.
-  pub fn into_bits(self) -> Vec<Boolean> {
-    self.bits
-  }
-
-  /// Converts a little-endian byte order representation of bits into a
-  /// `UInt32`.
-  pub fn from_bits(bits: &[Boolean]) -> Self {
-    assert_eq!(bits.len(), 32);
-
-    let new_bits = bits.to_vec();
-
-    let mut value = Some(0u32);
-    for b in new_bits.iter().rev() {
-      if let Some(v) = value.as_mut() {
-        *v <<= 1;
-      }
-
-      match *b {
-        Boolean::Constant(b) => {
-          if b {
-            if let Some(v) = value.as_mut() {
-              *v |= 1;
-            }
-          }
-        }
-        Boolean::Is(ref b) => match b.get_value() {
-          Some(true) => {
-            if let Some(v) = value.as_mut() {
-              *v |= 1;
-            }
-          }
-          Some(false) => {}
-          None => value = None,
-        },
-        Boolean::Not(ref b) => match b.get_value() {
-          Some(false) => {
-            if let Some(v) = value.as_mut() {
-              *v |= 1;
-            }
-          }
-          Some(true) => {}
-          None => value = None,
-        },
-      }
-    }
-
-    UInt32 {
-      value,
-      bits: new_bits,
     }
   }
 
@@ -312,7 +227,7 @@ impl UInt32 {
 
     // Compute the maximum value of the sum so we allocate enough bits for
     // the result
-    let mut max_value = (operands.len() as u64) * (u64::from(u32::max_value()));
+    let mut max_value = (operands.len() as u64) * (u64::from(u32::MAX));
 
     // Keep track of the resulting value
     let mut result_value = Some(0u64);

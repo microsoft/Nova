@@ -1,7 +1,9 @@
-use crate::provider::poseidon::hash_type::HashType;
-use crate::provider::poseidon::poseidon_inner::{Arity, Poseidon, PoseidonConstants};
-use crate::provider::poseidon::sponge::api::{IOPattern, InnerSpongeAPI};
-use crate::provider::poseidon::{PoseidonError, Strength};
+use crate::provider::poseidon::{
+  hash_type::HashType,
+  poseidon_inner::{Arity, Poseidon, PoseidonConstants},
+  sponge::api::{IOPattern, InnerSpongeAPI},
+  PoseidonError, Strength,
+};
 use ff::PrimeField;
 use std::collections::VecDeque;
 
@@ -34,8 +36,6 @@ remaining unsqueezed elements are queued. Otherwise they would be lost when perm
 pub enum Mode {
   /// Simplex mode
   Simplex,
-  /// Duplex mode
-  Duplex,
 }
 
 #[derive(Clone, Copy)]
@@ -73,16 +73,6 @@ where
   /// Create a new sponge with the given constants and mode
   fn new_with_constants(constants: &'a PoseidonConstants<F, A>, mode: Mode) -> Self;
 
-  /// Return simplex constants
-  fn simplex_constants(size: usize) -> PoseidonConstants<F, A> {
-    PoseidonConstants::new_constant_length(size)
-  }
-
-  /// Return duplex constants
-  fn duplex_constants() -> PoseidonConstants<F, A> {
-    PoseidonConstants::new_constant_length(0)
-  }
-
   /// Return API constants
   fn api_constants(strength: Strength) -> PoseidonConstants<F, A> {
     PoseidonConstants::new_with_strength_and_type(strength, HashType::Sponge)
@@ -96,8 +86,6 @@ where
   fn set_direction(&mut self, direction: Direction);
   /// Return the number of absorbed elements
   fn absorbed(&self) -> usize;
-  /// Set the number of absorbed elements
-  fn set_absorbed(&mut self, absorbed: usize);
   /// Return the number of squeezed elements
   fn squeezed(&self) -> usize;
   /// Set the number of squeezed elements
@@ -116,21 +104,15 @@ where
   /// Set the element at the given index
   fn set_element(&mut self, index: usize, elt: Self::Elt);
 
-  /// Make elt
-  #[deprecated(since = "0.10.0")]
-  fn make_elt(&self, val: F, acc: &mut Self::Acc) -> Self::Elt;
-
   /// Return whether the sponge is in simplex mode
   fn is_simplex(&self) -> bool {
     match self.mode() {
       Mode::Simplex => true,
-      Mode::Duplex => false,
     }
   }
   /// Return whether the sponge is in duplex mode
   fn is_duplex(&self) -> bool {
     match self.mode() {
-      Mode::Duplex => true,
       Mode::Simplex => false,
     }
   }
@@ -143,22 +125,9 @@ where
     }
   }
 
-  /// Return whether the sponge is squeezing
-  fn is_squeezing(&self) -> bool {
-    match self.direction() {
-      Direction::Squeezing => true,
-      Direction::Absorbing => false,
-    }
-  }
-
   /// Return the number of available elements
   fn available(&self) -> usize {
     self.absorbed() - self.squeezed()
-  }
-
-  /// Return whether the sponge is immediately squeezable
-  fn is_immediately_squeezable(&self) -> bool {
-    self.squeeze_pos() < self.absorb_pos()
   }
 
   /// Return the rate of the sponge
@@ -188,26 +157,6 @@ where
     self.squeeze_pos() < self.size() - self.capacity()
   }
 
-  /// Return whether the sponge is exhausted
-  fn is_exhausted(&self) -> bool {
-    // Exhaustion only applies to simplex.
-    self.is_simplex() && self.squeezed() >= self.total_size()
-  }
-
-  /// Ensure the sponge is absorbing
-  fn ensure_absorbing(&mut self) {
-    match self.direction() {
-      Direction::Absorbing => (),
-      Direction::Squeezing => {
-        if self.is_simplex() {
-          panic!("Simplex sponge cannot absorb after squeezing.");
-        } else {
-          self.set_direction(Direction::Absorbing);
-        }
-      }
-    }
-  }
-
   /// Permute the sponge
   fn permute(&mut self, acc: &mut Self::Acc) -> Result<(), Self::Error> {
     // NOTE: this will apply any needed padding in the partially-absorbed case.
@@ -219,9 +168,6 @@ where
 
     if needs_padding {
       match self.mode() {
-        Mode::Duplex => {
-          panic!("Duplex sponge must permute exactly `rate` absorbed elements.")
-        }
         Mode::Simplex => {
           let final_permutation = self.squeezed() % self.total_size() <= self.rate();
           assert!(
@@ -259,7 +205,6 @@ where
               self.permute(acc)?;
             }
           }
-          Mode::Duplex => (),
         }
         self.set_direction(Direction::Squeezing);
       }
@@ -269,35 +214,6 @@ where
 
   /// Squeeze Aux
   fn squeeze_aux(&mut self) -> Self::Elt;
-
-  /// Absorb Aux
-  fn absorb_aux(&mut self, elt: &Self::Elt) -> Self::Elt;
-
-  /// Absorb one field element
-  fn absorb(&mut self, elt: &Self::Elt, acc: &mut Self::Acc) -> Result<(), Self::Error> {
-    self.ensure_absorbing();
-
-    // Add input element to state and advance absorption position.
-    let tmp = self.absorb_aux(elt);
-    self.set_element(self.absorb_pos() + self.capacity(), tmp);
-    self.set_absorb_pos(self.absorb_pos() + 1);
-
-    // When position equals size, we need to permute.
-    if self.absorb_pos() >= self.rate() {
-      if self.is_duplex() {
-        // When we permute, existing unsqueezed elements will be lost. Enqueue them.
-        while self.is_immediately_squeezable() {
-          let elt = self.squeeze_aux();
-          self.enqueue(elt);
-        }
-      }
-
-      self.permute(acc)?;
-    }
-
-    self.set_absorbed(self.absorbed() + 1);
-    Ok(())
-  }
 
   /// Perform a squeeze operation
   fn squeeze(&mut self, acc: &mut Self::Acc) -> Result<Option<Self::Elt>, Self::Error> {
@@ -323,26 +239,8 @@ where
     Ok(Some(squeezed))
   }
 
-  /// Enqueue an element
-  fn enqueue(&mut self, elt: Self::Elt);
-
   /// Dequeue an element
   fn dequeue(&mut self) -> Option<Self::Elt>;
-
-  /// Absorb a slice of field elements
-  fn absorb_elements(
-    &mut self,
-    elts: &[Self::Elt],
-    acc: &mut Self::Acc,
-  ) -> Result<(), Self::Error> {
-    for elt in elts {
-      self.absorb(elt, acc)?;
-    }
-    Ok(())
-  }
-
-  /// Squeeze a number of elements
-  fn squeeze_elements(&mut self, count: usize, acc: &mut Self::Acc) -> Vec<Self::Elt>;
 }
 
 impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> {
@@ -378,9 +276,7 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
   fn absorbed(&self) -> usize {
     self.absorbed
   }
-  fn set_absorbed(&mut self, absorbed: usize) {
-    self.absorbed = absorbed;
-  }
+
   fn squeezed(&self) -> usize {
     self.squeezed
   }
@@ -405,10 +301,6 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
   }
   fn set_element(&mut self, index: usize, elt: Self::Elt) {
     self.state.elements[index] = elt;
-  }
-
-  fn make_elt(&self, val: F, _acc: &mut Self::Acc) -> Self::Elt {
-    val
   }
 
   fn rate(&self) -> usize {
@@ -436,9 +328,6 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
     Ok(())
   }
 
-  fn enqueue(&mut self, elt: Self::Elt) {
-    self.queue.push_back(elt);
-  }
   fn dequeue(&mut self) -> Option<Self::Elt> {
     self.queue.pop_front()
   }
@@ -448,21 +337,6 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
     SpongeTrait::set_squeeze_pos(self, SpongeTrait::squeeze_pos(self) + 1);
 
     squeezed
-  }
-
-  fn absorb_aux(&mut self, elt: &Self::Elt) -> Self::Elt {
-    self.element(SpongeTrait::absorb_pos(self) + SpongeTrait::capacity(self)) + elt
-  }
-
-  fn absorb_elements(&mut self, elts: &[F], acc: &mut Self::Acc) -> Result<(), Self::Error> {
-    for elt in elts {
-      self.absorb(elt, acc)?;
-    }
-    Ok(())
-  }
-
-  fn squeeze_elements(&mut self, count: usize, _acc: &mut ()) -> Vec<Self::Elt> {
-    self.take(count).collect()
   }
 }
 
@@ -475,7 +349,6 @@ impl<F: PrimeField, A: Arity<F>> Iterator for Sponge<'_, F, A> {
 
   fn size_hint(&self) -> (usize, Option<usize>) {
     match self.mode {
-      Mode::Duplex => (self.available(), None),
       Mode::Simplex => (0, None),
     }
   }

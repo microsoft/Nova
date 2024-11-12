@@ -11,7 +11,6 @@ mod circuit2_witness;
 mod hash_type;
 mod matrix;
 mod mds;
-mod poseidon_alt;
 mod poseidon_inner;
 mod preprocessing;
 mod round_constants;
@@ -27,13 +26,11 @@ pub use sponge::{
   vanilla::{Mode::Simplex, Sponge, SpongeTrait},
 };
 
-use crate::frontend::{
-  boolean::{AllocatedBit, Boolean},
-  num::AllocatedNum,
-  ConstraintSystem, SynthesisError,
+use crate::{
+  frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, SynthesisError},
+  provider::poseidon::poseidon_inner::PoseidonConstants,
+  traits::{ROCircuitTrait, ROTrait},
 };
-use crate::provider::poseidon::poseidon_inner::PoseidonConstants;
-use crate::traits::{ROCircuitTrait, ROTrait};
 use core::marker::PhantomData;
 use ff::PrimeFieldBits;
 use generic_array::typenum::U24;
@@ -93,16 +90,7 @@ pub(crate) fn quintic_s_box<F: PrimeField>(l: &mut F, pre_add: Option<&F>, post_
 
 #[derive(Debug, Clone)]
 /// Possible error states for the hashing.
-pub enum PoseidonError {
-  /// The allowed number of leaves cannot be greater than the arity of the tree.
-  FullBuffer,
-  /// Attempt to reference an index element that is out of bounds
-  IndexOutOfBounds,
-  /// GPU error
-  GpuError(String),
-  /// Other error
-  Other(String),
-}
+pub enum PoseidonError {}
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
@@ -275,12 +263,14 @@ where
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{
-    Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
-  };
   use crate::{
-    constants::NUM_CHALLENGE_BITS, frontend::solver::SatisfyingAssignment,
-    gadgets::utils::le_bits_to_num, traits::Engine,
+    constants::NUM_CHALLENGE_BITS,
+    frontend::solver::SatisfyingAssignment,
+    gadgets::utils::le_bits_to_num,
+    provider::{
+      Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
+    },
+    traits::Engine,
   };
   use ff::Field;
   use rand::rngs::OsRng;

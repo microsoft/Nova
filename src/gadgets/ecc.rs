@@ -1,12 +1,9 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
-use crate::frontend::gadgets::Assignment;
-use crate::frontend::{
-  boolean::{AllocatedBit, Boolean},
-  num::AllocatedNum,
-  ConstraintSystem, SynthesisError,
-};
 use crate::{
+  frontend::{
+    num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
+  },
   gadgets::utils::{
     alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
     select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
@@ -785,13 +782,13 @@ mod tests {
   use crate::{
     frontend::{
       r1cs::{NovaShape, NovaWitness},
-      {solver::SatisfyingAssignment, test_shape_cs::TestShapeCS},
+      solver::SatisfyingAssignment,
+      test_shape_cs::TestShapeCS,
     },
     provider::{
       bn256_grumpkin::{bn256, grumpkin},
       secp_secq::{secp256k1, secq256k1},
-      Bn256EngineKZG, GrumpkinEngine, Secp256k1Engine, Secq256k1Engine,
-      {PallasEngine, VestaEngine},
+      Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::snark::default_ck_hint,
   };

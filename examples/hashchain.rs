@@ -3,13 +3,14 @@
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use generic_array::typenum::U24;
-use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
-use nova_snark::provider::poseidon::Elt;
-use nova_snark::provider::poseidon::{
-  IOPattern, Simplex, Sponge, SpongeAPI, SpongeCircuit, SpongeOp, SpongeTrait, Strength,
-};
 use nova_snark::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  provider::{
+    poseidon::{
+      Elt, IOPattern, Simplex, Sponge, SpongeAPI, SpongeCircuit, SpongeOp, SpongeTrait, Strength,
+    },
+    Bn256EngineKZG, GrumpkinEngine,
+  },
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,

@@ -274,53 +274,6 @@ impl AllocatedBit {
   }
 }
 
-/// Convert a `u64` into a vector of `Boolean`s representing its bits.
-pub fn u64_into_boolean_vec_le<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
-  mut cs: CS,
-  value: Option<u64>,
-) -> Result<Vec<Boolean>, SynthesisError> {
-  let values = match value {
-    Some(ref value) => {
-      let mut tmp = Vec::with_capacity(64);
-
-      for i in 0..64 {
-        tmp.push(Some(*value >> i & 1 == 1));
-      }
-
-      tmp
-    }
-    None => vec![None; 64],
-  };
-
-  let bits = values
-    .into_iter()
-    .enumerate()
-    .map(|(i, b)| {
-      Ok(Boolean::from(AllocatedBit::alloc(
-        cs.namespace(|| format!("bit {}", i)),
-        b,
-      )?))
-    })
-    .collect::<Result<Vec<_>, SynthesisError>>()?;
-
-  Ok(bits)
-}
-
-/// Convert a field element into a vector of `Boolean`s representing its bits.
-pub fn field_into_boolean_vec_le<Scalar, CS>(
-  cs: CS,
-  value: Option<Scalar>,
-) -> Result<Vec<Boolean>, SynthesisError>
-where
-  Scalar: PrimeField,
-  Scalar: PrimeFieldBits,
-  CS: ConstraintSystem<Scalar>,
-{
-  let v = field_into_allocated_bits_le::<Scalar, CS>(cs, value)?;
-
-  Ok(v.into_iter().map(Boolean::from).collect())
-}
-
 /// Convert a field element into a vector of [`AllocatedBit`]'s representing its bits.
 pub fn field_into_allocated_bits_le<Scalar, CS>(
   mut cs: CS,

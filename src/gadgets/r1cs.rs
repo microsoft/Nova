@@ -3,10 +3,9 @@ use super::nonnative::{
   bignat::BigNat,
   util::{f_to_nat, Num},
 };
-use crate::frontend::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
-use crate::frontend::{ConstraintSystem, SynthesisError};
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
     utils::{

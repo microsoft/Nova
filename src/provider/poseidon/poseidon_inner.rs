@@ -14,8 +14,7 @@ use super::{
   hash_type::HashType,
   matrix::{left_apply_matrix, Matrix},
   mds::{MdsMatrices, SparseMatrix},
-  poseidon_alt::{hash_correct, hash_optimized_dynamic},
-  quintic_s_box, round_constants, round_numbers, PoseidonError, Strength, DEFAULT_STRENGTH,
+  quintic_s_box, round_constants, round_numbers, Strength, DEFAULT_STRENGTH,
 };
 
 /// Available arities for the Poseidon hasher.
@@ -114,16 +113,10 @@ where
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum HashMode {
-  // The initial and correct version of the algorithm. We should preserve the ability to hash this way for reference
-  // and to preserve confidence in our tests along thew way.
-  Correct,
-  // This mode is meant to be mostly synchronized with `Correct` but may reduce or simplify the work performed by the
-  // algorithm, if not the code implementing. Its purpose is for use during refactoring/development.
-  OptimizedDynamic,
   // Consumes statically pre-processed constants for simplest operation.
   OptimizedStatic,
 }
-use HashMode::{Correct, OptimizedDynamic, OptimizedStatic};
+use HashMode::OptimizedStatic;
 
 pub const DEFAULT_HASH_MODE: HashMode = OptimizedStatic;
 
@@ -138,38 +131,6 @@ where
   /// - Merkle Tree (where all leafs are presented) domain separation ([`HashType`]).
   pub fn new() -> Self {
     Self::new_with_strength(DEFAULT_STRENGTH)
-  }
-
-  /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
-  /// of constant-size preimages with following parameters:
-  /// - 128 bit of security;
-  /// - Constant-Input-Length Hashing domain separation ([`HashType`]).
-  ///
-  /// Instantiated [`PoseidonConstants`] still calculates internal constants based on [`Arity`], but calculation of
-  /// [`HashType::domain_tag`] is based on input `length`.
-  pub fn new_constant_length(length: usize) -> Self {
-    Self::new_with_strength_and_type(DEFAULT_STRENGTH, HashType::ConstantLength(length))
-  }
-
-  /// Creates new instance of [`PoseidonConstants`] from already defined one with recomputed domain tag.
-  ///
-  /// It is assumed that input `length` is equal or less than [`Arity`].
-  pub fn with_length(&self, length: usize) -> Self {
-    let arity = A::to_usize();
-    assert!(length <= arity);
-
-    let hash_type = match self.hash_type {
-      HashType::ConstantLength(_) => HashType::ConstantLength(length),
-      _ => panic!("cannot set constant length of hash without type ConstantLength."),
-    };
-
-    let domain_tag = hash_type.domain_tag();
-
-    Self {
-      hash_type,
-      domain_tag,
-      ..self.clone()
-    }
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
@@ -292,91 +253,10 @@ where
     }
   }
 
-  /// Creates [`Poseidon`] instance using provided preimage and [`PoseidonConstants`] as input.
-  /// Doesn't support [`PoseidonConstants`] with [`HashType::VariableLength`]. It is assumed that
-  /// size of input preimage set can't be greater than [`Arity`].
-  pub fn new_with_preimage(preimage: &[F], constants: &'a PoseidonConstants<F, A>) -> Self {
-    let elements = match constants.hash_type {
-      HashType::ConstantLength(constant_len) => {
-        assert_eq!(constant_len, preimage.len(), "Invalid preimage size");
-
-        GenericArray::generate(|i| {
-          if i == 0 {
-            constants.domain_tag
-          } else if i > preimage.len() {
-            F::ZERO
-          } else {
-            preimage[i - 1]
-          }
-        })
-      }
-      HashType::MerkleTreeSparse(_) => {
-        panic!("Merkle Tree (with some empty leaves) hashes are not yet supported.")
-      }
-      HashType::VariableLength => panic!("variable-length hashes are not yet supported."),
-      _ => {
-        assert_eq!(preimage.len(), A::to_usize(), "Invalid preimage size");
-
-        GenericArray::generate(|i| {
-          if i == 0 {
-            constants.domain_tag
-          } else {
-            preimage[i - 1]
-          }
-        })
-      }
-    };
-    let width = preimage.len() + 1;
-
-    Poseidon {
-      constants_offset: 0,
-      current_round: 0,
-      elements,
-      pos: width,
-      constants,
-      _f: PhantomData::<F>,
-    }
-  }
-
-  /// Replaces the elements with the provided optional items.
-  ///
-  /// # Panics
-  ///
-  /// Panics if the provided slice is not equal to the arity.
-  pub fn set_preimage(&mut self, preimage: &[F]) {
-    self.reset();
-    self.elements[1..].copy_from_slice(preimage);
-    self.pos = self.elements.len();
-  }
-
-  /// Restore the initial state
-  pub fn reset(&mut self) {
-    self.reset_offsets();
-    self.elements[1..].iter_mut().for_each(|l| *l = F::ZERO);
-    self.elements[0] = self.constants.domain_tag;
-  }
-
   pub(crate) fn reset_offsets(&mut self) {
     self.constants_offset = 0;
     self.current_round = 0;
     self.pos = 1;
-  }
-
-  /// Adds one more field element of preimage to the underlying [`Poseidon`] buffer for further hashing.
-  /// The returned `usize` represents the element position (within arity) for the input operation.
-  /// Returns [`PoseidonError::FullBuffer`] if no more elements can be added for hashing.
-  pub fn input(&mut self, element: F) -> Result<usize, PoseidonError> {
-    // Cannot input more elements than the defined arity
-    // To hash constant-length input greater than arity, use sponge explicitly.
-    if self.pos >= self.constants.width() {
-      return Err(PoseidonError::FullBuffer);
-    }
-
-    // Set current element, and increase the pointer
-    self.elements[self.pos] = element;
-    self.pos += 1;
-
-    Ok(self.pos - 1)
   }
 
   /// Performs hashing using underlying [`Poseidon`] buffer of the preimage' field elements
@@ -384,8 +264,6 @@ where
   /// of concrete type specified upon [`PoseidonConstants`] and [`Poseidon`] instantiations.
   pub fn hash_in_mode(&mut self, mode: HashMode) -> F {
     let res = match mode {
-      Correct => hash_correct(self),
-      OptimizedDynamic => hash_optimized_dynamic(self),
       OptimizedStatic => self.hash_optimized_static(),
     };
     self.reset_offsets();

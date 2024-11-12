@@ -3,27 +3,36 @@
 //! Most of the code is ported from https://github.com/argumentcomputer/bellpepper.
 
 mod constraint_system;
-pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};
-pub mod gadgets;
-pub use gadgets::{boolean, num};
+mod gadgets;
 mod lc;
+
+pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};
+pub use gadgets::{
+  boolean::{AllocatedBit, Boolean},
+  num,
+  sha256::sha256,
+  Assignment,
+};
 pub use lc::{Index, LinearCombination, Variable};
-pub mod util_cs;
-#[cfg(test)]
-pub use util_cs::test_cs;
+
 pub mod r1cs;
 pub mod shape_cs;
 pub mod solver;
 pub mod test_shape_cs;
+pub mod util_cs;
+
+#[cfg(test)]
+pub use util_cs::test_cs;
 
 #[cfg(test)]
 mod tests {
-  use crate::frontend::{num::AllocatedNum, ConstraintSystem};
   use crate::{
     frontend::{
+      num::AllocatedNum,
       r1cs::{NovaShape, NovaWitness},
       shape_cs::ShapeCS,
       solver::SatisfyingAssignment,
+      ConstraintSystem,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     traits::{snark::default_ck_hint, Engine},

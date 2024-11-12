@@ -1,5 +1,4 @@
-use std::io;
-use std::marker::PhantomData;
+use std::{io, marker::PhantomData};
 
 use ff::PrimeField;
 

@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use super::Comparable;
 use crate::frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 
 use ff::PrimeField;
@@ -10,7 +9,7 @@ use ff::PrimeField;
 #[derive(Debug)]
 enum NamedObject {
   Constraint,
-  Var(Variable),
+  Var,
   Namespace,
 }
 
@@ -73,10 +72,7 @@ fn eval_lc<Scalar: PrimeField>(
 impl<Scalar: PrimeField> Default for TestConstraintSystem<Scalar> {
   fn default() -> Self {
     let mut map = HashMap::new();
-    map.insert(
-      "ONE".into(),
-      NamedObject::Var(TestConstraintSystem::<Scalar>::one()),
-    );
+    map.insert("ONE".into(), NamedObject::Var);
 
     TestConstraintSystem {
       named_objects: map,
@@ -92,45 +88,6 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   /// Create a new test constraint system.
   pub fn new() -> Self {
     Default::default()
-  }
-
-  /// Get scalar inputs
-  pub fn scalar_inputs(&self) -> Vec<Scalar> {
-    self
-      .inputs
-      .iter()
-      .map(|(scalar, _string)| *scalar)
-      .collect()
-  }
-
-  /// Get scalar aux
-  pub fn scalar_aux(&self) -> Vec<Scalar> {
-    self.aux.iter().map(|(scalar, _string)| *scalar).collect()
-  }
-
-  /// Pretty print
-  pub fn pretty_print_list(&self) -> Vec<String> {
-    let mut result = Vec::new();
-
-    for input in &self.inputs {
-      result.push(format!("INPUT {}", input.1));
-    }
-    for aux in &self.aux {
-      result.push(format!("AUX {}", aux.1));
-    }
-
-    for (_a, _b, _c, name) in &self.constraints {
-      result.push(name.to_string());
-    }
-
-    result
-  }
-
-  /// Pretty print
-  pub fn pretty_print(&self) -> String {
-    let res = self.pretty_print_list();
-
-    res.join("\n")
   }
 
   /// Get path which is unsatisfied
@@ -162,72 +119,6 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
     // self.which_is_unsatisfied().is_none()
   }
 
-  /// Return the number of constraints in the constraint system.
-  pub fn num_constraints(&self) -> usize {
-    self.constraints.len()
-  }
-
-  /// Create a new variable in the constraint system.
-  pub fn set(&mut self, path: &str, to: Scalar) {
-    match self.named_objects.get(path) {
-      Some(NamedObject::Var(v)) => match v.get_unchecked() {
-        Index::Input(index) => self.inputs[index].0 = to,
-        Index::Aux(index) => self.aux[index].0 = to,
-      },
-      Some(e) => panic!(
-        "tried to set path `{}` to value, but `{:?}` already exists there.",
-        path, e
-      ),
-      _ => panic!("no variable exists at path: {}", path),
-    }
-  }
-
-  /// Verify expected vec == self.inputs
-  pub fn verify(&self, expected: &[Scalar]) -> bool {
-    assert_eq!(expected.len() + 1, self.inputs.len());
-    for (a, b) in self.inputs.iter().skip(1).zip(expected.iter()) {
-      if &a.0 != b {
-        return false;
-      }
-    }
-
-    true
-  }
-
-  /// Return number of inputs in the constraint system.
-  pub fn num_inputs(&self) -> usize {
-    self.inputs.len()
-  }
-
-  /// Get an input variable.
-  pub fn get_input(&mut self, index: usize, path: &str) -> Scalar {
-    let (assignment, name) = self.inputs[index].clone();
-
-    assert_eq!(path, name);
-
-    assignment
-  }
-
-  /// Get inputs
-  pub fn get_inputs(&self) -> &[(Scalar, String)] {
-    &self.inputs[..]
-  }
-
-  /// Get Scalar from path
-  pub fn get(&mut self, path: &str) -> Scalar {
-    match self.named_objects.get(path) {
-      Some(NamedObject::Var(v)) => match v.get_unchecked() {
-        Index::Input(index) => self.inputs[index].0,
-        Index::Aux(index) => self.aux[index].0,
-      },
-      Some(e) => panic!(
-        "tried to get value of path `{}`, but `{:?}` exists there (not a variable)",
-        path, e
-      ),
-      _ => panic!("no variable exists at path: {}", path),
-    }
-  }
-
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
     assert!(
       !self.named_objects.contains_key(&path),
@@ -236,35 +127,6 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
     );
 
     self.named_objects.insert(path, to);
-  }
-}
-
-impl<Scalar: PrimeField> Comparable<Scalar> for TestConstraintSystem<Scalar> {
-  fn num_inputs(&self) -> usize {
-    self.num_inputs()
-  }
-  fn num_constraints(&self) -> usize {
-    self.num_constraints()
-  }
-
-  fn aux(&self) -> Vec<String> {
-    self
-      .aux
-      .iter()
-      .map(|(_scalar, string)| string.to_string())
-      .collect()
-  }
-
-  fn inputs(&self) -> Vec<String> {
-    self
-      .inputs
-      .iter()
-      .map(|(_scalar, string)| string.to_string())
-      .collect()
-  }
-
-  fn constraints(&self) -> &[crate::frontend::util_cs::Constraint<Scalar>] {
-    &self.constraints
   }
 }
 
@@ -295,7 +157,7 @@ impl<Scalar: PrimeField> ConstraintSystem<Scalar> for TestConstraintSystem<Scala
     let path = compute_path(&self.current_namespace, &annotation().into());
     self.aux.push((f()?, path.clone()));
     let var = Variable::new_unchecked(Index::Aux(index));
-    self.set_named_obj(path, NamedObject::Var(var));
+    self.set_named_obj(path, NamedObject::Var);
 
     Ok(var)
   }
@@ -310,7 +172,7 @@ impl<Scalar: PrimeField> ConstraintSystem<Scalar> for TestConstraintSystem<Scala
     let path = compute_path(&self.current_namespace, &annotation().into());
     self.inputs.push((f()?, path.clone()));
     let var = Variable::new_unchecked(Index::Input(index));
-    self.set_named_obj(path, NamedObject::Var(var));
+    self.set_named_obj(path, NamedObject::Var);
 
     Ok(var)
   }

@@ -2,13 +2,12 @@
 //! It performs the AND operation by first decomposing the operands into bits and then performing the operation bit-by-bit.
 //! We execute a configurable number of AND operations per step of Nova's recursion.
 use core::marker::PhantomData;
-use ff::Field;
-use ff::{PrimeField, PrimeFieldBits};
+use ff::{Field, PrimeField, PrimeFieldBits};
 use flate2::{write::ZlibEncoder, Compression};
-use nova_snark::frontend::{
-  boolean::AllocatedBit, num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError,
-};
 use nova_snark::{
+  frontend::{
+    num::AllocatedNum, AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError,
+  },
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},

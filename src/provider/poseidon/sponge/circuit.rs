@@ -1,16 +1,17 @@
-use crate::frontend::num::AllocatedNum;
-use crate::frontend::util_cs::witness_cs::SizedWitness;
-use crate::frontend::{ConstraintSystem, Namespace, SynthesisError};
-use crate::provider::poseidon::circuit2::{Elt, PoseidonCircuit2};
-use crate::provider::poseidon::poseidon_inner::{Arity, Poseidon, PoseidonConstants};
-use crate::provider::poseidon::sponge::{
-  api::{IOPattern, InnerSpongeAPI},
-  vanilla::{Direction, Mode, SpongeTrait},
+use crate::{
+  frontend::{util_cs::witness_cs::SizedWitness, ConstraintSystem, Namespace, SynthesisError},
+  provider::poseidon::{
+    circuit2::{Elt, PoseidonCircuit2},
+    poseidon_inner::{Arity, Poseidon, PoseidonConstants},
+    sponge::{
+      api::{IOPattern, InnerSpongeAPI},
+      vanilla::{Direction, Mode, SpongeTrait},
+    },
+  },
 };
 
 use ff::PrimeField;
-use std::collections::VecDeque;
-use std::marker::PhantomData;
+use std::{collections::VecDeque, marker::PhantomData};
 
 /// The Poseidon sponge circuit
 pub struct SpongeCircuit<'a, F, A, C>
@@ -71,9 +72,7 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
   fn absorbed(&self) -> usize {
     self.absorbed
   }
-  fn set_absorbed(&mut self, absorbed: usize) {
-    self.absorbed = absorbed;
-  }
+
   fn squeezed(&self) -> usize {
     self.squeezed
   }
@@ -100,11 +99,6 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
   fn set_element(&mut self, index: usize, elt: Self::Elt) {
     self.poseidon.elements[index] = elt.val().unwrap();
     self.state.elements[index] = elt;
-  }
-
-  fn make_elt(&self, val: F, ns: &mut Self::Acc) -> Self::Elt {
-    let allocated = AllocatedNum::alloc_infallible(ns, || val);
-    Elt::Allocated(allocated)
   }
 
   fn rate(&self) -> usize {
@@ -150,9 +144,6 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
     Ok(())
   }
 
-  fn enqueue(&mut self, elt: Self::Elt) {
-    self.queue.push_back(elt);
-  }
   fn dequeue(&mut self) -> Option<Self::Elt> {
     self.queue.pop_front()
   }
@@ -162,24 +153,6 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
     SpongeTrait::set_squeeze_pos(self, SpongeTrait::squeeze_pos(self) + 1);
 
     squeezed
-  }
-
-  fn absorb_aux(&mut self, elt: &Self::Elt) -> Self::Elt {
-    // Elt::add always returns `Ok`, so `unwrap` is safe.
-    self
-      .element(SpongeTrait::absorb_pos(self) + SpongeTrait::capacity(self))
-      .add_ref(elt)
-      .unwrap()
-  }
-
-  fn squeeze_elements(&mut self, count: usize, ns: &mut Self::Acc) -> Vec<Self::Elt> {
-    let mut elements = Vec::with_capacity(count);
-    for _ in 0..count {
-      if let Ok(Some(squeezed)) = self.squeeze(ns) {
-        elements.push(squeezed);
-      }
-    }
-    elements
   }
 }
 

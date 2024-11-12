@@ -2,8 +2,8 @@ use std::{marker::PhantomData, time::Duration};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
-use nova_snark::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use nova_snark::{
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},

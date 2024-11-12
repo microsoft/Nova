@@ -102,14 +102,6 @@ impl Hasher {
 }
 
 impl SpongeOp {
-  /// Reset the SpongeOp
-  pub const fn reset(&self) -> Self {
-    match self {
-      Self::Absorb(_) => Self::Squeeze(0),
-      Self::Squeeze(_) => Self::Absorb(0),
-    }
-  }
-
   /// Return the count of the SpongeOp
   pub const fn count(&self) -> u32 {
     match self {
@@ -120,11 +112,6 @@ impl SpongeOp {
   /// Return true if the SpongeOp is absorb
   pub const fn is_absorb(&self) -> bool {
     matches!(self, Self::Absorb(_))
-  }
-
-  /// Return true if the SpongeOp is squeeze
-  pub const fn is_squeeze(&self) -> bool {
-    matches!(self, Self::Squeeze(_))
   }
 
   /// Combine two SpongeOps

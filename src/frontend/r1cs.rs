@@ -3,9 +3,9 @@
 #![allow(non_snake_case)]
 
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
-use crate::frontend::{Index, LinearCombination};
 use crate::{
   errors::NovaError,
+  frontend::{Index, LinearCombination},
   r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
   traits::Engine,
   CommitmentKey,

@@ -1,12 +1,15 @@
 //! The `circuit2` module implements the optimal Poseidon hash circuit.
 
-use super::hash_type::HashType;
-use super::matrix::Matrix;
-use super::mds::SparseMatrix;
-use super::poseidon_inner::{Arity, PoseidonConstants};
-use crate::frontend::boolean::Boolean;
-use crate::frontend::num::{self, AllocatedNum};
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
+use super::{
+  hash_type::HashType,
+  matrix::Matrix,
+  mds::SparseMatrix,
+  poseidon_inner::{Arity, PoseidonConstants},
+};
+use crate::frontend::{
+  num::{self, AllocatedNum},
+  Boolean, ConstraintSystem, LinearCombination, SynthesisError,
+};
 use ff::PrimeField;
 use std::marker::PhantomData;
 
@@ -27,16 +30,6 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Elt<Scalar> {
 }
 
 impl<Scalar: PrimeField> Elt<Scalar> {
-  /// Check if the Elt is allocated.
-  pub const fn is_allocated(&self) -> bool {
-    matches!(self, Self::Allocated(_))
-  }
-
-  /// Check if the Elt is a Num.
-  pub const fn is_num(&self) -> bool {
-    matches!(self, Self::Num(_))
-  }
-
   /// Create an Elt from a [`Scalar`].
   pub fn num_from_fr<CS: ConstraintSystem<Scalar>>(fr: Scalar) -> Self {
     let num = num::Num::<Scalar>::zero();
