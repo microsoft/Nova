@@ -116,7 +116,6 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
       }
       None => true,
     }
-    // self.which_is_unsatisfied().is_none()
   }
 
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
