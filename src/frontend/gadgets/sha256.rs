@@ -51,7 +51,7 @@ where
 
   let mut cur = get_sha256_iv();
   for (i, block) in padded.chunks(512).enumerate() {
-    cur = sha256_compression_function(cs.namespace(|| format!("block {}", i)), block, &cur)?;
+    cur = sha256_compression_function(cs.namespace(|| (i, format!("block {}", i))), block, &cur)?;
   }
 
   Ok(cur.into_iter().flat_map(|e| e.into_bits_be()).collect())
@@ -84,20 +84,20 @@ where
   let mut cs = MultiEq::new(cs);
 
   for i in 16..64 {
-    let cs = &mut cs.namespace(|| format!("w extension {}", i));
+    let cs = &mut cs.namespace(|| (i, format!("w extension {}", i)));
 
     // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
     let mut s0 = w[i - 15].rotr(7);
-    s0 = s0.xor(cs.namespace(|| "first xor for s0"), &w[i - 15].rotr(18))?;
-    s0 = s0.xor(cs.namespace(|| "second xor for s0"), &w[i - 15].shr(3))?;
+    s0 = s0.xor(cs.namespace(|| (i, "first xor for s0")), &w[i - 15].rotr(18))?;
+    s0 = s0.xor(cs.namespace(|| (i, "second xor for s0")), &w[i - 15].shr(3))?;
 
     // s1 := (w[i-2] rightrotate 17) xor (w[i-2] rightrotate 19) xor (w[i-2] rightshift 10)
     let mut s1 = w[i - 2].rotr(17);
-    s1 = s1.xor(cs.namespace(|| "first xor for s1"), &w[i - 2].rotr(19))?;
-    s1 = s1.xor(cs.namespace(|| "second xor for s1"), &w[i - 2].shr(10))?;
+    s1 = s1.xor(cs.namespace(|| (i, "first xor for s1")), &w[i - 2].rotr(19))?;
+    s1 = s1.xor(cs.namespace(|| (i, "second xor for s1")), &w[i - 2].shr(10))?;
 
     let tmp = UInt32::addmany(
-      cs.namespace(|| "computation of w[i]"),
+      cs.namespace(|| (i, "computation of w[i]")),
       &[w[i - 16].clone(), s0, w[i - 7].clone(), s1],
     )?;
 
@@ -139,16 +139,16 @@ where
   let mut h = current_hash_value[7].clone();
 
   for i in 0..64 {
-    let cs = &mut cs.namespace(|| format!("compression round {}", i));
+    let cs = &mut cs.namespace(|| (i, format!("compression round {}", i)));
 
     // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
-    let new_e = e.compute(cs.namespace(|| "deferred e computation"), &[])?;
+    let new_e = e.compute(cs.namespace(|| (i, "deferred e computation")), &[])?;
     let mut s1 = new_e.rotr(6);
-    s1 = s1.xor(cs.namespace(|| "first xor for s1"), &new_e.rotr(11))?;
-    s1 = s1.xor(cs.namespace(|| "second xor for s1"), &new_e.rotr(25))?;
+    s1 = s1.xor(cs.namespace(|| (i, "first xor for s1")), &new_e.rotr(11))?;
+    s1 = s1.xor(cs.namespace(|| (i, "second xor for s1")), &new_e.rotr(25))?;
 
     // ch := (e and f) xor ((not e) and g)
-    let ch = UInt32::sha256_ch(cs.namespace(|| "ch"), &new_e, &f, &g)?;
+    let ch = UInt32::sha256_ch(cs.namespace(|| (i, "ch")), &new_e, &f, &g)?;
 
     // temp1 := h + S1 + ch + k[i] + w[i]
     let temp1 = [
@@ -160,15 +160,14 @@ where
     ];
 
     // S0 := (a rightrotate 2) xor (a rightrotate 13) xor (a rightrotate 22)
-    let new_a = a.compute(cs.namespace(|| "deferred a computation"), &[])?;
+    let new_a = a.compute(cs.namespace(|| (i, "deferred a computation")), &[])?;
     let mut s0 = new_a.rotr(2);
-    s0 = s0.xor(cs.namespace(|| "first xor for s0"), &new_a.rotr(13))?;
-    s0 = s0.xor(cs.namespace(|| "second xor for s0"), &new_a.rotr(22))?;
+    s0 = s0.xor(cs.namespace(|| (i, "first xor for s0")), &new_a.rotr(13))?;
+    s0 = s0.xor(cs.namespace(|| (i, "second xor for s0")), &new_a.rotr(22))?;
 
     // maj := (a and b) xor (a and c) xor (b and c)
-    let maj = UInt32::sha256_maj(cs.namespace(|| "maj"), &new_a, &b, &c)?;
+    let maj = UInt32::sha256_maj(cs.namespace(|| (i, "maj")), &new_a, &b, &c)?;
 
-    // temp2 := S0 + maj
     let temp2 = [s0, maj];
 
     /*
@@ -211,42 +210,42 @@ where
   */
 
   let h0 = a.compute(
-    cs.namespace(|| "deferred h0 computation"),
+    cs.namespace(|| (0, "deferred h0 computation")),
     &[current_hash_value[0].clone()],
   )?;
 
   let h1 = UInt32::addmany(
-    cs.namespace(|| "new h1"),
+    cs.namespace(|| (1, "new h1")),
     &[current_hash_value[1].clone(), b],
   )?;
 
   let h2 = UInt32::addmany(
-    cs.namespace(|| "new h2"),
+    cs.namespace(|| (2, "new h2")),
     &[current_hash_value[2].clone(), c],
   )?;
 
   let h3 = UInt32::addmany(
-    cs.namespace(|| "new h3"),
+    cs.namespace(|| (3, "new h3")),
     &[current_hash_value[3].clone(), d],
   )?;
 
   let h4 = e.compute(
-    cs.namespace(|| "deferred h4 computation"),
+    cs.namespace(|| (4, "deferred h4 computation")),
     &[current_hash_value[4].clone()],
   )?;
 
   let h5 = UInt32::addmany(
-    cs.namespace(|| "new h5"),
+    cs.namespace(|| (5, "new h5")),
     &[current_hash_value[5].clone(), f],
   )?;
 
   let h6 = UInt32::addmany(
-    cs.namespace(|| "new h6"),
+    cs.namespace(|| (6, "new h6")),
     &[current_hash_value[6].clone(), g],
   )?;
 
   let h7 = UInt32::addmany(
-    cs.namespace(|| "new h7"),
+    cs.namespace(|| (7, "new h7")),
     &[current_hash_value[7].clone(), h],
   )?;
 

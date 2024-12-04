@@ -31,13 +31,13 @@ where
     mut cs: CS,
     coords: Option<(E::Base, E::Base, bool)>,
   ) -> Result<Self, SynthesisError> {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (0, "x")), || {
       Ok(coords.map_or(E::Base::ZERO, |c| c.0))
     })?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (1, "y")), || {
       Ok(coords.map_or(E::Base::ZERO, |c| c.1))
     })?;
-    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
+    let is_infinity = AllocatedNum::alloc(cs.namespace(|| (2, "is_infinity")), || {
       Ok(if coords.map_or(true, |c| c.2) {
         E::Base::ONE
       } else {
@@ -45,7 +45,7 @@ where
       })
     })?;
     cs.enforce(
-      || "is_infinity is bit",
+      || (3, "is_infinity is bit"),
       |lc| lc + is_infinity.get_variable(),
       |lc| lc + CS::one() - is_infinity.get_variable(),
       |lc| lc,
@@ -62,11 +62,11 @@ where
     // check that (x,y) is on the curve if it is not infinity
     // we will check that (1- is_infinity) * y^2 = (1-is_infinity) * (x^3 + Ax + B)
     // note that is_infinity is already restricted to be in the set {0, 1}
-    let y_square = self.y.square(cs.namespace(|| "y_square"))?;
-    let x_square = self.x.square(cs.namespace(|| "x_square"))?;
-    let x_cube = self.x.mul(cs.namespace(|| "x_cube"), &x_square)?;
+    let y_square = self.y.square(cs.namespace(|| (0, "y_square")))?;
+    let x_square = self.x.square(cs.namespace(|| (1, "x_square")))?;
+    let x_cube = self.x.mul(cs.namespace(|| (2, "x_cube")), &x_square)?;
 
-    let rhs = AllocatedNum::alloc(cs.namespace(|| "rhs"), || {
+    let rhs = AllocatedNum::alloc(cs.namespace(|| (3, "rhs")), || {
       if *self.is_infinity.get_value().get()? == E::Base::ONE {
         Ok(E::Base::ZERO)
       } else {
@@ -79,7 +79,7 @@ where
     })?;
 
     cs.enforce(
-      || "rhs = (1-is_infinity) * (x^3 + Ax + B)",
+      || (4, "rhs = (1-is_infinity) * (x^3 + Ax + B)"),
       |lc| {
         lc + x_cube.get_variable()
           + (E::GE::group_params().0, self.x.get_variable())
@@ -91,7 +91,7 @@ where
 
     // check that (1-infinity) * y_square = rhs
     cs.enforce(
-      || "check that y_square * (1 - is_infinity) = rhs",
+      || (5, "check that y_square * (1 - is_infinity) = rhs"),
       |lc| lc + y_square.get_variable(),
       |lc| lc + CS::one() - self.is_infinity.get_variable(),
       |lc| lc + rhs.get_variable(),
@@ -102,8 +102,8 @@ where
 
   /// Allocates a default point on the curve, set to the identity point.
   pub fn default<CS: ConstraintSystem<E::Base>>(mut cs: CS) -> Result<Self, SynthesisError> {
-    let zero = alloc_zero(cs.namespace(|| "zero"));
-    let one = alloc_one(cs.namespace(|| "one"));
+    let zero = alloc_zero(cs.namespace(|| (0, "zero")));
+    let one = alloc_one(cs.namespace(|| (1, "one")));
 
     Ok(AllocatedPoint {
       x: zero.clone(),
@@ -125,10 +125,10 @@ where
 
   /// Negates the provided point
   pub fn negate<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(-*self.y.get_value().get()?))?;
+    let y = AllocatedNum::alloc(cs.namespace(|| (0, "y")), || Ok(-*self.y.get_value().get()?))?;
 
     cs.enforce(
-      || "check y = - self.y",
+      || (1, "check y = - self.y"),
       |lc| lc + self.y.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc - y.get_variable(),
@@ -150,20 +150,20 @@ where
     // Compute boolean equal indicating if self = other
 
     let equal_x = alloc_num_equals(
-      cs.namespace(|| "check self.x == other.x"),
+      cs.namespace(|| (0, "check self.x == other.x")),
       &self.x,
       &other.x,
     )?;
 
     let equal_y = alloc_num_equals(
-      cs.namespace(|| "check self.y == other.y"),
+      cs.namespace(|| (1, "check self.y == other.y")),
       &self.y,
       &other.y,
     )?;
 
     // Compute the result of the addition and the result of double self
-    let result_from_add = self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
-    let result_from_double = self.double(cs.namespace(|| "double"))?;
+    let result_from_add = self.add_internal(cs.namespace(|| (2, "add internal")), other, &equal_x)?;
+    let result_from_double = self.double(cs.namespace(|| (3, "double")))?;
 
     // Output:
     // If (self == other) {
@@ -176,13 +176,13 @@ where
     //  }
     // }
     let result_for_equal_x = AllocatedPoint::select_point_or_infinity(
-      cs.namespace(|| "equal_y ? result_from_double : infinity"),
+      cs.namespace(|| (4, "equal_y ? result_from_double : infinity")),
       &result_from_double,
       &Boolean::from(equal_y),
     )?;
 
     AllocatedPoint::conditionally_select(
-      cs.namespace(|| "equal ? result_from_double : result_from_add"),
+      cs.namespace(|| (5, "equal ? result_from_double : result_from_add")),
       &result_for_equal_x,
       &result_from_add,
       &Boolean::from(equal_x),
@@ -207,7 +207,7 @@ where
 
     // Compute self.is_infinity OR other.is_infinity =
     // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
-    let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
+    let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| (0, "at least one inf")), || {
       Ok(
         E::Base::ONE
           - (E::Base::ONE - *self.is_infinity.get_value().get()?)
@@ -215,7 +215,7 @@ where
       )
     })?;
     cs.enforce(
-      || "1 - at least one inf = (1-self.is_infinity) * (1-other.is_infinity)",
+      || (1, "1 - at least one inf = (1-self.is_infinity) * (1-other.is_infinity)"),
       |lc| lc + CS::one() - self.is_infinity.get_variable(),
       |lc| lc + CS::one() - other.is_infinity.get_variable(),
       |lc| lc + CS::one() - at_least_one_inf.get_variable(),
@@ -223,7 +223,7 @@ where
 
     // Now compute x_diff_is_actual = at_least_one_inf OR equal_x
     let x_diff_is_actual =
-      AllocatedNum::alloc(cs.namespace(|| "allocate x_diff_is_actual"), || {
+      AllocatedNum::alloc(cs.namespace(|| (2, "allocate x_diff_is_actual")), || {
         Ok(if *equal_x.get_value().get()? {
           E::Base::ONE
         } else {
@@ -231,7 +231,7 @@ where
         })
       })?;
     cs.enforce(
-      || "1 - x_diff_is_actual = (1-equal_x) * (1-at_least_one_inf)",
+      || (3, "1 - x_diff_is_actual = (1-equal_x) * (1-at_least_one_inf)"),
       |lc| lc + CS::one() - at_least_one_inf.get_variable(),
       |lc| lc + CS::one() - equal_x.get_variable(),
       |lc| lc + CS::one() - x_diff_is_actual.get_variable(),
@@ -240,13 +240,13 @@ where
     // x_diff = 1 if either self.is_infinity or other.is_infinity or self.x = other.x else self.x -
     // other.x
     let x_diff = select_one_or_diff2(
-      cs.namespace(|| "Compute x_diff"),
+      cs.namespace(|| (4, "Compute x_diff")),
       &other.x,
       &self.x,
       &x_diff_is_actual,
     )?;
 
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
+    let lambda = AllocatedNum::alloc(cs.namespace(|| (5, "lambda")), || {
       let x_diff_inv = if *x_diff_is_actual.get_value().get()? == E::Base::ONE {
         // Set to default
         E::Base::ONE
@@ -260,7 +260,7 @@ where
       Ok((*other.y.get_value().get()? - *self.y.get_value().get()?) * x_diff_inv)
     })?;
     cs.enforce(
-      || "Check that lambda is correct",
+      || (6, "Check that lambda is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + x_diff.get_variable(),
       |lc| lc + other.y.get_variable() - self.y.get_variable(),
@@ -269,7 +269,7 @@ where
     //************************************************************************/
     // x = lambda * lambda - self.x - other.x;
     //************************************************************************/
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (7, "x")), || {
       Ok(
         *lambda.get_value().get()? * lambda.get_value().get()?
           - *self.x.get_value().get()?
@@ -277,7 +277,7 @@ where
       )
     })?;
     cs.enforce(
-      || "check that x is correct",
+      || (8, "check that x is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + lambda.get_variable(),
       |lc| lc + x.get_variable() + self.x.get_variable() + other.x.get_variable(),
@@ -286,7 +286,7 @@ where
     //************************************************************************/
     // y = lambda * (self.x - x) - self.y;
     //************************************************************************/
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (9, "y")), || {
       Ok(
         *lambda.get_value().get()? * (*self.x.get_value().get()? - *x.get_value().get()?)
           - *self.y.get_value().get()?,
@@ -294,7 +294,7 @@ where
     })?;
 
     cs.enforce(
-      || "Check that y is correct",
+      || (10, "Check that y is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + self.x.get_variable() - x.get_variable(),
       |lc| lc + y.get_variable() + self.y.get_variable(),
@@ -310,41 +310,41 @@ where
     // Now compute the output x
 
     let x1 = conditionally_select2(
-      cs.namespace(|| "x1 = other.is_infinity ? self.x : x"),
+      cs.namespace(|| (11, "x1 = other.is_infinity ? self.x : x")),
       &self.x,
       &x,
       &other.is_infinity,
     )?;
 
     let x = conditionally_select2(
-      cs.namespace(|| "x = self.is_infinity ? other.x : x1"),
+      cs.namespace(|| (12, "x = self.is_infinity ? other.x : x1")),
       &other.x,
       &x1,
       &self.is_infinity,
     )?;
 
     let y1 = conditionally_select2(
-      cs.namespace(|| "y1 = other.is_infinity ? self.y : y"),
+      cs.namespace(|| (13, "y1 = other.is_infinity ? self.y : y")),
       &self.y,
       &y,
       &other.is_infinity,
     )?;
 
     let y = conditionally_select2(
-      cs.namespace(|| "y = self.is_infinity ? other.y : y1"),
+      cs.namespace(|| (14, "y = self.is_infinity ? other.y : y1")),
       &other.y,
       &y1,
       &self.is_infinity,
     )?;
 
     let is_infinity1 = select_num_or_zero2(
-      cs.namespace(|| "is_infinity1 = other.is_infinity ? self.is_infinity : 0"),
+      cs.namespace(|| (15, "is_infinity1 = other.is_infinity ? self.is_infinity : 0")),
       &self.is_infinity,
       &other.is_infinity,
     )?;
 
     let is_infinity = conditionally_select2(
-      cs.namespace(|| "is_infinity = self.is_infinity ? other.is_infinity : is_infinity1"),
+      cs.namespace(|| (16, "is_infinity = self.is_infinity ? other.is_infinity : is_infinity1")),
       &other.is_infinity,
       &is_infinity1,
       &self.is_infinity,
@@ -361,31 +361,31 @@ where
     /*************************************************************/
 
     // Compute tmp = (E::Base::ONE + E::Base::ONE)* self.y ? self != inf : 1
-    let tmp_actual = AllocatedNum::alloc(cs.namespace(|| "tmp_actual"), || {
+    let tmp_actual = AllocatedNum::alloc(cs.namespace(|| (0, "tmp_actual")), || {
       Ok(*self.y.get_value().get()? + *self.y.get_value().get()?)
     })?;
     cs.enforce(
-      || "check tmp_actual",
+      || (1, "check tmp_actual"),
       |lc| lc + CS::one() + CS::one(),
       |lc| lc + self.y.get_variable(),
       |lc| lc + tmp_actual.get_variable(),
     );
 
-    let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
+    let tmp = select_one_or_num2(cs.namespace(|| (2, "tmp")), &tmp_actual, &self.is_infinity)?;
 
     // Now compute lambda as (E::Base::from(3) * self.x * self.x + E::GE::A()) * tmp_inv
 
-    let prod_1 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 1"), || {
+    let prod_1 = AllocatedNum::alloc(cs.namespace(|| (3, "alloc prod 1")), || {
       Ok(E::Base::from(3) * self.x.get_value().get()? * self.x.get_value().get()?)
     })?;
     cs.enforce(
-      || "Check prod 1",
+      || (4, "Check prod 1"),
       |lc| lc + (E::Base::from(3), self.x.get_variable()),
       |lc| lc + self.x.get_variable(),
       |lc| lc + prod_1.get_variable(),
     );
 
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "alloc lambda"), || {
+    let lambda = AllocatedNum::alloc(cs.namespace(|| (5, "alloc lambda")), || {
       let tmp_inv = if *self.is_infinity.get_value().get()? == E::Base::ONE {
         // Return default value 1
         E::Base::ONE
@@ -398,7 +398,7 @@ where
     })?;
 
     cs.enforce(
-      || "Check lambda",
+      || (6, "Check lambda"),
       |lc| lc + tmp.get_variable(),
       |lc| lc + lambda.get_variable(),
       |lc| lc + prod_1.get_variable() + (E::GE::group_params().0, CS::one()),
@@ -408,7 +408,7 @@ where
     //          x = lambda * lambda - self.x - self.x;
     /*************************************************************/
 
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (7, "x")), || {
       Ok(
         ((*lambda.get_value().get()?) * (*lambda.get_value().get()?))
           - *self.x.get_value().get()?
@@ -416,7 +416,7 @@ where
       )
     })?;
     cs.enforce(
-      || "Check x",
+      || (8, "Check x"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + lambda.get_variable(),
       |lc| lc + x.get_variable() + self.x.get_variable() + self.x.get_variable(),
@@ -426,14 +426,14 @@ where
     //        y = lambda * (self.x - x) - self.y;
     /*************************************************************/
 
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (9, "y")), || {
       Ok(
         (*lambda.get_value().get()?) * (*self.x.get_value().get()? - x.get_value().get()?)
           - self.y.get_value().get()?,
       )
     })?;
     cs.enforce(
-      || "Check y",
+      || (10, "Check y"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + self.x.get_variable() - x.get_variable(),
       |lc| lc + y.get_variable() + self.y.get_variable(),
@@ -444,10 +444,10 @@ where
     /*************************************************************/
 
     // x
-    let x = select_zero_or_num2(cs.namespace(|| "final x"), &x, &self.is_infinity)?;
+    let x = select_zero_or_num2(cs.namespace(|| (11, "final x")), &x, &self.is_infinity)?;
 
     // y
-    let y = select_zero_or_num2(cs.namespace(|| "final y"), &y, &self.is_infinity)?;
+    let y = select_zero_or_num2(cs.namespace(|| (12, "final y")), &y, &self.is_infinity)?;
 
     // is_infinity
     let is_infinity = self.is_infinity.clone();
@@ -472,19 +472,19 @@ where
     // we assume the first bit to be 1, so we must initialize acc to self and double it
     // we remove this assumption below
     let mut acc = p;
-    p = acc.double_incomplete(cs.namespace(|| "double"))?;
+    p = acc.double_incomplete(cs.namespace(|| (0, "double")))?;
 
     // perform the double-and-add loop to compute the scalar mul using incomplete addition law
     for (i, bit) in incomplete_bits.iter().enumerate().skip(1) {
-      let temp = acc.add_incomplete(cs.namespace(|| format!("add {i}")), &p)?;
+      let temp = acc.add_incomplete(cs.namespace(|| (i, format!("add {i}"))), &p)?;
       acc = AllocatedPointNonInfinity::conditionally_select(
-        cs.namespace(|| format!("acc_iteration_{i}")),
+        cs.namespace(|| (i, format!("acc_iteration_{i}"))),
         &temp,
         &acc,
         &Boolean::from(bit.clone()),
       )?;
 
-      p = p.double_incomplete(cs.namespace(|| format!("double {i}")))?;
+      p = p.double_incomplete(cs.namespace(|| (i, format!("double {i}"))))?;
     }
 
     // convert back to AllocatedPoint
@@ -494,12 +494,12 @@ where
 
       // we remove the initial slack if bits[0] is as not as assumed (i.e., it is not 1)
       let acc_minus_initial = {
-        let neg = self.negate(cs.namespace(|| "negate"))?;
-        acc.add(cs.namespace(|| "res minus self"), &neg)
+        let neg = self.negate(cs.namespace(|| (0, "negate")))?;
+        acc.add(cs.namespace(|| (1, "res minus self")), &neg)
       }?;
 
       AllocatedPoint::conditionally_select(
-        cs.namespace(|| "remove slack if necessary"),
+        cs.namespace(|| (2, "remove slack if necessary")),
         &acc,
         &acc_minus_initial,
         &Boolean::from(scalar_bits[0].clone()),
@@ -508,16 +508,16 @@ where
 
     // when self.is_infinity = 1, return the default point, else return res
     // we already set res.is_infinity to be self.is_infinity, so we do not need to set it here
-    let default = Self::default(cs.namespace(|| "default"))?;
+    let default = Self::default(cs.namespace(|| (3, "default")))?;
     let x = conditionally_select2(
-      cs.namespace(|| "check if self.is_infinity is zero (x)"),
+      cs.namespace(|| (4, "check if self.is_infinity is zero (x)")),
       &default.x,
       &res.x,
       &self.is_infinity,
     )?;
 
     let y = conditionally_select2(
-      cs.namespace(|| "check if self.is_infinity is zero (y)"),
+      cs.namespace(|| (5, "check if self.is_infinity is zero (y)")),
       &default.y,
       &res.y,
       &self.is_infinity,
@@ -532,15 +532,15 @@ where
     let mut p_complete = p.to_allocated_point(&self.is_infinity)?;
 
     for (i, bit) in complete_bits.iter().enumerate() {
-      let temp = acc.add(cs.namespace(|| format!("add_complete {i}")), &p_complete)?;
+      let temp = acc.add(cs.namespace(|| (i, format!("add_complete {i}"))), &p_complete)?;
       acc = AllocatedPoint::conditionally_select(
-        cs.namespace(|| format!("acc_complete_iteration_{i}")),
+        cs.namespace(|| (i, format!("acc_complete_iteration_{i}"))),
         &temp,
         &acc,
         &Boolean::from(bit.clone()),
       )?;
 
-      p_complete = p_complete.double(cs.namespace(|| format!("double_complete {i}")))?;
+      p_complete = p_complete.double(cs.namespace(|| (i, format!("double_complete {i}"))))?;
     }
 
     Ok(acc)
@@ -553,12 +553,12 @@ where
     b: &Self,
     condition: &Boolean,
   ) -> Result<Self, SynthesisError> {
-    let x = conditionally_select(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
+    let x = conditionally_select(cs.namespace(|| (0, "select x")), &a.x, &b.x, condition)?;
 
-    let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+    let y = conditionally_select(cs.namespace(|| (1, "select y")), &a.y, &b.y, condition)?;
 
     let is_infinity = conditionally_select(
-      cs.namespace(|| "select is_infinity"),
+      cs.namespace(|| (2, "select is_infinity")),
       &a.is_infinity,
       &b.is_infinity,
       condition,
@@ -573,12 +573,12 @@ where
     a: &Self,
     condition: &Boolean,
   ) -> Result<Self, SynthesisError> {
-    let x = select_num_or_zero(cs.namespace(|| "select x"), &a.x, condition)?;
+    let x = select_num_or_zero(cs.namespace(|| (0, "select x")), &a.x, condition)?;
 
-    let y = select_num_or_zero(cs.namespace(|| "select y"), &a.y, condition)?;
+    let y = select_num_or_zero(cs.namespace(|| (1, "select y")), &a.y, condition)?;
 
     let is_infinity = select_num_or_one(
-      cs.namespace(|| "select is_infinity"),
+      cs.namespace(|| (2, "select is_infinity")),
       &a.is_infinity,
       condition,
     )?;
@@ -608,10 +608,10 @@ where
     mut cs: CS,
     coords: Option<(E::Base, E::Base)>,
   ) -> Result<Self, SynthesisError> {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (0, "x")), || {
       coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
     })?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (1, "y")), || {
       coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.1))
     })?;
 
@@ -649,7 +649,7 @@ where
     CS: ConstraintSystem<E::Base>,
   {
     // allocate a free variable that an honest prover sets to lambda = (y2-y1)/(x2-x1)
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
+    let lambda = AllocatedNum::alloc(cs.namespace(|| (0, "lambda")), || {
       if *other.x.get_value().get()? == *self.x.get_value().get()? {
         Ok(E::Base::ONE)
       } else {
@@ -662,7 +662,7 @@ where
       }
     })?;
     cs.enforce(
-      || "Check that lambda is computed correctly",
+      || (1, "Check that lambda is computed correctly"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + other.x.get_variable() - self.x.get_variable(),
       |lc| lc + other.y.get_variable() - self.y.get_variable(),
@@ -671,7 +671,7 @@ where
     //************************************************************************/
     // x = lambda * lambda - self.x - other.x;
     //************************************************************************/
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (2, "x")), || {
       Ok(
         *lambda.get_value().get()? * lambda.get_value().get()?
           - *self.x.get_value().get()?
@@ -679,7 +679,7 @@ where
       )
     })?;
     cs.enforce(
-      || "check that x is correct",
+      || (3, "check that x is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + lambda.get_variable(),
       |lc| lc + x.get_variable() + self.x.get_variable() + other.x.get_variable(),
@@ -688,7 +688,7 @@ where
     //************************************************************************/
     // y = lambda * (self.x - x) - self.y;
     //************************************************************************/
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (4, "y")), || {
       Ok(
         *lambda.get_value().get()? * (*self.x.get_value().get()? - *x.get_value().get()?)
           - *self.y.get_value().get()?,
@@ -696,7 +696,7 @@ where
     })?;
 
     cs.enforce(
-      || "Check that y is correct",
+      || (5, "Check that y is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + self.x.get_variable() - x.get_variable(),
       |lc| lc + y.get_variable() + self.y.get_variable(),
@@ -712,9 +712,9 @@ where
   ) -> Result<Self, SynthesisError> {
     // lambda = (3 x^2 + a) / 2 * y
 
-    let x_sq = self.x.square(cs.namespace(|| "x_sq"))?;
+    let x_sq = self.x.square(cs.namespace(|| (0, "x_sq")))?;
 
-    let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
+    let lambda = AllocatedNum::alloc(cs.namespace(|| (1, "lambda")), || {
       let n = E::Base::from(3) * x_sq.get_value().get()? + E::GE::group_params().0;
       let d = E::Base::from(2) * *self.y.get_value().get()?;
       if d == E::Base::ZERO {
@@ -724,13 +724,13 @@ where
       }
     })?;
     cs.enforce(
-      || "Check that lambda is computed correctly",
+      || (2, "Check that lambda is computed correctly"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + (E::Base::from(2), self.y.get_variable()),
       |lc| lc + (E::Base::from(3), x_sq.get_variable()) + (E::GE::group_params().0, CS::one()),
     );
 
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+    let x = AllocatedNum::alloc(cs.namespace(|| (3, "x")), || {
       Ok(
         *lambda.get_value().get()? * *lambda.get_value().get()?
           - *self.x.get_value().get()?
@@ -739,13 +739,13 @@ where
     })?;
 
     cs.enforce(
-      || "check that x is correct",
+      || (4, "check that x is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + lambda.get_variable(),
       |lc| lc + x.get_variable() + (E::Base::from(2), self.x.get_variable()),
     );
 
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let y = AllocatedNum::alloc(cs.namespace(|| (5, "y")), || {
       Ok(
         *lambda.get_value().get()? * (*self.x.get_value().get()? - *x.get_value().get()?)
           - *self.y.get_value().get()?,
@@ -753,7 +753,7 @@ where
     })?;
 
     cs.enforce(
-      || "Check that y is correct",
+      || (6, "Check that y is correct"),
       |lc| lc + lambda.get_variable(),
       |lc| lc + self.x.get_variable() - x.get_variable(),
       |lc| lc + y.get_variable() + self.y.get_variable(),
@@ -769,8 +769,8 @@ where
     b: &Self,
     condition: &Boolean,
   ) -> Result<Self, SynthesisError> {
-    let x = conditionally_select(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
-    let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+    let x = conditionally_select(cs.namespace(|| (0, "select x")), &a.x, &b.x, condition)?;
+    let y = conditionally_select(cs.namespace(|| (1, "select y")), &a.y, &b.y, condition)?;
 
     Ok(Self { x, y })
   }
@@ -907,7 +907,7 @@ mod tests {
   ) -> Result<AllocatedPoint<E>, SynthesisError> {
     // get a random point
     let p = Point::<E>::random_vartime();
-    AllocatedPoint::alloc(cs.namespace(|| "alloc p"), Some((p.x, p.y, p.is_infinity)))
+    AllocatedPoint::alloc(cs.namespace(|| (0, "alloc p")), Some((p.x, p.y, p.is_infinity)))
   }
 
   /// Make the point io
@@ -915,11 +915,11 @@ mod tests {
     p: &AllocatedPoint<E>,
     mut cs: CS,
   ) {
-    let _ = p.x.inputize(cs.namespace(|| "Input point.x"));
-    let _ = p.y.inputize(cs.namespace(|| "Input point.y"));
+    let _ = p.x.inputize(cs.namespace(|| (1, "Input point.x")));
+    let _ = p.y.inputize(cs.namespace(|| (2, "Input point.y")));
     let _ = p
       .is_infinity
-      .inputize(cs.namespace(|| "Input point.is_infinity"));
+      .inputize(cs.namespace(|| (3, "Input point.is_infinity")));
   }
 
   #[test]
@@ -992,8 +992,8 @@ mod tests {
     E: Engine,
     CS: ConstraintSystem<E::Base>,
   {
-    let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
+    let a = alloc_random_point(cs.namespace(|| (0, "a"))).unwrap();
+    inputize_allocted_point(&a, cs.namespace(|| (1, "inputize a")));
 
     let s = E::Scalar::random(&mut OsRng);
     // Allocate bits for s
@@ -1004,8 +1004,8 @@ mod tests {
       .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), Some(bit)))
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
-    let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &bits).unwrap();
-    inputize_allocted_point(&e, cs.namespace(|| "inputize e"));
+    let e = a.scalar_mul(cs.namespace(|| (2, "Scalar Mul")), &bits).unwrap();
+    inputize_allocted_point(&e, cs.namespace(|| (3, "inputize e")));
     (a, e, s)
   }
 
@@ -1028,13 +1028,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
+    let _ = synthesize_smul::<E1, _>(cs.namespace(|| (0, "synthesize")));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let (a, e, s) = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
+    let (a, e, s) = synthesize_smul::<E1, _>(cs.namespace(|| (1, "synthesize")));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     let a_p: Point<E1> = Point::new(
@@ -1058,10 +1058,10 @@ mod tests {
     E: Engine,
     CS: ConstraintSystem<E::Base>,
   {
-    let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
-    let e = a.add(cs.namespace(|| "add a to a"), &a).unwrap();
-    inputize_allocted_point(&e, cs.namespace(|| "inputize e"));
+    let a = alloc_random_point(cs.namespace(|| (0, "a"))).unwrap();
+    inputize_allocted_point(&a, cs.namespace(|| (1, "inputize a")));
+    let e = a.add(cs.namespace(|| (2, "add a to a")), &a).unwrap();
+    inputize_allocted_point(&e, cs.namespace(|| (3, "inputize e")));
     (a, e)
   }
 
@@ -1084,13 +1084,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
+    let _ = synthesize_add_equal::<E1, _>(cs.namespace(|| (0, "synthesize add equal")));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let (a, e) = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
+    let (a, e) = synthesize_add_equal::<E1, _>(cs.namespace(|| (1, "synthesize add equal")));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let a_p: Point<E1> = Point::new(
       a.x.get_value().unwrap(),
@@ -1113,15 +1113,15 @@ mod tests {
     E: Engine,
     CS: ConstraintSystem<E::Base>,
   {
-    let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
+    let a = alloc_random_point(cs.namespace(|| (0, "a"))).unwrap();
+    inputize_allocted_point(&a, cs.namespace(|| (1, "inputize a")));
     let b = &mut a.clone();
-    b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
+    b.y = AllocatedNum::alloc(cs.namespace(|| (2, "allocate negation of a")), || {
       Ok(E::Base::ZERO)
     })
     .unwrap();
-    inputize_allocted_point(b, cs.namespace(|| "inputize b"));
-    let e = a.add(cs.namespace(|| "add a to b"), b).unwrap();
+    inputize_allocted_point(b, cs.namespace(|| (3, "inputize b")));
+    let e = a.add(cs.namespace(|| (4, "add a to b")), b).unwrap();
     e
   }
 
@@ -1144,13 +1144,13 @@ mod tests {
   {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add equal"));
+    let _ = synthesize_add_negation::<E1, _>(cs.namespace(|| (0, "synthesize add equal")));
     println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
-    let e = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add negation"));
+    let e = synthesize_add_negation::<E1, _>(cs.namespace(|| (1, "synthesize add negation")));
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let e_p: Point<E1> = Point::new(
       e.x.get_value().unwrap(),

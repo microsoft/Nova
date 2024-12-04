@@ -138,7 +138,8 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
     } else {
       self
         .state
-        .hash(&mut ns.namespace(|| format!("permutation {}", self.permutation_count)))?;
+        .hash(&mut ns.namespace(|| (self.permutation_count, format!("permutation {}", self.permutation_count))))
+        ?;
     };
 
     Ok(())

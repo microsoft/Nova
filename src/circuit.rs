@@ -129,17 +129,17 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   > {
     // Allocate the params
     let params = alloc_scalar_as_base::<E, _>(
-      cs.namespace(|| "params"),
+      cs.namespace(|| (0, "params")),
       self.inputs.as_ref().map(|inputs| inputs.params),
     )?;
 
     // Allocate i
-    let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
+    let i = AllocatedNum::alloc(cs.namespace(|| (1, "i")), || Ok(self.inputs.get()?.i))?;
 
     // Allocate z0
     let z_0 = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("z0_{i}")), || {
+        AllocatedNum::alloc(cs.namespace(|| (i, format!("z0_{i}"))), || {
           Ok(self.inputs.get()?.z0[i])
         })
       })
@@ -149,7 +149,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     let zero = vec![E::Base::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
+        AllocatedNum::alloc(cs.namespace(|| (i, format!("zi_{i}"))), || {
           Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })
@@ -157,35 +157,35 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     // Allocate the running instance
     let U: AllocatedRelaxedR1CSInstance<E> = AllocatedRelaxedR1CSInstance::alloc(
-      cs.namespace(|| "Allocate U"),
+      cs.namespace(|| (2, "Allocate U")),
       self.inputs.as_ref().and_then(|inputs| inputs.U.as_ref()),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
 
     // Allocate ri
-    let r_i = AllocatedNum::alloc(cs.namespace(|| "ri"), || {
+    let r_i = AllocatedNum::alloc(cs.namespace(|| (3, "ri")), || {
       Ok(self.inputs.get()?.ri.unwrap_or(E::Base::ZERO))
     })?;
 
     // Allocate r_i+1
-    let r_next = AllocatedNum::alloc(cs.namespace(|| "r_i+1"), || Ok(self.inputs.get()?.r_next))?;
+    let r_next = AllocatedNum::alloc(cs.namespace(|| (4, "r_i+1")), || Ok(self.inputs.get()?.r_next))?;
 
     // Allocate the instance to be folded in
     let u = AllocatedR1CSInstance::alloc(
-      cs.namespace(|| "allocate instance u to fold"),
+      cs.namespace(|| (5, "allocate instance u to fold")),
       self.inputs.as_ref().and_then(|inputs| inputs.u.as_ref()),
     )?;
 
     // Allocate T
     let T = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate T"),
+      cs.namespace(|| (6, "allocate T")),
       self
         .inputs
         .as_ref()
         .and_then(|inputs| inputs.T.map(|T| T.to_coordinates())),
     )?;
-    T.check_on_curve(cs.namespace(|| "check T on curve"))?;
+    T.check_on_curve(cs.namespace(|| (7, "check T on curve")))?;
 
     Ok((params, i, z_0, z_i, U, r_i, r_next, u, T))
   }
@@ -199,14 +199,14 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     let U_default: AllocatedRelaxedR1CSInstance<E> = if self.params.is_primary_circuit {
       // The primary circuit just returns the default R1CS instance
       AllocatedRelaxedR1CSInstance::default(
-        cs.namespace(|| "Allocate U_default"),
+        cs.namespace(|| (0, "Allocate U_default")),
         self.params.limb_width,
         self.params.n_limbs,
       )?
     } else {
       // The secondary circuit returns the incoming R1CS instance
       AllocatedRelaxedR1CSInstance::from_r1cs_instance(
-        cs.namespace(|| "Allocate U_default"),
+        cs.namespace(|| (1, "Allocate U_default")),
         u,
         self.params.limb_width,
         self.params.n_limbs,
@@ -243,20 +243,20 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     for e in z_i {
       ro.absorb(e);
     }
-    U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+    U.absorb_in_ro(cs.namespace(|| (0, "absorb U")), &mut ro)?;
     ro.absorb(r_i);
 
-    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
+    let hash_bits = ro.squeeze(cs.namespace(  || (1, "Input hash")), NUM_HASH_BITS)?;
+    let hash = le_bits_to_num(cs.namespace(|| (2, "bits to hash")), &hash_bits)?;
     let check_pass = alloc_num_equals(
-      cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
+      cs.namespace(|| (3, "check consistency of u.X[0] with H(params, U, i, z0, zi)")),
       &u.X0,
       &hash,
     )?;
 
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
-      cs.namespace(|| "compute fold of U and u"),
+      cs.namespace(|| (4, "compute fold of U and u")),
       params,
       u,
       T,
@@ -279,19 +279,19 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     // Allocate all witnesses
     let (params, i, z_0, z_i, U, r_i, r_next, u, T) =
-      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
+      self.alloc_witness(cs.namespace(|| (0, "allocate the circuit witness")), arity)?;
 
     // Compute variable indicating if this is the base case
-    let zero = alloc_zero(cs.namespace(|| "zero"));
-    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
+    let zero = alloc_zero(cs.namespace(|| (1, "zero")));
+    let is_base_case = alloc_num_equals(cs.namespace(|| (2, "Check if base case")), &i.clone(), &zero)?;
 
     // Synthesize the circuit for the base case and get the new running instance
-    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
+    let Unew_base = self.synthesize_base_case(cs.namespace(|| (3, "base case")  ), u.clone())?;
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
     let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
-      cs.namespace(|| "synthesize non base case"),
+      cs.namespace(|| (4, "synthesize non base case")),
       &params,
       &i,
       &z_0,
@@ -305,12 +305,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     // Either check_non_base_pass=true or we are in the base case
     let should_be_false = AllocatedBit::nor(
-      cs.namespace(|| "check_non_base_pass nor base_case"),
+      cs.namespace(|| (5, "check_non_base_pass nor base_case")),
       &check_non_base_pass,
       &is_base_case,
     )?;
     cs.enforce(
-      || "check_non_base_pass nor base_case = false",
+      || (6, "check_non_base_pass nor base_case = false"),
       |lc| lc + should_be_false.get_variable(),
       |lc| lc + CS::one(),
       |lc| lc,
@@ -318,17 +318,17 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     // Compute the U_new
     let Unew = Unew_base.conditionally_select(
-      cs.namespace(|| "compute U_new"),
+      cs.namespace(|| (7, "compute U_new")),
       &Unew_non_base,
       &Boolean::from(is_base_case.clone()),
     )?;
 
     // Compute i + 1
-    let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
+    let i_new = AllocatedNum::alloc(cs.namespace(|| (8, "i + 1")), || {
       Ok(*i.get_value().get()? + E::Base::ONE)
     })?;
     cs.enforce(
-      || "check i + 1",
+      || (9, "check i + 1"),
       |lc| lc,
       |lc| lc,
       |lc| lc + i_new.get_variable() - CS::one() - i.get_variable(),
@@ -336,7 +336,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     // Compute z_{i+1}
     let z_input = conditionally_select_vec(
-      cs.namespace(|| "select input to F"),
+      cs.namespace(|| (10, "select input to F")),
       &z_0,
       &z_i,
       &Boolean::from(is_base_case),
@@ -344,7 +344,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
     let z_next = self
       .step_circuit
-      .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
+      .synthesize(&mut cs.namespace(|| (11, "F")), &z_input)?;
 
     if z_next.len() != arity {
       return Err(SynthesisError::IncompatibleLengthVector(
@@ -362,15 +362,15 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     for e in &z_next {
       ro.absorb(e);
     }
-    Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
+    Unew.absorb_in_ro(cs.namespace(|| (12, "absorb U_new")  ), &mut ro)?;
     ro.absorb(&r_next);
-    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+    let hash_bits = ro.squeeze(cs.namespace(|| (13, "output hash bits")), NUM_HASH_BITS)?;
+    let hash = le_bits_to_num(cs.namespace(|| (14, "convert hash to num")), &hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     u.X1
-      .inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?;
-    hash.inputize(cs.namespace(|| "output new hash of this circuit"))?;
+      .inputize(cs.namespace(|| (15, "Output unmodified hash of the other circuit")))?;
+    hash.inputize(cs.namespace(|| (16, "output new hash of this circuit")))?;
 
     Ok(z_next)
   }

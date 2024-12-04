@@ -45,13 +45,13 @@ impl<Scalar: PrimeField> Elt<Scalar> {
     match self {
       Self::Allocated(v) => Ok(v.clone()),
       Self::Num(num) => {
-        let v = AllocatedNum::alloc(cs.namespace(|| "allocate for Elt::Num"), || {
+        let v = AllocatedNum::alloc(cs.namespace(|| (0, "allocate for Elt::Num")), || {
           num.get_value().ok_or(SynthesisError::AssignmentMissing)
         })?;
 
         if enforce {
           cs.enforce(
-            || "enforce num allocation preserves lc".to_string(),
+            || (1, "enforce num allocation preserves lc"),
             |_| num.lc(Scalar::ONE),
             |lc| lc + CS::one(),
             |lc| lc + v.get_variable(),
@@ -113,14 +113,14 @@ impl<Scalar: PrimeField> Elt<Scalar> {
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
     match self {
       Elt::Num(num) => {
-        let allocated = AllocatedNum::alloc(&mut cs.namespace(|| "squared num"), || {
+        let allocated = AllocatedNum::alloc(&mut cs.namespace(|| (0, "squared num")), || {
           num
             .get_value()
             .ok_or(SynthesisError::AssignmentMissing)
             .map(|tmp| tmp * tmp)
         })?;
         cs.enforce(
-          || "squaring constraint",
+          || (1, "squaring constraint"),
           |_| num.lc(Scalar::ONE),
           |_| num.lc(Scalar::ONE),
           |lc| lc + allocated.get_variable(),
@@ -187,28 +187,32 @@ where
     &mut self,
     cs: &mut CS,
   ) -> Result<Elt<Scalar>, SynthesisError> {
-    self.full_round(cs.namespace(|| "first round"), true, false)?;
+    self.full_round(cs.namespace(|| (0, "first round")), true, false)?;
 
     for i in 1..self.constants.full_rounds / 2 {
       self.full_round(
-        cs.namespace(|| format!("initial full round {i}")),
+        cs.namespace(|| (1 + i, format!("initial full round {i}"))),
         false,
         false,
       )?;
     }
 
     for i in 0..self.constants.partial_rounds {
-      self.partial_round(cs.namespace(|| format!("partial round {i}")))?;
+      self.partial_round(cs.namespace(|| (1 + self.constants.full_rounds / 2 + i, format!("partial round {i}"))))?;
     }
 
     for i in 0..(self.constants.full_rounds / 2) - 1 {
       self.full_round(
-        cs.namespace(|| format!("final full round {i}")),
+        cs.namespace(|| (1 + self.constants.full_rounds / 2 + self.constants.partial_rounds + i, format!("final full round {i}"))),
         false,
         false,
       )?;
     }
-    self.full_round(cs.namespace(|| "terminal full round"), false, true)?;
+    self.full_round(
+      cs.namespace(|| (1 + self.constants.full_rounds / 2 + self.constants.partial_rounds + (self.constants.full_rounds / 2 - 1), "terminal full round")),
+      false,
+      true,
+    )?;
 
     let elt = self.elements[1].clone();
     self.reset_offsets();
@@ -282,7 +286,7 @@ where
       if first_round {
         {
           self.elements[i] = quintic_s_box_pre_add(
-            cs.namespace(|| format!("quintic s-box {i}")),
+            cs.namespace(|| (self.constants_offset + i, format!("quintic s-box {i}"))),
             &self.elements[i],
             pre_round_key,
             post_round_key,
@@ -290,7 +294,7 @@ where
         }
       } else {
         self.elements[i] = quintic_s_box(
-          cs.namespace(|| format!("quintic s-box {i}")),
+          cs.namespace(|| (self.constants_offset + i, format!("quintic s-box {i}"))),
           &self.elements[i],
           post_round_key,
         )?;
@@ -311,7 +315,7 @@ where
     self.constants_offset += 1;
     // Apply the quintic S-Box to the first element.
     self.elements[0] = quintic_s_box(
-      cs.namespace(|| "solitary quintic s-box"),
+      cs.namespace(|| (self.constants_offset, "solitary quintic s-box")),
       &self.elements[0],
       Some(round_key),
     )?;
@@ -417,10 +421,10 @@ fn quintic_s_box<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
   post_round_key: Option<Scalar>,
 ) -> Result<Elt<Scalar>, SynthesisError> {
   // If round_key was supplied, add it after all exponentiation.
-  let l2 = l.square(cs.namespace(|| "l^2"))?;
-  let l4 = l2.square(cs.namespace(|| "l^4"))?;
+  let l2 = l.square(cs.namespace(|| (1, "l^2")))?;
+  let l4 = l2.square(cs.namespace(|| (2, "l^4")))?;
   let l5 = mul_sum(
-    cs.namespace(|| "(l4 * l) + rk)"),
+    cs.namespace(|| (3, "(l4 * l) + rk")),
     &l4,
     l,
     None,
@@ -440,10 +444,10 @@ fn quintic_s_box_pre_add<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
 ) -> Result<Elt<Scalar>, SynthesisError> {
   if let (Some(pre_round_key), Some(post_round_key)) = (pre_round_key, post_round_key) {
     // If round_key was supplied, add it to l before squaring.
-    let l2 = square_sum(cs.namespace(|| "(l+rk)^2"), pre_round_key, l, true)?;
-    let l4 = l2.square(cs.namespace(|| "l^4"))?;
+    let l2 = square_sum(cs.namespace(|| (1, "(l+rk)^2")), pre_round_key, l, true)?;
+    let l4 = l2.square(cs.namespace(|| (2, "l^4")))?;
     let l5 = mul_sum(
-      cs.namespace(|| "l4 * (l + rk)"),
+      cs.namespace(|| (3, "l4 * (l + rk)")),
       &l4,
       l,
       Some(pre_round_key),
@@ -464,7 +468,7 @@ pub fn square_sum<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
   elt: &Elt<Scalar>,
   enforce: bool,
 ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-  let res = AllocatedNum::alloc(cs.namespace(|| "squared sum"), || {
+  let res = AllocatedNum::alloc(cs.namespace(|| (0, "squared sum")), || {
     let mut tmp = elt.val().ok_or(SynthesisError::AssignmentMissing)?;
     tmp.add_assign(&to_add);
     tmp = tmp.square();
@@ -473,7 +477,7 @@ pub fn square_sum<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
 
   if enforce {
     cs.enforce(
-      || "squared sum constraint",
+      || (1, "squared sum constraint"),
       |_| elt.lc() + (to_add, CS::one()),
       |_| elt.lc() + (to_add, CS::one()),
       |lc| lc + res.get_variable(),
@@ -492,7 +496,7 @@ pub fn mul_sum<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
   post_add: Option<Scalar>,
   enforce: bool,
 ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-  let res = AllocatedNum::alloc(cs.namespace(|| "mul_sum"), || {
+  let res = AllocatedNum::alloc(cs.namespace(|| (0, "mul_sum")), || {
     let mut tmp = b.val().ok_or(SynthesisError::AssignmentMissing)?;
     if let Some(x) = pre_add {
       tmp.add_assign(&x);
@@ -511,14 +515,14 @@ pub fn mul_sum<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
 
       if let Some(pre) = pre_add {
         cs.enforce(
-          || "mul sum constraint pre-post-add",
+          || (1, "mul sum constraint pre-post-add"),
           |_| b.lc() + (pre, CS::one()),
           |lc| lc + a.get_variable(),
           |lc| lc + res.get_variable() + (neg, CS::one()),
         );
       } else {
         cs.enforce(
-          || "mul sum constraint post-add",
+          || (2, "mul sum constraint post-add"),
           |_| b.lc(),
           |lc| lc + a.get_variable(),
           |lc| lc + res.get_variable() + (neg, CS::one()),
@@ -527,14 +531,14 @@ pub fn mul_sum<CS: ConstraintSystem<Scalar>, Scalar: PrimeField>(
     } else {
       if let Some(pre) = pre_add {
         cs.enforce(
-          || "mul sum constraint pre-add",
+          || (3, "mul sum constraint pre-add"),
           |_| b.lc() + (pre, CS::one()),
           |lc| lc + a.get_variable(),
           |lc| lc + res.get_variable(),
         );
       } else {
         cs.enforce(
-          || "mul sum constraint",
+          || (4, "mul sum constraint"),
           |_| b.lc(),
           |lc| lc + a.get_variable(),
           |lc| lc + res.get_variable(),

@@ -27,7 +27,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     let lhs = self.lhs.clone();
     let rhs = self.rhs.clone();
     self.cs.enforce(
-      || format!("multieq {}", ops),
+      || (ops, format!("multieq {}", ops)),
       |_| lhs,
       |lc| lc + CS::one(),
       |_| rhs,
@@ -95,7 +95,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
     LB: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
@@ -107,7 +107,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
   fn push_namespace<NR, N>(&mut self, name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     self.cs.get_root().push_namespace(name_fn)
   }

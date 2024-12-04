@@ -49,7 +49,7 @@ impl<Scalar: PrimeField> Bit<Scalar> {
     // Constrain: (1 - a) * a = 0
     // This constrains a to be either 0 or 1.
     cs.enforce(
-      || "boolean constraint",
+      || (0, "boolean constraint"),
       |lc| lc + CS::one() - var,
       |lc| lc + var,
       |lc| lc,
@@ -119,7 +119,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
 
     for (i, v) in bits.iter().enumerate() {
       cs.enforce(
-        || format!("{i} is bit"),
+        || (i, format!("{i} is bit")),
         |lc| lc + *v,
         |lc| lc + CS::one() - *v,
         |lc| lc,
@@ -128,7 +128,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
 
     // Last bit
     cs.enforce(
-      || "last bit",
+      || (n_bits - 1, "last bit"),
       |mut lc| {
         let mut f = Scalar::ONE;
         lc = lc + &self.num;
@@ -166,7 +166,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
         l
       });
     let sum_lc = LinearCombination::zero() + &self.num - &sum;
-    cs.enforce(|| "sum", |lc| lc + &sum_lc, |lc| lc + CS::one(), |lc| lc);
+    cs.enforce(|| (0, "sum"), |lc| lc + &sum_lc, |lc| lc + CS::one(), |lc| lc);
   }
 
   /// Compute the natural number represented by an array of limbs.
@@ -184,7 +184,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let allocations: Vec<Bit<Scalar>> = (0..n_bits)
       .map(|bit_i| {
         Bit::alloc(
-          cs.namespace(|| format!("bit{bit_i}")),
+          cs.namespace(|| (bit_i, format!("bit{bit_i}"))),
           values.as_ref().map(|vs| vs[bit_i]),
         )
       })
@@ -198,7 +198,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
         l
       });
     let sum_lc = LinearCombination::zero() + &self.num - &sum;
-    cs.enforce(|| "sum", |lc| lc + &sum_lc, |lc| lc + CS::one(), |lc| lc);
+    cs.enforce(|| (0, "sum"), |lc| lc + &sum_lc, |lc| lc + CS::one(), |lc| lc);
     let bits: Vec<LinearCombination<Scalar>> = allocations
       .clone()
       .into_iter()
@@ -215,9 +215,9 @@ impl<Scalar: PrimeField> Num<Scalar> {
     &self,
     mut cs: CS,
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-    let new = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(*self.value.grab()?))?;
+    let new = AllocatedNum::alloc(cs.namespace(|| (0, "alloc")), || Ok(*self.value.grab()?))?;
     cs.enforce(
-      || "eq",
+      || (1, "eq"),
       |lc| lc,
       |lc| lc,
       |lc| lc + new.get_variable() - &self.num,

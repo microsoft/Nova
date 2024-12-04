@@ -97,7 +97,7 @@ where
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, _: A, _a: LA, _b: LB, _c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
     LB: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
@@ -106,10 +106,10 @@ where
     // Do nothing: we don't care about linear-combination evaluations in this context.
   }
 
-  fn push_namespace<NR, N>(&mut self, _: N)
+  fn push_namespace<NR, N>(&mut self, _name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     // Do nothing; we don't care about namespaces in this context.
   }

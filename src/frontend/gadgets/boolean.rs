@@ -53,7 +53,7 @@ impl AllocatedBit {
     // reduces to (1 - a) * a = 0, which is a
     // traditional boolean constraint.
     cs.enforce(
-      || "boolean constraint",
+      || (0, "boolean constraint"),
       |lc| lc + CS::one() - must_be_false.variable - var,
       |lc| lc + var,
       |lc| lc,
@@ -86,7 +86,7 @@ impl AllocatedBit {
     // Constrain: (1 - a) * a = 0
     // This constrains a to be either 0 or 1.
     cs.enforce(
-      || "boolean constraint",
+      || (0, "boolean constraint"),
       |lc| lc + CS::one() - var,
       |lc| lc + var,
       |lc| lc,
@@ -140,7 +140,7 @@ impl AllocatedBit {
     // 2a * b = a + b - c
     // (a + a) * b = a + b - c
     cs.enforce(
-      || "xor constraint",
+      || (0, "xor constraint"),
       |lc| lc + a.variable + a.variable,
       |lc| lc + b.variable,
       |lc| lc + a.variable + b.variable - result_var,
@@ -181,7 +181,7 @@ impl AllocatedBit {
     // Constrain (a) * (b) = (c), ensuring c is 1 iff
     // a AND b are both 1.
     cs.enforce(
-      || "and constraint",
+      || (0, "and constraint"),
       |lc| lc + a.variable,
       |lc| lc + b.variable,
       |lc| lc + result_var,
@@ -221,7 +221,7 @@ impl AllocatedBit {
     // Constrain (a) * (1 - b) = (c), ensuring c is 1 iff
     // a is true and b is false, and otherwise c is 0.
     cs.enforce(
-      || "and not constraint",
+      || (0, "and not constraint"),
       |lc| lc + a.variable,
       |lc| lc + CS::one() - b.variable,
       |lc| lc + result_var,
@@ -261,7 +261,7 @@ impl AllocatedBit {
     // Constrain (1 - a) * (1 - b) = (c), ensuring c is 1 iff
     // a and b are both false, and otherwise c is 0.
     cs.enforce(
-      || "nor constraint",
+      || (0, "nor constraint"),
       |lc| lc + CS::one() - a.variable,
       |lc| lc + CS::one() - b.variable,
       |lc| lc + result_var,
@@ -315,7 +315,7 @@ where
     .into_iter()
     .rev()
     .enumerate()
-    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), b))
+    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| (i, format!("bit {}", i))), b))
     .collect::<Result<Vec<_>, SynthesisError>>()?;
 
   Ok(bits)
@@ -355,7 +355,7 @@ impl Boolean {
       }
       (&Boolean::Constant(true), a) | (a, &Boolean::Constant(true)) => {
         cs.enforce(
-          || "enforce equal to one",
+          || (0, "enforce equal to one"),
           |lc| lc,
           |lc| lc,
           |lc| lc + CS::one() - &a.lc(CS::one(), Scalar::ONE),
@@ -365,7 +365,7 @@ impl Boolean {
       }
       (&Boolean::Constant(false), a) | (a, &Boolean::Constant(false)) => {
         cs.enforce(
-          || "enforce equal to zero",
+          || (1, "enforce equal to zero"),
           |lc| lc,
           |lc| lc,
           |_| a.lc(CS::one(), Scalar::ONE),
@@ -375,7 +375,7 @@ impl Boolean {
       }
       (a, b) => {
         cs.enforce(
-          || "enforce equal",
+          || (2, "enforce equal"),
           |lc| lc,
           |lc| lc,
           |_| a.lc(CS::one(), Scalar::ONE) - &b.lc(CS::one(), Scalar::ONE),
@@ -483,7 +483,7 @@ impl Boolean {
     CS: ConstraintSystem<Scalar>,
   {
     Ok(Boolean::not(&Boolean::and(
-      cs.namespace(|| "not and (not a) (not b)"),
+      cs.namespace(|| (0, "not and (not a) (not b)")),
       &Boolean::not(a),
       &Boolean::not(b),
     )?))
@@ -584,7 +584,7 @@ impl Boolean {
 
     // a(b - c) = ch - c
     cs.enforce(
-      || "ch computation",
+      || (0, "ch computation"),
       |_| b.lc(CS::one(), Scalar::ONE) - &c.lc(CS::one(), Scalar::ONE),
       |_| a.lc(CS::one(), Scalar::ONE),
       |lc| lc + ch - &c.lc(CS::one(), Scalar::ONE),
@@ -697,10 +697,10 @@ impl Boolean {
     // (b) * (c) = (bc)
     // (2bc - b - c) * (a) = bc - maj
 
-    let bc = Self::and(cs.namespace(|| "b and c"), b, c)?;
+    let bc = Self::and(cs.namespace(|| (0, "b and c")), b, c)?;
 
     cs.enforce(
-      || "maj computation",
+      || (1, "maj computation"),
       |_| {
         bc.lc(CS::one(), Scalar::ONE) + &bc.lc(CS::one(), Scalar::ONE)
           - &b.lc(CS::one(), Scalar::ONE)
