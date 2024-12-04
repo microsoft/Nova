@@ -133,7 +133,7 @@ where
   }
 }
 
-impl<'a, 'b, E: Engine> Mul<&'b E::Scalar> for &'a Commitment<E>
+impl<'b, E: Engine> Mul<&'b E::Scalar> for &'_ Commitment<E>
 where
   E::GE: PairingGroup,
 {
