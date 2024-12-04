@@ -1,7 +1,9 @@
 //! Support for generating R1CS shape using bellpepper.
 
-use crate::traits::Engine;
-use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use crate::{
+  frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
+  traits::Engine,
+};
 use ff::PrimeField;
 
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
