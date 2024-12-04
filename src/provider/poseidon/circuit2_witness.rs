@@ -5,7 +5,7 @@ use crate::frontend::util_cs::witness_cs::SizedWitness;
 use ff::PrimeField;
 use generic_array::{sequence::GenericSequence, typenum::Unsigned, GenericArray};
 
-impl<'a, Scalar, A> SizedWitness<Scalar> for Poseidon<'a, Scalar, A>
+impl<Scalar, A> SizedWitness<Scalar> for Poseidon<'_, Scalar, A>
 where
   Scalar: PrimeField,
   A: Arity<Scalar>,
