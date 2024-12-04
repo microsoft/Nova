@@ -14,7 +14,6 @@
 ///
 /// println!("{:?}", res); // Output: [6, 9, 12]
 /// ```
-
 #[macro_export]
 macro_rules! zip_with {
     // no iterator projection specified: the macro assumes the arguments *are* iterators
