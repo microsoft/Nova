@@ -165,31 +165,3 @@ impl Iterator for Grain {
     Some(new_bit)
   }
 }
-
-#[allow(dead_code)]
-#[inline]
-const fn bool_to_u8(bit: bool, offset: usize) -> u8 {
-  if bit {
-    1u8 << offset
-  } else {
-    0u8
-  }
-}
-
-/// Converts a slice of bools into their byte representation, in little endian.
-#[allow(dead_code)]
-pub(crate) fn bits_to_bytes(bits: &[bool]) -> Vec<u8> {
-  bits
-    .chunks(8)
-    .map(|bits| {
-      bool_to_u8(bits[7], 7)
-        | bool_to_u8(bits[6], 6)
-        | bool_to_u8(bits[5], 5)
-        | bool_to_u8(bits[4], 4)
-        | bool_to_u8(bits[3], 3)
-        | bool_to_u8(bits[2], 2)
-        | bool_to_u8(bits[1], 1)
-        | bool_to_u8(bits[0], 0)
-    })
-    .collect()
-}
