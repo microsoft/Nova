@@ -6,6 +6,9 @@
 
 use crate::{
   constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  frontend::{
+    num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
+  },
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -18,12 +21,6 @@ use crate::{
     circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
   },
   Commitment,
-};
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::{
-  boolean::{AllocatedBit, Boolean},
-  num::AllocatedNum,
-  ConstraintSystem, SynthesisError,
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -383,17 +380,16 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
 mod tests {
   use super::*;
   use crate::{
-    bellpepper::{
+    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+    frontend::{
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
     },
-    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
     gadgets::utils::scalar_as_base,
     provider::{
-      poseidon::PoseidonConstantsCircuit,
-      {Bn256EngineKZG, GrumpkinEngine}, {PallasEngine, VestaEngine},
-      {Secp256k1Engine, Secq256k1Engine},
+      poseidon::PoseidonConstantsCircuit, Bn256EngineKZG, GrumpkinEngine, PallasEngine,
+      Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{circuit::TrivialCircuit, snark::default_ck_hint},
   };

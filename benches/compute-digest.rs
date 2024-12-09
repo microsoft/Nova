@@ -1,9 +1,9 @@
 use std::{marker::PhantomData, time::Duration};
 
-use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
 use nova_snark::{
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},

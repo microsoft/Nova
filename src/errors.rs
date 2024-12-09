@@ -2,6 +2,8 @@
 use core::fmt::Debug;
 use thiserror::Error;
 
+use crate::frontend::SynthesisError;
+
 /// Errors returned by Nova
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
 #[non_exhaustive]
@@ -69,8 +71,8 @@ pub enum NovaError {
   InternalError,
 }
 
-impl From<bellpepper_core::SynthesisError> for NovaError {
-  fn from(err: bellpepper_core::SynthesisError) -> Self {
+impl From<SynthesisError> for NovaError {
+  fn from(err: SynthesisError) -> Self {
     Self::SynthesisError {
       reason: err.to_string(),
     }

@@ -1,20 +1,16 @@
 //! This example proves the knowledge of preimage to a hash chain tail, with a configurable number of elements per hash chain node.
 //! The output of each step tracks the current tail of the hash chain
-use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use generic_array::typenum::U24;
-use neptune::{
-  circuit2::Elt,
-  sponge::{
-    api::{IOPattern, SpongeAPI, SpongeOp},
-    circuit::SpongeCircuit,
-    vanilla::{Mode::Simplex, Sponge, SpongeTrait},
-  },
-  Strength,
-};
 use nova_snark::{
-  provider::{Bn256EngineKZG, GrumpkinEngine},
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  provider::{
+    poseidon::{
+      Elt, IOPattern, Simplex, Sponge, SpongeAPI, SpongeCircuit, SpongeOp, SpongeTrait, Strength,
+    },
+    Bn256EngineKZG, GrumpkinEngine,
+  },
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
@@ -91,9 +87,9 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);
-      neptune::sponge::api::SpongeAPI::absorb(&mut sponge, num_absorbs, &elt, acc);
+      SpongeAPI::absorb(&mut sponge, num_absorbs, &elt, acc);
 
-      let output = neptune::sponge::api::SpongeAPI::squeeze(&mut sponge, 1, acc);
+      let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
       sponge.finish(acc).unwrap();
       Elt::ensure_allocated(&output[0], &mut ns.namespace(|| "ensure allocated"), true)?
     };

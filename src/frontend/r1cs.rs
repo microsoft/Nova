@@ -5,11 +5,11 @@
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
 use crate::{
   errors::NovaError,
+  frontend::{Index, LinearCombination},
   r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix, R1CS},
   traits::Engine,
   CommitmentKey,
 };
-use bellpepper_core::{Index, LinearCombination};
 use ff::PrimeField;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
