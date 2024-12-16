@@ -6,8 +6,10 @@ use std::{
   collections::{BTreeMap, HashMap},
 };
 
-use crate::traits::Engine;
-use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+use crate::{
+  frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
+  traits::Engine,
+};
 use core::fmt::Write;
 use ff::{Field, PrimeField};
 

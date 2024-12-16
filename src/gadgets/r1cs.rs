@@ -5,6 +5,7 @@ use super::nonnative::{
 };
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
@@ -15,8 +16,6 @@ use crate::{
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
-use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
-use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
 
 /// An Allocated R1CS Instance

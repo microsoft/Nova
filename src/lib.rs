@@ -11,7 +11,6 @@
 #![forbid(unsafe_code)]
 
 // private modules
-mod bellpepper;
 mod circuit;
 mod constants;
 mod digest;
@@ -20,6 +19,7 @@ mod r1cs;
 
 // public modules
 pub mod errors;
+pub mod frontend;
 pub mod gadgets;
 pub mod provider;
 pub mod spartan;
@@ -27,18 +27,18 @@ pub mod traits;
 
 use once_cell::sync::OnceCell;
 
-use crate::bellpepper::{
-  r1cs::{NovaShape, NovaWitness},
-  shape_cs::ShapeCS,
-  solver::SatisfyingAssignment,
-};
 use crate::digest::{DigestComputer, SimpleDigestible};
-use bellpepper_core::{ConstraintSystem, SynthesisError};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
+use frontend::{
+  r1cs::{NovaShape, NovaWitness},
+  shape_cs::ShapeCS,
+  solver::SatisfyingAssignment,
+  ConstraintSystem, SynthesisError,
+};
 use gadgets::utils::scalar_as_base;
 use nifs::{NIFSRelaxed, NIFS};
 use r1cs::{
@@ -996,10 +996,10 @@ mod tests {
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
   };
-  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::{fmt::Write, marker::PhantomData};
   use expect_test::{expect, Expect};
   use ff::PrimeField;
+  use frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 
   type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
   type EEPrime<E> = provider::hyperkzg::EvaluationEngine<E>;

@@ -1,8 +1,7 @@
 //! This module provides an implementation of `TranscriptEngineTrait` using keccak256
-use crate::traits::PrimeFieldExt;
 use crate::{
   errors::NovaError,
-  traits::{Engine, TranscriptEngineTrait, TranscriptReprTrait},
+  traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
 };
 use core::marker::PhantomData;
 use sha3::{Digest, Keccak256};
@@ -99,9 +98,9 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
 #[cfg(test)]
 mod tests {
   use crate::{
-    provider::keccak::Keccak256Transcript,
     provider::{
-      Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
+      keccak::Keccak256Transcript, Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine,
+      Secq256k1Engine, VestaEngine,
     },
     traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
   };

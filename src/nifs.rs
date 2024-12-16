@@ -210,16 +210,17 @@ impl<E: Engine> NIFSRelaxed<E> {
 mod tests {
   use super::*;
   use crate::{
-    bellpepper::{
+    frontend::{
+      num::AllocatedNum,
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
+      ConstraintSystem, SynthesisError,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::{SparseMatrix, R1CS},
     traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
   };
-  use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
 

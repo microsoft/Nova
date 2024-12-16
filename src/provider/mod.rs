@@ -8,7 +8,7 @@ pub mod ipa_pc;
 pub(crate) mod bn256_grumpkin;
 pub(crate) mod pasta;
 pub(crate) mod pedersen;
-pub(crate) mod poseidon;
+pub mod poseidon;
 pub(crate) mod secp_secq;
 pub(crate) mod traits;
 
