@@ -295,9 +295,9 @@ mod tests {
     for i in 0..num_absorbs {
       let num = E::Scalar::random(&mut csprng);
       ro.absorb(num);
-      let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| format!("data {i}")), || num);
+      let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| (i, format!("data {i}"))), || num);
       num_gadget
-        .inputize(&mut cs.namespace(|| format!("input {i}")))
+        .inputize(&mut cs.namespace(|| (i, format!("input {i}"))))
         .unwrap();
       ro_gadget.absorb(&num_gadget);
     }

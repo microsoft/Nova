@@ -63,7 +63,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
 
     // allocate x_i
     let x_i = (0..self.num_elts_per_step)
-      .map(|i| AllocatedNum::alloc(cs.namespace(|| format!("x_{}", i)), || Ok(self.x_i[i])))
+      .map(|i| AllocatedNum::alloc(cs.namespace(|| (i, format!("x_{}", i))), || Ok(self.x_i[i])))
       .collect::<Result<Vec<_>, _>>()?;
 
     // concatenate z_in and x_i
@@ -80,7 +80,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
     let parameter = IOPattern(vec![SpongeOp::Absorb(num_absorbs), SpongeOp::Squeeze(1u32)]);
 
     let pc = Sponge::<G::Scalar, U24>::api_constants(Strength::Standard);
-    let mut ns = cs.namespace(|| "ns");
+    let mut ns = cs.namespace(|| (0, "ns"));
 
     let z_out = {
       let mut sponge = SpongeCircuit::new_with_constants(&pc, Simplex);
@@ -91,7 +91,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
 
       let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
       sponge.finish(acc).unwrap();
-      Elt::ensure_allocated(&output[0], &mut ns.namespace(|| "ensure allocated"), true)?
+      Elt::ensure_allocated(&output[0], &mut ns.namespace(|| (1, "ensure allocated")), true)?
     };
 
     Ok(vec![z_out])

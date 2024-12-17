@@ -209,14 +209,14 @@ mod tests {
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
-      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), x)?;
-      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      let x_sq = x.square(cs.namespace(|| (0, "x_sq")))?;
+      let x_cu = x_sq.mul(cs.namespace(|| (1, "x_cu")), x)?;
+      let y = AllocatedNum::alloc(cs.namespace(|| (2, "y")), || {
         Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
       })?;
 
       cs.enforce(
-        || "y = x^3 + x + 5",
+        || (3, "y = x^3 + x + 5"),
         |lc| {
           lc + x_cu.get_variable()
             + x.get_variable()

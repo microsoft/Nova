@@ -1001,7 +1001,7 @@ mod tests {
       .to_le_bits()
       .into_iter()
       .enumerate()
-      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), Some(bit)))
+      .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| (i, format!("bit {i}"))), Some(bit)))
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
     let e = a.scalar_mul(cs.namespace(|| (2, "Scalar Mul")), &bits).unwrap();

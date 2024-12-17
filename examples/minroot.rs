@@ -106,7 +106,7 @@ impl<G: Group> StepCircuit<G::Scalar> for MinRootCircuit<G> {
     for i in 0..self.seq.len() {
       // non deterministic advice
       let x_i_plus_1 =
-        AllocatedNum::alloc(cs.namespace(|| format!("x_i_plus_1_iter_{i}")), || {
+        AllocatedNum::alloc(cs.namespace(|| (i, format!("x_i_plus_1_iter_{i}"))), || {
           Ok(self.seq[i].x_i_plus_1)
         })?;
 
@@ -115,11 +115,11 @@ impl<G: Group> StepCircuit<G::Scalar> for MinRootCircuit<G> {
       // (ii) y_i_plus_1 = x_i
       // (1) constraints for condition (i) are below
       // (2) constraints for condition (ii) is avoided because we just used x_i wherever y_i_plus_1 is used
-      let x_i_plus_1_sq = x_i_plus_1.square(cs.namespace(|| format!("x_i_plus_1_sq_iter_{i}")))?;
+      let x_i_plus_1_sq = x_i_plus_1.square(cs.namespace(|| (i, format!("x_i_plus_1_sq_iter_{i}"))))?;
       let x_i_plus_1_quad =
-        x_i_plus_1_sq.square(cs.namespace(|| format!("x_i_plus_1_quad_{i}")))?;
+        x_i_plus_1_sq.square(cs.namespace(|| (i, format!("x_i_plus_1_quad_{i}"))))?;
       cs.enforce(
-        || format!("x_i_plus_1_quad * x_i_plus_1 = x_i + y_i_iter_{i}"),
+        || (i, format!("x_i_plus_1_quad * x_i_plus_1 = x_i + y_i_iter_{i}")),
         |lc| lc + x_i_plus_1_quad.get_variable(),
         |lc| lc + x_i_plus_1.get_variable(),
         |lc| lc + x_i.get_variable() + y_i.get_variable(),
