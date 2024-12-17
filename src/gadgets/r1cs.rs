@@ -33,13 +33,13 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
     u: Option<&R1CSInstance<E>>,
   ) -> Result<Self, SynthesisError> {
     let W = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate W"),
+      cs.namespace(|| (0, "allocate W")),
       u.map(|u| u.comm_W.to_coordinates()),
     )?;
-    W.check_on_curve(cs.namespace(|| "check W on curve"))?;
+    W.check_on_curve(cs.namespace(|| (1, "check W on curve")))?;
 
-    let X0 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
-    let X1 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
+    let X0 = alloc_scalar_as_base::<E, _>(cs.namespace(|| (2, "allocate X[0]")), u.map(|u| u.X[0]))?;
+    let X1 = alloc_scalar_as_base::<E, _>(cs.namespace(|| (3, "allocate X[1]")), u.map(|u| u.X[1]))?;
 
     Ok(AllocatedR1CSInstance { W, X0, X1 })
   }
@@ -75,29 +75,29 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // in the Nova augmented circuit, which ensures that the relaxed instance
     // came from a prior iteration of Nova.
     let W = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate W"),
+      cs.namespace(|| (0, "allocate W")),
       inst.map(|inst| inst.comm_W.to_coordinates()),
     )?;
 
     let E = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate E"),
+      cs.namespace(|| (1, "allocate E")),
       inst.map(|inst| inst.comm_E.to_coordinates()),
     )?;
 
     // u << |E::Base| despite the fact that u is a scalar.
     // So we parse all of its bytes as a E::Base element
-    let u = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate u"), inst.map(|inst| inst.u))?;
+    let u = alloc_scalar_as_base::<E, _>(cs.namespace(|| (2, "allocate u")), inst.map(|inst| inst.u))?;
 
     // Allocate X0 and X1. If the input instance is None, then allocate default values 0.
     let X0 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[0]"),
+      cs.namespace(|| (3, "allocate X[0]")),
       || Ok(f_to_nat(&inst.map_or(E::Scalar::ZERO, |inst| inst.X[0]))),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[1]"),
+      cs.namespace(|| (4, "allocate X[1]")),
       || Ok(f_to_nat(&inst.map_or(E::Scalar::ZERO, |inst| inst.X[1]))),
       limb_width,
       n_limbs,
@@ -113,7 +113,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
-    let W = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
+    let W = AllocatedPoint::default(cs.namespace(|| (0, "allocate W")))?;
     let E = W.clone();
 
     let u = W.x.clone(); // In the default case, W.x = u = 0
@@ -122,14 +122,14 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // If the prover is malicious, it can set to arbitrary values, but the resulting
     // relaxed R1CS instance with the checked default values of W, E, and u must still be satisfying
     let X0 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate x_default[0]"),
+      cs.namespace(|| (1, "allocate x_default[0]")),
       || Ok(f_to_nat(&E::Scalar::ZERO)),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate x_default[1]"),
+      cs.namespace(|| (2, "allocate x_default[1]")),
       || Ok(f_to_nat(&E::Scalar::ZERO)),
       limb_width,
       n_limbs,
@@ -146,19 +146,19 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
-    let E = AllocatedPoint::default(cs.namespace(|| "allocate default E"))?;
+    let E = AllocatedPoint::default(cs.namespace(|| (0, "allocate default E")))?;
 
-    let u = alloc_one(cs.namespace(|| "one"));
+    let u = alloc_one(cs.namespace(|| (1, "one")));
 
     let X0 = BigNat::from_num(
-      cs.namespace(|| "allocate X0 from relaxed r1cs"),
+      cs.namespace(|| (2, "allocate X0 from relaxed r1cs")),
       &Num::from(inst.X0),
       limb_width,
       n_limbs,
     )?;
 
     let X1 = BigNat::from_num(
-      cs.namespace(|| "allocate X1 from relaxed r1cs"),
+      cs.namespace(|| (3, "allocate X1 from relaxed r1cs")),
       &Num::from(inst.X1),
       limb_width,
       n_limbs,
@@ -194,7 +194,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
+        limb.as_allocated_num(cs.namespace(|| (i, format!("convert limb {i} of X_r[0] to num"))))
       })
       .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
@@ -210,7 +210,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
       .iter()
       .enumerate()
       .map(|(i, limb)| {
-        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[1] to num")))
+        limb.as_allocated_num(cs.namespace(|| (i, format!("convert limb {i} of X_r[1] to num"))))
       })
       .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
@@ -243,23 +243,23 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     ro.absorb(&T.x);
     ro.absorb(&T.y);
     ro.absorb(&T.is_infinity);
-    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
-    let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
+    let r_bits = ro.squeeze(cs.namespace(|| (0, "r bits")), NUM_CHALLENGE_BITS)?;
+    let r = le_bits_to_num(cs.namespace(|| (1, "r")), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
-    let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
+    let rW = u.W.scalar_mul(cs.namespace(|| (2, "r * u.W")), &r_bits)?;
+    let W_fold = self.W.add(cs.namespace(|| (3, "self.W + r * u.W")), &rW)?;
 
     // E_fold = self.E + r * T
-    let rT = T.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
-    let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rT)?;
+    let rT = T.scalar_mul(cs.namespace(|| (4, "r * T")), &r_bits)?;
+    let E_fold = self.E.add(cs.namespace(|| (5, "self.E + r * T")), &rT)?;
 
     // u_fold = u_r + r
-    let u_fold = AllocatedNum::alloc(cs.namespace(|| "u_fold"), || {
+    let u_fold = AllocatedNum::alloc(cs.namespace(|| (6, "u_fold")), || {
       Ok(*self.u.get_value().get()? + r.get_value().get()?)
     })?;
     cs.enforce(
-      || "Check u_fold",
+      || (7, "Check u_fold"),
       |lc| lc,
       |lc| lc,
       |lc| lc + u_fold.get_variable() - self.u.get_variable() - r.get_variable(),
@@ -268,7 +268,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // Fold the IO:
     // Analyze r into limbs
     let r_bn = BigNat::from_num(
-      cs.namespace(|| "allocate r_bn"),
+      cs.namespace(|| (8, "allocate r_bn")),
       &Num::from(r),
       limb_width,
       n_limbs,
@@ -276,7 +276,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
 
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
-      cs.namespace(|| "alloc m"),
+      cs.namespace(|| (9, "alloc m")),
       &E::GE::group_params().2,
       limb_width,
       n_limbs,
@@ -284,33 +284,33 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
 
     // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X0_bn"),
+      cs.namespace(|| (10, "allocate X0_bn")),
       &Num::from(u.X0.clone()),
       limb_width,
       n_limbs,
     )?;
 
     // Fold self.X[0] + r * X[0]
-    let (_, r_0) = X0_bn.mult_mod(cs.namespace(|| "r*X[0]"), &r_bn, &m_bn)?;
+    let (_, r_0) = X0_bn.mult_mod(cs.namespace(|| (11, "r*X[0]")), &r_bn, &m_bn)?;
     // add X_r[0]
     let r_new_0 = self.X0.add(&r_0)?;
     // Now reduce
-    let X0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X[0]"), &m_bn)?;
+    let X0_fold = r_new_0.red_mod(cs.namespace(|| (12, "reduce folded X[0]")), &m_bn)?;
 
     // Analyze X1 to bignat
     let X1_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X1_bn"),
+      cs.namespace(|| (13, "allocate X1_bn")),
       &Num::from(u.X1.clone()),
       limb_width,
       n_limbs,
     )?;
 
     // Fold self.X[1] + r * X[1]
-    let (_, r_1) = X1_bn.mult_mod(cs.namespace(|| "r*X[1]"), &r_bn, &m_bn)?;
+    let (_, r_1) = X1_bn.mult_mod(cs.namespace(|| (14, "r*X[1]")), &r_bn, &m_bn)?;
     // add X_r[1]
     let r_new_1 = self.X1.add(&r_1)?;
     // Now reduce
-    let X1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X[1]"), &m_bn)?;
+    let X1_fold = r_new_1.red_mod(cs.namespace(|| (15, "reduce folded X[1]")), &m_bn)?;
 
     Ok(Self {
       W: W_fold,
@@ -329,35 +329,35 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     condition: &Boolean,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     let W = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "W = cond ? self.W : other.W"),
+      cs.namespace(|| (0, "W = cond ? self.W : other.W")),
       &self.W,
       &other.W,
       condition,
     )?;
 
     let E = AllocatedPoint::conditionally_select(
-      cs.namespace(|| "E = cond ? self.E : other.E"),
+      cs.namespace(|| (1, "E = cond ? self.E : other.E")),
       &self.E,
       &other.E,
       condition,
     )?;
 
     let u = conditionally_select(
-      cs.namespace(|| "u = cond ? self.u : other.u"),
+      cs.namespace(|| (2, "u = cond ? self.u : other.u")),
       &self.u,
       &other.u,
       condition,
     )?;
 
     let X0 = conditionally_select_bignat(
-      cs.namespace(|| "X[0] = cond ? self.X[0] : other.X[0]"),
+      cs.namespace(|| (3, "X[0] = cond ? self.X[0] : other.X[0]")),
       &self.X0,
       &other.X0,
       condition,
     )?;
 
     let X1 = conditionally_select_bignat(
-      cs.namespace(|| "X[1] = cond ? self.X[1] : other.X[1]"),
+      cs.namespace(|| (4, "X[1] = cond ? self.X[1] : other.X[1]")),
       &self.X1,
       &other.X1,
       condition,

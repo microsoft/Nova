@@ -83,7 +83,7 @@ pub fn u64_into_bit_vec_le<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
   let bits = values
     .into_iter()
     .enumerate()
-    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), b))
+    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| (i, format!("bit {}", i))), b))
     .collect::<Result<Vec<_>, SynthesisError>>()?;
 
   Ok(bits)
@@ -114,11 +114,11 @@ where
     });
     coeff = coeff.double();
   }
-  let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
+  let num = AllocatedNum::alloc(cs.namespace(|| (0, "Field element")), || {
     fe.ok_or(SynthesisError::AssignmentMissing)
   })?;
   lc = lc - num.get_variable();
-  cs.enforce(|| "compute number from bits", |lc| lc, |lc| lc, |_| lc);
+  cs.enforce(|| (1, "compute number from bits"), |lc| lc, |lc| lc, |_| lc);
   Ok(num)
 }
 
@@ -134,35 +134,35 @@ impl<G: Group> StepCircuit<G::Scalar> for AndCircuit<G> {
   ) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> {
     for i in 0..self.batch.len() {
       // allocate a and b as field elements
-      let a = AllocatedNum::alloc(cs.namespace(|| format!("a_{}", i)), || {
+      let a = AllocatedNum::alloc(cs.namespace(|| (i, format!("a_{}", i))), || {
         Ok(G::Scalar::from(self.batch[i].a))
       })?;
-      let b = AllocatedNum::alloc(cs.namespace(|| format!("b_{}", i)), || {
+      let b = AllocatedNum::alloc(cs.namespace(|| (i, format!("b_{}", i))), || {
         Ok(G::Scalar::from(self.batch[i].b))
       })?;
 
       // obtain bit representations of a and b
       let a_bits = u64_into_bit_vec_le(
-        cs.namespace(|| format!("a_bits_{}", i)),
+        cs.namespace(|| (i, format!("a_bits_{}", i))),
         Some(self.batch[i].a),
       )?; // little endian
       let b_bits = u64_into_bit_vec_le(
-        cs.namespace(|| format!("b_bits_{}", i)),
+        cs.namespace(|| (i, format!("b_bits_{}", i))),
         Some(self.batch[i].b),
       )?; // little endian
 
       // enforce that bits of a and b are correct
-      let a_from_bits = le_bits_to_num(cs.namespace(|| format!("a_{}", i)), &a_bits)?;
-      let b_from_bits = le_bits_to_num(cs.namespace(|| format!("b_{}", i)), &b_bits)?;
+      let a_from_bits = le_bits_to_num(cs.namespace(|| (i, format!("a_{}", i))), &a_bits)?;
+      let b_from_bits = le_bits_to_num(cs.namespace(|| (i, format!("b_{}", i))), &b_bits)?;
 
       cs.enforce(
-        || format!("a_{} == a_from_bits", i),
+        || (i, format!("a_{} == a_from_bits", i)),
         |lc| lc + a.get_variable(),
         |lc| lc + CS::one(),
         |lc| lc + a_from_bits.get_variable(),
       );
       cs.enforce(
-        || format!("b_{} == b_from_bits", i),
+        || (i, format!("b_{} == b_from_bits", i)),
         |lc| lc + b.get_variable(),
         |lc| lc + CS::one(),
         |lc| lc + b_from_bits.get_variable(),
@@ -173,7 +173,7 @@ impl<G: Group> StepCircuit<G::Scalar> for AndCircuit<G> {
       // perform bitwise AND
       for i in 0..64 {
         let c_bit = AllocatedBit::and(
-          cs.namespace(|| format!("and_bit_{}", i)),
+          cs.namespace(|| (i, format!("and_bit_{}", i))),
           &a_bits[i],
           &b_bits[i],
         )?;
@@ -181,15 +181,15 @@ impl<G: Group> StepCircuit<G::Scalar> for AndCircuit<G> {
       }
 
       // convert back to an allocated num
-      let c_from_bits = le_bits_to_num(cs.namespace(|| format!("c_{}", i)), &c_bits)?;
+      let c_from_bits = le_bits_to_num(cs.namespace(|| (i, format!("c_{}", i))), &c_bits)?;
 
-      let c = AllocatedNum::alloc(cs.namespace(|| format!("c_{}", i)), || {
+      let c = AllocatedNum::alloc(cs.namespace(|| (i, format!("c_{}", i))), || {
         Ok(G::Scalar::from(self.batch[i].a & self.batch[i].b))
       })?;
 
       // enforce that c is correct
       cs.enforce(
-        || format!("c_{} == c_from_bits", i),
+        || (i, format!("c_{} == c_from_bits", i)),
         |lc| lc + c.get_variable(),
         |lc| lc + CS::one(),
         |lc| lc + c_from_bits.get_variable(),

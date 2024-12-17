@@ -37,20 +37,20 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit
     let zero = vec![E::Scalar::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
+        AllocatedNum::alloc(cs.namespace(|| (i, format!("zi_{i}"))), || {
           Ok(self.z_i.as_ref().unwrap_or(&zero)[i])
         })
       })
       .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
 
-    let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| "F"), &z_i)?;
+    let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| (arity, "F".to_string())), &z_i)?;
 
     // inputize both z_i and z_i_plus_one
     for (j, input) in z_i.iter().enumerate().take(arity) {
-      let _ = input.inputize(cs.namespace(|| format!("input {j}")));
+      let _ = input.inputize(cs.namespace(|| (arity + j, format!("input {j}"))));
     }
     for (j, output) in z_i_plus_one.iter().enumerate().take(arity) {
-      let _ = output.inputize(cs.namespace(|| format!("output {j}")));
+      let _ = output.inputize(cs.namespace(|| (arity + z_i.len() + j, format!("output {j}"))));
     }
 
     Ok(())
@@ -209,14 +209,14 @@ mod tests {
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
-      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), x)?;
-      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      let x_sq = x.square(cs.namespace(|| (0, "x_sq")))?;
+      let x_cu = x_sq.mul(cs.namespace(|| (1, "x_cu")), x)?;
+      let y = AllocatedNum::alloc(cs.namespace(|| (2, "y")), || {
         Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
       })?;
 
       cs.enforce(
-        || "y = x^3 + x + 5",
+        || (3, "y = x^3 + x + 5"),
         |lc| {
           lc + x_cu.get_variable()
             + x.get_variable()

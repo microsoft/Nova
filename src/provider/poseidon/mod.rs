@@ -221,7 +221,7 @@ where
       SpongeOp::Absorb(self.num_absorbs as u32),
       SpongeOp::Squeeze(1u32),
     ]);
-    let mut ns = cs.namespace(|| "ns");
+    let mut ns = cs.namespace(|| (0, "ns"));
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
@@ -243,12 +243,12 @@ where
       output
     };
 
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| (1, "ensure allocated")), true)?;
 
     // return the hash as a vector of bits, truncated
     Ok(
       hash
-        .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
+        .to_bits_le_strict(ns.namespace(|| (2, "poseidon hash to boolean")))?
         .iter()
         .map(|boolean| match boolean {
           Boolean::Is(ref x) => x.clone(),
@@ -295,9 +295,9 @@ mod tests {
     for i in 0..num_absorbs {
       let num = E::Scalar::random(&mut csprng);
       ro.absorb(num);
-      let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| format!("data {i}")), || num);
+      let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| (i, format!("data {i}"))), || num);
       num_gadget
-        .inputize(&mut cs.namespace(|| format!("input {i}")))
+        .inputize(&mut cs.namespace(|| (i, format!("input {i}"))))
         .unwrap();
       ro_gadget.absorb(&num_gadget);
     }

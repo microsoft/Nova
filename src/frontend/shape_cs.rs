@@ -80,7 +80,7 @@ impl<E: Engine> ConstraintSystem<E::Scalar> for ShapeCS<E> {
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, _annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
     LB: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
@@ -96,7 +96,7 @@ impl<E: Engine> ConstraintSystem<E::Scalar> for ShapeCS<E> {
   fn push_namespace<NR, N>(&mut self, _name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
   }
 

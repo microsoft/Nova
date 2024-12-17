@@ -41,18 +41,18 @@ mod tests {
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(cs: &mut CS) {
     // get two bits as input and check that they are indeed bits
-    let a = AllocatedNum::alloc_infallible(cs.namespace(|| "a"), || Fr::ONE);
-    let _ = a.inputize(cs.namespace(|| "a is input"));
+    let a = AllocatedNum::alloc_infallible(cs.namespace(|| (0, "a")), || Fr::ONE);
+    let _ = a.inputize(cs.namespace(|| (1, "a is input")));
     cs.enforce(
-      || "check a is 0 or 1",
+      || (2, "check a is 0 or 1"),
       |lc| lc + CS::one() - a.get_variable(),
       |lc| lc + a.get_variable(),
       |lc| lc,
     );
-    let b = AllocatedNum::alloc_infallible(cs.namespace(|| "b"), || Fr::ONE);
-    let _ = b.inputize(cs.namespace(|| "b is input"));
+    let b = AllocatedNum::alloc_infallible(cs.namespace(|| (3, "b")), || Fr::ONE);
+    let _ = b.inputize(cs.namespace(|| (4, "b is input")));
     cs.enforce(
-      || "check b is 0 or 1",
+      || (5, "check b is 0 or 1"),
       |lc| lc + CS::one() - b.get_variable(),
       |lc| lc + b.get_variable(),
       |lc| lc,

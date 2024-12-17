@@ -229,18 +229,18 @@ mod tests {
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
     // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
-    let x = AllocatedNum::alloc_infallible(cs.namespace(|| "x"), || x_val.unwrap());
-    let _ = x.inputize(cs.namespace(|| "x is input"));
+    let x = AllocatedNum::alloc_infallible(cs.namespace(|| (0, "x")), || x_val.unwrap());
+    let _ = x.inputize(cs.namespace(|| (1, "x is input")));
 
-    let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-    let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+    let x_sq = x.square(cs.namespace(|| (2, "x_sq")))?;
+    let x_cu = x_sq.mul(cs.namespace(|| (3, "x_cu")), &x)?;
+    let y = AllocatedNum::alloc(cs.namespace(|| (4, "y")), || {
       Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + Scalar::from(5u64))
     })?;
-    let _ = y.inputize(cs.namespace(|| "y is output"));
+    let _ = y.inputize(cs.namespace(|| (5, "y is output")));
 
     cs.enforce(
-      || "y = x^3 + x + 5",
+      || (6, "y = x^3 + x + 5"),
       |lc| {
         lc + x_cu.get_variable()
           + x.get_variable()

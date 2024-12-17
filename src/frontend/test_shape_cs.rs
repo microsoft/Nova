@@ -262,13 +262,13 @@ where
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
     LB: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
     LC: FnOnce(LinearCombination<E::Scalar>) -> LinearCombination<E::Scalar>,
   {
-    let path = compute_path(&self.current_namespace, &annotation().into());
+    let path = compute_path(&self.current_namespace, &annotation().1.into());
     let index = self.constraints.len();
     self.set_named_obj(path.clone(), NamedObject::Constraint(index));
 
@@ -282,9 +282,10 @@ where
   fn push_namespace<NR, N>(&mut self, name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
-    let name = name_fn().into();
+    let (_segment, name) = name_fn();
+    let name = name.into();
     let path = compute_path(&self.current_namespace, &name);
     self.set_named_obj(path, NamedObject::Namespace);
     self.current_namespace.push(name);
@@ -300,6 +301,7 @@ where
 }
 
 fn compute_path(ns: &[String], this: &str) -> String {
+
   assert!(
     !this.chars().any(|a| a == '/'),
     "'/' is not allowed in names"

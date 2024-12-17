@@ -109,7 +109,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     )?;
 
     cs.enforce(
-      || "enforce input is correct",
+      || (0, "enforce input is correct"),
       |lc| lc + input,
       |lc| lc + CS::one(),
       |lc| lc + self.variable,
@@ -147,7 +147,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
           cur = Some(v.clone());
         } else {
           cur = Some(AllocatedBit::and(
-            cs.namespace(|| format!("and {}", i)),
+            cs.namespace(|| (i, format!("and {}", i))),
             cur.as_ref().unwrap(),
             v,
           )?);
@@ -189,7 +189,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
       if b {
         // This is part of a run of ones. Let's just
         // allocate the boolean with the expected value.
-        let a_bit = AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), a_bit)?;
+        let a_bit = AllocatedBit::alloc(cs.namespace(|| (i, format!("bit {}", i))), a_bit)?;
         // ... and add it to the current run of ones.
         current_run.push(a_bit.clone());
         result.push(a_bit);
@@ -202,7 +202,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
             current_run.push(last_run.clone().unwrap());
           }
           last_run = Some(kary_and(
-            cs.namespace(|| format!("run ending at {}", i)),
+            cs.namespace(|| (i, format!("run ending at {}", i))),
             &current_run,
           )?);
           current_run.truncate(0);
@@ -214,7 +214,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
         // If `last_run` is false, `a` can be true or false.
 
         let a_bit = AllocatedBit::alloc_conditionally(
-          cs.namespace(|| format!("bit {}", i)),
+          cs.namespace(|| (i, format!("bit {}", i))),
           a_bit,
           last_run.as_ref().expect("char always starts with a one"),
         )?;
@@ -242,7 +242,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
 
     lc = lc - self.variable;
 
-    cs.enforce(|| "unpacking constraint", |lc| lc, |lc| lc, |_| lc);
+    cs.enforce(|| (0, "unpacking constraint"), |lc| lc, |lc| lc, |_| lc);
 
     // Convert into booleans, and reverse for little-endian bit order
     Ok(result.into_iter().map(Boolean::from).rev().collect())
@@ -269,7 +269,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
 
     lc = lc - self.variable;
 
-    cs.enforce(|| "unpacking constraint", |lc| lc, |lc| lc, |_| lc);
+    cs.enforce(|| (0, "unpacking constraint"), |lc| lc, |lc| lc, |_| lc);
 
     Ok(bits.into_iter().map(Boolean::from).collect())
   }
@@ -295,7 +295,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
 
     // Constrain: (a + b) * 1 = a + b
     cs.enforce(
-      || "addition constraint",
+      || (0, "addition constraint"),
       |lc| lc + self.variable + other.variable,
       |lc| lc + CS::one(),
       |lc| lc + var,
@@ -328,7 +328,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
 
     // Constrain: a * b = ab
     cs.enforce(
-      || "multiplication constraint",
+      || (0, "multiplication constraint"),
       |lc| lc + self.variable,
       |lc| lc + other.variable,
       |lc| lc + var,
@@ -361,7 +361,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
 
     // Constrain: a * a = aa
     cs.enforce(
-      || "squaring constraint",
+      || (0, "squaring constraint"),
       |lc| lc + self.variable,
       |lc| lc + self.variable,
       |lc| lc + var,
@@ -395,7 +395,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     // iff a has a multiplicative inverse, untrue
     // for zero.
     cs.enforce(
-      || "nonzero assertion constraint",
+      || (0, "nonzero assertion constraint"),
       |lc| lc + self.variable,
       |lc| lc + inv,
       |lc| lc + CS::one(),
@@ -416,7 +416,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
   where
     CS: ConstraintSystem<Scalar>,
   {
-    let c = Self::alloc(cs.namespace(|| "conditional reversal result 1"), || {
+    let c = Self::alloc(cs.namespace(|| (0, "conditional reversal result 1")), || {
       if condition
         .get_value()
         .ok_or(SynthesisError::AssignmentMissing)?
@@ -428,13 +428,13 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     })?;
 
     cs.enforce(
-      || "first conditional reversal",
+      || (1, "first conditional reversal"),
       |lc| lc + a.variable - b.variable,
       |_| condition.lc(CS::one(), Scalar::ONE),
       |lc| lc + a.variable - c.variable,
     );
 
-    let d = Self::alloc(cs.namespace(|| "conditional reversal result 2"), || {
+    let d = Self::alloc(cs.namespace(|| (2, "conditional reversal result 2")), || {
       if condition
         .get_value()
         .ok_or(SynthesisError::AssignmentMissing)?
@@ -446,7 +446,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     })?;
 
     cs.enforce(
-      || "second conditional reversal",
+      || (3, "second conditional reversal"),
       |lc| lc + b.variable - a.variable,
       |_| condition.lc(CS::one(), Scalar::ONE),
       |lc| lc + b.variable - d.variable,

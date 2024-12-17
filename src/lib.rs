@@ -1023,14 +1023,14 @@ mod tests {
     ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
       // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
       let x = &z[0];
-      let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-      let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), x)?;
-      let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      let x_sq = x.square(cs.namespace(|| (0, "x_sq")))?;
+      let x_cu = x_sq.mul(cs.namespace(|| (1, "x_cu")), x)?;
+      let y = AllocatedNum::alloc(cs.namespace(|| (2, "y")), || {
         Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + F::from(5u64))
       })?;
 
       cs.enforce(
-        || "y = x^3 + x + 5",
+        || (3, "y = x^3 + x + 5"),
         |lc| {
           lc + x_cu.get_variable()
             + x.get_variable()
@@ -1489,15 +1489,15 @@ mod tests {
         let x = &z[0];
 
         // we allocate a variable and set it to the provided non-deterministic advice.
-        let y = AllocatedNum::alloc_infallible(cs.namespace(|| "y"), || self.y);
+        let y = AllocatedNum::alloc_infallible(cs.namespace(|| (0, "y")), || self.y);
 
         // We now check if y = x^{1/5} by checking if y^5 = x
-        let y_sq = y.square(cs.namespace(|| "y_sq"))?;
-        let y_quad = y_sq.square(cs.namespace(|| "y_quad"))?;
-        let y_pow_5 = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
+        let y_sq = y.square(cs.namespace(|| (1, "y_sq")))?;
+        let y_quad = y_sq.square(cs.namespace(|| (2, "y_quad")))?;
+        let y_pow_5 = y_quad.mul(cs.namespace(|| (3, "y_fifth")), &y)?;
 
         cs.enforce(
-          || "y^5 = x",
+          || (4, "y^5 = x"),
           |lc| lc + y_pow_5.get_variable(),
           |lc| lc + CS::one(),
           |lc| lc + x.get_variable(),
@@ -1670,8 +1670,8 @@ mod tests {
         z: &[AllocatedNum<F>],
       ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
         let x = &z[0];
-        let y = x.square(cs.namespace(|| "x_sq"))?;
-        y.inputize(cs.namespace(|| "y"))?; // inputize y
+        let y = x.square(cs.namespace(|| (0, "x_sq")))?;
+        y.inputize(cs.namespace(|| (1, "y")))?; // inputize y
         Ok(vec![y])
       }
     }

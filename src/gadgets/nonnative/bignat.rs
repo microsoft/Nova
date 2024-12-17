@@ -227,7 +227,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     let bignat = Self::alloc_from_nat(
-      cs.namespace(|| "bignat"),
+      cs.namespace(|| (0, "bignat")),
       || {
         Ok({
           n.value
@@ -242,9 +242,9 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
 
     // check if bignat equals n
     // (1) decompose `bignat` into a bitvector `bv`
-    let bv = bignat.decompose(cs.namespace(|| "bv"))?;
+    let bv = bignat.decompose(cs.namespace(|| (1, "bv")))?;
     // (2) recompose bits and check if it equals n
-    n.is_equal(cs.namespace(|| "n"), &bv);
+    n.is_equal(cs.namespace(|| (2, "n")), &bv);
 
     Ok(bignat)
   }
@@ -269,7 +269,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       (0..self.limbs.len()).map(|i| self.limb_values.as_ref().map(|vs| vs[i]));
     for (i, (limb, limb_value)) in self.limbs.iter().zip(limb_values_split).enumerate() {
       Num::new(limb_value, limb.clone())
-        .fits_in_bits(cs.namespace(|| format!("{i}")), self.params.limb_width)?;
+        .fits_in_bits(cs.namespace(|| (i, format!("{i}"))), self.params.limb_width)?;
     }
     Ok(())
   }
@@ -288,7 +288,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       .enumerate()
       .map(|(i, (limb, limb_value))| {
         Num::new(limb_value, limb.clone()).decompose(
-          cs.namespace(|| format!("subdecmop {i}")),
+          cs.namespace(|| (i, format!("subdecmop {i}"))),
           self.params.limb_width,
         )
       })
@@ -367,7 +367,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let mut carry_in = Num::new(Some(Scalar::ZERO), LinearCombination::zero());
 
     for i in 0..n {
-      let carry = Num::alloc(cs.namespace(|| format!("carry value {i}")), || {
+      let carry = Num::alloc(cs.namespace(|| (i, format!("carry value {i}"))), || {
         Ok(
           nat_to_f(
             &((f_to_nat(&self.limb_values.grab()?[i])
@@ -382,7 +382,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       accumulated_extra += max_word;
 
       cs.enforce(
-        || format!("carry {i}"),
+        || (i, format!("carry {i}")),
         |lc| lc,
         |lc| lc,
         |lc| {
@@ -399,10 +399,10 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       accumulated_extra /= &target_base;
 
       if i < n - 1 {
-        carry.fits_in_bits(cs.namespace(|| format!("carry {i} decomp")), carry_bits)?;
+        carry.fits_in_bits(cs.namespace(|| (i, format!("carry {i} decomp"))), carry_bits)?;
       } else {
         cs.enforce(
-          || format!("carry {i} is out"),
+          || (i, format!("carry {i} is out")),
           |lc| lc,
           |lc| lc,
           |lc| lc + &carry.num - (nat_to_f(&accumulated_extra).unwrap(), CS::one()),
@@ -413,7 +413,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
 
     for (i, zero_limb) in self.limbs.iter().enumerate().skip(n) {
       cs.enforce(
-        || format!("zero self {i}"),
+        || (i, format!("zero self {i}")),
         |lc| lc,
         |lc| lc,
         |lc| lc + zero_limb,
@@ -421,7 +421,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     }
     for (i, zero_limb) in other.limbs.iter().enumerate().skip(n) {
       cs.enforce(
-        || format!("zero other {i}"),
+        || (i, format!("zero other {i}")),
         |lc| lc,
         |lc| lc,
         |lc| lc + zero_limb,
@@ -446,7 +446,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let limbs_per_group = (Scalar::CAPACITY as usize - carry_bits) / self.params.limb_width;
     let self_grouped = self.group_limbs(limbs_per_group);
     let other_grouped = other.group_limbs(limbs_per_group);
-    self_grouped.equal_when_carried(cs.namespace(|| "grouped"), &other_grouped)
+    self_grouped.equal_when_carried(cs.namespace(|| (0, "grouped")), &other_grouped)
   }
 
   pub fn add(&self, other: &Self) -> Result<BigNat<Scalar>, SynthesisError> {
@@ -505,7 +505,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let quotient_bits = (self.n_bits() + other.n_bits()).saturating_sub(modulus.params.min_bits);
     let quotient_limbs = quotient_bits.saturating_sub(1) / limb_width + 1;
     let quotient = BigNat::alloc_from_nat(
-      cs.namespace(|| "quotient"),
+      cs.namespace(|| (0, "quotient")),
       || {
         Ok({
           let mut x = self.value.grab()?.clone();
@@ -517,9 +517,9 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       self.params.limb_width,
       quotient_limbs,
     )?;
-    quotient.assert_well_formed(cs.namespace(|| "quotient rangecheck"))?;
+    quotient.assert_well_formed(cs.namespace(|| (1, "quotient rangecheck")))?;
     let remainder = BigNat::alloc_from_nat(
-      cs.namespace(|| "remainder"),
+      cs.namespace(|| (2, "remainder")),
       || {
         Ok({
           let mut x = self.value.grab()?.clone();
@@ -531,7 +531,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       self.params.limb_width,
       modulus.limbs.len(),
     )?;
-    remainder.assert_well_formed(cs.namespace(|| "remainder rangecheck"))?;
+    remainder.assert_well_formed(cs.namespace(|| (3, "remainder rangecheck")))?;
     let a_poly = Polynomial::from(self.clone());
     let b_poly = Polynomial::from(other.clone());
     let mod_poly = Polynomial::from(modulus.clone());
@@ -539,8 +539,8 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let r_poly = Polynomial::from(remainder.clone());
 
     // a * b
-    let left = a_poly.alloc_product(cs.namespace(|| "left"), &b_poly)?;
-    let right_product = q_poly.alloc_product(cs.namespace(|| "right_product"), &mod_poly)?;
+    let left = a_poly.alloc_product(cs.namespace(|| (4, "left")), &b_poly)?;
+    let right_product = q_poly.alloc_product(cs.namespace(|| (5, "right_product")), &mod_poly)?;
     // q * m + r
     let right = right_product.sum(&r_poly);
 
@@ -560,7 +560,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
 
     let left_int = BigNat::from_poly(left, limb_width, left_max_word);
     let right_int = BigNat::from_poly(right, limb_width, right_max_word);
-    left_int.equal_when_carried_regroup(cs.namespace(|| "carry"), &right_int)?;
+    left_int.equal_when_carried_regroup(cs.namespace(|| (6, "carry")), &right_int)?;
     Ok((quotient, remainder))
   }
 
@@ -575,25 +575,25 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let quotient_bits = self.n_bits().saturating_sub(modulus.params.min_bits);
     let quotient_limbs = quotient_bits.saturating_sub(1) / limb_width + 1;
     let quotient = BigNat::alloc_from_nat(
-      cs.namespace(|| "quotient"),
+      cs.namespace(|| (0, "quotient")),
       || Ok(self.value.grab()? / modulus.value.grab()?),
       self.params.limb_width,
       quotient_limbs,
     )?;
-    quotient.assert_well_formed(cs.namespace(|| "quotient rangecheck"))?;
+    quotient.assert_well_formed(cs.namespace(|| (1, "quotient rangecheck")))?;
     let remainder = BigNat::alloc_from_nat(
-      cs.namespace(|| "remainder"),
+      cs.namespace(|| (2, "remainder")),
       || Ok(self.value.grab()? % modulus.value.grab()?),
       self.params.limb_width,
       modulus.limbs.len(),
     )?;
-    remainder.assert_well_formed(cs.namespace(|| "remainder rangecheck"))?;
+    remainder.assert_well_formed(cs.namespace(|| (2, "remainder rangecheck")))?;
     let mod_poly = Polynomial::from(modulus.clone());
     let q_poly = Polynomial::from(quotient.clone());
     let r_poly = Polynomial::from(remainder.clone());
 
     // q * m + r
-    let right_product = q_poly.alloc_product(cs.namespace(|| "right_product"), &mod_poly)?;
+    let right_product = q_poly.alloc_product(cs.namespace(|| (3, "right_product")), &mod_poly)?;
     let right = right_product.sum(&r_poly);
 
     let right_max_word = {
@@ -605,7 +605,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     };
 
     let right_int = BigNat::from_poly(right, limb_width, right_max_word);
-    self.equal_when_carried_regroup(cs.namespace(|| "carry"), &right_int)?;
+    self.equal_when_carried_regroup(cs.namespace(|| (4, "carry")), &right_int)?;
     Ok(remainder)
   }
 
@@ -709,10 +709,10 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     };
     let one = Scalar::ONE;
     let mut x = Scalar::ZERO;
-    for _ in 1..(n_product_coeffs + 1) {
+    for i in 1..(n_product_coeffs + 1) {
       x.add_assign(&one);
       cs.enforce(
-        || format!("pointwise product @ {x:?}"),
+        || (i, format!("pointwise product @ {x:?}")),
         |lc| {
           let mut i = Scalar::ONE;
           self.coefficients.iter().fold(lc, |lc, c| {
@@ -815,7 +815,7 @@ mod tests {
           .collect::<Result<Vec<LinearCombination<Scalar>>, SynthesisError>>()?,
         values: Some(self.b),
       };
-      let _prod = a.alloc_product(cs.namespace(|| "product"), &b)?;
+      let _prod = a.alloc_product(cs.namespace(|| (0, "product")), &b)?;
       Ok(())
     }
   }
@@ -854,12 +854,12 @@ mod tests {
   impl<Scalar: PrimeField> Circuit<Scalar> for BigNatBitDecomp {
     fn synthesize<CS: ConstraintSystem<Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
       let n = BigNat::alloc_from_nat(
-        cs.namespace(|| "n"),
+        cs.namespace(|| (0, "n")),
         || Ok(self.inputs.grab()?.n.clone()),
         self.params.limb_width,
         self.params.n_limbs,
       )?;
-      n.decompose(cs.namespace(|| "decomp"))?;
+      n.decompose(cs.namespace(|| (1, "decomp")))?;
       Ok(())
     }
   }

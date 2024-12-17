@@ -94,7 +94,7 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
   /// in order to derive a unique name for the constraint in the current namespace.
   fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
     LB: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
@@ -105,7 +105,7 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
   fn push_namespace<NR, N>(&mut self, name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR;
+    N: FnOnce() -> (usize, NR);
 
   /// Exit out of the existing namespace. Not intended for
   /// downstream use; use `namespace` instead.
@@ -119,7 +119,7 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
   fn namespace<NR, N>(&mut self, name_fn: N) -> Namespace<'_, Scalar, Self::Root>
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     self.get_root().push_namespace(name_fn);
 
@@ -238,8 +238,8 @@ pub struct Namespace<'a, Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
   PhantomData<Scalar>,
 );
 
-impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
-  for Namespace<'_, Scalar, CS>
+impl<'cs, Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
+  for Namespace<'cs, Scalar, CS>
 {
   type Root = CS::Root;
 
@@ -267,7 +267,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
     LB: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
@@ -280,10 +280,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
   // functions and they will never be invoked because the namespace is
   // never a root constraint system.
 
-  fn push_namespace<NR, N>(&mut self, _: N)
+  fn push_namespace<NR, N>(&mut self, _name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     panic!("only the root's push_namespace should be called");
   }
@@ -320,7 +320,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
   }
 }
 
-impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> Drop for Namespace<'_, Scalar, CS> {
+impl<'a, Scalar: PrimeField, CS: ConstraintSystem<Scalar>> Drop for Namespace<'a, Scalar, CS> {
   fn drop(&mut self) {
     self.get_root().pop_namespace()
   }
@@ -328,7 +328,9 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> Drop for Namespace<'_, Sc
 
 /// Convenience implementation of ConstraintSystem<Scalar> for mutable references to
 /// constraint systems.
-impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> for &'_ mut CS {
+impl<'cs, Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
+  for &'cs mut CS
+{
   type Root = CS::Root;
 
   fn one() -> Variable {
@@ -355,7 +357,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> 
 
   fn enforce<A, AR, LA, LB, LC>(&mut self, annotation: A, a: LA, b: LB, c: LC)
   where
-    A: FnOnce() -> AR,
+    A: FnOnce() -> (usize, AR),
     AR: Into<String>,
     LA: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
     LB: FnOnce(LinearCombination<Scalar>) -> LinearCombination<Scalar>,
@@ -367,7 +369,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> 
   fn push_namespace<NR, N>(&mut self, name_fn: N)
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     (**self).push_namespace(name_fn)
   }
@@ -383,7 +385,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> 
   fn namespace<NR, N>(&mut self, name_fn: N) -> Namespace<'_, Scalar, Self::Root>
   where
     NR: Into<String>,
-    N: FnOnce() -> NR,
+    N: FnOnce() -> (usize, NR),
   {
     (**self).namespace(name_fn)
   }
