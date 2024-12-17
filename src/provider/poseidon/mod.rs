@@ -221,7 +221,7 @@ where
       SpongeOp::Absorb(self.num_absorbs as u32),
       SpongeOp::Squeeze(1u32),
     ]);
-    let mut ns = cs.namespace(|| (0, "ns".to_string()));
+    let mut ns = cs.namespace(|| (0, "ns"));
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
@@ -243,12 +243,12 @@ where
       output
     };
 
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| (1, "ensure allocated".to_string())), true)?;
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| (1, "ensure allocated")), true)?;
 
     // return the hash as a vector of bits, truncated
     Ok(
       hash
-        .to_bits_le_strict(ns.namespace(|| (2, "poseidon hash to boolean".to_string())))
+        .to_bits_le_strict(ns.namespace(|| (2, "poseidon hash to boolean")))?
         .iter()
         .map(|boolean| match boolean {
           Boolean::Is(ref x) => x.clone(),
