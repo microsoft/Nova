@@ -269,7 +269,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   }
 }
 
-impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
+impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
   /// synthesize circuit giving constraint system
   pub fn synthesize<CS: ConstraintSystem<<E as Engine>::Base>>(
     self,
