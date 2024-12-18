@@ -77,11 +77,11 @@ impl<'a, Scalar: PrimeField> MaskedEqPolynomial<'a, Scalar> {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider;
-
   use super::*;
-  use crate::spartan::polys::eq::EqPolynomial;
-  use pasta_curves::Fp;
+  use crate::{
+    provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1},
+    spartan::polys::eq::EqPolynomial,
+  };
   use rand_chacha::ChaCha20Rng;
   use rand_core::{CryptoRng, RngCore, SeedableRng};
 
@@ -136,16 +136,8 @@ mod tests {
     let mut rng = ChaCha20Rng::from_seed([0u8; 32]);
     let num_vars = 5;
     let num_masked_vars = 2;
-    test_masked_eq_polynomial_with::<Fp, _>(num_vars, num_masked_vars, &mut rng);
-    test_masked_eq_polynomial_with::<provider::bn256_grumpkin::bn256::Scalar, _>(
-      num_vars,
-      num_masked_vars,
-      &mut rng,
-    );
-    test_masked_eq_polynomial_with::<provider::secp_secq::secp256k1::Scalar, _>(
-      num_vars,
-      num_masked_vars,
-      &mut rng,
-    );
+    test_masked_eq_polynomial_with::<pallas::Scalar, _>(num_vars, num_masked_vars, &mut rng);
+    test_masked_eq_polynomial_with::<bn256::Scalar, _>(num_vars, num_masked_vars, &mut rng);
+    test_masked_eq_polynomial_with::<secp256k1::Scalar, _>(num_vars, num_masked_vars, &mut rng);
   }
 }

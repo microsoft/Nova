@@ -5,17 +5,17 @@ use crate::{
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
-use ff::{FromUniformBytes, PrimeField};
-use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup};
+use ff::FromUniformBytes;
+use halo2curves::{
+  bn256::{Bn256, G1Affine as Bn256Affine, G2Affine, G2Compressed, Gt, G1 as Bn256Point, G2},
+  group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
+  grumpkin::{G1Affine as GrumpkinAffine, G1 as GrumpkinPoint},
+  msm::msm_best,
+  pairing::Engine as H2CEngine,
+  CurveAffine, CurveExt,
+};
 use num_bigint::BigInt;
 use num_traits::Num;
-// Remove this when https://github.com/zcash/pasta_curves/issues/41 resolves
-use halo2curves::{
-  bn256::{pairing, G1Affine as Bn256Affine, G2Affine, G2Compressed, Gt, G1 as Bn256Point, G2},
-  grumpkin::{G1Affine as GrumpkinAffine, G1 as GrumpkinPoint},
-  msm::best_multiexp,
-};
-use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
@@ -51,7 +51,7 @@ impl PairingGroup for Bn256Point {
   type GT = Gt;
 
   fn pairing(p: &Self, q: &Self::G2) -> Self::GT {
-    pairing(&p.affine(), &q.affine())
+    <Bn256 as H2CEngine>::pairing(&p.affine(), &q.affine())
   }
 }
 
@@ -81,7 +81,7 @@ impl DlogGroup for G2 {
   type AffineGroupElement = G2Affine;
 
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
-    best_multiexp(scalars, bases)
+    msm_best(scalars, bases)
   }
 
   fn affine(&self) -> Self::AffineGroupElement {

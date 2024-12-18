@@ -6,12 +6,13 @@
 //!
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
 pub mod direct;
+pub mod ppsnark;
+pub mod snark;
+
 #[macro_use]
 mod macros;
 pub(crate) mod math;
-pub mod polys;
-pub mod ppsnark;
-pub mod snark;
+pub(crate) mod polys;
 mod sumcheck;
 
 use crate::{
