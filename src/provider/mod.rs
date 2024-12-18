@@ -131,8 +131,7 @@ mod tests {
     bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1, traits::DlogGroup,
   };
   use digest::{ExtendableOutput, Update};
-  use group::Curve;
-  use halo2curves::CurveExt;
+  use halo2curves::{group::Curve, CurveExt};
   use sha3::Shake256;
   use std::io::Read;
 

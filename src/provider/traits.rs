@@ -194,15 +194,7 @@ macro_rules! impl_traits {
         $name::Scalar::from_uniform_bytes(&bytes_arr)
       }
     }
-  };
-}
 
-/// Implements Nova's transcript traits
-#[macro_export]
-macro_rules! impl_transcript_traits {
-  (
-    $name:ident,
-  ) => {
     impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_bytes().to_vec()
@@ -214,28 +206,6 @@ macro_rules! impl_transcript_traits {
         let coords = self.coordinates().unwrap();
 
         [coords.x().to_bytes(), coords.y().to_bytes()].concat()
-      }
-    }
-  };
-}
-
-/// Implements Nova's transcript traits for the Pasta curves
-#[macro_export]
-macro_rules! impl_transcript_traits_pasta {
-  (
-    $name:ident,
-  ) => {
-    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
-      fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.to_repr().to_vec()
-      }
-    }
-
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name::Affine {
-      fn to_transcript_bytes(&self) -> Vec<u8> {
-        let coords = self.coordinates().unwrap();
-
-        [coords.x().to_repr(), coords.y().to_repr()].concat()
       }
     }
   };

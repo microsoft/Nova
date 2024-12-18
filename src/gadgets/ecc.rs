@@ -794,8 +794,7 @@ mod tests {
     traits::snark::default_ck_hint,
   };
   use ff::{Field, PrimeFieldBits};
-  use group::Curve;
-  use halo2curves::CurveAffine;
+  use halo2curves::{group::Curve, CurveAffine};
   use rand::rngs::OsRng;
 
   #[derive(Debug, Clone)]
