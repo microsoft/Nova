@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.38.0"
+version = "0.39.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "High-speed recursive arguments from folding schemes"
