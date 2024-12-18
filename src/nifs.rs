@@ -1,6 +1,5 @@
 //! This module implements a non-interactive folding scheme
 #![allow(non_snake_case)]
-
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_RELAXED},
   errors::NovaError,

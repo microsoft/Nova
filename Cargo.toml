@@ -19,8 +19,7 @@ rayon = "1.10"
 rand_core = { version = "0.6", default-features = false }
 rand_chacha = "0.3"
 subtle = "2.6.1"
-pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
-halo2curves = { version = "0.6.0", features = ["bits", "derive_serde"] }
+halo2curves = { version = "0.7.0", features = ["bits", "derive_serde"] }
 generic-array = "1.1"
 num-bigint = { version = "0.4.6", features = ["serde", "rand"] }
 num-traits = "0.2.19"
