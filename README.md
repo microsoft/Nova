@@ -2,9 +2,6 @@
 
 Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). 
 
-> [!IMPORTANT]
-> This project accepts external contributions, but please read [this](#additional-guidelines) section before contributing.
-
 More precisely, Nova achieves [incrementally verifiable computation (IVC)](https://iacr.org/archive/tcc2008/49480001/49480001.pdf), a powerful cryptographic primitive that allows a prover to produce a proof of correct execution of a "long running" sequential computations in an incremental fashion. For example, IVC enables the following: The prover takes as input a proof $\pi_i$ proving the first $i$ steps of its computation and then update it to produce a proof $\pi_{i+1}$ proving the correct execution of the first $i + 1$ steps. Crucially, the prover's work to update the proof does not depend on the number of steps executed thus far, and the verifier's work to verify a proof does not grow with the number of steps in the computation. IVC schemes including Nova have a wide variety of applications such as Rollups, verifiable delay functions (VDFs), succinct blockchains, incrementally verifiable versions of [verifiable state machines](https://eprint.iacr.org/2020/758.pdf), and, more generally, proofs of (virtual) machine executions (e.g., EVM, RISC-V). 
 
 A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is about 10,000 multiplication gates. Nova is constructed from a simple primitive called a *folding scheme*, a cryptographic primitive that reduces the task of checking two NP statements into the task of checking a single NP statement. 
@@ -20,16 +17,14 @@ For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_wi
 
 We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit.
 
+Prior to compression, the IVC proof is folded with a random instance, which makes the proof zero-knowledge. The details of this technique are described in the HyperNova paper.
+
 ## Supported front-ends
 A front-end is a tool to take a high-level program and turn it into an intermediate representation (e.g., a circuit) that can be used to prove executions of the program on concrete inputs. There are three supported ways to write high-level programs in a form that can be proven with Nova.
 
-1. bellpepper: The native APIs of Nova accept circuits expressed with bellpepper, a Rust toolkit to express circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
+1. The native APIs of Nova accept circuits expressed with bellman-style circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
 
 2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
-
-3. [Lurk](https://github.com/lurk-lab/lurk-rs): A Lisp dialect and a universal circuit to execute programs expressed in Lurk. The universal circuit can be proven with Nova.
-
-In the future, we plan to support [Noir](https://noir-lang.org/), a Rust-like DSL and a compiler to transform those programs into an IR. See [this](https://github.com/microsoft/Nova/issues/275) GitHub issue for details.
 
 ## Tests and examples
 By default, we enable the `asm` feature of an underlying library (which boosts performance by up to 50\%). If the library fails to build or run, one can pass `--no-default-features` to `cargo` commands noted below.
@@ -56,6 +51,12 @@ For efficiency, our implementation of the Nova proof system is instantiated over
 [Revisiting the Nova Proof System on a Cycle of Curves](https://eprint.iacr.org/2023/969) \
 Wilson Nguyen, Dan Boneh, and Srinath Setty \
 IACR ePrint 2023/969
+
+The zero-knowledge property is achieved using an idea described in the following paper:
+
+[HyperNova: Recursive arguments for customizable constraint systems](https://eprint.iacr.org/2023/573) \
+Abhiram Kothapalli and Srinath Setty \
+CRYPTO 2024
 
 ## Contributing
 

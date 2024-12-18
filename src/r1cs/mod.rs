@@ -388,25 +388,16 @@ impl<E: Engine> R1CSShape<E> {
     &self,
     ck: &CommitmentKey<E>,
   ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
-    // sample
-    let mut W = Vec::new();
-    for _i in 0..self.num_vars {
-      // probably don't use this in production
-      W.push(E::Scalar::random(&mut OsRng));
-    }
-
-    let mut X = Vec::new();
-    for _i in 0..self.num_io {
-      X.push(E::Scalar::random(&mut OsRng));
-    }
-
-    let u = E::Scalar::random(&mut OsRng);
+    // sample Z = (W, u, X)
+    let Z = (0..self.num_vars + self.num_io + 1)
+      .into_par_iter()
+      .map(|_| E::Scalar::random(&mut OsRng))
+      .collect::<Vec<E::Scalar>>();
 
     let r_W = E::Scalar::random(&mut OsRng);
     let r_E = E::Scalar::random(&mut OsRng);
 
-    // Z
-    let Z = [W.clone(), vec![u], X.clone()].concat();
+    let u = Z[self.num_vars];
 
     // compute E <- AZ o BZ - u * CZ
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
@@ -418,18 +409,25 @@ impl<E: Engine> R1CSShape<E> {
       .map(|((az, bz), cz)| *az * *bz - u * *cz)
       .collect::<Vec<E::Scalar>>();
 
-    // compute commitments to W,E
-    let comm_W = CE::<E>::commit(ck, &W, &r_W);
-    let comm_E = CE::<E>::commit(ck, &E, &r_E);
+    // compute commitments to W,E in parallel
+    let (comm_W, comm_E) = rayon::join(
+      || CE::<E>::commit(ck, &Z[..self.num_vars], &r_W),
+      || CE::<E>::commit(ck, &E, &r_E),
+    );
 
     Ok((
       RelaxedR1CSInstance {
         comm_W,
         comm_E,
         u,
-        X,
+        X: Z[self.num_vars + 1..].to_vec(),
       },
-      RelaxedR1CSWitness { W, r_W, E, r_E },
+      RelaxedR1CSWitness {
+        W: Z[..self.num_vars].to_vec(),
+        r_W,
+        E,
+        r_E,
+      },
     ))
   }
 }

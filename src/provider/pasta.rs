@@ -47,13 +47,6 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
-        if scalars.len() >= 128 {
-          pasta_msm::$name(bases, scalars)
-        } else {
-          best_multiexp(scalars, bases)
-        }
-        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         best_multiexp(scalars, bases)
       }
 

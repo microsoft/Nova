@@ -28,7 +28,7 @@ cfg_if::cfg_if! {
   if #[cfg(feature = "flamegraph")] {
     criterion_group! {
       name = recursive_snark;
-      config = Criterion::default().warm_up_time(Duration::from_millis(3000)).with_profiler(pprof::criterion::PProfProfiler::new(100, pprof::criterion::Output::Flamegraph(None)));
+      config = Criterion::default().warm_up_time(Duration::from_millis(3000)).with_profiler(pprof2::criterion::PProfProfiler::new(100, pprof2::criterion::Output::Flamegraph(None)));
       targets = bench_recursive_snark
     }
   } else {
