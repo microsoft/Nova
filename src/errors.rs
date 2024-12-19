@@ -63,8 +63,11 @@ pub enum NovaError {
     reason: String,
   },
   /// returned when there is an error creating a digest
-  #[error("DigestError")]
-  DigestError,
+  #[error("DigestError: {reason}")]
+  DigestError {
+    /// The reason for digest creation failure
+    reason: String,
+  },
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,

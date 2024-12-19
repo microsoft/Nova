@@ -16,6 +16,8 @@ extern crate alloc;
 
 pub(crate) mod prelude {
   #[cfg(not(feature = "std"))]
+  pub use alloc::borrow::ToOwned;
+  #[cfg(not(feature = "std"))]
   pub use alloc::boxed::Box;
   #[cfg(not(feature = "std"))]
   pub use alloc::format;

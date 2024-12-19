@@ -3,7 +3,6 @@ use crate::{
   frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
   prelude::*,
 };
-use core::collections::HashMap;
 use ff::PrimeField;
 
 #[derive(Debug)]
@@ -110,8 +109,10 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   /// Check if the constraint system is satisfied.
   pub fn is_satisfied(&self) -> bool {
     match self.which_is_unsatisfied() {
-      Some(b) => {
-        println!("fail: {:?}", b);
+      Some(_b) => {
+        // print only in std feature
+        #[cfg(feature = "std")]
+        println!("fail: {:?}", _b);
         false
       }
       None => true,

@@ -129,13 +129,15 @@ impl Engine for VestaEngine {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
-  use digest::{ExtendableOutput, Update};
+  use crate::{
+    prelude::*,
+    provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup},
+  };
+  use digest::{ExtendableOutput, Update, XofReader};
   use group::Curve;
   use halo2curves::CurveExt;
   use pasta_curves::pallas;
   use sha3::Shake256;
-  use std::io::Read;
 
   macro_rules! impl_cycle_pair_test {
     ($curve:ident) => {
@@ -146,7 +148,7 @@ mod tests {
         (0..n)
           .map(|_| {
             let mut uniform_bytes = [0u8; 32];
-            reader.read_exact(&mut uniform_bytes).unwrap();
+            reader.read(&mut uniform_bytes);
             let hash = $curve::Point::hash_to_curve("from_uniform_bytes");
             hash(&uniform_bytes).to_affine()
           })

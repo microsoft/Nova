@@ -4,7 +4,7 @@ use crate::{
   provider::traits::DlogGroup,
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
-use digest::{ExtendableOutput, Update};
+use digest::{ExtendableOutput, Update, XofReader};
 use ff::{FromUniformBytes, PrimeField};
 use halo2curves::msm::best_multiexp;
 use num_bigint::BigInt;
@@ -65,7 +65,7 @@ macro_rules! impl_traits {
         let mut uniform_bytes_vec = Vec::new();
         for _ in 0..n {
           let mut uniform_bytes = [0u8; 32];
-          reader.read_exact(&mut uniform_bytes).unwrap();
+          reader.read(&mut uniform_bytes);
           uniform_bytes_vec.push(uniform_bytes);
         }
         let ck_proj: Vec<$name_curve> = (0..n)

@@ -285,7 +285,7 @@ mod tests {
     mut rng: &mut R,
   ) -> MultilinearPolynomial<Scalar> {
     MultilinearPolynomial::new(
-      std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
+      core::iter::from_fn(|| Some(Scalar::random(&mut rng)))
         .take(1 << num_vars)
         .collect(),
     )
@@ -321,7 +321,7 @@ mod tests {
       let poly = random(n, &mut rng);
 
       // draw a random point
-      let pt: Vec<_> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      let pt: Vec<_> = core::iter::from_fn(|| Some(F::random(&mut rng)))
         .take(n)
         .collect();
       // this shows the order in which coordinates are evaluated

@@ -153,11 +153,11 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => {
+            Err(ref _e) => {
               // print in std feature
               #[cfg(feature = "std")]
               eprintln!("{e}");
-              Err(SynthesisError::InvalidAssignment)
+              Err(SynthesisError::AssignmentMissing)
             }
           },
         )
@@ -207,10 +207,12 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(bincode::Error::new(
-              bincode::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref _e) => {
+              // print in std feature
+              #[cfg(feature = "std")]
+              eprintln!("{_e}");
+              Err(SynthesisError::AssignmentMissing)
+            }
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -843,8 +845,9 @@ mod tests {
 
     circuit.synthesize(&mut cs).expect("synthesis failed");
 
-    if let Some(token) = cs.which_is_unsatisfied() {
-      eprintln!("Error: {} is unsatisfied", token);
+    if let Some(_token) = cs.which_is_unsatisfied() {
+      #[cfg(feature = "std")]
+      eprintln!("Error: {} is unsatisfied", _token);
     }
   }
 

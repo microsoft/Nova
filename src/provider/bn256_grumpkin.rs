@@ -5,7 +5,7 @@ use crate::{
   provider::traits::{DlogGroup, PairingGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
-use digest::{ExtendableOutput, Update};
+use digest::{ExtendableOutput, Update, XofReader};
 use ff::{FromUniformBytes, PrimeField};
 use group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup};
 use num_bigint::BigInt;

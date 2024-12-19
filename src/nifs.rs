@@ -217,6 +217,7 @@ mod tests {
       test_shape_cs::TestShapeCS,
       ConstraintSystem, SynthesisError,
     },
+    prelude::*,
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::{SparseMatrix, R1CS},
     traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
@@ -548,8 +549,6 @@ mod tests {
     let I = E::Scalar::random(&mut csprng); // the first input is picked randomly for the first instance
     let (_O, U1, W1) = rand_inst_witness_generator(&ck, &I);
     let (U2, W2) = S.sample_random_instance_witness(&ck).unwrap(); // random fold
-
-    println!("INSTANCE {:#?}", U1.clone());
 
     // execute a sequence of folds
     let (final_U, final_W) = execute_sequence_relaxed(
