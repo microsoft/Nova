@@ -5,7 +5,6 @@ use crate::{
   traits::Engine,
   CommitmentKey,
 };
-
 use serde::{Deserialize, Serialize};
 
 /// Public parameter creation takes a size hint. This size hint carries the particular requirements of

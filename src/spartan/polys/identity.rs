@@ -1,6 +1,5 @@
 use core::marker::PhantomData;
 use ff::PrimeField;
-
 pub struct IdentityPolynomial<Scalar: PrimeField> {
   ell: usize,
   _p: PhantomData<Scalar>,
