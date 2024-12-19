@@ -10,6 +10,7 @@ use crate::{
     solver::SatisfyingAssignment,
     Circuit, ConstraintSystem, SynthesisError,
   },
+  prelude::*,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     circuit::StepCircuit,

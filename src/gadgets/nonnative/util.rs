@@ -1,14 +1,15 @@
 use super::{BitAccess, OptionExt};
-use crate::frontend::{
-  num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
+use crate::{
+  frontend::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable},
+  prelude::*,
 };
 use byteorder::WriteBytesExt;
-use ff::PrimeField;
-use num_bigint::{BigInt, Sign};
-use std::{
+use core::{
   convert::From,
   io::{self, Write},
 };
+use ff::PrimeField;
+use num_bigint::{BigInt, Sign};
 
 #[derive(Clone)]
 /// A representation of a bit

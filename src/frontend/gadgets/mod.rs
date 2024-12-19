@@ -1,5 +1,4 @@
 //! Self-contained sub-circuit implementations for various primitives.
-
 use super::SynthesisError;
 pub mod boolean;
 mod multieq;

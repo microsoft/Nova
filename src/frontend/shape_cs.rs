@@ -2,6 +2,7 @@
 
 use crate::{
   frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
+  prelude::*,
   traits::Engine,
 };
 use ff::PrimeField;

@@ -3,6 +3,7 @@
 
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
+use crate::prelude::*;
 
 use super::{
   matrix,

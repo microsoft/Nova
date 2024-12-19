@@ -1,8 +1,7 @@
-use std::{io, marker::PhantomData};
-
-use ff::PrimeField;
-
 use super::lc::{Index, LinearCombination, Variable};
+use crate::prelude::*;
+use core::{io, marker::PhantomData};
+use ff::PrimeField;
 
 /// Computations are expressed in terms of arithmetic circuits, in particular
 /// rank-1 quadratic constraint systems. The `Circuit` trait represents a

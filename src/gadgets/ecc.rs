@@ -9,6 +9,7 @@ use crate::{
     select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
     select_one_or_num2, select_zero_or_num2,
   },
+  prelude::*,
   traits::{Engine, Group},
 };
 use ff::{Field, PrimeField};

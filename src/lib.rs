@@ -1,4 +1,5 @@
 //! This library implements Nova, a high-speed recursive SNARK.
+#![cfg_attr(not(feature = "std"), no_std)]
 #![deny(
   warnings,
   unused,
@@ -9,6 +10,30 @@
 )]
 #![allow(non_snake_case)]
 #![forbid(unsafe_code)]
+
+#[cfg(not(feature = "std"))]
+extern crate alloc;
+
+pub(crate) mod prelude {
+  #[cfg(not(feature = "std"))]
+  pub use alloc::boxed::Box;
+  #[cfg(not(feature = "std"))]
+  pub use alloc::string::String;
+  #[cfg(not(feature = "std"))]
+  pub use alloc::vec::Vec;
+  #[cfg(not(feature = "std"))]
+  pub use alloc::vec;
+  #[cfg(not(feature = "std"))]
+  pub use alloc::format;
+
+  // use std::collections::{BTreeMap, HashMap} when std is enabled
+  #[cfg(not(feature = "std"))]
+  pub use alloc::collections::{BTreeMap};
+  #[cfg(not(feature = "std"))]
+  pub use hashbrown::HashMap;
+  #[cfg(feature = "std")]
+  pub use std::collections::{BTreeMap, HashMap};
+}
 
 // private modules
 mod circuit;
@@ -21,11 +46,9 @@ mod r1cs;
 pub mod errors;
 pub mod frontend;
 pub mod gadgets;
-pub mod provider;
+//pub mod provider;
 pub mod spartan;
 pub mod traits;
-
-use once_cell::sync::OnceCell;
 
 use crate::digest::{DigestComputer, SimpleDigestible};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
@@ -41,6 +64,7 @@ use frontend::{
 };
 use gadgets::utils::scalar_as_base;
 use nifs::{NIFSRelaxed, NIFS};
+use once_cell::sync::OnceCell;
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };

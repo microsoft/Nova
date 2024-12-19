@@ -1,16 +1,15 @@
 //! Support for generating R1CS shape using bellpepper.
 //! `TestShapeCS` implements a superset of `ShapeCS`, adding non-trivial namespace support for use in testing.
 
-use std::{
-  cmp::Ordering,
-  collections::{BTreeMap, HashMap},
-};
-
 use crate::{
   frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
+  prelude::*,
   traits::Engine,
 };
-use core::fmt::Write;
+use core::{
+  cmp::Ordering,
+  fmt::Write,
+};
 use ff::{Field, PrimeField};
 
 #[derive(Clone, Copy)]

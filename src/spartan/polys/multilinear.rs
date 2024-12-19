@@ -2,8 +2,11 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
-use std::ops::{Add, Index};
-
+use crate::{
+  prelude::*,
+  spartan::{math::Math, polys::eq::EqPolynomial},
+};
+use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
 use rayon::prelude::{
@@ -11,8 +14,6 @@ use rayon::prelude::{
   IntoParallelRefMutIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.

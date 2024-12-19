@@ -1,8 +1,8 @@
-use std::marker::PhantomData;
-
+use core::marker::PhantomData;
 use ff::PrimeField;
 use generic_array::{sequence::GenericSequence, typenum, ArrayLength, GenericArray};
 use typenum::*;
+use crate::prelude::*;
 
 use super::{
   matrix::transpose,

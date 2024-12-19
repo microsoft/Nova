@@ -1,8 +1,7 @@
 //! This module defines errors returned by the library.
+use crate::{frontend::SynthesisError, prelude::*};
 use core::fmt::Debug;
 use thiserror::Error;
-
-use crate::frontend::SynthesisError;
 
 /// Errors returned by Nova
 #[derive(Clone, Debug, Eq, PartialEq, Error)]

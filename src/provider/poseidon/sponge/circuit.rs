@@ -1,4 +1,5 @@
 use crate::{
+  prelude::*,
   frontend::{util_cs::witness_cs::SizedWitness, ConstraintSystem, Namespace, SynthesisError},
   provider::poseidon::{
     circuit2::{Elt, PoseidonCircuit2},
@@ -9,9 +10,8 @@ use crate::{
     },
   },
 };
-
 use ff::PrimeField;
-use std::{collections::VecDeque, marker::PhantomData};
+use core::{collections::VecDeque, marker::PhantomData};
 
 /// The Poseidon sponge circuit
 pub struct SpongeCircuit<'a, F, A, C>

@@ -6,9 +6,11 @@ use super::{
   mds::SparseMatrix,
   poseidon_inner::{Arity, PoseidonConstants},
 };
-use crate::frontend::{
+use crate::{prelude::*,
+  frontend::{
   num::{self, AllocatedNum},
   Boolean, ConstraintSystem, LinearCombination, SynthesisError,
+}
 };
 use ff::PrimeField;
 use std::marker::PhantomData;

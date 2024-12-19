@@ -33,6 +33,7 @@ thiserror = "2.0"
 group = "0.13.0"
 once_cell = "1.18.0"
 itertools = "0.13.0"
+hashbrown = { version = "0.15.2", features = ["alloc"], optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
@@ -69,5 +70,6 @@ name = "ppsnark"
 harness = false
 
 [features]
-default = ["halo2curves/asm"]
+default = ["halo2curves/asm", "std"]
+std = []
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]

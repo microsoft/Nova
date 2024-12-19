@@ -1,8 +1,11 @@
-use crate::provider::poseidon::{
+use crate::{
+  prelude::*,
+  provider::poseidon::{
   hash_type::HashType,
   poseidon_inner::{Arity, Poseidon, PoseidonConstants},
   sponge::api::{IOPattern, InnerSpongeAPI},
   PoseidonError, Strength,
+}
 };
 use ff::PrimeField;
 use std::collections::VecDeque;

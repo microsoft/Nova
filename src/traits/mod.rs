@@ -2,6 +2,7 @@
 use crate::{
   errors::NovaError,
   frontend::{num::AllocatedNum, AllocatedBit, ConstraintSystem, SynthesisError},
+  prelude::*,
 };
 use core::fmt::Debug;
 use ff::{PrimeField, PrimeFieldBits};

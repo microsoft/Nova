@@ -8,6 +8,7 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
+  prelude::*,
   provider::traits::{DlogGroup, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},

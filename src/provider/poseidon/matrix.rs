@@ -2,6 +2,7 @@
 #![allow(clippy::ptr_arg)]
 
 use ff::PrimeField;
+use crate::prelude::*;
 
 /// Matrix functions here are, at least for now, quick and dirty — intended only to support precomputation of poseidon optimization.
 ///

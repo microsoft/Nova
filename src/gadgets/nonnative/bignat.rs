@@ -2,15 +2,18 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-use ff::PrimeField;
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
-use std::{
+use crate::{
+  frontend::{ConstraintSystem, LinearCombination, SynthesisError},
+  prelude::*,
+};
+use core::{
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
 };
+use ff::PrimeField;
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 
 /// Compute the natural number represented by an array of limbs.
 /// The limbs are assumed to be based the `limb_width` power of 2.

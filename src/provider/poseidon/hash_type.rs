@@ -10,9 +10,9 @@
 /// Because `neptune` also supports a first-class notion of `Strength`, we include a mechanism for composing
 /// `Strength` with `HashType` so that hashes with `Strength` other than `Standard` (currently only `Strengthened`)
 /// may still express the full range of hash function types.
+use crate::prelude::*;
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
-
 use super::poseidon_inner::Arity;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

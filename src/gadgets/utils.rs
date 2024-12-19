@@ -5,6 +5,7 @@ use crate::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, LinearCombination,
     SynthesisError,
   },
+  prelude::*,
   traits::Engine,
 };
 use ff::{Field, PrimeField, PrimeFieldBits};

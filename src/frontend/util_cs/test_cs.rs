@@ -1,9 +1,9 @@
 //! Test constraint system for use in tests.
-
-use std::collections::HashMap;
-
-use crate::frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
-
+use crate::{
+  frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
+  prelude::*,
+};
+use core::collections::HashMap;
 use ff::PrimeField;
 
 #[derive(Debug)]

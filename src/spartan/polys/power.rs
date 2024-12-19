@@ -1,8 +1,8 @@
 //! `PowPolynomial`: Represents multilinear extension of power polynomials
 
-use crate::spartan::polys::eq::EqPolynomial;
+use crate::{prelude::*, spartan::polys::eq::EqPolynomial};
+use core::iter::successors;
 use ff::PrimeField;
-use std::iter::successors;
 
 /// Represents the multilinear extension polynomial (MLE) of the equality polynomial $pow(x,t)$, denoted as $\tilde{pow}(x, t)$.
 ///

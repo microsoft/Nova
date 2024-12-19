@@ -1,5 +1,6 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
+  prelude::*,
   provider::traits::DlogGroup,
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
