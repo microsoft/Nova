@@ -11,10 +11,10 @@ use crate::{
   Commitment, CommitmentKey, CE,
 };
 use core::iter;
+use core::marker::PhantomData;
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
 
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]

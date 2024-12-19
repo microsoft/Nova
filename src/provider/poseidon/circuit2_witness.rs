@@ -1,6 +1,6 @@
 /// The `circuit2_witness` module implements witness-generation for the optimal Poseidon hash circuit.
 use super::poseidon_inner::{Arity, Poseidon};
-use crate::{prelude::*, frontend::util_cs::witness_cs::SizedWitness};
+use crate::frontend::util_cs::witness_cs::SizedWitness;
 use ff::PrimeField;
 use generic_array::{sequence::GenericSequence, typenum::Unsigned, GenericArray};
 

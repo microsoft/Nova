@@ -18,21 +18,25 @@ pub(crate) mod prelude {
   #[cfg(not(feature = "std"))]
   pub use alloc::boxed::Box;
   #[cfg(not(feature = "std"))]
+  pub use alloc::format;
+  #[cfg(not(feature = "std"))]
   pub use alloc::string::String;
   #[cfg(not(feature = "std"))]
-  pub use alloc::vec::Vec;
+  pub use alloc::string::ToString;
   #[cfg(not(feature = "std"))]
   pub use alloc::vec;
   #[cfg(not(feature = "std"))]
-  pub use alloc::format;
+  pub use alloc::vec::Vec;
 
   // use std::collections::{BTreeMap, HashMap} when std is enabled
   #[cfg(not(feature = "std"))]
-  pub use alloc::collections::{BTreeMap};
+  pub use alloc::collections::BTreeMap;
+  #[cfg(not(feature = "std"))]
+  pub use alloc::collections::VecDeque;
   #[cfg(not(feature = "std"))]
   pub use hashbrown::HashMap;
   #[cfg(feature = "std")]
-  pub use std::collections::{BTreeMap, HashMap};
+  pub use std::collections::{BTreeMap, HashMap, VecDeque};
 }
 
 // private modules
@@ -46,7 +50,7 @@ mod r1cs;
 pub mod errors;
 pub mod frontend;
 pub mod gadgets;
-//pub mod provider;
+pub mod provider;
 pub mod spartan;
 pub mod traits;
 
@@ -65,6 +69,7 @@ use frontend::{
 use gadgets::utils::scalar_as_base;
 use nifs::{NIFSRelaxed, NIFS};
 use once_cell::sync::OnceCell;
+use prelude::*;
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };

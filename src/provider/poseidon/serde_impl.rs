@@ -1,15 +1,14 @@
+use super::{
+  hash_type::HashType,
+  poseidon_inner::{Arity, PoseidonConstants},
+};
+use core::{fmt, marker::PhantomData};
 use ff::PrimeField;
 use serde::{
   de::{self, Deserializer, MapAccess, SeqAccess, Visitor},
   ser::{SerializeStruct, Serializer},
   Deserialize, Serialize,
 };
-use core::{fmt, marker::PhantomData};
-use super::{
-  hash_type::HashType,
-  poseidon_inner::{Arity, PoseidonConstants},
-};
-use crate::prelude::*;
 
 impl<F, A> Serialize for PoseidonConstants<F, A>
 where

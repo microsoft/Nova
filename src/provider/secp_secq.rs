@@ -18,7 +18,6 @@ use num_traits::Num;
 use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
-use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for secp
 pub mod secp256k1 {

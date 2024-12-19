@@ -1,8 +1,6 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::{
-  traits::{AbsorbInROTrait, Engine, TranscriptReprTrait},
-};
+use crate::traits::{AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},

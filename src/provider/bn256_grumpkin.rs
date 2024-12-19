@@ -1,6 +1,7 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
   impl_traits,
+  prelude::*,
   provider::traits::{DlogGroup, PairingGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -18,7 +19,6 @@ use halo2curves::{
 use pasta_curves::arithmetic::{CurveAffine, CurveExt};
 use rayon::prelude::*;
 use sha3::Shake256;
-use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for bn256
 pub mod bn256 {

@@ -1,5 +1,5 @@
-use ff::PrimeField;
 use crate::prelude::*;
+use ff::PrimeField;
 
 /// From the paper ():
 /// The round constants are generated using the Grain LFSR [23] in a self-shrinking

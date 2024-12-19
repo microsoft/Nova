@@ -6,14 +6,15 @@ use super::{
   mds::SparseMatrix,
   poseidon_inner::{Arity, PoseidonConstants},
 };
-use crate::{prelude::*,
+use crate::{
   frontend::{
-  num::{self, AllocatedNum},
-  Boolean, ConstraintSystem, LinearCombination, SynthesisError,
-}
+    num::{self, AllocatedNum},
+    Boolean, ConstraintSystem, LinearCombination, SynthesisError,
+  },
+  prelude::*,
 };
+use core::marker::PhantomData;
 use ff::PrimeField;
-use std::marker::PhantomData;
 
 /// Similar to `num::Num`, we use `Elt` to accumulate both values and linear combinations, then eventually
 /// extract into a `num::AllocatedNum`, enforcing that the linear combination corresponds to the result.
@@ -400,7 +401,7 @@ where
   }
 
   fn initial_elements<CS: ConstraintSystem<Scalar>>() -> Vec<Elt<Scalar>> {
-    std::iter::repeat(Elt::num_from_fr::<CS>(Scalar::ZERO))
+    core::iter::repeat(Elt::num_from_fr::<CS>(Scalar::ZERO))
       .take(A::to_usize() + 1)
       .collect()
   }

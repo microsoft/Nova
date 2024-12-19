@@ -3,8 +3,8 @@ use super::{
   mds::MdsMatrices,
   quintic_s_box,
 };
-use ff::PrimeField;
 use crate::prelude::*;
+use ff::PrimeField;
 
 // - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
 // - As a result, constants need only be added after each S-box.

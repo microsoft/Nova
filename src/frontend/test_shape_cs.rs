@@ -6,10 +6,7 @@ use crate::{
   prelude::*,
   traits::Engine,
 };
-use core::{
-  cmp::Ordering,
-  fmt::Write,
-};
+use core::{cmp::Ordering, fmt::Write};
 use ff::{Field, PrimeField};
 
 #[derive(Clone, Copy)]

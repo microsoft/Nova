@@ -15,6 +15,7 @@ pub mod snark;
 mod sumcheck;
 
 use crate::{
+  prelude::*,
   r1cs::{R1CSShape, SparseMatrix},
   traits::Engine,
   Commitment,

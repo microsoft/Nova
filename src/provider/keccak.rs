@@ -1,7 +1,6 @@
 //! This module provides an implementation of `TranscriptEngineTrait` using keccak256
 use crate::{
   errors::NovaError,
-  prelude::*,
   traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
 };
 use core::marker::PhantomData;

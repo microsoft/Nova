@@ -1,4 +1,5 @@
 use crate::{
+  prelude::*,
   traits::{commitment::ScalarMul, Group, TranscriptReprTrait},
 };
 use core::{

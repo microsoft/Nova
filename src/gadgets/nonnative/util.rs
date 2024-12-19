@@ -3,11 +3,7 @@ use crate::{
   frontend::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable},
   prelude::*,
 };
-use byteorder::WriteBytesExt;
-use core::{
-  convert::From,
-  io::{self, Write},
-};
+use core::{convert::From, fmt::Write};
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 
@@ -233,7 +229,7 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   }
 }
 
-fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> io::Result<()> {
+fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> core::result::Result<(), _> {
   for digit in f.to_repr().as_ref().iter().rev() {
     writer.write_u8(*digit)?;
   }

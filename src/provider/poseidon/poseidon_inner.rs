@@ -1,8 +1,8 @@
+use crate::prelude::*;
 use core::marker::PhantomData;
 use ff::PrimeField;
 use generic_array::{sequence::GenericSequence, typenum, ArrayLength, GenericArray};
 use typenum::*;
-use crate::prelude::*;
 
 use super::{
   matrix::transpose,
@@ -453,12 +453,12 @@ where
       }
     }
 
-    let _ = std::mem::replace(&mut self.elements, result);
+    let _ = core::mem::replace(&mut self.elements, result);
   }
 
   pub(crate) fn product_mds_with_matrix_left(&mut self, matrix: &Matrix<F>) {
     let result = left_apply_matrix(matrix, &self.elements);
-    let _ = std::mem::replace(
+    let _ = core::mem::replace(
       &mut self.elements,
       GenericArray::<F, A::ConstantsSize>::generate(|i| result[i]),
     );
@@ -485,6 +485,6 @@ where
       val.add_assign(&tmp);
     }
 
-    let _ = std::mem::replace(&mut self.elements, result);
+    let _ = core::mem::replace(&mut self.elements, result);
   }
 }

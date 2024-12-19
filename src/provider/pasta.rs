@@ -17,7 +17,6 @@ use pasta_curves::{
 };
 use rayon::prelude::*;
 use sha3::Shake256;
-use std::io::Read;
 
 macro_rules! impl_traits {
   (
