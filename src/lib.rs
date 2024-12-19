@@ -9,7 +9,6 @@
   missing_docs
 )]
 #![allow(non_snake_case)]
-
 #![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]
