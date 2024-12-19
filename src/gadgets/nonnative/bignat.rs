@@ -156,7 +156,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
             Err(ref _e) => {
               // print in std feature
               #[cfg(feature = "std")]
-              eprintln!("{e}");
+              eprintln!("{_e}");
               Err(SynthesisError::AssignmentMissing)
             }
           },

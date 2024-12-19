@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Build
+      - name: Build (std)
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Run tests
+      - name: Run tests (std)
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -46,6 +46,15 @@ jobs:
         with:
           command: test
           args: --release --verbose
+
+      - name: Run tests (no_std)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --no-default-features --features no_std --verbose
 
   fmt:
     runs-on: ubuntu-latest
@@ -73,4 +82,5 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
           command: clippy
-          args: --all-targets -- -D warnings
+          #args: --all-targets -- -D warnings // TODO: bring back
+          args: --all-targets

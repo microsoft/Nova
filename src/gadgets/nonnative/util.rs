@@ -231,13 +231,11 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
 
 // Assuming PrimeField is a trait from some elliptic curve or cryptographic library
 pub fn write_be<F: PrimeField>(f: &F, buffer: &mut [u8]) -> Result<(), ()> {
-  let mut offset = 0;
-  for digit in f.to_repr().as_ref().iter().rev() {
+  for (offset, digit) in f.to_repr().as_ref().iter().rev().enumerate() {
     if offset >= buffer.len() {
       return Err(()); // Overflow: not enough space in buffer
     }
     buffer[offset] = *digit;
-    offset += 1;
   }
   Ok(())
 }

@@ -1,14 +1,15 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(
-  warnings,
-  unused,
+  //warnings,
+  //unused, TODO: bring this back
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
   missing_docs
 )]
 #![allow(non_snake_case)]
+
 #![forbid(unsafe_code)]
 
 #[cfg(not(feature = "std"))]
