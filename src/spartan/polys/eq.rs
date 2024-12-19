@@ -1,5 +1,6 @@
 //! `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
 
+use crate::prelude::*;
 use ff::PrimeField;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 

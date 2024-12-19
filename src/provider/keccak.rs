@@ -98,6 +98,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
 #[cfg(test)]
 mod tests {
   use crate::{
+    prelude::*,
     provider::{
       keccak::Keccak256Transcript, Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine,
       Secq256k1Engine, VestaEngine,
@@ -213,7 +214,7 @@ mod tests {
     let mut rng = rand::thread_rng();
 
     // ten scalars
-    let scalars = std::iter::from_fn(|| Some(<E as Engine>::Scalar::from(rng.gen::<u64>())))
+    let scalars = core::iter::from_fn(|| Some(<E as Engine>::Scalar::from(rng.gen::<u64>())))
       .take(10)
       .collect::<Vec<_>>();
 

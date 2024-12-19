@@ -1,4 +1,7 @@
-use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
+use crate::{
+  prelude::*,
+  traits::{commitment::ScalarMul, Group, TranscriptReprTrait},
+};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
@@ -132,7 +135,7 @@ macro_rules! impl_traits {
         let mut uniform_bytes_vec = Vec::new();
         for _ in 0..n {
           let mut uniform_bytes = [0u8; 32];
-          reader.read_exact(&mut uniform_bytes).unwrap();
+          reader.read(&mut uniform_bytes);
           uniform_bytes_vec.push(uniform_bytes);
         }
         let gens_proj: Vec<$name_curve> = (0..n)

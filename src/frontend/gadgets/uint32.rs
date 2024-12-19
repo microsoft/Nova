@@ -1,14 +1,15 @@
 //! Circuit representation of a [`u32`], with helpers for the [`sha256`]
 //! gadgets.
 
-use ff::PrimeField;
-
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-
 use super::{
   boolean::{AllocatedBit, Boolean},
   multieq::MultiEq,
 };
+use crate::{
+  frontend::{ConstraintSystem, LinearCombination, SynthesisError},
+  prelude::*,
+};
+use ff::PrimeField;
 
 /// Represents an interpretation of 32 `Boolean` objects as an
 /// unsigned integer.

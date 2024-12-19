@@ -1,3 +1,4 @@
+use super::poseidon_inner::Arity;
 /// `HashType` provides support for domain separation tags.
 /// For 128-bit security, we need to reserve one (~256-bit) field element per Poseidon permutation.
 /// This element cannot be used for hash preimage data — but can be assigned a constant value designating
@@ -12,8 +13,6 @@
 /// may still express the full range of hash function types.
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
-
-use super::poseidon_inner::Arity;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound(serialize = "F: Serialize", deserialize = "F: Deserialize<'de>"))]

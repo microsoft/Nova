@@ -1,11 +1,11 @@
 //! This module defines a collection of traits that define the behavior of a `zkSNARK` for `RelaxedR1CS`
 use crate::{
   errors::NovaError,
+  prelude::*,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::Engine,
   CommitmentKey,
 };
-
 use serde::{Deserialize, Serialize};
 
 /// Public parameter creation takes a size hint. This size hint carries the particular requirements of

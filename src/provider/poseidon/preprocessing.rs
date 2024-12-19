@@ -3,6 +3,7 @@ use super::{
   mds::MdsMatrices,
   quintic_s_box,
 };
+use crate::prelude::*;
 use ff::PrimeField;
 
 // - Compress constants by pushing them back through linear layers and through the identity components of partial layers.

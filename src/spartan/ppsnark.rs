@@ -7,6 +7,7 @@
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
+  prelude::*,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
     math::Math,

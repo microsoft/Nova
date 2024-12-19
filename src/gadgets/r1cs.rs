@@ -13,6 +13,7 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
+  prelude::*,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };

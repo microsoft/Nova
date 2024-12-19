@@ -2,15 +2,18 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-use ff::PrimeField;
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
-use std::{
+use crate::{
+  frontend::{ConstraintSystem, LinearCombination, SynthesisError},
+  prelude::*,
+};
+use core::{
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
 };
+use ff::PrimeField;
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 
 /// Compute the natural number represented by an array of limbs.
 /// The limbs are assumed to be based the `limb_width` power of 2.
@@ -52,7 +55,11 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         .collect(),
     )
   } else {
-    eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
+    // print only in std feature
+    #[cfg(feature = "std")]
+    {
+      eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
+    }
     Err(SynthesisError::Unsatisfiable)
   }
 }
@@ -132,6 +139,8 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           || match values_cell {
             Ok(ref vs) => {
               if vs.len() != n_limbs {
+                // print in std feature
+                #[cfg(feature = "std")]
                 eprintln!("Values do not match stated limb count");
                 return Err(SynthesisError::Unsatisfiable);
               }
@@ -144,10 +153,12 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref _e) => {
+              // print in std feature
+              #[cfg(feature = "std")]
+              eprintln!("{_e}");
+              Err(SynthesisError::AssignmentMissing)
+            }
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -196,10 +207,12 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref _e) => {
+              // print in std feature
+              #[cfg(feature = "std")]
+              eprintln!("{_e}");
+              Err(SynthesisError::AssignmentMissing)
+            }
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -318,14 +331,15 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   pub fn enforce_limb_width_agreement(
     &self,
     other: &Self,
-    location: &str,
+    _location: &str,
   ) -> Result<usize, SynthesisError> {
     if self.params.limb_width == other.params.limb_width {
       Ok(self.params.limb_width)
     } else {
+      #[cfg(feature = "std")]
       eprintln!(
         "Limb widths {}, {}, do not agree at {}",
-        self.params.limb_width, other.params.limb_width, location
+        self.params.limb_width, other.params.limb_width, _location
       );
       Err(SynthesisError::Unsatisfiable)
     }
@@ -642,7 +656,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           shift = Scalar::ONE;
         }
         limbs[i / limbs_per_group] =
-          std::mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero())
+          core::mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero())
             + (shift, limb);
         shift.mul_assign(&limb_block);
       }
@@ -685,7 +699,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     let n_product_coeffs = self.coefficients.len() + other.coefficients.len() - 1;
     let values = self.values.as_ref().and_then(|self_vs| {
       other.values.as_ref().map(|other_vs| {
-        let mut values: Vec<Scalar> = std::iter::repeat_with(|| Scalar::ZERO)
+        let mut values: Vec<Scalar> = core::iter::repeat_with(|| Scalar::ZERO)
           .take(n_product_coeffs)
           .collect();
         for (self_i, self_v) in self_vs.iter().enumerate() {
@@ -831,8 +845,9 @@ mod tests {
 
     circuit.synthesize(&mut cs).expect("synthesis failed");
 
-    if let Some(token) = cs.which_is_unsatisfied() {
-      eprintln!("Error: {} is unsatisfied", token);
+    if let Some(_token) = cs.which_is_unsatisfied() {
+      #[cfg(feature = "std")]
+      eprintln!("Error: {} is unsatisfied", _token);
     }
   }
 

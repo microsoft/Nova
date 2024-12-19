@@ -1,6 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
+  prelude::*,
   provider::traits::DlogGroup,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},

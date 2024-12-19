@@ -2,8 +2,11 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
-use std::ops::{Add, Index};
-
+use crate::{
+  prelude::*,
+  spartan::{math::Math, polys::eq::EqPolynomial},
+};
+use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
 use rayon::prelude::{
@@ -11,8 +14,6 @@ use rayon::prelude::{
   IntoParallelRefMutIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
@@ -284,7 +285,7 @@ mod tests {
     mut rng: &mut R,
   ) -> MultilinearPolynomial<Scalar> {
     MultilinearPolynomial::new(
-      std::iter::from_fn(|| Some(Scalar::random(&mut rng)))
+      core::iter::from_fn(|| Some(Scalar::random(&mut rng)))
         .take(1 << num_vars)
         .collect(),
     )
@@ -320,7 +321,7 @@ mod tests {
       let poly = random(n, &mut rng);
 
       // draw a random point
-      let pt: Vec<_> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      let pt: Vec<_> = core::iter::from_fn(|| Some(F::random(&mut rng)))
         .take(n)
         .collect();
       // this shows the order in which coordinates are evaluated

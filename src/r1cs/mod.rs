@@ -7,6 +7,7 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
+  prelude::*,
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },

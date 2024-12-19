@@ -1,6 +1,7 @@
 // Allow `&Matrix` in function signatures.
 #![allow(clippy::ptr_arg)]
 
+use crate::prelude::*;
 use ff::PrimeField;
 
 /// Matrix functions here are, at least for now, quick and dirty — intended only to support precomputation of poseidon optimization.

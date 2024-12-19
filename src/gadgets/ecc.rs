@@ -9,6 +9,7 @@ use crate::{
     select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
     select_one_or_num2, select_zero_or_num2,
   },
+  prelude::*,
   traits::{Engine, Group},
 };
 use ff::{Field, PrimeField};
@@ -1029,7 +1030,6 @@ mod tests {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
-    println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
@@ -1085,7 +1085,6 @@ mod tests {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
-    println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment
@@ -1145,7 +1144,6 @@ mod tests {
     // First create the shape
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add equal"));
-    println!("Number of constraints: {}", cs.num_constraints());
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
     // Then the satisfying assignment

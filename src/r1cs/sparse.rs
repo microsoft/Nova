@@ -3,6 +3,7 @@
 //! This module defines a custom implementation of CSR/CSC sparse matrices.
 //! Specifically, we implement sparse matrix / dense vector multiplication
 //! to compute the `A z`, `B z`, and `C z` in Nova.
+use crate::prelude::*;
 use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,6 @@
 //! `MaskedEqPolynomial`: Represents the `eq` polynomial over n variables, where the first 2^m entries are 0.
 
-use crate::spartan::polys::eq::EqPolynomial;
+use crate::{prelude::*, spartan::polys::eq::EqPolynomial};
 use ff::PrimeField;
 use itertools::zip_eq;
 
@@ -94,11 +94,11 @@ mod tests {
     let num_masked_evals = 1 << num_masked_vars;
 
     // random point
-    let r = std::iter::from_fn(|| Some(F::random(&mut rng)))
+    let r = core::iter::from_fn(|| Some(F::random(&mut rng)))
       .take(num_vars)
       .collect::<Vec<_>>();
     // evaluation point
-    let rx = std::iter::from_fn(|| Some(F::random(&mut rng)))
+    let rx = core::iter::from_fn(|| Some(F::random(&mut rng)))
       .take(num_vars)
       .collect::<Vec<_>>();
 

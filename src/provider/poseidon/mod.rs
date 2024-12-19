@@ -2,10 +2,6 @@
 //!
 //! The underlying Poseidon sponge code is ported from https://github.com/argumentcomputer/neptune.
 
-use ff::PrimeField;
-use round_constants::generate_constants;
-use round_numbers::{round_numbers_base, round_numbers_strengthened};
-use serde::{Deserialize, Serialize};
 mod circuit2;
 mod circuit2_witness;
 mod hash_type;
@@ -18,22 +14,26 @@ mod round_numbers;
 mod serde_impl;
 mod sponge;
 
-pub use circuit2::Elt;
+use crate::{
+  frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, SynthesisError},
+  prelude::*,
+  provider::poseidon::poseidon_inner::PoseidonConstants,
+  traits::{ROCircuitTrait, ROTrait},
+};
+use core::marker::PhantomData;
+use ff::PrimeField;
+use ff::PrimeFieldBits;
+use generic_array::typenum::U24;
+use round_constants::generate_constants;
+use round_numbers::{round_numbers_base, round_numbers_strengthened};
+use serde::{Deserialize, Serialize};
 
+pub use circuit2::Elt;
 pub use sponge::{
   api::{IOPattern, SpongeAPI, SpongeOp},
   circuit::SpongeCircuit,
   vanilla::{Mode::Simplex, Sponge, SpongeTrait},
 };
-
-use crate::{
-  frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, SynthesisError},
-  provider::poseidon::poseidon_inner::PoseidonConstants,
-  traits::{ROCircuitTrait, ROTrait},
-};
-use core::marker::PhantomData;
-use ff::PrimeFieldBits;
-use generic_array::typenum::U24;
 
 /// The strength of the Poseidon hash function
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -279,8 +279,8 @@ mod tests {
   where
     // we can print the field elements we get from E's Base & Scalar fields,
     // and compare their byte representations
-    <<E as Engine>::Base as PrimeField>::Repr: std::fmt::Debug,
-    <<E as Engine>::Scalar as PrimeField>::Repr: std::fmt::Debug,
+    <<E as Engine>::Base as PrimeField>::Repr: core::fmt::Debug,
+    <<E as Engine>::Scalar as PrimeField>::Repr: core::fmt::Debug,
     <<E as Engine>::Base as PrimeField>::Repr:
       PartialEq<<<E as Engine>::Scalar as PrimeField>::Repr>,
   {

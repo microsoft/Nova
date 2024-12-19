@@ -16,6 +16,7 @@ use crate::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
   },
+  prelude::*,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
     circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
