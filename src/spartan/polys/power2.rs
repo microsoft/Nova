@@ -159,14 +159,6 @@ where
 
     Ok((g1, g2, g3))
   }
-
-  // pub fn ell(&self) -> usize {
-  //   self.ell
-  // }
-
-  // pub fn e1_e2(&self) -> (&[F], &[F]) {
-  //   (&self.e1, &self.e2)
-  // }
 }
 
 fn compute_split_point_dims(ell: usize) -> (usize, usize) {
