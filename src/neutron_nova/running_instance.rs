@@ -68,6 +68,7 @@ where
 
   /// Create a default instance of [`RunningZFInstance`]
   pub fn default(U: R1CSInstance<E>, comm_e: Commitment<E>) -> Self {
+    // TODO: Create proper default running instances and witnesses withoug cloning a satisiable R1CS instance
     Self {
       nsc: NSCInstance::default(U, comm_e),
       nsc_pc: NSCPCInstance::default(comm_e),
@@ -302,6 +303,7 @@ where
 
   /// Create a default instance of [`RunningZFWitness`]
   pub fn default(W: R1CSWitness<E>, ell: usize) -> Self {
+    // TODO: Create proper default running instances and witnesses withoug cloning a satisiable R1CS witness
     Self {
       nsc: NSCWitness::default(W, ell),
       nsc_pc: NSCPCWitness::default(ell),
