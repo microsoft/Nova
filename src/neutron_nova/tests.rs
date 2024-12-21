@@ -110,6 +110,7 @@ fn execute_sequence<E: Engine>(
   ck: &CommitmentKey<E>,
 ) -> Result<(), NovaError> {
   let ell = S.num_cons.log_2();
+  // TODO: Create proper default running instances and witnesses withoug cloning a satisiable R1CS instance and witness
   let mut r_W = RunningZFWitness::default(W1.clone(), ell);
   let default_comm_e = r_W.nsc().e().commit::<E>(ck, E::Scalar::ZERO);
   let mut r_U = RunningZFInstance::default(U1.clone(), default_comm_e);
