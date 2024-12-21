@@ -99,7 +99,8 @@ where
       E::Scalar::from(4u64) * h4[b] - E::Scalar::from(3u64) * g4[b],
     );
 
-    // TODO: should probably remove this evaluation calculation. Will double check with @srinathsetty
+    // TODO: should probably remove this evaluation calculation. Will double check with @srinathsetty.
+    // this Unipoly is degree 4 but the Powercheck Unipoly is degree 5?
     uni_poly_evals[5] += comb_func(
       E::Scalar::from(5u64) * h0[b] - E::Scalar::from(4u64) * g0[b],
       E::Scalar::from(5u64) * h1[b] - E::Scalar::from(4u64) * g1[b],
