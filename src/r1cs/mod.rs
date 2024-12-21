@@ -7,6 +7,12 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
+  neutron_nova::{
+    running_instance::{
+      NSCInstance, NSCPCInstance, NSCPCWitness, NSCWitness, RunningZFInstance, RunningZFWitness,
+    },
+    sumfold::{nsc_pc_to_sumfold_inputs, nsc_to_sumfold_inputs},
+  },
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
@@ -14,6 +20,7 @@ use crate::{
 };
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
+use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use rayon::prelude::*;
@@ -47,7 +54,7 @@ impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
-  W: Vec<E::Scalar>,
+  pub(crate) W: Vec<E::Scalar>,
   r_W: E::Scalar,
 }
 
@@ -430,6 +437,69 @@ impl<E: Engine> R1CSShape<E> {
       },
     ))
   }
+
+  /// Check running ZeroFold instance
+  pub fn check_running_zerofold_instance(
+    &self,
+    U: &RunningZFInstance<E>,
+    W: &RunningZFWitness<E>,
+    ck: &CommitmentKey<E>,
+  ) {
+    self.check_nsc_instance(U.nsc(), W.nsc(), ck);
+    Self::check_nsc_pc_instance(U.nsc_pc(), W.nsc_pc(), ck);
+  }
+
+  /// Check running NSC instance
+  pub fn check_nsc_instance(&self, U: &NSCInstance<E>, W: &NSCWitness<E>, ck: &CommitmentKey<E>) {
+    let sumfold_inputs = nsc_to_sumfold_inputs(self, U, W).unwrap();
+    let T = U.T();
+    let expected_comm_W = CE::<E>::commit(ck, &W.W().W, &W.W().r_W);
+    let expected_comm_e = W.e().commit::<E>(ck, W.r_e());
+
+    assert_eq!(expected_comm_W, U.U().comm_W);
+    assert_eq!(expected_comm_e, U.comm_e());
+
+    let F =
+      |az: E::Scalar, bz: E::Scalar, cz: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
+        (az * bz - cz) * h1 * h2
+      };
+
+    let (az, bz, cz, h1, h2) = sumfold_inputs.inner();
+    let boolean_hypercube = 2usize.pow(sumfold_inputs.num_vars() as u32);
+
+    let eval: E::Scalar = (0..boolean_hypercube)
+      .map(|i| F(az[i], bz[i], cz[i], h1[i], h2[i]))
+      .sum();
+
+    assert_eq!(eval, T);
+  }
+
+  /// Check running NSC power-check instance
+  pub fn check_nsc_pc_instance(U: &NSCPCInstance<E>, W: &NSCPCWitness<E>, ck: &CommitmentKey<E>) {
+    let sumfold_inputs = nsc_pc_to_sumfold_inputs(W).unwrap();
+    let T = U.T();
+
+    // let expected_comm_e = W.e().commit(ck);
+    let expected_comm_e = W.e().commit::<E>(ck, W.r_e());
+    let expected_new_comm_e = W.new_e().commit::<E>(ck, W.new_r_e());
+
+    assert_eq!(expected_comm_e, U.comm_e());
+    assert_eq!(expected_new_comm_e, U.new_comm_e());
+
+    let F_pc =
+      |g1: E::Scalar, g2: E::Scalar, g3: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
+        h1 * h2 * (g1 - g2 * g3)
+      };
+
+    let (g1, g2, g3, h1, h2) = sumfold_inputs.inner();
+    let boolean_hypercube = 2usize.pow(sumfold_inputs.num_vars() as u32);
+
+    let eval: E::Scalar = (0..boolean_hypercube)
+      .map(|i| F_pc(g1[i], g2[i], g3[i], h1[i], h2[i]))
+      .sum();
+
+    assert_eq!(eval, T);
+  }
 }
 
 impl<E: Engine> R1CSWitness<E> {
@@ -443,6 +513,29 @@ impl<E: Engine> R1CSWitness<E> {
         r_W: E::Scalar::random(&mut OsRng),
       })
     }
+  }
+
+  /// Fold two [`R1CSWitness`]'s
+  pub fn fold(&self, other: &Self, r_b: E::Scalar) -> Self {
+    let W1 = &self.W;
+    let W2 = &other.W;
+
+    let W: Vec<E::Scalar> = W1
+      .iter()
+      .zip_eq(W2.iter())
+      .map(|(w1, w2)| (E::Scalar::ONE - r_b) * w1 + r_b * w2)
+      .collect();
+
+    let r_W = (E::Scalar::ONE - r_b) * self.r_W + r_b * other.r_W;
+
+    Self { W, r_W }
+  }
+  /// Pads the provided witness to the correct length
+  pub fn pad(&self, S: &R1CSShape<E>) -> R1CSWitness<E> {
+    let mut W = self.W.clone();
+    W.extend(vec![E::Scalar::ZERO; S.num_vars - W.len()]);
+
+    Self { W, r_W: self.r_W }
   }
 
   /// Commits to the witness using the supplied generators
@@ -466,6 +559,22 @@ impl<E: Engine> R1CSInstance<E> {
         X: X.to_owned(),
       })
     }
+  }
+
+  /// Fold two [`R1CSInstance`]'s using a scalar `r_b` from Sumfold
+  pub fn fold(&self, other: &Self, r_b: E::Scalar) -> Self {
+    let X1 = &self.X;
+    let X2 = &other.X;
+
+    let X: Vec<E::Scalar> = X1
+      .iter()
+      .zip_eq(X2.iter())
+      .map(|(w1, w2)| (E::Scalar::ONE - r_b) * w1 + r_b * w2)
+      .collect();
+
+    let comm_W = self.comm_W * (E::Scalar::ONE - r_b) + other.comm_W * r_b;
+
+    Self { X, comm_W }
   }
 }
 
@@ -721,6 +830,16 @@ impl<E: Engine> TranscriptReprTrait<E::GE> for RelaxedR1CSInstance<E> {
       self.comm_W.to_transcript_bytes(),
       self.comm_E.to_transcript_bytes(),
       self.u.to_transcript_bytes(),
+      self.X.as_slice().to_transcript_bytes(),
+    ]
+    .concat()
+  }
+}
+
+impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSInstance<E> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    [
+      self.comm_W.to_transcript_bytes(),
       self.X.as_slice().to_transcript_bytes(),
     ]
     .concat()
