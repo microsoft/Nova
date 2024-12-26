@@ -141,7 +141,7 @@ impl<E: Engine> R1CSShape<E> {
     })
   }
 
-  /// returned the digest of the `R1CSShape`
+  /// returns the digest of the `R1CSShape`
   pub fn digest(&self) -> E::Scalar {
     self
       .digest
