@@ -45,7 +45,7 @@ pub trait DlogGroup:
     + for<'de> Deserialize<'de>
     + TranscriptReprTrait<Self>;
 
-  /// A method to compute a multiexponentation
+  /// A method to compute a multiexponentiation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
 
   /// Produce a vector of group elements using a static label
