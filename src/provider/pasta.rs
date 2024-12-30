@@ -9,7 +9,7 @@ use ff::FromUniformBytes;
 use halo2curves::{
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
   msm::msm_best,
-  pasta::{Pallas, PastaAffine as PallasAffine, Vesta, VestaAffine},
+  pasta::{Pallas, PallasAffine, Vesta, VestaAffine},
   CurveAffine, CurveExt,
 };
 use num_bigint::BigInt;
@@ -20,7 +20,7 @@ use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for pallas
 pub mod pallas {
-  pub use halo2curves::pasta::{Fp as Base, Fq as Scalar, Pallas as Point, PastaAffine as Affine};
+  pub use halo2curves::pasta::{Fp as Base, Fq as Scalar, Pallas as Point, PallasAffine as Affine};
 }
 
 /// Re-exports that give access to the standard aliases used in the code base, for vesta
