@@ -80,10 +80,7 @@ pub trait PairingGroup: DlogGroup {
   fn pairing(p: &Self, q: &Self::G2) -> Self::GT;
 }
 
-/// This implementation behaves in ways specific to the halo2curves suite of curves in:
-// - to_coordinates,
-// - vartime_multiscalar_mul, where it does not call into accelerated implementations.
-// A specific reimplementation exists for the pasta curves in their own module.
+/// Implements Nova's traits
 #[macro_export]
 macro_rules! impl_traits {
   (
@@ -114,7 +111,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        best_multiexp(scalars, bases)
+        msm_best(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {
@@ -200,7 +197,7 @@ macro_rules! impl_traits {
 
     impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.to_repr().to_vec()
+        self.to_bytes().to_vec()
       }
     }
 
@@ -208,7 +205,7 @@ macro_rules! impl_traits {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         let coords = self.coordinates().unwrap();
 
-        [coords.x().to_repr(), coords.y().to_repr()].concat()
+        [coords.x().to_bytes(), coords.y().to_bytes()].concat()
       }
     }
   };

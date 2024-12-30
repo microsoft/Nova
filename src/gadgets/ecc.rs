@@ -787,13 +787,14 @@ mod tests {
     },
     provider::{
       bn256_grumpkin::{bn256, grumpkin},
+      pasta::{pallas, vesta},
       secp_secq::{secp256k1, secq256k1},
       Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::snark::default_ck_hint,
   };
   use ff::{Field, PrimeFieldBits};
-  use pasta_curves::{arithmetic::CurveAffine, group::Curve, pallas, vesta};
+  use halo2curves::{group::Curve, CurveAffine};
   use rand::rngs::OsRng;
 
   #[derive(Debug, Clone)]

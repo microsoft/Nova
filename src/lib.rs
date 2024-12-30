@@ -25,12 +25,10 @@ pub mod provider;
 pub mod spartan;
 pub mod traits;
 
-use once_cell::sync::OnceCell;
-
-use crate::digest::{DigestComputer, SimpleDigestible};
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
 use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use core::marker::PhantomData;
+use digest::{DigestComputer, SimpleDigestible};
 use errors::NovaError;
 use ff::Field;
 use frontend::{
@@ -41,6 +39,7 @@ use frontend::{
 };
 use gadgets::utils::scalar_as_base;
 use nifs::{NIFSRelaxed, NIFS};
+use once_cell::sync::OnceCell;
 use r1cs::{
   CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness,
 };
@@ -1088,19 +1087,19 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["ba7ff40bc60f95f7157350608b2f1892dc33b2470ccf52c3fae0464c61db9501"],
+      &expect!["b3da591d9a3c7dc2632e550e009f2b745d60cf919956cf02e9ca68e8e5e17603"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["e0d75ecff901aee5b22223a4be82af30d7988a5f2cbd40815fda88dd79a22a01"],
+      &expect!["aaf1f0b723e281603838004327e73a02f3a2b5e2f2087e34b6f4f2c8f34e8401"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["ee4bd444ffe1f1be8224a09dae09bdf4532035655fd3f25e70955eaa13c48d03"],
+      &expect!["890b992d9c431625610659fe62b5c00859188e60802a5852cf5db0d10ca59403"],
     );
   }
 

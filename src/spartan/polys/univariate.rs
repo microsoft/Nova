@@ -1,11 +1,10 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
+use crate::traits::{Group, TranscriptReprTrait};
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-
-use crate::traits::{Group, TranscriptReprTrait};
 
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
@@ -117,9 +116,8 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
 }
 #[cfg(test)]
 mod tests {
-  use crate::provider::{bn256_grumpkin, secp_secq::secp256k1};
-
   use super::*;
+  use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
 
   fn test_from_evals_quad_with<F: PrimeField>() {
     // polynomial is 2x^2 + 3x + 1
@@ -149,8 +147,8 @@ mod tests {
 
   #[test]
   fn test_from_evals_quad() {
-    test_from_evals_quad_with::<pasta_curves::pallas::Scalar>();
-    test_from_evals_quad_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_quad_with::<pallas::Scalar>();
+    test_from_evals_quad_with::<bn256::Scalar>();
     test_from_evals_quad_with::<secp256k1::Scalar>();
   }
 
@@ -184,8 +182,8 @@ mod tests {
 
   #[test]
   fn test_from_evals_cubic() {
-    test_from_evals_cubic_with::<pasta_curves::pallas::Scalar>();
-    test_from_evals_cubic_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_cubic_with::<pallas::Scalar>();
+    test_from_evals_cubic_with::<bn256::Scalar>();
     test_from_evals_cubic_with::<secp256k1::Scalar>()
   }
 }

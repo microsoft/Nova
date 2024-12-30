@@ -782,8 +782,10 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::frontend::{test_cs::TestConstraintSystem, Circuit};
-  use pasta_curves::pallas::Scalar;
+  use crate::{
+    frontend::{test_cs::TestConstraintSystem, Circuit},
+    provider::pasta::pallas::Scalar,
+  };
   use proptest::prelude::*;
 
   pub struct PolynomialMultiplier<Scalar: PrimeField> {
