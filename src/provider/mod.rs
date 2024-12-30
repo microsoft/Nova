@@ -1,12 +1,12 @@
 //! This module implements Nova's traits using the following several different combinations
 
 // public modules to be used as an evaluation engine with Spartan
+pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
-pub mod poseidon;
-pub mod bn256_grumpkin;
-pub mod secp_secq;
 pub mod pasta;
+pub mod poseidon;
+pub mod secp_secq;
 
 // crate-private modules
 pub(crate) mod keccak;
