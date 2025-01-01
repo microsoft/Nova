@@ -912,7 +912,7 @@ mod tests {
   }
 
   /// Make the point io
-  pub fn inputize_allocted_point<E: Engine, CS: ConstraintSystem<E::Base>>(
+  pub fn inputize_allocated_point<E: Engine, CS: ConstraintSystem<E::Base>>(
     p: &AllocatedPoint<E>,
     mut cs: CS,
   ) {
@@ -994,7 +994,7 @@ mod tests {
     CS: ConstraintSystem<E::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
+    inputize_allocated_point(&a, cs.namespace(|| "inputize a"));
 
     let s = E::Scalar::random(&mut OsRng);
     // Allocate bits for s
@@ -1006,7 +1006,7 @@ mod tests {
       .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
       .unwrap();
     let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &bits).unwrap();
-    inputize_allocted_point(&e, cs.namespace(|| "inputize e"));
+    inputize_allocated_point(&e, cs.namespace(|| "inputize e"));
     (a, e, s)
   }
 
@@ -1060,9 +1060,9 @@ mod tests {
     CS: ConstraintSystem<E::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
+    inputize_allocated_point(&a, cs.namespace(|| "inputize a"));
     let e = a.add(cs.namespace(|| "add a to a"), &a).unwrap();
-    inputize_allocted_point(&e, cs.namespace(|| "inputize e"));
+    inputize_allocated_point(&e, cs.namespace(|| "inputize e"));
     (a, e)
   }
 
@@ -1115,13 +1115,13 @@ mod tests {
     CS: ConstraintSystem<E::Base>,
   {
     let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
-    inputize_allocted_point(&a, cs.namespace(|| "inputize a"));
+    inputize_allocated_point(&a, cs.namespace(|| "inputize a"));
     let b = &mut a.clone();
     b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
       Ok(E::Base::ZERO)
     })
     .unwrap();
-    inputize_allocted_point(b, cs.namespace(|| "inputize b"));
+    inputize_allocated_point(b, cs.namespace(|| "inputize b"));
     let e = a.add(cs.namespace(|| "add a to b"), b).unwrap();
     e
   }
