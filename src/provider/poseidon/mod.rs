@@ -267,6 +267,7 @@ mod tests {
     constants::NUM_CHALLENGE_BITS,
     frontend::solver::SatisfyingAssignment,
     gadgets::utils::le_bits_to_num,
+    gadgets::utils::scalar_as_base,
     provider::{
       Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
@@ -275,15 +276,7 @@ mod tests {
   use ff::Field;
   use rand::rngs::OsRng;
 
-  fn test_poseidon_ro_with<E: Engine>()
-  where
-    // we can print the field elements we get from E's Base & Scalar fields,
-    // and compare their byte representations
-    <<E as Engine>::Base as PrimeField>::Repr: std::fmt::Debug,
-    <<E as Engine>::Scalar as PrimeField>::Repr: std::fmt::Debug,
-    <<E as Engine>::Base as PrimeField>::Repr:
-      PartialEq<<<E as Engine>::Scalar as PrimeField>::Repr>,
-  {
+  fn test_poseidon_ro_with<E: Engine>() {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
@@ -304,7 +297,7 @@ mod tests {
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
     let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
-    assert_eq!(num.to_repr(), num2.get_value().unwrap().to_repr());
+    assert_eq!(num, scalar_as_base::<E>(num2.get_value().unwrap()));
   }
 
   #[test]

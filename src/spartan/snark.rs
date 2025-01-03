@@ -21,13 +21,11 @@ use crate::{
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait,
   },
-  CommitmentKey,
+  zip_with, CommitmentKey,
 };
-
 use ff::Field;
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
-
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 

@@ -2,17 +2,12 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
-use std::ops::{Add, Index};
-
+use crate::spartan::{math::Math, polys::eq::EqPolynomial};
+use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
-use rayon::prelude::{
-  IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-  IntoParallelRefMutIterator, ParallelIterator,
-};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
@@ -165,9 +160,8 @@ impl<Scalar: PrimeField> Add for MultilinearPolynomial<Scalar> {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::{self, bn256_grumpkin::bn256, secp_secq::secp256k1};
-
   use super::*;
+  use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
   use rand_chacha::ChaCha20Rng;
   use rand_core::{CryptoRng, RngCore, SeedableRng};
 
@@ -224,12 +218,12 @@ mod tests {
 
   #[test]
   fn test_multilinear_polynomial() {
-    test_multilinear_polynomial_with::<pasta_curves::Fp>();
+    test_multilinear_polynomial_with::<pallas::Scalar>();
   }
 
   #[test]
   fn test_sparse_polynomial() {
-    test_sparse_polynomial_with::<pasta_curves::Fp>();
+    test_sparse_polynomial_with::<pallas::Scalar>();
   }
 
   fn test_mlp_add_with<F: PrimeField>() {
@@ -243,7 +237,7 @@ mod tests {
 
   #[test]
   fn test_mlp_add() {
-    test_mlp_add_with::<pasta_curves::Fp>();
+    test_mlp_add_with::<pallas::Scalar>();
     test_mlp_add_with::<bn256::Scalar>();
     test_mlp_add_with::<secp256k1::Scalar>();
   }
@@ -272,9 +266,9 @@ mod tests {
 
   #[test]
   fn test_evaluation() {
-    test_evaluation_with::<pasta_curves::Fp>();
-    test_evaluation_with::<provider::bn256_grumpkin::bn256::Scalar>();
-    test_evaluation_with::<provider::secp_secq::secp256k1::Scalar>();
+    test_evaluation_with::<pallas::Scalar>();
+    test_evaluation_with::<bn256::Scalar>();
+    test_evaluation_with::<secp256k1::Scalar>();
   }
 
   /// Returns a random ML polynomial
@@ -330,7 +324,7 @@ mod tests {
 
   #[test]
   fn test_bind_and_evaluate() {
-    bind_and_evaluate_with::<pasta_curves::Fp>();
+    bind_and_evaluate_with::<pallas::Scalar>();
     bind_and_evaluate_with::<bn256::Scalar>();
     bind_and_evaluate_with::<secp256k1::Scalar>();
   }

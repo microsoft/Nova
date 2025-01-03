@@ -1,32 +1,30 @@
 //! This module implements Nova's traits using the following several different combinations
 
 // public modules to be used as an evaluation engine with Spartan
+pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
-
-// crate-public modules, made crate-public mostly for tests
-pub(crate) mod bn256_grumpkin;
-pub(crate) mod pasta;
-pub(crate) mod pedersen;
+pub mod pasta;
 pub mod poseidon;
-pub(crate) mod secp_secq;
-pub(crate) mod traits;
+pub mod secp_secq;
 
 // crate-private modules
-mod keccak;
+pub(crate) mod keccak;
+pub(crate) mod pedersen;
+pub(crate) mod traits;
 
 use crate::{
   provider::{
     bn256_grumpkin::{bn256, grumpkin},
     hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
     keccak::Keccak256Transcript,
+    pasta::{pallas, vesta},
     pedersen::CommitmentEngine as PedersenCommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
     secp_secq::{secp256k1, secq256k1},
   },
   traits::Engine,
 };
-use pasta_curves::{pallas, vesta};
 use serde::{Deserialize, Serialize};
 
 /// An implementation of Nova traits with HyperKZG over the BN256 curve
@@ -129,11 +127,11 @@ impl Engine for VestaEngine {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::{bn256_grumpkin::bn256, secp_secq::secp256k1, traits::DlogGroup};
+  use crate::provider::{
+    bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1, traits::DlogGroup,
+  };
   use digest::{ExtendableOutput, Update};
-  use group::Curve;
-  use halo2curves::CurveExt;
-  use pasta_curves::pallas;
+  use halo2curves::{group::Curve, CurveExt};
   use sha3::Shake256;
   use std::io::Read;
 
