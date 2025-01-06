@@ -493,7 +493,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     })
   }
 
-  /// Compute a `BigNat` contrained to be equal to `self * other % modulus`.
+  /// Compute a `BigNat` constrained to be equal to `self * other % modulus`.
   pub fn mult_mod<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -564,7 +564,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     Ok((quotient, remainder))
   }
 
-  /// Compute a `BigNat` contrained to be equal to `self * other % modulus`.
+  /// Compute a `BigNat` constrained to be equal to `self * other % modulus`.
   pub fn red_mod<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
