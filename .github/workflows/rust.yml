@@ -1,5 +1,9 @@
 name: Build and Test Nova
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   push:
     branches: [ main ]
@@ -74,3 +78,11 @@ jobs:
         with:
           command: clippy
           args: --all-targets -- -D warnings
+
+  spelling:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Actions Repository
+      uses: actions/checkout@v3
+    - name: Spell Check Repo
+      uses: crate-ci/typos@685eb3d55be2f85191e8c84acb9f44d7756f84ab
