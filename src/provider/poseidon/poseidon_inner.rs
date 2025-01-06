@@ -128,13 +128,13 @@ where
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with following default parameters:
   /// - 128 bit of security;
-  /// - Merkle Tree (where all leafs are presented) domain separation ([`HashType`]).
+  /// - Merkle Tree (where all leaves are presented) domain separation ([`HashType`]).
   pub fn new() -> Self {
     Self::new_with_strength(DEFAULT_STRENGTH)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
-  /// with Merkle Tree (where all leafs are presented) domain separation ([`HashType`]) custom security level ([`Strength`]).
+  /// with Merkle Tree (where all leaves are presented) domain separation ([`HashType`]) custom security level ([`Strength`]).
   pub fn new_with_strength(strength: Strength) -> Self {
     Self::new_with_strength_and_type(strength, HashType::MerkleTree)
   }
