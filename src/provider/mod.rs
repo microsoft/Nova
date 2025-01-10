@@ -4,12 +4,12 @@
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
+pub mod keccak;
 pub mod pasta;
 pub mod poseidon;
 pub mod secp_secq;
 
 // crate-private modules
-pub(crate) mod keccak;
 pub(crate) mod pedersen;
 pub(crate) mod traits;
 
