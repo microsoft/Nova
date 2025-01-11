@@ -2,6 +2,7 @@
 use crate::{
   errors::NovaError,
   frontend::{num::AllocatedNum, AllocatedBit, ConstraintSystem, SynthesisError},
+  provider::traits::DlogGroup,
 };
 use core::fmt::Debug;
 use ff::{PrimeField, PrimeFieldBits};
@@ -129,6 +130,24 @@ pub trait TranscriptEngineTrait<E: Engine>: Send + Sync {
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
+
+  /// absorbs a slice of scalar elements. This defaults to absorbing the bytes of the scalar using `TranscriptReprTrait`
+  /// but can be overridden for other reasons
+  fn absorb_scalars(&mut self, label: &'static [u8], o: &[E::Scalar]) {
+    TranscriptEngineTrait::absorb(self, label, &o);
+  }
+
+  /// absorbs a slice of group elements. This defaults to absorbing the bytes of the group element using `TranscriptReprTrait`
+  /// but can be overridden for other reasons
+  fn absorb_affine_group_elements(
+    &mut self,
+    label: &'static [u8],
+    o: &[<E::GE as DlogGroup>::AffineGroupElement],
+  ) where
+    E::GE: DlogGroup,
+  {
+    TranscriptEngineTrait::absorb(self, label, &o);
+  }
 }
 
 /// Defines additional methods on `PrimeField` objects
