@@ -283,7 +283,7 @@ where
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait methods.
   fn compute_challenge(com: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
-    transcript.absorb(b"c", &com.to_vec().as_slice());
+    transcript.absorb_affine_group_elements(b"c", &com.to_vec().as_slice());
 
     transcript.squeeze(b"c").unwrap()
   }
@@ -291,7 +291,7 @@ where
   // Compute challenge q = Hash(vk, C0, ..., C_{k-1}, u0, ...., u_{t-1},
   // (f_i(u_j))_{i=0..k-1,j=0..t-1})
   fn get_batch_challenge(v: &[Vec<E::Scalar>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
-    transcript.absorb(
+    transcript.absorb_scalars(
       b"v",
       &v.iter()
         .flatten()
@@ -313,7 +313,7 @@ where
   }
 
   fn verifier_second_challenge(W: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
-    transcript.absorb(b"W", &W.to_vec().as_slice());
+    transcript.absorb_affine_group_elements(b"W", &W.to_vec().as_slice());
 
     transcript.squeeze(b"d").unwrap()
   }
