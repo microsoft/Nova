@@ -2,14 +2,16 @@
 //!
 //! Most of the code is ported from https://github.com/argumentcomputer/bellpepper.
 
+pub mod gadgets;
+
 mod constraint_system;
-pub(crate) mod gadgets;
 mod lc;
 
 pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};
 pub use gadgets::{
   boolean::{AllocatedBit, Boolean},
   num,
+  poseidon::{Elt, PoseidonConstants, SpongeCircuit},
   sha256::sha256,
   Assignment,
 };
