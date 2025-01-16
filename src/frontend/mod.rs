@@ -3,7 +3,7 @@
 //! Most of the code is ported from https://github.com/argumentcomputer/bellpepper.
 
 mod constraint_system;
-mod gadgets;
+pub(crate) mod gadgets;
 mod lc;
 
 pub use constraint_system::{Circuit, ConstraintSystem, Namespace, SynthesisError};

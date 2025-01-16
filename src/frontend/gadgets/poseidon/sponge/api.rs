@@ -2,7 +2,7 @@
 ///
 /// The API is defined by the `SpongeAPI` trait, which is implemented in terms of the `InnerSpongeAPI` trait.
 /// `Neptune` provides implementations of `InnerSpongeAPI` for both `sponge::Sponge` and `sponge_circuit::SpongeCircuit`.
-use crate::provider::poseidon::poseidon_inner::Arity;
+use crate::frontend::gadgets::poseidon::poseidon_inner::Arity;
 use ff::PrimeField;
 
 #[derive(Debug)]

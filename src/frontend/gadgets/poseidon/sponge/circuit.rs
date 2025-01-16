@@ -1,6 +1,5 @@
-use crate::{
-  frontend::{util_cs::witness_cs::SizedWitness, ConstraintSystem, Namespace, SynthesisError},
-  provider::poseidon::{
+use crate::frontend::{
+  gadgets::poseidon::{
     circuit2::{Elt, PoseidonCircuit2},
     poseidon_inner::{Arity, Poseidon, PoseidonConstants},
     sponge::{
@@ -8,6 +7,8 @@ use crate::{
       vanilla::{Direction, Mode, SpongeTrait},
     },
   },
+  util_cs::witness_cs::SizedWitness,
+  ConstraintSystem, Namespace, SynthesisError,
 };
 
 use ff::PrimeField;
