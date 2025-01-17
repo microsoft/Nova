@@ -1,4 +1,4 @@
-use crate::provider::poseidon::{
+use crate::frontend::gadgets::poseidon::{
   hash_type::HashType,
   poseidon_inner::{Arity, Poseidon, PoseidonConstants},
   sponge::api::{IOPattern, InnerSpongeAPI},

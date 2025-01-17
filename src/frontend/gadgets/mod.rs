@@ -1,11 +1,14 @@
 //! Self-contained sub-circuit implementations for various primitives.
 
 use super::SynthesisError;
-pub mod boolean;
+
 mod multieq;
-pub mod num;
-pub mod sha256;
 mod uint32;
+
+pub mod boolean;
+pub mod num;
+pub mod poseidon;
+pub mod sha256;
 
 /// A trait for representing an assignment to a variable.
 pub trait Assignment<T> {
