@@ -1,34 +1,97 @@
-# Nova: High-speed recursive arguments from folding schemes
+# Nova: High-Speed Recursive Arguments from Folding Schemes
+## Project Overview
+Nova is a cutting-edge cryptographic library designed to realize [incrementally verifiable computation (IVC)](https://iacr.org/archive/tcc2008/49480001/49480001.pdf) without relying on succinct non-interactive arguments of knowledge (SNARKs). Instead, Nova introduces and employs folding schemes, a simpler and more efficient primitive that reduces the task of checking two instances in some relation to the task of checking a single instance. This approach results in improved efficiency, making Nova the fastest prover in the literature for IVC.
 
-Nova is a high-speed recursive SNARK (a SNARK is type cryptographic proof system that enables a prover to prove a mathematical statement to a verifier with a short proof and succinct verification, and a recursive SNARK enables producing proofs that prove statements about prior proofs). 
+---
+# Table of Contents
 
-More precisely, Nova achieves [incrementally verifiable computation (IVC)](https://iacr.org/archive/tcc2008/49480001/49480001.pdf), a powerful cryptographic primitive that allows a prover to produce a proof of correct execution of a "long running" sequential computations in an incremental fashion. For example, IVC enables the following: The prover takes as input a proof $\pi_i$ proving the first $i$ steps of its computation and then update it to produce a proof $\pi_{i+1}$ proving the correct execution of the first $i + 1$ steps. Crucially, the prover's work to update the proof does not depend on the number of steps executed thus far, and the verifier's work to verify a proof does not grow with the number of steps in the computation. IVC schemes including Nova have a wide variety of applications such as Rollups, verifiable delay functions (VDFs), succinct blockchains, incrementally verifiable versions of [verifiable state machines](https://eprint.iacr.org/2020/758.pdf), and, more generally, proofs of (virtual) machine executions (e.g., EVM, RISC-V). 
+1. [Introduction](#introduction)
+2. [Key Features](#key-features)
+3. [Applications](#applications)
+4. [Library Details](#library-details)
+5. [Commitment Schemes in Nova](#commitment-schemes-in-nova)
+6. [SNARK Implementation for Compressing IVC Proofs](#snark-implementation-for-compressing-ivc-proofs)
+7. [Front-End Integration](#front-end-integration)
+8. [Testing](#testing)
+9. [Acknowledgments](#acknowledgments)
+10. [References](#references)
+11. [Contributing](#contributing)
+12. [Additional Guidelines](#additional-guidelines)
+13. [Trademarks](#trademarks)
 
-A distinctive aspect of Nova is that it is the simplest recursive proof system in the literature, yet it provides the fastest prover. Furthermore, it achieves the smallest verifier circuit (a key metric to minimize in this context): the circuit is constant-sized and its size is about 10,000 multiplication gates. Nova is constructed from a simple primitive called a *folding scheme*, a cryptographic primitive that reduces the task of checking two NP statements into the task of checking a single NP statement. 
 
-## Details of the library
-This repository provides `nova-snark,` a Rust library implementation of Nova over a cycle of elliptic curves. Our code supports three curve cycles: (1) Pallas/Vesta, (2) BN254/Grumpkin, and (3) secp/secq. 
+---
+## Introduction
+Nova is a library that leverages folding schemes to achieve efficient incrementally verifiable computation (IVC). Traditional approaches to IVC often rely on SNARKs, which can be impractical due to their complexity and overhead. Nova's innovative use of folding schemes offers a more efficient and scalable solution.
 
-At its core, Nova relies on a commitment scheme for vectors. Compressing IVC proofs using Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. Our code implements two commitment schemes and evaluation arguments: 
-1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
-2. HyperKZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
-    
-For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this](https://github.com/microsoft/Nova/issues/270) issue). 
+Nova's folding schemes are designed to handle NP relations, reducing the task of verifying two instances to a single instance. This results in a constant-sized verifier circuit and the fastest prover in the literature. Nova is implemented in Rust and is designed to be generic over a cycle of elliptic curves and a hash function.
 
-We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit.
+By default, Nova enables the `asm` feature of the underlying library, boosting performance by up to 50%. If the library fails to build or run, you can pass `--no-default-features` to the cargo commands.
 
-Prior to compression, the IVC proof is folded with a random instance, which makes the proof zero-knowledge. The details of this technique are described in the HyperNova paper.
+Explore the repository to find examples, documentation, and tools to get started with Nova. Whether you're working on verifiable delay functions, succinct blockchains, or verifiable state machines, Nova provides the efficiency and scalability you need.
 
-## Supported front-ends
-A front-end is a tool to take a high-level program and turn it into an intermediate representation (e.g., a circuit) that can be used to prove executions of the program on concrete inputs. There are three supported ways to write high-level programs in a form that can be proven with Nova.
+---
 
-1. The native APIs of Nova accept circuits expressed with bellman-style circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
+## Key Features
+1. Incrementally Verifiable Computation (IVC): Nova enables IVC, a cryptographic primitive that facilitates proofs for "long-running" sequential computations incrementally. For instance, Nova enables the following:
+   - The prover takes as input a proof $\pi_i$ proving the first $i$ steps of its computation and then updates it to produce a proof $\pi_{i+1}$ proving the correct execution of the first $i+1$ steps.
+   - Crucially, the prover's work to update the proof does not depend on the number of steps executed thus far.
+   - The verifier's work to verify a proof does not grow with the number of steps in the computation.
+3. Efficiency: Nova achieves the smallest recursion overhead in the literature, with the prover's work at each step dominated by two multiexponentiations of size $O(|F|)$.
+4. No Trusted Setup: Nova does not require a trusted setup, making it more practical and secure for various applications.
+5. Constant-Sized Verifier Circuit: The verifier circuit is constant-sized and its size is dominated by two group scalar multiplications, providing the smallest verifier circuit in the context of recursive proof composition.
+6. Simplified and Efficient Recursive Proof System:
 
-2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
+    Nova stands out for its simplicity and efficiency:
+   - Minimal Verifier Circuit: The verifier circuit has a constant size, approximately 10,000 multiplication gates.
+   - Novel Folding Scheme: Built on a novel folding scheme that reduces the task of verifying two NP statements to verifying one
 
-## Tests and examples
-By default, we enable the `asm` feature of an underlying library (which boosts performance by up to 50\%). If the library fails to build or run, one can pass `--no-default-features` to `cargo` commands noted below.
+---
+## Applications
+Nova's efficient and scalable IVC system can be applied to a wide variety of use cases, including:
+- Rollups and succinct blockchains
+- Verifiable delay functions (VDFs)
+- Incrementally [verifiable state machines](https://eprint.iacr.org/2020/758.pdf)
+- Proofs of (virtual) machine executions (e.g., EVM, RISC-V)
+## Library Details
 
+This repository provides **nova-snark**, a Rust implementation of Nova over elliptic curve cycles. Supported cycles:
+1. **Pallas/Vesta**
+2. **BN254/Grumpkin**
+3. **secp/secq**
+
+## Commitment Schemes in Nova
+At its core, Nova relies on a commitment scheme for vectors.  
+Compressing IVC proofs using Spartan involves interpreting commitments to vectors as commitments to multilinear polynomials and proving evaluations of committed polynomials.  
+
+Our code implements two commitment schemes and evaluation arguments:  
+
+- **Pedersen Commitments:** Utilizes an IPA-based evaluation argument and is supported on all three curve cycles.  
+- **HyperKZG Commitments:** Utilizes an evaluation argument and is supported on curves with pairings, such as BN254.  
+
+For more details on using HyperKZG, please see the test `test_ivc_nontrivial_with_compression`.  
+The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau").  
+In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this issue](https://github.com/microsoft/Nova/issues/270)).  
+
+
+### SNARK Implementation for Compressing IVC Proofs 
+We also implement a SNARK, based on  [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants:
+1. **Non-Preprocessing Variant:** This variant does not use any preprocessing.
+2. **Preprocessing Variant:** This variant uses preprocessing of circuits to ensure that the verifier's runtime does not depend on the size of the step circuit.
+
+For zero-knowledge proofs, IVC proofs are folded with random instances before compression as described in the [HyperNova paper](https://eprint.iacr.org/2023/573.pdf).
+
+---
+
+## Front-End Integration
+
+A front-end is a tool that converts a high-level program into an intermediate representation (e.g., a circuit) that can be used to prove the execution of the program on concrete inputs. Nova supports three ways to write high-level programs in a form that can be proven.
+1. **Native APIs**: The native APIs of Nova accept circuits expressed with Bellman-style circuits. For examples, see [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs).
+2. **Circom**: A DSL and a compiler that transforms high-level programs expressed in its language into a circuit. Middleware exists to convert the output of Circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to demonstrate how to use these tools with Nova.
+
+---
+
+## Testing
 To run tests (we recommend the release mode to drastically shorten run times):
 ```text
 cargo test --release
@@ -38,7 +101,19 @@ To run an example:
 ```text
 cargo run --release --example minroot
 ```
+### Running Tests
+Run all tests in release mode:
+```bash
+cargo test --release
+```
 
+## Acknowledgments
+- **Research Contributors**: We would like to acknowledge the contributions of Abhiram Kothapalli, Srinath Setty, Ioanna Tzialla, and Wilson Nguyen for their foundational work on Nova and recursive zero-knowledge proofs.
+- **Cryptographic Libraries**: Thanks to the cryptographic research community for their continuous improvements in commitment schemes, elliptic curve cryptography, and other cryptographic primitives used in Nova.
+- **Open Source Community**: Special thanks to the open-source community for their contributions to the development of libraries and tools that made Nova possible, particularly the contributors to the Rust ecosystem and cryptographic libraries like `bellman` and `spartan`.
+- **Microsoft**: The project is supported by the Microsoft open-source ecosystem, and we acknowledge their contribution through the adoption of their CLA (Contributor License Agreement) for this project.
+
+---
 ## References
 The following paper, which appeared at CRYPTO 2022, provides details of the Nova proof system and a proof of security:
 
