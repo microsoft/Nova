@@ -514,16 +514,13 @@ where
   ) -> Result<(), NovaError> {
     let ell = x.len();
 
-    let mut com = pi.com.clone();
-
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
-    let r = Self::compute_challenge(&com, transcript);
+    let r = Self::compute_challenge(&pi.com, transcript);
 
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
       return Err(NovaError::ProofVerifyError);
     }
-    com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
 
     let u = [r, -r, r * r];
 
@@ -533,13 +530,12 @@ where
     }
     let ypos = &pi.v[0];
     let yneg = &pi.v[1];
-    let mut Y = pi.v[2].to_vec();
-    Y.push(*y);
+    let Y = &pi.v[2];
 
     // Check consistency of (Y, ypos, yneg)
     let two = E::Scalar::from(2u64);
     for i in 0..ell {
-      if two * r * Y[i + 1]
+      if two * r * Y.get(i + 1).unwrap_or(y)
         != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
@@ -553,10 +549,8 @@ where
 
     // vk is hashed in transcript already, so we do not add it here
 
-    let k = com.len();
-
     let q = Self::get_batch_challenge(&pi.v, transcript);
-    let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
+    let q_powers = Self::batch_challenge_powers(q, ell); // 1, q, q^2, ..., q^(ell-1)
 
     let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
     let d_1 = d_0 * d_0;
@@ -596,7 +590,7 @@ where
 
     let L = E::GE::vartime_multiscalar_mul(
       &[
-        &q_powers_multiplied[..k],
+        &q_powers_multiplied[..],
         &[
           u[0],
           (u[1] * d_0),
@@ -606,7 +600,8 @@ where
       ]
       .concat(),
       &[
-        &com[..k],
+        &[C.comm.affine()][..],
+        &pi.com,
         &[
           pi.w[0].clone(),
           pi.w[1].clone(),
