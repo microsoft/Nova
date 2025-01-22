@@ -14,14 +14,13 @@ use crate::{
     evaluation::EvaluationEngineTrait,
     AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
-  zip_with,
 };
 use core::{
+  iter,
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-use itertools::Itertools;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -550,7 +549,6 @@ where
     // vk is hashed in transcript already, so we do not add it here
 
     let q = Self::get_batch_challenge(&pi.v, transcript);
-    let q_powers = Self::batch_challenge_powers(q, ell); // 1, q, q^2, ..., q^(ell-1)
 
     let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
     let d_1 = d_0 * d_0;
@@ -575,17 +573,22 @@ where
 
     let q_power_multiplier = E::Scalar::ONE + d_0 + d_1;
 
-    let q_powers_multiplied: Vec<E::Scalar> = q_powers
-      .par_iter()
-      .map(|q_power| *q_power * q_power_multiplier)
-      .collect();
+    let q_powers_multiplied: Vec<E::Scalar> =
+      iter::successors(Some(q_power_multiplier), |qi| Some(*qi * q))
+        .take(ell)
+        .collect();
 
     // Compute the batched openings
     // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
     let B_u = pi
       .v
       .par_iter()
-      .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
+      .map(|v_i| {
+        v_i
+          .iter()
+          .rev()
+          .fold(E::Scalar::ZERO, |acc, v_ij| acc * q + v_ij)
+      })
       .collect::<Vec<E::Scalar>>();
 
     let L = E::GE::vartime_multiscalar_mul(
