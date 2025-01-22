@@ -525,7 +525,11 @@ where
     let u = [r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    if pi.v[0].len() != ell || pi.v[1].len() != ell || pi.v[2].len() != ell {
+    if pi.v[0].len() != ell
+      || pi.v[1].len() != ell
+      || pi.v[2].len() != ell
+      || pi.com.len() != ell - 1
+    {
       return Err(NovaError::ProofVerifyError);
     }
     let ypos = &pi.v[0];
