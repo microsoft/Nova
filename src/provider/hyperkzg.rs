@@ -504,13 +504,10 @@ where
     vk: &Self::VerifierKey,
     transcript: &mut <E as Engine>::TE,
     C: &Commitment<E>,
-    point: &[E::Scalar],
-    P_of_x: &E::Scalar,
+    x: &[E::Scalar],
+    y: &E::Scalar,
     pi: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
-    let x = point.to_vec();
-    let y = P_of_x;
-
     let ell = x.len();
 
     let mut com = pi.com.clone();
@@ -527,16 +524,15 @@ where
     let u = vec![r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    let v = &pi.v;
-    if v.len() != 3 {
+    if pi.v.len() != 3 {
       return Err(NovaError::ProofVerifyError);
     }
-    if v[0].len() != ell || v[1].len() != ell || v[2].len() != ell {
+    if pi.v[0].len() != ell || pi.v[1].len() != ell || pi.v[2].len() != ell {
       return Err(NovaError::ProofVerifyError);
     }
-    let ypos = &v[0];
-    let yneg = &v[1];
-    let mut Y = v[2].to_vec();
+    let ypos = &pi.v[0];
+    let yneg = &pi.v[1];
+    let mut Y = pi.v[2].to_vec();
     Y.push(*y);
 
     // Check consistency of (Y, ypos, yneg)
@@ -554,26 +550,19 @@ where
 
     // Check commitments to (Y, ypos, yneg) are valid
 
-    let W = &pi.w;
-    let v = &pi.v;
     // vk is hashed in transcript already, so we do not add it here
 
     let k = com.len();
     let t = u.len();
 
-    let q = Self::get_batch_challenge(v, transcript);
+    let q = Self::get_batch_challenge(&pi.v, transcript);
     let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
 
-    let d_0 = Self::verifier_second_challenge(W, transcript);
+    let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
     let d_1 = d_0 * d_0;
 
-    // Shorthand to convert from preprocessed G1 elements to non-preprocessed
-    let from_ppG1 = |P: &G1Affine<E>| <E::GE as DlogGroup>::group(P);
-    // Shorthand to convert from preprocessed G2 elements to non-preprocessed
-    let from_ppG2 = |P: &G2Affine<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
-
     assert_eq!(t, 3);
-    assert_eq!(W.len(), 3);
+    assert_eq!(pi.w.len(), 3);
     // We write a special case for t=3, since this what is required for
     // hyperkzg. Following the paper directly, we must compute:
     // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
@@ -601,8 +590,9 @@ where
 
     // Compute the batched openings
     // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
-    let B_u = v
-      .into_par_iter()
+    let B_u = pi
+      .v
+      .par_iter()
       .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
       .collect::<Vec<E::Scalar>>();
 
@@ -619,19 +609,24 @@ where
       .concat(),
       &[
         &com[..k],
-        &[W[0].clone(), W[1].clone(), W[2].clone(), vk.G.clone()],
+        &[
+          pi.w[0].clone(),
+          pi.w[1].clone(),
+          pi.w[2].clone(),
+          vk.G.clone(),
+        ],
       ]
       .concat(),
     );
 
-    let R0 = from_ppG1(&W[0]);
-    let R1 = from_ppG1(&W[1]);
-    let R2 = from_ppG1(&W[2]);
+    let R0 = E::GE::group(&pi.w[0]);
+    let R1 = E::GE::group(&pi.w[1]);
+    let R2 = E::GE::group(&pi.w[2]);
     let R = R0 + R1 * d_0 + R2 * d_1;
 
     // Check that e(L, vk.H) == e(R, vk.tau_H)
-    if (<E::GE as PairingGroup>::pairing(&L, &from_ppG2(&vk.H)))
-      != (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
+    if (E::GE::pairing(&L, &DlogGroup::group(&vk.H)))
+      != (E::GE::pairing(&R, &DlogGroup::group(&vk.tau_H)))
     {
       return Err(NovaError::ProofVerifyError);
     }
