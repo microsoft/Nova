@@ -511,6 +511,47 @@ where
     let x = point.to_vec();
     let y = P_of_x;
 
+    let ell = x.len();
+
+    let mut com = pi.com.clone();
+
+    // we do not need to add x to the transcript, because in our context x was
+    // obtained from the transcript
+    let r = Self::compute_challenge(&com, transcript);
+
+    if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
+      return Err(NovaError::ProofVerifyError);
+    }
+    com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
+
+    let u = vec![r, -r, r * r];
+
+    // Setup vectors (Y, ypos, yneg) from pi.v
+    let v = &pi.v;
+    if v.len() != 3 {
+      return Err(NovaError::ProofVerifyError);
+    }
+    if v[0].len() != ell || v[1].len() != ell || v[2].len() != ell {
+      return Err(NovaError::ProofVerifyError);
+    }
+    let ypos = &v[0];
+    let yneg = &v[1];
+    let mut Y = v[2].to_vec();
+    Y.push(*y);
+
+    // Check consistency of (Y, ypos, yneg)
+    let two = E::Scalar::from(2u64);
+    for i in 0..ell {
+      if two * r * Y[i + 1]
+        != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
+          + x[ell - i - 1] * (ypos[i] - yneg[i])
+      {
+        return Err(NovaError::ProofVerifyError);
+      }
+      // Note that we don't make any checks about Y[0] here, but our batching
+      // check below requires it
+    }
+
     // vk is hashed in transcript already, so we do not add it here
     let kzg_verify_batch = |vk: &VerifierKey<E>,
                             C: &Vec<G1Affine<E>>,
@@ -595,47 +636,6 @@ where
         == (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
     };
     ////// END verify() closure helpers
-
-    let ell = x.len();
-
-    let mut com = pi.com.clone();
-
-    // we do not need to add x to the transcript, because in our context x was
-    // obtained from the transcript
-    let r = Self::compute_challenge(&com, transcript);
-
-    if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
-      return Err(NovaError::ProofVerifyError);
-    }
-    com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
-
-    let u = vec![r, -r, r * r];
-
-    // Setup vectors (Y, ypos, yneg) from pi.v
-    let v = &pi.v;
-    if v.len() != 3 {
-      return Err(NovaError::ProofVerifyError);
-    }
-    if v[0].len() != ell || v[1].len() != ell || v[2].len() != ell {
-      return Err(NovaError::ProofVerifyError);
-    }
-    let ypos = &v[0];
-    let yneg = &v[1];
-    let mut Y = v[2].to_vec();
-    Y.push(*y);
-
-    // Check consistency of (Y, ypos, yneg)
-    let two = E::Scalar::from(2u64);
-    for i in 0..ell {
-      if two * r * Y[i + 1]
-        != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
-          + x[ell - i - 1] * (ypos[i] - yneg[i])
-      {
-        return Err(NovaError::ProofVerifyError);
-      }
-      // Note that we don't make any checks about Y[0] here, but our batching
-      // check below requires it
-    }
 
     // Check commitments to (Y, ypos, yneg) are valid
     if !kzg_verify_batch(vk, &com, &pi.w, &u, &pi.v, transcript) {
