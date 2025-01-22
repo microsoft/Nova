@@ -552,93 +552,87 @@ where
       // check below requires it
     }
 
-    // vk is hashed in transcript already, so we do not add it here
-    let kzg_verify_batch = |vk: &VerifierKey<E>,
-                            C: &Vec<G1Affine<E>>,
-                            W: &Vec<G1Affine<E>>,
-                            u: &Vec<E::Scalar>,
-                            v: &Vec<Vec<E::Scalar>>,
-                            transcript: &mut <E as Engine>::TE|
-     -> bool {
-      let k = C.len();
-      let t = u.len();
-
-      let q = Self::get_batch_challenge(v, transcript);
-      let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
-
-      let d_0 = Self::verifier_second_challenge(W, transcript);
-      let d_1 = d_0 * d_0;
-
-      // Shorthand to convert from preprocessed G1 elements to non-preprocessed
-      let from_ppG1 = |P: &G1Affine<E>| <E::GE as DlogGroup>::group(P);
-      // Shorthand to convert from preprocessed G2 elements to non-preprocessed
-      let from_ppG2 = |P: &G2Affine<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
-
-      assert_eq!(t, 3);
-      assert_eq!(W.len(), 3);
-      // We write a special case for t=3, since this what is required for
-      // hyperkzg. Following the paper directly, we must compute:
-      // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
-      // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
-      // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
-      // let R0 = -W[0];
-      // let R1 = -W[1];
-      // let R2 = -W[2];
-      // let L = L0 + L1*d_0 + L2*d_1;
-      // let R = R0 + R1*d_0 + R2*d_1;
-      //
-      // We group terms to reduce the number of scalar mults (to seven):
-      // In Rust, we could use MSMs for these, and speed up verification.
-      //
-      // Note, that while computing L, the intermediate computation of C_B together with computing
-      // L0, L1, L2 can be replaced by single MSM of C with the powers of q multiplied by (1 + d_0 + d_1)
-      // with additionally concatenated inputs for scalars/bases.
-
-      let q_power_multiplier = E::Scalar::ONE + d_0 + d_1;
-
-      let q_powers_multiplied: Vec<E::Scalar> = q_powers
-        .par_iter()
-        .map(|q_power| *q_power * q_power_multiplier)
-        .collect();
-
-      // Compute the batched openings
-      // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
-      let B_u = v
-        .into_par_iter()
-        .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
-        .collect::<Vec<E::Scalar>>();
-
-      let L = E::GE::vartime_multiscalar_mul(
-        &[
-          &q_powers_multiplied[..k],
-          &[
-            u[0],
-            (u[1] * d_0),
-            (u[2] * d_1),
-            -(B_u[0] + d_0 * B_u[1] + d_1 * B_u[2]),
-          ],
-        ]
-        .concat(),
-        &[
-          &C[..k],
-          &[W[0].clone(), W[1].clone(), W[2].clone(), vk.G.clone()],
-        ]
-        .concat(),
-      );
-
-      let R0 = from_ppG1(&W[0]);
-      let R1 = from_ppG1(&W[1]);
-      let R2 = from_ppG1(&W[2]);
-      let R = R0 + R1 * d_0 + R2 * d_1;
-
-      // Check that e(L, vk.H) == e(R, vk.tau_H)
-      (<E::GE as PairingGroup>::pairing(&L, &from_ppG2(&vk.H)))
-        == (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
-    };
-    ////// END verify() closure helpers
-
     // Check commitments to (Y, ypos, yneg) are valid
-    if !kzg_verify_batch(vk, &com, &pi.w, &u, &pi.v, transcript) {
+
+    let W = &pi.w;
+    let v = &pi.v;
+    // vk is hashed in transcript already, so we do not add it here
+
+    let k = com.len();
+    let t = u.len();
+
+    let q = Self::get_batch_challenge(v, transcript);
+    let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
+
+    let d_0 = Self::verifier_second_challenge(W, transcript);
+    let d_1 = d_0 * d_0;
+
+    // Shorthand to convert from preprocessed G1 elements to non-preprocessed
+    let from_ppG1 = |P: &G1Affine<E>| <E::GE as DlogGroup>::group(P);
+    // Shorthand to convert from preprocessed G2 elements to non-preprocessed
+    let from_ppG2 = |P: &G2Affine<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
+
+    assert_eq!(t, 3);
+    assert_eq!(W.len(), 3);
+    // We write a special case for t=3, since this what is required for
+    // hyperkzg. Following the paper directly, we must compute:
+    // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
+    // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
+    // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
+    // let R0 = -W[0];
+    // let R1 = -W[1];
+    // let R2 = -W[2];
+    // let L = L0 + L1*d_0 + L2*d_1;
+    // let R = R0 + R1*d_0 + R2*d_1;
+    //
+    // We group terms to reduce the number of scalar mults (to seven):
+    // In Rust, we could use MSMs for these, and speed up verification.
+    //
+    // Note, that while computing L, the intermediate computation of C_B together with computing
+    // L0, L1, L2 can be replaced by single MSM of C with the powers of q multiplied by (1 + d_0 + d_1)
+    // with additionally concatenated inputs for scalars/bases.
+
+    let q_power_multiplier = E::Scalar::ONE + d_0 + d_1;
+
+    let q_powers_multiplied: Vec<E::Scalar> = q_powers
+      .par_iter()
+      .map(|q_power| *q_power * q_power_multiplier)
+      .collect();
+
+    // Compute the batched openings
+    // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
+    let B_u = v
+      .into_par_iter()
+      .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
+      .collect::<Vec<E::Scalar>>();
+
+    let L = E::GE::vartime_multiscalar_mul(
+      &[
+        &q_powers_multiplied[..k],
+        &[
+          u[0],
+          (u[1] * d_0),
+          (u[2] * d_1),
+          -(B_u[0] + d_0 * B_u[1] + d_1 * B_u[2]),
+        ],
+      ]
+      .concat(),
+      &[
+        &com[..k],
+        &[W[0].clone(), W[1].clone(), W[2].clone(), vk.G.clone()],
+      ]
+      .concat(),
+    );
+
+    let R0 = from_ppG1(&W[0]);
+    let R1 = from_ppG1(&W[1]);
+    let R2 = from_ppG1(&W[2]);
+    let R = R0 + R1 * d_0 + R2 * d_1;
+
+    // Check that e(L, vk.H) == e(R, vk.tau_H)
+    if (<E::GE as PairingGroup>::pairing(&L, &from_ppG2(&vk.H)))
+      != (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
+    {
       return Err(NovaError::ProofVerifyError);
     }
 
