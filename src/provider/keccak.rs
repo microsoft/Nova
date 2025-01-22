@@ -137,18 +137,18 @@ mod tests {
   #[test]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<PallasEngine>(
-      "5ddffa8dc091862132788b8976af88b9a2c70594727e611c7217ba4c30c8c70a",
-      "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
+      "b67339da79ce5f6dc72ad23c8c3b4179f49655cadf92d47e79c3e7788f00f125",
+      "b7f033d47b3519dd6efe320b995eaad1dc11712cb9b655d2e7006ed5f86bd321",
     );
 
     test_keccak_transcript_with::<Bn256EngineKZG>(
-      "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
-      "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
+      "b387ba3a8b9a22b3b7544a3dbbd26a048a1d354d8dc582c64d1513335e66a205",
+      "73ad65097d947fe45de5241bb340bbd97b198b52cc559a9657f73c361bf8700b",
     );
 
     test_keccak_transcript_with::<Secp256k1Engine>(
-      "9723aafb69ec8f0e9c7de756df0993247d98cf2b2f72fa353e3de654a177e310",
-      "a6a90fcb6e1b1a2a2f84c950ef1510d369aea8e42085f5c629bfa66d00255f25",
+      "f15ddd8fa1675a9e273e0ef441711005d77a5fd485f4e6cdee59760ca01493fa",
+      "3c019f0e557abaecc99790382974cb27132bfe038af9c4d43a33ec9c426e19f5",
     );
   }
 
