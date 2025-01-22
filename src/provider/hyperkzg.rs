@@ -192,18 +192,14 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
-  type Commitment = Commitment<E>;
-  type CommitmentKey = CommitmentKey<E>;
-  type DerandKey = DerandKey<E>;
-
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    // NOTE: this is for testing purposes and should not be used in production
-    // TODO: we need to decide how to generate load/store parameters
-    let tau = E::Scalar::random(OsRng);
+  /// NOTE: this is for testing purposes and should not be used in production
+  /// This can be used instead of `setup` to generate a reproducible commitment key
+  pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
+    let tau = E::Scalar::random(rng);
     let num_gens = n.next_power_of_two();
 
     // Compute powers of tau in E::Scalar, then scalar muls in parallel
@@ -222,7 +218,22 @@ where
 
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
-    Self::CommitmentKey { ck, h, tau_H }
+    Self { ck, h, tau_H }
+  }
+}
+
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
+where
+  E::GE: PairingGroup,
+{
+  type Commitment = Commitment<E>;
+  type CommitmentKey = CommitmentKey<E>;
+  type DerandKey = DerandKey<E>;
+
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    // NOTE: this is for testing purposes and should not be used in production
+    // TODO: we need to decide how to generate load/store parameters
+    Self::CommitmentKey::setup_from_rng(label, n, OsRng)
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
