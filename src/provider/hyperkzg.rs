@@ -266,8 +266,8 @@ where
   E::GE: PairingGroup,
 {
   com: Vec<G1Affine<E>>,
-  w: Vec<G1Affine<E>>,
-  v: Vec<Vec<E::Scalar>>,
+  w: [G1Affine<E>; 3],
+  v: [Vec<E::Scalar>; 3],
 }
 
 /// Provides an implementation of a polynomial evaluation engine using KZG
@@ -496,7 +496,11 @@ where
     // Phase 3 -- create response
     let (w, v) = kzg_open_batch(&polys, &u, transcript);
 
-    Ok(EvaluationArgument { com, w, v })
+    Ok(EvaluationArgument {
+      com,
+      w: w.try_into().expect("w should have length 3"),
+      v: v.try_into().expect("v should have length 3"),
+    })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
@@ -521,12 +525,9 @@ where
     }
     com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
 
-    let u = vec![r, -r, r * r];
+    let u = [r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    if pi.v.len() != 3 {
-      return Err(NovaError::ProofVerifyError);
-    }
     if pi.v[0].len() != ell || pi.v[1].len() != ell || pi.v[2].len() != ell {
       return Err(NovaError::ProofVerifyError);
     }
@@ -553,7 +554,6 @@ where
     // vk is hashed in transcript already, so we do not add it here
 
     let k = com.len();
-    let t = u.len();
 
     let q = Self::get_batch_challenge(&pi.v, transcript);
     let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
@@ -561,8 +561,6 @@ where
     let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
     let d_1 = d_0 * d_0;
 
-    assert_eq!(t, 3);
-    assert_eq!(pi.w.len(), 3);
     // We write a special case for t=3, since this what is required for
     // hyperkzg. Following the paper directly, we must compute:
     // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
@@ -740,7 +738,7 @@ mod tests {
       .with_fixint_encoding()
       .serialize(&proof)
       .unwrap();
-    assert_eq!(proof_bytes.len(), 368);
+    assert_eq!(proof_bytes.len(), 352);
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
