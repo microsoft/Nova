@@ -19,6 +19,7 @@ use core::{
   iter,
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
+  slice,
 };
 use ff::Field;
 use rand_core::OsRng;
@@ -532,9 +533,8 @@ where
     let Y = &pi.v[2];
 
     // Check consistency of (Y, ypos, yneg)
-    let two = E::Scalar::from(2u64);
     for i in 0..ell {
-      if two * r * Y.get(i + 1).unwrap_or(y)
+      if r.double() * Y.get(i + 1).unwrap_or(y)
         != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
@@ -551,7 +551,7 @@ where
     let q = Self::get_batch_challenge(&pi.v, transcript);
 
     let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
-    let d_1 = d_0 * d_0;
+    let d_1 = d_0.square();
 
     // We write a special case for t=3, since this what is required for
     // hyperkzg. Following the paper directly, we must compute:
@@ -605,12 +605,8 @@ where
       &[
         &[C.comm.affine()][..],
         &pi.com,
-        &[
-          pi.w[0].clone(),
-          pi.w[1].clone(),
-          pi.w[2].clone(),
-          vk.G.clone(),
-        ],
+        &pi.w,
+        slice::from_ref(&vk.G),
       ]
       .concat(),
     );
