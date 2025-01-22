@@ -71,6 +71,20 @@ where
   comm: <E as Engine>::GE,
 }
 
+impl<E: Engine> Commitment<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Creates a new commitment from the underlying group element
+  pub fn new(comm: <E as Engine>::GE) -> Self {
+    Commitment { comm }
+  }
+  /// Returns the commitment as a group element
+  pub fn into_inner(self) -> <E as Engine>::GE {
+    self.comm
+  }
+}
+
 impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
   E::GE: PairingGroup,
