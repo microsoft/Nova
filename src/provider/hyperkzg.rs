@@ -284,6 +284,24 @@ where
   v: Vec<Vec<E::Scalar>>,
 }
 
+impl<E: Engine> EvaluationArgument<E>
+where
+  E::GE: PairingGroup,
+{
+  /// The KZG commitments to intermediate polynomials
+  pub fn com(&self) -> &[G1Affine<E>] {
+    &self.com
+  }
+  /// The KZG witnesses for batch openings
+  pub fn w(&self) -> &[G1Affine<E>] {
+    &self.w
+  }
+  /// The evaluations of the polynomials at challenge points
+  pub fn v(&self) -> &[Vec<E::Scalar>] {
+    &self.v
+  }
+}
+
 /// Provides an implementation of a polynomial evaluation engine using KZG
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationEngine<E: Engine> {
