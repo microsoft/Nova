@@ -43,6 +43,35 @@ where
   tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement, // needed only for the verifier key
 }
 
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Create a new commitment key
+  pub fn new(
+    ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+    h: <E::GE as DlogGroup>::AffineGroupElement,
+    tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement,
+  ) -> Self {
+    Self { ck, h, tau_H }
+  }
+
+  /// Returns a reference to the ck field
+  pub fn ck(&self) -> &[<E::GE as DlogGroup>::AffineGroupElement] {
+    &self.ck
+  }
+
+  /// Returns a reference to the h field
+  pub fn h(&self) -> &<E::GE as DlogGroup>::AffineGroupElement {
+    &self.h
+  }
+
+  /// Returns a reference to the tau_H field
+  pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
+    &self.tau_H
+  }
+}
+
 impl<E: Engine> Len for CommitmentKey<E>
 where
   E::GE: PairingGroup,
