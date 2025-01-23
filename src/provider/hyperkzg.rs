@@ -71,6 +71,20 @@ where
   comm: <E as Engine>::GE,
 }
 
+impl<E: Engine> Commitment<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Creates a new commitment from the underlying group element
+  pub fn new(comm: <E as Engine>::GE) -> Self {
+    Commitment { comm }
+  }
+  /// Returns the commitment as a group element
+  pub fn into_inner(self) -> <E as Engine>::GE {
+    self.comm
+  }
+}
+
 impl<E: Engine> CommitmentTrait<E> for Commitment<E>
 where
   E::GE: PairingGroup,
@@ -178,18 +192,14 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
+impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
-  type Commitment = Commitment<E>;
-  type CommitmentKey = CommitmentKey<E>;
-  type DerandKey = DerandKey<E>;
-
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    // NOTE: this is for testing purposes and should not be used in production
-    // TODO: we need to decide how to generate load/store parameters
-    let tau = E::Scalar::random(OsRng);
+  /// NOTE: this is for testing purposes and should not be used in production
+  /// This can be used instead of `setup` to generate a reproducible commitment key
+  pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
+    let tau = E::Scalar::random(rng);
     let num_gens = n.next_power_of_two();
 
     // Compute powers of tau in E::Scalar, then scalar muls in parallel
@@ -208,7 +218,22 @@ where
 
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
-    Self::CommitmentKey { ck, h, tau_H }
+    Self { ck, h, tau_H }
+  }
+}
+
+impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
+where
+  E::GE: PairingGroup,
+{
+  type Commitment = Commitment<E>;
+  type CommitmentKey = CommitmentKey<E>;
+  type DerandKey = DerandKey<E>;
+
+  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+    // NOTE: this is for testing purposes and should not be used in production
+    // TODO: we need to decide how to generate load/store parameters
+    Self::CommitmentKey::setup_from_rng(label, n, OsRng)
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
@@ -268,6 +293,24 @@ where
   com: Vec<G1Affine<E>>,
   w: Vec<G1Affine<E>>,
   v: Vec<Vec<E::Scalar>>,
+}
+
+impl<E: Engine> EvaluationArgument<E>
+where
+  E::GE: PairingGroup,
+{
+  /// The KZG commitments to intermediate polynomials
+  pub fn com(&self) -> &[G1Affine<E>] {
+    &self.com
+  }
+  /// The KZG witnesses for batch openings
+  pub fn w(&self) -> &[G1Affine<E>] {
+    &self.w
+  }
+  /// The evaluations of the polynomials at challenge points
+  pub fn v(&self) -> &[Vec<E::Scalar>] {
+    &self.v
+  }
 }
 
 /// Provides an implementation of a polynomial evaluation engine using KZG
