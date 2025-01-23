@@ -14,14 +14,14 @@ use crate::{
     evaluation::EvaluationEngineTrait,
     AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
-  zip_with,
 };
 use core::{
+  iter,
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
+  slice,
 };
 use ff::Field;
-use itertools::Itertools;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -320,8 +320,8 @@ where
   E::GE: PairingGroup,
 {
   com: Vec<G1Affine<E>>,
-  w: Vec<G1Affine<E>>,
-  v: Vec<Vec<E::Scalar>>,
+  w: [G1Affine<E>; 3],
+  v: [Vec<E::Scalar>; 3],
 }
 
 impl<E: Engine> EvaluationArgument<E>
@@ -568,7 +568,11 @@ where
     // Phase 3 -- create response
     let (w, v) = kzg_open_batch(&polys, &u, transcript);
 
-    Ok(EvaluationArgument { com, w, v })
+    Ok(EvaluationArgument {
+      com,
+      w: w.try_into().expect("w should have length 3"),
+      v: v.try_into().expect("v should have length 3"),
+    })
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
@@ -576,130 +580,37 @@ where
     vk: &Self::VerifierKey,
     transcript: &mut <E as Engine>::TE,
     C: &Commitment<E>,
-    point: &[E::Scalar],
-    P_of_x: &E::Scalar,
+    x: &[E::Scalar],
+    y: &E::Scalar,
     pi: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
-    let x = point.to_vec();
-    let y = P_of_x;
-
-    // vk is hashed in transcript already, so we do not add it here
-    let kzg_verify_batch = |vk: &VerifierKey<E>,
-                            C: &Vec<G1Affine<E>>,
-                            W: &Vec<G1Affine<E>>,
-                            u: &Vec<E::Scalar>,
-                            v: &Vec<Vec<E::Scalar>>,
-                            transcript: &mut <E as Engine>::TE|
-     -> bool {
-      let k = C.len();
-      let t = u.len();
-
-      let q = Self::get_batch_challenge(v, transcript);
-      let q_powers = Self::batch_challenge_powers(q, k); // 1, q, q^2, ..., q^(k-1)
-
-      let d_0 = Self::verifier_second_challenge(W, transcript);
-      let d_1 = d_0 * d_0;
-
-      // Shorthand to convert from preprocessed G1 elements to non-preprocessed
-      let from_ppG1 = |P: &G1Affine<E>| <E::GE as DlogGroup>::group(P);
-      // Shorthand to convert from preprocessed G2 elements to non-preprocessed
-      let from_ppG2 = |P: &G2Affine<E>| <<E::GE as PairingGroup>::G2 as DlogGroup>::group(P);
-
-      assert_eq!(t, 3);
-      assert_eq!(W.len(), 3);
-      // We write a special case for t=3, since this what is required for
-      // hyperkzg. Following the paper directly, we must compute:
-      // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
-      // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
-      // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
-      // let R0 = -W[0];
-      // let R1 = -W[1];
-      // let R2 = -W[2];
-      // let L = L0 + L1*d_0 + L2*d_1;
-      // let R = R0 + R1*d_0 + R2*d_1;
-      //
-      // We group terms to reduce the number of scalar mults (to seven):
-      // In Rust, we could use MSMs for these, and speed up verification.
-      //
-      // Note, that while computing L, the intermediate computation of C_B together with computing
-      // L0, L1, L2 can be replaced by single MSM of C with the powers of q multiplied by (1 + d_0 + d_1)
-      // with additionally concatenated inputs for scalars/bases.
-
-      let q_power_multiplier = E::Scalar::ONE + d_0 + d_1;
-
-      let q_powers_multiplied: Vec<E::Scalar> = q_powers
-        .par_iter()
-        .map(|q_power| *q_power * q_power_multiplier)
-        .collect();
-
-      // Compute the batched openings
-      // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
-      let B_u = v
-        .into_par_iter()
-        .map(|v_i| zip_with!(iter, (q_powers, v_i), |a, b| *a * *b).sum())
-        .collect::<Vec<E::Scalar>>();
-
-      let L = E::GE::vartime_multiscalar_mul(
-        &[
-          &q_powers_multiplied[..k],
-          &[
-            u[0],
-            (u[1] * d_0),
-            (u[2] * d_1),
-            -(B_u[0] + d_0 * B_u[1] + d_1 * B_u[2]),
-          ],
-        ]
-        .concat(),
-        &[
-          &C[..k],
-          &[W[0].clone(), W[1].clone(), W[2].clone(), vk.G.clone()],
-        ]
-        .concat(),
-      );
-
-      let R0 = from_ppG1(&W[0]);
-      let R1 = from_ppG1(&W[1]);
-      let R2 = from_ppG1(&W[2]);
-      let R = R0 + R1 * d_0 + R2 * d_1;
-
-      // Check that e(L, vk.H) == e(R, vk.tau_H)
-      (<E::GE as PairingGroup>::pairing(&L, &from_ppG2(&vk.H)))
-        == (<E::GE as PairingGroup>::pairing(&R, &from_ppG2(&vk.tau_H)))
-    };
-    ////// END verify() closure helpers
-
     let ell = x.len();
-
-    let mut com = pi.com.clone();
 
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
-    let r = Self::compute_challenge(&com, transcript);
+    let r = Self::compute_challenge(&pi.com, transcript);
 
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
       return Err(NovaError::ProofVerifyError);
     }
-    com.insert(0, C.comm.affine()); // set com_0 = C, shifts other commitments to the right
 
-    let u = vec![r, -r, r * r];
+    let u = [r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    let v = &pi.v;
-    if v.len() != 3 {
+    if pi.v[0].len() != ell
+      || pi.v[1].len() != ell
+      || pi.v[2].len() != ell
+      || pi.com.len() != ell - 1
+    {
       return Err(NovaError::ProofVerifyError);
     }
-    if v[0].len() != ell || v[1].len() != ell || v[2].len() != ell {
-      return Err(NovaError::ProofVerifyError);
-    }
-    let ypos = &v[0];
-    let yneg = &v[1];
-    let mut Y = v[2].to_vec();
-    Y.push(*y);
+    let ypos = &pi.v[0];
+    let yneg = &pi.v[1];
+    let Y = &pi.v[2];
 
     // Check consistency of (Y, ypos, yneg)
-    let two = E::Scalar::from(2u64);
     for i in 0..ell {
-      if two * r * Y[i + 1]
+      if r.double() * Y.get(i + 1).unwrap_or(y)
         != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
@@ -710,7 +621,81 @@ where
     }
 
     // Check commitments to (Y, ypos, yneg) are valid
-    if !kzg_verify_batch(vk, &com, &pi.w, &u, &pi.v, transcript) {
+
+    // vk is hashed in transcript already, so we do not add it here
+
+    let q = Self::get_batch_challenge(&pi.v, transcript);
+
+    let d_0 = Self::verifier_second_challenge(&pi.w, transcript);
+    let d_1 = d_0.square();
+
+    // We write a special case for t=3, since this what is required for
+    // hyperkzg. Following the paper directly, we must compute:
+    // let L0 = C_B - vk.G * B_u[0] + W[0] * u[0];
+    // let L1 = C_B - vk.G * B_u[1] + W[1] * u[1];
+    // let L2 = C_B - vk.G * B_u[2] + W[2] * u[2];
+    // let R0 = -W[0];
+    // let R1 = -W[1];
+    // let R2 = -W[2];
+    // let L = L0 + L1*d_0 + L2*d_1;
+    // let R = R0 + R1*d_0 + R2*d_1;
+    //
+    // We group terms to reduce the number of scalar mults (to seven):
+    // In Rust, we could use MSMs for these, and speed up verification.
+    //
+    // Note, that while computing L, the intermediate computation of C_B together with computing
+    // L0, L1, L2 can be replaced by single MSM of C with the powers of q multiplied by (1 + d_0 + d_1)
+    // with additionally concatenated inputs for scalars/bases.
+
+    let q_power_multiplier = E::Scalar::ONE + d_0 + d_1;
+
+    let q_powers_multiplied: Vec<E::Scalar> =
+      iter::successors(Some(q_power_multiplier), |qi| Some(*qi * q))
+        .take(ell)
+        .collect();
+
+    // Compute the batched openings
+    // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
+    let B_u = pi
+      .v
+      .par_iter()
+      .map(|v_i| {
+        v_i
+          .iter()
+          .rev()
+          .fold(E::Scalar::ZERO, |acc, v_ij| acc * q + v_ij)
+      })
+      .collect::<Vec<E::Scalar>>();
+
+    let L = E::GE::vartime_multiscalar_mul(
+      &[
+        &q_powers_multiplied[..],
+        &[
+          u[0],
+          (u[1] * d_0),
+          (u[2] * d_1),
+          -(B_u[0] + d_0 * B_u[1] + d_1 * B_u[2]),
+        ],
+      ]
+      .concat(),
+      &[
+        &[C.comm.affine()][..],
+        &pi.com,
+        &pi.w,
+        slice::from_ref(&vk.G),
+      ]
+      .concat(),
+    );
+
+    let R0 = E::GE::group(&pi.w[0]);
+    let R1 = E::GE::group(&pi.w[1]);
+    let R2 = E::GE::group(&pi.w[2]);
+    let R = R0 + R1 * d_0 + R2 * d_1;
+
+    // Check that e(L, vk.H) == e(R, vk.tau_H)
+    if (E::GE::pairing(&L, &DlogGroup::group(&vk.H)))
+      != (E::GE::pairing(&R, &DlogGroup::group(&vk.tau_H)))
+    {
       return Err(NovaError::ProofVerifyError);
     }
 
@@ -823,7 +808,7 @@ mod tests {
       .with_fixint_encoding()
       .serialize(&proof)
       .unwrap();
-    assert_eq!(proof_bytes.len(), 368);
+    assert_eq!(proof_bytes.len(), 352);
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
