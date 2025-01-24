@@ -211,7 +211,7 @@ impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
     cs: &mut CS,
     z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-    // Consider a an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
+    // Consider an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
     let mut x = z[0].clone();
     let mut y = x.clone();
     for i in 0..self.num_cons {
