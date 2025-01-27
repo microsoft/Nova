@@ -8,13 +8,13 @@ use nova_snark::{
   frontend::{
     num::AllocatedNum, AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError,
   },
+  nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine, Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use rand::Rng;
 use std::time::Instant;

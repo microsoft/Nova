@@ -5,13 +5,13 @@ use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine, Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use num_bigint::BigUint;
 use std::time::Instant;

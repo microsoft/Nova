@@ -970,6 +970,7 @@ where
 mod tests {
   use super::*;
   use crate::{
+    frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
     provider::{
       pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG,
       GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
@@ -979,12 +980,11 @@ mod tests {
   use core::{fmt::Write, marker::PhantomData};
   use expect_test::{expect, Expect};
   use ff::PrimeField;
-  use frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
 
-  type EE<E> = provider::ipa_pc::EvaluationEngine<E>;
-  type EEPrime<E> = provider::hyperkzg::EvaluationEngine<E>;
-  type S<E, EE> = spartan::snark::RelaxedR1CSSNARK<E, EE>;
-  type SPrime<E, EE> = spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
+  type EE<E> = crate::provider::ipa_pc::EvaluationEngine<E>;
+  type EEPrime<E> = crate::provider::hyperkzg::EvaluationEngine<E>;
+  type S<E, EE> = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
+  type SPrime<E, EE> = crate::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -1315,7 +1315,7 @@ mod tests {
     test_ivc_nontrivial_with_spark_compression_with::<
       Bn256EngineKZG,
       GrumpkinEngine,
-      provider::hyperkzg::EvaluationEngine<_>,
+      crate::provider::hyperkzg::EvaluationEngine<_>,
       EE<_>,
     >();
   }

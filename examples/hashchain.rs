@@ -11,13 +11,13 @@ use nova_snark::{
     num::AllocatedNum,
     ConstraintSystem, SynthesisError,
   },
+  nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine, Group,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use std::time::Instant;
 
