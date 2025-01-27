@@ -83,7 +83,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
   }
 
   /// Allocate a `Variable` of either `Aux` or `Input` in a
-  /// `ConstraintSystem`. The `Variable` is a an `Input` if `is_input` is
+  /// `ConstraintSystem`. The `Variable` is an `Input` if `is_input` is
   /// true. This allows uniform creation of circuits containing components
   /// which may or may not be public inputs.
   pub fn alloc_maybe_input<CS, F>(cs: CS, is_input: bool, value: F) -> Result<Self, SynthesisError>
