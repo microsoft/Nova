@@ -1,10 +1,11 @@
 //! This module implements a non-interactive folding scheme
 #![allow(non_snake_case)]
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_RELAXED},
+  constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
+  gadgets::utils::scalar_as_base,
+  nova::constants::{NUM_FE_FOR_RO, NUM_FE_FOR_RO_RELAXED},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  scalar_as_base,
   traits::{AbsorbInROTrait, Engine, ROTrait},
   Commitment, CommitmentKey,
 };

@@ -4,7 +4,7 @@ use super::nonnative::{
   util::{f_to_nat, Num},
 };
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  constants::NUM_CHALLENGE_BITS,
   frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
@@ -13,6 +13,7 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
+  nova::constants::NUM_FE_FOR_RO,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
