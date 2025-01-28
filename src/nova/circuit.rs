@@ -16,7 +16,6 @@ use crate::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
   },
-  nova::constants::NUM_FE_WITHOUT_IO_FOR_CRHF,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
     circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
@@ -229,13 +228,9 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
     T: &AllocatedPoint<E>,
-    arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<E>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = E::ROCircuit::new(
-      self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
-    );
+    let mut ro = E::ROCircuit::new(self.ro_consts.clone());
     ro.absorb(params);
     ro.absorb(i);
     for e in z_0 {
@@ -301,7 +296,6 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
       &r_i,
       &u,
       &T,
-      arity,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -354,7 +348,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = E::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = E::ROCircuit::new(self.ro_consts);
     ro.absorb(&params);
     ro.absorb(&i_new);
     for e in &z_0 {

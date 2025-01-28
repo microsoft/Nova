@@ -36,7 +36,6 @@ where
   // Internal State
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
-  num_absorbs: usize,
   squeezed: bool,
   _p: PhantomData<Scalar>,
 }
@@ -49,11 +48,10 @@ where
   type CircuitRO = PoseidonROCircuit<Base>;
   type Constants = PoseidonConstantsCircuit<Base>;
 
-  fn new(constants: PoseidonConstantsCircuit<Base>, num_absorbs: usize) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Base>) -> Self {
     Self {
       state: Vec::new(),
       constants,
-      num_absorbs,
       squeezed: false,
       _p: PhantomData,
     }
@@ -74,13 +72,12 @@ where
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
-      SpongeOp::Absorb(self.num_absorbs as u32),
+      SpongeOp::Absorb(self.state.len() as u32),
       SpongeOp::Squeeze(1u32),
     ]);
 
     sponge.start(parameter, None, acc);
-    assert_eq!(self.num_absorbs, self.state.len());
-    SpongeAPI::absorb(&mut sponge, self.num_absorbs as u32, &self.state, acc);
+    SpongeAPI::absorb(&mut sponge, self.state.len() as u32, &self.state, acc);
     let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
     sponge.finish(acc).unwrap();
 
@@ -104,7 +101,6 @@ pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
-  num_absorbs: usize,
   squeezed: bool,
 }
 
@@ -116,11 +112,10 @@ where
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
   /// Initialize the internal state and set the poseidon constants
-  fn new(constants: PoseidonConstantsCircuit<Scalar>, num_absorbs: usize) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Scalar>) -> Self {
     Self {
       state: Vec::new(),
       constants,
-      num_absorbs,
       squeezed: false,
     }
   }
@@ -141,7 +136,7 @@ where
     assert!(!self.squeezed, "Cannot squeeze again after squeezing");
     self.squeezed = true;
     let parameter = IOPattern(vec![
-      SpongeOp::Absorb(self.num_absorbs as u32),
+      SpongeOp::Absorb(self.state.len() as u32),
       SpongeOp::Squeeze(1u32),
     ]);
     let mut ns = cs.namespace(|| "ns");
@@ -149,12 +144,11 @@ where
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
       let acc = &mut ns;
-      assert_eq!(self.num_absorbs, self.state.len());
 
       sponge.start(parameter, None, acc);
       SpongeAPI::absorb(
         &mut sponge,
-        self.num_absorbs as u32,
+        self.state.len() as u32,
         &(0..self.state.len())
           .map(|i| Elt::Allocated(self.state[i].clone()))
           .collect::<Vec<Elt<Scalar>>>(),
@@ -204,9 +198,8 @@ mod tests {
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<E::Scalar, E::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<E::Scalar> =
-      PoseidonROCircuit::new(constants, num_absorbs);
+    let mut ro: PoseidonRO<E::Scalar, E::Base> = PoseidonRO::new(constants.clone());
+    let mut ro_gadget: PoseidonROCircuit<E::Scalar> = PoseidonROCircuit::new(constants);
     let mut cs = SatisfyingAssignment::<E>::new();
     for i in 0..num_absorbs {
       let num = E::Scalar::random(&mut csprng);

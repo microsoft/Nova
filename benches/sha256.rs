@@ -11,13 +11,13 @@ use nova_snark::{
     num::{AllocatedNum, Num},
     sha256, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
   },
+  nova::{PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
 

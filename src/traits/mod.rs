@@ -71,12 +71,13 @@ pub trait ROTrait<Base: PrimeField, Scalar> {
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
-  fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
+  fn new(constants: Self::Constants) -> Self;
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: Base);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
+  /// The `squeeze` method can be called only once
   fn squeeze(&mut self, num_bits: usize) -> Scalar;
 }
 
@@ -89,12 +90,13 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// Initializes the hash function
-  fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
+  fn new(constants: Self::Constants) -> Self;
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: &AllocatedNum<Base>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
+  /// The `squeeze` method can be called only once
   fn squeeze<CS: ConstraintSystem<Base>>(
     &mut self,
     cs: CS,

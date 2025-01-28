@@ -27,13 +27,10 @@ use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
-pub(crate) mod constants;
-
 mod circuit;
 mod nifs;
 
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs, NovaAugmentedCircuitParams};
-use constants::NUM_FE_WITHOUT_IO_FOR_CRHF;
 use nifs::{NIFSRelaxed, NIFS};
 
 /// A type that holds public parameters of Nova
@@ -510,10 +507,7 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <E2 as Engine>::RO::new(
-        pp.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_primary,
-      );
+      let mut hasher = <E2 as Engine>::RO::new(pp.ro_consts_secondary.clone());
       hasher.absorb(pp.digest());
       hasher.absorb(E1::Scalar::from(num_steps as u64));
       for e in z0_primary {
@@ -525,10 +519,7 @@ where
       self.r_U_secondary.absorb_in_ro(&mut hasher);
       hasher.absorb(self.ri_primary);
 
-      let mut hasher2 = <E1 as Engine>::RO::new(
-        pp.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * pp.F_arity_secondary,
-      );
+      let mut hasher2 = <E1 as Engine>::RO::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<E1>(pp.digest()));
       hasher2.absorb(E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
@@ -866,10 +857,7 @@ where
 
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
-      let mut hasher = <E2 as Engine>::RO::new(
-        vk.ro_consts_secondary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
-      );
+      let mut hasher = <E2 as Engine>::RO::new(vk.ro_consts_secondary.clone());
       hasher.absorb(vk.pp_digest);
       hasher.absorb(E1::Scalar::from(num_steps as u64));
       for e in z0_primary {
@@ -881,10 +869,7 @@ where
       self.r_U_secondary.absorb_in_ro(&mut hasher);
       hasher.absorb(self.ri_primary);
 
-      let mut hasher2 = <E1 as Engine>::RO::new(
-        vk.ro_consts_primary.clone(),
-        NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_secondary,
-      );
+      let mut hasher2 = <E1 as Engine>::RO::new(vk.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<E1>(vk.pp_digest));
       hasher2.absorb(E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {

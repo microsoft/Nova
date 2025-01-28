@@ -13,7 +13,6 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  nova::constants::NUM_FE_FOR_RO,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
@@ -235,7 +234,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     // Compute r:
-    let mut ro = E::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
+    let mut ro = E::ROCircuit::new(ro_consts);
     ro.absorb(params);
 
     // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
