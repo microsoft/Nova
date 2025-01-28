@@ -4,7 +4,7 @@ use super::nonnative::{
   util::{f_to_nat, Num},
 };
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  constants::NUM_CHALLENGE_BITS,
   frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
@@ -234,7 +234,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     // Compute r:
-    let mut ro = E::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
+    let mut ro = E::ROCircuit::new(ro_consts);
     ro.absorb(params);
 
     // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)

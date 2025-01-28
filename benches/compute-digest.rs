@@ -4,13 +4,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::PrimeField;
 use nova_snark::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  nova::PublicParams,
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams,
 };
 
 type E1 = Bn256EngineKZG;

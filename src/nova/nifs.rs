@@ -1,10 +1,10 @@
 //! This module implements a non-interactive folding scheme
 #![allow(non_snake_case)]
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO, NUM_FE_FOR_RO_RELAXED},
+  constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
+  gadgets::utils::scalar_as_base,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  scalar_as_base,
   traits::{AbsorbInROTrait, Engine, ROTrait},
   Commitment, CommitmentKey,
 };
@@ -47,7 +47,7 @@ impl<E: Engine> NIFS<E> {
     W2: &R1CSWitness<E>,
   ) -> Result<(NIFS<E>, (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>)), NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+    let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -88,7 +88,7 @@ impl<E: Engine> NIFS<E> {
     U2: &R1CSInstance<E>,
   ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+    let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -137,7 +137,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     NovaError,
   > {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_RELAXED);
+    let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -179,7 +179,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     U2: &RelaxedR1CSInstance<E>,
   ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone(), NUM_FE_FOR_RO_RELAXED);
+    let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));

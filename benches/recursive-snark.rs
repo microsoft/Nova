@@ -5,13 +5,13 @@ use criterion::*;
 use ff::PrimeField;
 use nova_snark::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  nova::{PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::default_ck_hint,
     Engine,
   },
-  PublicParams, RecursiveSNARK,
 };
 use std::time::Duration;
 

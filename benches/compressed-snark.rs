@@ -5,13 +5,13 @@ use criterion::{measurement::WallTime, *};
 use ff::PrimeField;
 use nova_snark::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
     circuit::{StepCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine,
   },
-  CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use std::time::Duration;
 
