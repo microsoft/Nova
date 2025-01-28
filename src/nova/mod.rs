@@ -103,7 +103,7 @@ where
   /// # use nova_snark::provider::ipa_pc::EvaluationEngine;
   /// # use nova_snark::provider::{PallasEngine, VestaEngine};
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
-  /// use nova_snark::PublicParams;
+  /// # use nova_snark::nova::PublicParams;
   ///
   /// type E1 = PallasEngine;
   /// type E2 = VestaEngine;
