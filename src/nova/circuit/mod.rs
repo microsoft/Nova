@@ -11,7 +11,6 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedPoint,
-    r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
@@ -24,6 +23,9 @@ use crate::{
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
+
+mod r1cs;
+use r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NovaAugmentedCircuitParams {
