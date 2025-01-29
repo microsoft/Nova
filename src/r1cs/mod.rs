@@ -12,7 +12,7 @@ use crate::{
   },
   Commitment, CommitmentKey, DerandKey, CE,
 };
-use core::{cmp::max, marker::PhantomData};
+use core::cmp::max;
 use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
@@ -21,13 +21,6 @@ use serde::{Deserialize, Serialize};
 
 mod sparse;
 pub(crate) use sparse::SparseMatrix;
-
-/// Public parameters for a given R1CS
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct R1CS<E: Engine> {
-  _p: PhantomData<E>,
-}
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,26 +73,6 @@ pub struct RelaxedR1CSInstance<E: Engine> {
 
 pub type CommitmentKeyHint<E> = dyn Fn(&R1CSShape<E>) -> usize;
 
-impl<E: Engine> R1CS<E> {
-  /// Generates public parameters for a Rank-1 Constraint System (R1CS).
-  ///
-  /// This function takes into consideration the shape of the R1CS matrices and a hint function
-  /// for the number of generators. It returns a `CommitmentKey`.
-  ///
-  /// # Arguments
-  ///
-  /// * `S`: The shape of the R1CS matrices.
-  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
-  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
-  ///
-  pub fn commitment_key(S: &R1CSShape<E>, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
-    let num_cons = S.num_cons;
-    let num_vars = S.num_vars;
-    let ck_hint = ck_floor(S);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
-  }
-}
-
 impl<E: Engine> R1CSShape<E> {
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
@@ -139,6 +112,24 @@ impl<E: Engine> R1CSShape<E> {
       C,
       digest: OnceCell::new(),
     })
+  }
+
+  /// Generates public parameters for a Rank-1 Constraint System (R1CS).
+  ///
+  /// This function takes into consideration the shape of the R1CS matrices and a hint function
+  /// for the number of generators. It returns a `CommitmentKey`.
+  ///
+  /// # Arguments
+  ///
+  /// * `S`: The shape of the R1CS matrices.
+  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
+  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
+  ///
+  pub fn commitment_key(&self, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
+    let num_cons = self.num_cons;
+    let num_vars = self.num_vars;
+    let ck_hint = ck_floor(self);
+    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 
   /// returned the digest of the `R1CSShape`
@@ -837,10 +828,10 @@ mod tests {
   }
 
   fn test_random_sample_with<E: Engine>() {
-    let r1cs = tiny_r1cs::<E>(4);
-    let ck = R1CS::<E>::commitment_key(&r1cs, &*default_ck_hint());
-    let (inst, wit) = r1cs.sample_random_instance_witness(&ck).unwrap();
-    assert!(r1cs.is_sat_relaxed(&ck, &inst, &wit).is_ok());
+    let S = tiny_r1cs::<E>(4);
+    let ck = S.commitment_key(&*default_ck_hint());
+    let (inst, wit) = S.sample_random_instance_witness(&ck).unwrap();
+    assert!(S.is_sat_relaxed(&ck, &inst, &wit).is_ok());
   }
 
   #[test]

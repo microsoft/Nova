@@ -504,7 +504,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<E>::commitment_key(&S, &*default_ck_hint());
+    let ck = S.commitment_key(&*default_ck_hint());
     let ro_consts =
       <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
 
@@ -641,7 +641,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<E>::commitment_key(&S, &*default_ck_hint());
+    let ck = S.commitment_key(&*default_ck_hint());
     let ro_consts =
       <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
 
