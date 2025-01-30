@@ -40,8 +40,8 @@ impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
-  W: Vec<E::Scalar>,
-  r_W: E::Scalar,
+  pub(crate) W: Vec<E::Scalar>,
+  pub(crate) r_W: E::Scalar,
 }
 
 /// A type that holds an R1CS instance

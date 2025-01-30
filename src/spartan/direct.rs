@@ -23,9 +23,17 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {
+/// A direct circuit that can be synthesized
+pub struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {
   z_i: Option<Vec<E::Scalar>>, // inputs to the circuit
   sc: SC,                      // step circuit to be executed
+}
+
+impl<E: Engine, SC: StepCircuit<E::Scalar>> DirectCircuit<E, SC> {
+  /// Create a new direct circuit from a step circuit and optional inputs
+  pub fn new(z_i: Option<Vec<E::Scalar>>, sc: SC) -> Self {
+    Self { z_i, sc }
+  }
 }
 
 impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit<E, SC> {

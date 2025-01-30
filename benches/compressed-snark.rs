@@ -1,14 +1,11 @@
 #![allow(non_snake_case)]
 
-use core::marker::PhantomData;
 use criterion::{measurement::WallTime, *};
-use ff::PrimeField;
 use nova_snark::{
-  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
   traits::{
-    circuit::{StepCircuit, TrivialCircuit},
+    circuit::{NonTrivialCircuit, TrivialCircuit},
     snark::RelaxedR1CSSNARKTrait,
     Engine,
   },
@@ -184,40 +181,5 @@ fn bench_compressed_snark_with_computational_commitments(c: &mut Criterion) {
     bench_compressed_snark_internal::<SS1, SS2>(&mut group, num_cons);
 
     group.finish();
-  }
-}
-
-#[derive(Clone, Debug, Default)]
-struct NonTrivialCircuit<F: PrimeField> {
-  num_cons: usize,
-  _p: PhantomData<F>,
-}
-
-impl<F: PrimeField> NonTrivialCircuit<F> {
-  pub fn new(num_cons: usize) -> Self {
-    Self {
-      num_cons,
-      _p: PhantomData,
-    }
-  }
-}
-impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
-  fn arity(&self) -> usize {
-    1
-  }
-
-  fn synthesize<CS: ConstraintSystem<F>>(
-    &self,
-    cs: &mut CS,
-    z: &[AllocatedNum<F>],
-  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-    // Consider an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
-    let mut x = z[0].clone();
-    let mut y = x.clone();
-    for i in 0..self.num_cons {
-      y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
-    }
-    Ok(vec![y])
   }
 }

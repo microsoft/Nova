@@ -217,7 +217,7 @@ mod tests {
       ConstraintSystem, SynthesisError,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
-    r1cs::{SparseMatrix, R1CS},
+    r1cs::SparseMatrix,
     traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
   };
   use ff::{Field, PrimeField};
