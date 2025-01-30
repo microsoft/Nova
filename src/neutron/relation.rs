@@ -134,6 +134,11 @@ mod tests {
     let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
     let S = Structure::new(&shape);
 
+    // test default instance-witness pair under the structure
+    let W = FoldedWitness::default(&S);
+    let U = FoldedInstance::default(&S);
+    S.is_sat(&ck, &W, &U)?;
+
     // generate a satisfying instance-witness for the r1cs
     let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
       DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
