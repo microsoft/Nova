@@ -8,6 +8,7 @@ use crate::{
     num::AllocatedNum,
     AllocatedBit, Boolean, ConstraintSystem, SynthesisError,
   },
+  gadgets::utils::le_bits_to_num,
   traits::{ROCircuitTrait, ROTrait},
 };
 use core::marker::PhantomData;
@@ -28,15 +29,10 @@ impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
 
 /// A Poseidon-based RO to use outside circuits
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonRO<Base, Scalar>
-where
-  Base: PrimeField,
-  Scalar: PrimeField,
-{
-  // Internal State
+pub struct PoseidonRO<Base: PrimeField, Scalar: PrimeField> {
+  // internal State
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
-  squeezed: bool,
   _p: PhantomData<Scalar>,
 }
 
@@ -52,23 +48,17 @@ where
     Self {
       state: Vec::new(),
       constants,
-      squeezed: false,
       _p: PhantomData,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: Base) {
-    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
   fn squeeze(&mut self, num_bits: usize) -> Scalar {
-    // check if we have squeezed already
-    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
-    self.squeezed = true;
-
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -84,13 +74,21 @@ where
     // Only return `num_bits`
     let bits = hash[0].to_le_bits();
     let mut res = Scalar::ZERO;
+    let mut res2 = Base::ZERO;
     let mut coeff = Scalar::ONE;
+    let mut coeff2 = Base::ONE;
     for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;
+        res2 += coeff2;
       }
       coeff += coeff;
+      coeff2 += coeff2;
     }
+
+    // reset the state to only contain the squeezed value
+    self.state = vec![res2];
+
     res
   }
 }
@@ -101,7 +99,6 @@ pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
-  squeezed: bool,
 }
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
@@ -116,13 +113,11 @@ where
     Self {
       state: Vec::new(),
       constants,
-      squeezed: false,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: &AllocatedNum<Scalar>) {
-    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e.clone());
   }
 
@@ -132,9 +127,6 @@ where
     mut cs: CS,
     num_bits: usize,
   ) -> Result<Vec<AllocatedBit>, SynthesisError> {
-    // check if we have squeezed already
-    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
-    self.squeezed = true;
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.state.len() as u32),
       SpongeOp::Squeeze(1u32),
@@ -161,19 +153,24 @@ where
     };
 
     let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+    let c_bits = hash
+      .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
+      .iter()
+      .map(|boolean| match boolean {
+        Boolean::Is(ref x) => x.clone(),
+        _ => panic!("Wrong type of input. We should have never reached there"),
+      })
+      .collect::<Vec<AllocatedBit>>()[..num_bits]
+      .to_vec();
+
+    // convert a vector of bits to a number
+    let c = le_bits_to_num(ns.namespace(|| "bits to num"), &c_bits)?;
+
+    // reset the state to only contain the squeezed value
+    self.state = vec![c];
 
     // return the hash as a vector of bits, truncated
-    Ok(
-      hash
-        .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
-        .iter()
-        .map(|boolean| match boolean {
-          Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Wrong type of input. We should have never reached there"),
-        })
-        .collect::<Vec<AllocatedBit>>()[..num_bits]
-        .into(),
-    )
+    Ok(c_bits)
   }
 }
 

@@ -12,7 +12,7 @@ use ff::Field;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
-/// A SNARK that holds the proof of a step of an incremental computation
+/// An NIFS message from Nova's folding scheme
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
