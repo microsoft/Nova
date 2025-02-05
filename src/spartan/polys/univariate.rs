@@ -1,7 +1,14 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{Group, TranscriptReprTrait};
+use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::scalar_as_base,
+  },
+  traits::{AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
+};
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -114,6 +121,21 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
       .collect::<Vec<u8>>()
   }
 }
+
+impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
+  fn absorb_in_ro(&self, ro: &mut E::RO) {
+    let compressed_poly = self.compress();
+
+    // absorb each element in bignum format
+    for x in &compressed_poly.coeffs_except_linear_term {
+      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      for limb in limbs {
+        ro.absorb(scalar_as_base::<E>(limb));
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
