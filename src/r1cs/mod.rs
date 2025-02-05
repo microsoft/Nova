@@ -440,6 +440,14 @@ impl<E: Engine> R1CSWitness<E> {
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)
   }
+
+  /// Pads the provided witness to the correct length
+  pub fn pad(&self, S: &R1CSShape<E>) -> R1CSWitness<E> {
+    let mut W = self.W.clone();
+    W.extend(vec![E::Scalar::ZERO; S.num_vars - W.len()]);
+
+    Self { W, r_W: self.r_W }
+  }
 }
 
 impl<E: Engine> R1CSInstance<E> {
