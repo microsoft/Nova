@@ -1,13 +1,24 @@
 //! This module implements a non-interactive folding scheme from NeutronNova
 #![allow(non_snake_case)]
 use crate::{
-  constants::NUM_CHALLENGE_BITS,
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_CHALLENGE_BITS},
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
-  relation::{FoldedInstance, FoldedWitness, Structure},
-  traits::{AbsorbInROTrait, Engine, ROTrait},
-  Commitment, CommitmentKey,
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::scalar_as_base,
+  },
+  neutron::relation::{FoldedInstance, FoldedWitness, Structure},
+  r1cs::{R1CSInstance, R1CSWitness},
+  spartan::{
+    polys::{
+      multilinear::MultilinearPolynomial,
+      power::PowPolynomial,
+      univariate::{CompressedUniPoly, UniPoly},
+    },
+    sumcheck::SumcheckProof,
+  },
+  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
+  Commitment, CommitmentKey, CE,
 };
 use ff::Field;
 use rand_core::OsRng;
@@ -19,7 +30,7 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct NIFS<E: Engine> {
   pub(crate) comm_E: Commitment<E>,
-  pub(crate) T: E::Scalar,
+  pub(crate) poly: CompressedUniPoly<E::Scalar>,
 }
 
 type ROConstants<E> =
@@ -48,7 +59,7 @@ impl<E: Engine> NIFS<E> {
     W1: &FoldedWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
-  ) -> Result<(NIFS<E>, (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>)), NovaError> {
+  ) -> Result<(NIFS<E>, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
 
@@ -66,31 +77,78 @@ impl<E: Engine> NIFS<E> {
     let tau = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute a commitment to the eq polynomial
-    let E = PowPolynomial::new(tau).evals();
+    let E = PowPolynomial::new(&tau, S.ell).evals();
     let r_E = E::Scalar::random(&mut OsRng);
-    let comm_E = CE::commit(&ck, &E, &r_E)?;
+    let comm_E = CE::<E>::commit(&ck, &E, &r_E);
 
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
-    ro.absorb(tau); // absorb the challenge
+    // absorb tau in bignum format
+    // TODO: factor out this code
+    let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(&tau), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in limbs {
+      ro.absorb(scalar_as_base::<E>(limb));
+    }
     comm_E.absorb_in_ro(&mut ro); // absorb the commitment
 
-    // append `comm_T` to the transcript and obtain a challenge
-    comm_T.absorb_in_ro(&mut ro);
-
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let rho = ro.squeeze(NUM_CHALLENGE_BITS);
 
-    // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &comm_T, &r);
+    // We now run a single round of the sum-check protocol to establish
+    // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
+    let T = (E::Scalar::ONE - rho) * U1.T;
 
-    // fold the witness using `r` and `T`
-    let W = W1.fold(W2, &T, &r_T, &r)?;
+    let z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+    let (g1, g2, g3) = S.S.multiply_vec(&z1)?;
+
+    let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+    let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
+
+    // compute the sum-check polynomial's evaluations at 0, 2, 3
+    // todo: remove the need to wrap
+    let poly_E = MultilinearPolynomial::new([W1.E.clone(), E.clone()].concat());
+    let poly_A = MultilinearPolynomial::new([g1, h1].concat());
+    let poly_B = MultilinearPolynomial::new([g2, h2].concat());
+    let poly_C = MultilinearPolynomial::new([g3, h3].concat());
+
+    let comb_func =
+      |poly_E_comp: &E::Scalar,
+       poly_A_comp: &E::Scalar,
+       poly_B_comp: &E::Scalar,
+       poly_C_comp: &E::Scalar|
+       -> E::Scalar { *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp) };
+
+    let (eval_point_0, eval_point_2, eval_point_3) =
+      SumcheckProof::<E>::compute_eval_points_cubic_with_additive_term(
+        &poly_E, &poly_A, &poly_B, &poly_C, &comb_func,
+      );
+
+    let evals = vec![eval_point_0, T - eval_point_0, eval_point_2, eval_point_3];
+    let poly = UniPoly::<E::Scalar>::from_evals(&evals);
+
+    // absorb poly in the RO
+    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&poly, &mut ro);
+
+    // squeeze a challenge
+    let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // compute the sum-check polynomial's evaluations at r_b
+    let T_out = poly.evaluate(&r_b);
+
+    let U = U1.fold(U2, &comm_E, &r_b, &T_out)?;
+    let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((Self { comm_T }, (U, W)))
+    Ok((
+      Self {
+        comm_E,
+        poly: poly.compress(),
+      },
+      (U, W),
+    ))
   }
 
+  /*
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,
   /// and outputs a folded instance `U` with the same shape,
@@ -123,102 +181,7 @@ impl<E: Engine> NIFS<E> {
 
     // return the folded instance
     Ok(U)
-  }
-}
-
-/// A SNARK that holds the proof of a step of an incremental computation
-#[allow(clippy::upper_case_acronyms)]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct NIFSRelaxed<E: Engine> {
-  pub(crate) comm_T: Commitment<E>,
-}
-
-impl<E: Engine> NIFSRelaxed<E> {
-  /// Same as `prove`, but takes two Relaxed R1CS Instance/Witness pairs
-  pub fn prove(
-    ck: &CommitmentKey<E>,
-    ro_consts: &ROConstants<E>,
-    pp_digest: &E::Scalar,
-    S: &R1CSShape<E>,
-    U1: &RelaxedR1CSInstance<E>,
-    W1: &RelaxedR1CSWitness<E>,
-    U2: &RelaxedR1CSInstance<E>,
-    W2: &RelaxedR1CSWitness<E>,
-  ) -> Result<
-    (
-      NIFSRelaxed<E>,
-      (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>),
-    ),
-    NovaError,
-  > {
-    // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
-
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
-
-    // append U1 to transcript
-    // (this function is only used when folding in random instance)
-    U1.absorb_in_ro(&mut ro);
-
-    // append U2 to transcript (randomized instance)
-    U2.absorb_in_ro(&mut ro);
-
-    // compute a commitment to the cross-term
-    let r_T = E::Scalar::random(&mut OsRng);
-    E::Scalar::random(&mut OsRng);
-    let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2, &r_T)?;
-
-    // append `comm_T` to the transcript and obtain a challenge
-    comm_T.absorb_in_ro(&mut ro);
-
-    // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
-
-    // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &comm_T, &r);
-
-    // fold the witness using `r` and `T`
-    let W = W1.fold_relaxed(W2, &T, &r_T, &r)?;
-
-    // return the folded instance and witness
-    Ok((Self { comm_T }, (U, W)))
-  }
-
-  /// Same as `verify`, but takes two Relaxed R1CS Instance/Witness pairs
-  pub fn verify(
-    &self,
-    ro_consts: &ROConstants<E>,
-    pp_digest: &E::Scalar,
-    U1: &RelaxedR1CSInstance<E>,
-    U2: &RelaxedR1CSInstance<E>,
-  ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
-    // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
-
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
-
-    // append U1 to transcript
-    // (this function is only used when folding in random instance)
-    U1.absorb_in_ro(&mut ro);
-
-    // append U2 to transcript
-    U2.absorb_in_ro(&mut ro);
-
-    // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.absorb_in_ro(&mut ro);
-
-    // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
-
-    // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &self.comm_T, &r);
-
-    // return the folded instance
-    Ok(U)
-  }
+  }*/
 }
 
 #[cfg(test)]

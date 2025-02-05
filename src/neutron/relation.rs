@@ -1,8 +1,14 @@
 //! This module defines relations used in the Neutron folding scheme
 use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   errors::NovaError,
-  r1cs::R1CSShape,
-  traits::{commitment::CommitmentEngineTrait, Engine},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::scalar_as_base,
+  },
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
+  spartan::math::Math,
+  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -13,18 +19,21 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Structure<E: Engine> {
   /// Shape of the R1CS relation
-  S: R1CSShape<E>,
+  pub(crate) S: R1CSShape<E>,
+
+  /// the number of variables in the Eq polynomial
+  pub(crate) ell: usize,
 }
 
 /// A type that holds witness information for a zero-fold relation
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FoldedWitness<E: Engine> {
   /// Running witness of the main relation
-  W: Vec<E::Scalar>,
+  pub(crate) W: Vec<E::Scalar>,
   r_W: E::Scalar,
 
   /// eq polynomial
-  E: Vec<E::Scalar>,
+  pub(crate) E: Vec<E::Scalar>,
   r_E: E::Scalar,
 }
 
@@ -33,15 +42,18 @@ pub struct FoldedWitness<E: Engine> {
 pub struct FoldedInstance<E: Engine> {
   comm_W: Commitment<E>,
   comm_E: Commitment<E>,
-  T: E::Scalar,
-  X: Vec<E::Scalar>,
-  u: E::Scalar,
+  pub(crate) T: E::Scalar,
+  pub(crate) X: Vec<E::Scalar>,
+  pub(crate) u: E::Scalar,
 }
 
 #[allow(unused)]
 impl<E: Engine> Structure<E> {
   fn new(S: &R1CSShape<E>) -> Self {
-    Structure { S: S.clone() }
+    Structure {
+      S: S.clone(),
+      ell: S.num_cons.next_power_of_two().log_2(),
+    }
   }
 
   fn is_sat(
@@ -88,6 +100,34 @@ impl<E: Engine> FoldedWitness<E> {
       r_E: E::Scalar::ZERO,
     }
   }
+
+  /// Fold the witness with another witness
+  pub fn fold(
+    &self,
+    W2: &R1CSWitness<E>,
+    E2: &Vec<E::Scalar>,
+    r_E2: &E::Scalar,
+    r_b: &E::Scalar,
+  ) -> Result<Self, NovaError> {
+    // we need to compute the weighted sum using weights of (1-r_b) and r_b
+    let W = self
+      .W
+      .par_iter()
+      .zip(W2.W.par_iter())
+      .map(|(w1, w2)| (E::Scalar::ONE - r_b) * w1 + *r_b * w2)
+      .collect::<Vec<_>>();
+    let r_W = (E::Scalar::ONE - r_b) * self.r_W + *r_b * W2.r_W;
+
+    let E = self
+      .E
+      .par_iter()
+      .zip(E2.par_iter())
+      .map(|(e1, e2)| (E::Scalar::ONE - r_b) * e1 + *r_b * e2)
+      .collect::<Vec<_>>();
+    let r_E = (E::Scalar::ONE - r_b) * self.r_E + *r_b * r_E2;
+
+    Ok(Self { W, r_W, E, r_E })
+  }
 }
 
 #[allow(unused)]
@@ -100,6 +140,59 @@ impl<E: Engine> FoldedInstance<E> {
       X: vec![E::Scalar::ZERO; S.S.num_io],
       u: E::Scalar::ZERO,
     }
+  }
+
+  /// Fold the instance with another instance
+  pub fn fold(
+    &self,
+    U2: &R1CSInstance<E>,
+    comm_E: &Commitment<E>,
+    r_b: &E::Scalar,
+    T_out: &E::Scalar,
+  ) -> Result<Self, NovaError> {
+    // we need to compute the weighted sum using weights of (1-r_b) and r_b
+    // TODO: reduce number of ops
+    let comm_W = self.comm_W * (E::Scalar::ONE - r_b) + U2.comm_W * *r_b;
+    let comm_E = self.comm_E * (E::Scalar::ONE - r_b) + *comm_E * *r_b;
+    let X = self
+      .X
+      .par_iter()
+      .zip(U2.X.par_iter())
+      .map(|(x1, x2)| (E::Scalar::ONE - r_b) * x1 + *r_b * x2)
+      .collect::<Vec<_>>();
+    let u = (E::Scalar::ONE - r_b) * self.u + r_b;
+
+    Ok(Self {
+      comm_W,
+      comm_E,
+      T: *T_out,
+      X,
+      u,
+    })
+  }
+}
+
+impl<E: Engine> AbsorbInROTrait<E> for FoldedInstance<E> {
+  fn absorb_in_ro(&self, ro: &mut E::RO) {
+    self.comm_W.absorb_in_ro(ro);
+    self.comm_E.absorb_in_ro(ro);
+
+    // absorb T in bignum format
+    let limbs: Vec<E::Scalar> =
+      nat_to_limbs(&f_to_nat(&self.T), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in limbs {
+      ro.absorb(scalar_as_base::<E>(limb));
+    }
+
+    // absorb each element of self.X in bignum format
+    for x in &self.X {
+      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      for limb in limbs {
+        ro.absorb(scalar_as_base::<E>(limb));
+      }
+    }
+
+    ro.absorb(scalar_as_base::<E>(self.u));
   }
 }
 
