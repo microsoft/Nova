@@ -81,8 +81,6 @@ impl<E: Engine> NIFS<E> {
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(&ck, &E, &r_E);
 
-    // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
     // absorb tau in bignum format
     // TODO: factor out this code
     let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(&tau), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
@@ -148,7 +146,6 @@ impl<E: Engine> NIFS<E> {
     ))
   }
 
-  /*
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,
   /// and outputs a folded instance `U` with the same shape,
@@ -158,30 +155,56 @@ impl<E: Engine> NIFS<E> {
     &self,
     ro_consts: &ROConstants<E>,
     pp_digest: &E::Scalar,
-    U1: &RelaxedR1CSInstance<E>,
+    U1: &FoldedInstance<E>,
     U2: &R1CSInstance<E>,
-  ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
+  ) -> Result<FoldedInstance<E>, NovaError> {
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
 
-    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
+    // append U1 to transcript
+    // TODO: revisit this once we have the full folding scheme
+    U1.absorb_in_ro(&mut ro);
+
+    // append U2 to transcript
     U2.absorb_in_ro(&mut ro);
 
-    // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.absorb_in_ro(&mut ro);
+    // generate a challenge for the eq polynomial
+    let tau = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // absorb tau in bignum format
+    // TODO: factor out this code
+    let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(&tau), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in limbs {
+      ro.absorb(scalar_as_base::<E>(limb));
+    }
+    self.comm_E.absorb_in_ro(&mut ro); // absorb the commitment
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let rho = ro.squeeze(NUM_CHALLENGE_BITS);
 
-    // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r);
+    // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
+    let T = (E::Scalar::ONE - rho) * U1.T;
 
-    // return the folded instance
+    // decompress the provided polynomial with T as hint
+    let poly = self.poly.decompress(&T);
+
+    // absorb poly in the RO
+    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&poly, &mut ro);
+
+    // squeeze a challenge
+    let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // compute the sum-check polynomial's evaluations at r_b
+    let T_out = poly.evaluate(&r_b);
+
+    let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
+
+    // return the folded instance and witness
     Ok(U)
-  }*/
+  }
 }
 
 #[cfg(test)]
