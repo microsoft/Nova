@@ -49,18 +49,18 @@ pub struct FoldedInstance<E: Engine> {
 
 #[allow(unused)]
 impl<E: Engine> Structure<E> {
-  fn new(S: &R1CSShape<E>) -> Self {
+  pub fn new(S: &R1CSShape<E>) -> Self {
     Structure {
       S: S.clone(),
       ell: S.num_cons.next_power_of_two().log_2(),
     }
   }
 
-  fn is_sat(
+  pub fn is_sat(
     &self,
     ck: &CommitmentKey<E>,
-    W: &FoldedWitness<E>,
     U: &FoldedInstance<E>,
+    W: &FoldedWitness<E>,
   ) -> Result<(), NovaError> {
     // check if the witness is satisfying
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
@@ -92,7 +92,7 @@ impl<E: Engine> Structure<E> {
 
 #[allow(unused)]
 impl<E: Engine> FoldedWitness<E> {
-  fn default(S: &Structure<E>) -> Self {
+  pub fn default(S: &Structure<E>) -> Self {
     FoldedWitness {
       W: vec![E::Scalar::ZERO; S.S.num_vars],
       r_W: E::Scalar::ZERO,
@@ -132,7 +132,7 @@ impl<E: Engine> FoldedWitness<E> {
 
 #[allow(unused)]
 impl<E: Engine> FoldedInstance<E> {
-  fn default(S: &Structure<E>) -> Self {
+  pub fn default(S: &Structure<E>) -> Self {
     FoldedInstance {
       comm_W: Commitment::<E>::default(),
       comm_E: Commitment::<E>::default(),
@@ -230,7 +230,7 @@ mod tests {
     // test default instance-witness pair under the structure
     let W = FoldedWitness::default(&S);
     let U = FoldedInstance::default(&S);
-    S.is_sat(&ck, &W, &U)?;
+    S.is_sat(&ck, &U, &W)?;
 
     // generate a satisfying instance-witness for the r1cs
     let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
@@ -262,7 +262,7 @@ mod tests {
       u: E::Scalar::ONE,
     };
 
-    S.is_sat(&ck, &W, &U)
+    S.is_sat(&ck, &U, &W)
   }
 
   #[test]
