@@ -198,11 +198,19 @@ impl<E: Engine> R1CSShape<E> {
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
-    if res_eq && res_comm {
-      Ok(())
-    } else {
-      Err(NovaError::UnSat)
+    if !res_eq {
+      return Err(NovaError::UnSat {
+        reason: "Relaxed R1CS is unsatisfiable".to_string(),
+      });
     }
+
+    if !res_comm {
+      return Err(NovaError::UnSat {
+        reason: "Invalid commitments".to_string(),
+      });
+    }
+
+    Ok(())
   }
 
   /// Checks if the R1CS instance is satisfiable given a witness and its shape
@@ -229,11 +237,19 @@ impl<E: Engine> R1CSShape<E> {
     // verify if comm_W is a commitment to W
     let res_comm = U.comm_W == CE::<E>::commit(ck, &W.W, &W.r_W);
 
-    if res_eq && res_comm {
-      Ok(())
-    } else {
-      Err(NovaError::UnSat)
+    if !res_eq {
+      return Err(NovaError::UnSat {
+        reason: "R1CS is unsatisfiable".to_string(),
+      });
     }
+
+    if !res_comm {
+      return Err(NovaError::UnSat {
+        reason: "Invalid commitment".to_string(),
+      });
+    }
+
+    Ok(())
   }
 
   /// A method to compute a commitment to the cross-term `T` given a

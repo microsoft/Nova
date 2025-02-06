@@ -75,7 +75,11 @@ impl<E: Engine> Structure<E> {
       .reduce(|| E::Scalar::ZERO, |acc, x| acc + x);
 
     if sum != U.T {
-      return Err(NovaError::UnSat);
+      println!("sum: {:?}", sum);
+      println!("U.T: {:?}", U.T);
+      return Err(NovaError::UnSat {
+        reason: "sum != U.T".to_string(),
+      });
     }
 
     // check the validity of the commitments
@@ -83,7 +87,9 @@ impl<E: Engine> Structure<E> {
     let comm_E = E::CE::commit(ck, &W.E, &W.r_E);
 
     if comm_W != U.comm_W || comm_E != U.comm_E {
-      return Err(NovaError::UnSat);
+      return Err(NovaError::UnSat {
+        reason: "comm_W != U.comm_W || comm_E != U.comm_E".to_string(),
+      });
     }
 
     Ok(())
@@ -239,7 +245,9 @@ mod tests {
     let _ = circuit.synthesize(&mut cs);
     let (u, w) = cs
       .r1cs_instance_and_witness(&shape, &ck)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      })?;
 
     // generate a random eq polynomial
     let coords = (0..log_num_cons)

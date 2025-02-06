@@ -21,8 +21,11 @@ pub enum NovaError {
   #[error("InvalidWitnessLength")]
   InvalidWitnessLength,
   /// returned if the supplied witness is not a satisfying witness to a given shape and instance
-  #[error("UnSat")]
-  UnSat,
+  #[error("UnSat: {reason}")]
+  UnSat {
+    /// The reason for circuit UnSat failure
+    reason: String,
+  },
   /// returned if proof verification fails
   #[error("ProofVerifyError")]
   ProofVerifyError,

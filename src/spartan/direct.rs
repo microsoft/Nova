@@ -146,7 +146,9 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     let _ = circuit.synthesize(&mut cs);
     let (u, w) = cs
       .r1cs_instance_and_witness(&pk.S, &pk.ck)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      })?;
 
     // convert the instance and witness to relaxed form
     let (u_relaxed, w_relaxed) = (
