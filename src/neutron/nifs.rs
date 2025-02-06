@@ -134,20 +134,27 @@ impl<E: Engine> NIFS<E> {
     let poly_B = MultilinearPolynomial::new([g2, h2].concat());
     let poly_C = MultilinearPolynomial::new([g3, h3].concat());
 
-    let comb_func =
-      |poly_rho_comp: &E::Scalar,
-      poly_E_comp: &E::Scalar,
-       poly_A_comp: &E::Scalar,
-       poly_B_comp: &E::Scalar,
-       poly_C_comp: &E::Scalar|
-       -> E::Scalar { *poly_rho_comp * *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp) };
+    let comb_func = |poly_rho_comp: &E::Scalar,
+                     poly_E_comp: &E::Scalar,
+                     poly_A_comp: &E::Scalar,
+                     poly_B_comp: &E::Scalar,
+                     poly_C_comp: &E::Scalar|
+     -> E::Scalar {
+      *poly_rho_comp * *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp)
+    };
 
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
       SumcheckProof::<E>::compute_eval_points_quartic_with_additive_term(
         &poly_rho, &poly_E, &poly_A, &poly_B, &poly_C, &comb_func,
       );
 
-    let evals = vec![eval_point_0, T - eval_point_0, eval_point_2, eval_point_3, eval_point_4];
+    let evals = vec![
+      eval_point_0,
+      T - eval_point_0,
+      eval_point_2,
+      eval_point_3,
+      eval_point_4,
+    ];
     let poly = UniPoly::<E::Scalar>::from_evals(&evals);
 
     // absorb poly in the RO

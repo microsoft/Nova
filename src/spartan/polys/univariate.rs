@@ -9,6 +9,7 @@ use crate::{
   },
   traits::{AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
 };
+use core::panic;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -29,44 +30,24 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
   pub fn from_evals(evals: &[Scalar]) -> Self {
-    // we only support degree-2, degree-3, or degree-4 univariate polynomials
-    assert!(evals.len() == 3 || evals.len() == 4 || evals.len() == 5);
-    let two_inv = Scalar::from(2).invert().unwrap();
-    let six_inv = Scalar::from(6).invert().unwrap();
-    let twenty_four_inv = Scalar::from(24).invert().unwrap();
-    let coeffs = if evals.len() == 3 {
-      // ax^2 + bx + c
-      let c = evals[0];
-      let a = two_inv * (evals[2] - evals[1] - evals[1] + c);
-      let b = evals[1] - c - a;
-      vec![c, b, a]
-    } else if evals.len() == 4 {
-      // ax^3 + bx^2 + cx + d
-      let d = evals[0];
-      let a = six_inv
-        * (evals[3] - evals[2] - evals[2] - evals[2] + evals[1] + evals[1] + evals[1] - evals[0]);
-      let b = two_inv
-        * (evals[0] + evals[0] - evals[1] - evals[1] - evals[1] - evals[1] - evals[1]
-          + evals[2]
-          + evals[2]
-          + evals[2]
-          + evals[2]
-          - evals[3]);
-      let c = evals[1] - d - a - b;
-      vec![d, c, b, a]
-    } else {
-      // ax^4 + bx^3 + cx^2 + dx + e
-      let e = evals[0];
-      let a = twenty_four_inv
-        * (evals[4] - evals[3] * Scalar::from(4) + evals[2] * Scalar::from(6) - evals[1] * Scalar::from(4) + evals[0]);
-      let b = six_inv
-        * (evals[3] - evals[2] * Scalar::from(3) + evals[1] * Scalar::from(3) - evals[0]);
-      let c = two_inv
-        * (evals[2] - evals[1] * Scalar::from(2) + evals[0]);
-      let d = evals[1] - e - a - b - c;
-      vec![e, d, c, b, a]
-    };
-    UniPoly { coeffs }
+    let n = evals.len();
+    let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
+
+    let mut matrix: Vec<Vec<Scalar>> = Vec::with_capacity(n);
+    for i in 0..n {
+      let mut row = Vec::with_capacity(n);
+      let x = xs[i];
+      row.push(Scalar::ONE);
+      row.push(x);
+      for j in 2..n {
+        row.push(row[j - 1] * x);
+      }
+      row.push(evals[i]);
+      matrix.push(row);
+    }
+
+    let coeffs = gaussian_elimination(&mut matrix);
+    Self { coeffs }
   }
 
   pub fn degree(&self) -> usize {
@@ -146,6 +127,78 @@ impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
   }
 }
 
+// This code is based on code from https://github.com/a16z/jolt/blob/main/jolt-core/src/utils/gaussian_elimination.rs, which itself is
+// inspired by https://github.com/TheAlgorithms/Rust/blob/master/src/math/gaussian_elimination.rs
+pub fn gaussian_elimination<F: PrimeField>(matrix: &mut [Vec<F>]) -> Vec<F> {
+  let size = matrix.len();
+  assert_eq!(size, matrix[0].len() - 1);
+
+  for i in 0..size - 1 {
+    for j in i..size - 1 {
+      echelon(matrix, i, j);
+    }
+  }
+
+  for i in (1..size).rev() {
+    eliminate(matrix, i);
+  }
+
+  // Disable cargo clippy warnings about needless range loops.
+  // Checking the diagonal like this is simpler than any alternative.
+  #[allow(clippy::needless_range_loop)]
+  for i in 0..size {
+    if matrix[i][i] == F::ZERO {
+      println!("Infinitely many solutions");
+    }
+  }
+
+  let mut result: Vec<F> = vec![F::ZERO; size];
+  for i in 0..size {
+    result[i] = div_f(matrix[i][size], matrix[i][i]);
+  }
+
+  result
+}
+
+fn echelon<F: PrimeField>(matrix: &mut [Vec<F>], i: usize, j: usize) {
+  let size = matrix.len();
+  if matrix[i][i] != F::ZERO {
+    let factor = div_f(matrix[j + 1][i], matrix[i][i]);
+    (i..size + 1).for_each(|k| {
+      let tmp = matrix[i][k];
+      matrix[j + 1][k] -= factor * tmp;
+    });
+  }
+}
+
+fn eliminate<F: PrimeField>(matrix: &mut [Vec<F>], i: usize) {
+  let size = matrix.len();
+  if matrix[i][i] != F::ZERO {
+    for j in (1..i + 1).rev() {
+      let factor = div_f(matrix[j - 1][i], matrix[i][i]);
+      for k in (0..size + 1).rev() {
+        let tmp = matrix[i][k];
+        matrix[j - 1][k] -= factor * tmp;
+      }
+    }
+  }
+}
+
+/// Division of two prime fields
+///
+/// # Panics
+///
+/// Panics if `b` is zero.
+pub fn div_f<F: PrimeField>(a: F, b: F) -> F {
+  let inverse_b = b.invert();
+
+  if inverse_b.into_option().is_none() {
+    panic!("Division by zero");
+  }
+
+  a * inverse_b.unwrap()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -217,5 +270,42 @@ mod tests {
     test_from_evals_cubic_with::<pallas::Scalar>();
     test_from_evals_cubic_with::<bn256::Scalar>();
     test_from_evals_cubic_with::<secp256k1::Scalar>()
+  }
+  fn test_from_evals_quartic_with<F: PrimeField>() {
+    // polynomial is x^4 + 2x^3 + 3x^2 + 4x + 5
+    let e0 = F::from(5);
+    let e1 = F::from(15);
+    let e2 = F::from(57);
+    let e3 = F::from(179);
+    let e4 = F::from(453);
+    let evals = vec![e0, e1, e2, e3, e4];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.eval_at_zero(), e0);
+    assert_eq!(poly.eval_at_one(), e1);
+    assert_eq!(poly.coeffs.len(), 5);
+
+    assert_eq!(poly.coeffs[0], F::from(5));
+    assert_eq!(poly.coeffs[1], F::from(4));
+    assert_eq!(poly.coeffs[2], F::from(3));
+    assert_eq!(poly.coeffs[3], F::from(2));
+    assert_eq!(poly.coeffs[4], F::from(1));
+
+    let hint = e0 + e1;
+    let compressed_poly = poly.compress();
+    let decompressed_poly = compressed_poly.decompress(&hint);
+    for i in 0..decompressed_poly.coeffs.len() {
+      assert_eq!(decompressed_poly.coeffs[i], poly.coeffs[i]);
+    }
+
+    let e5 = F::from(975);
+    assert_eq!(poly.evaluate(&F::from(5)), e5);
+  }
+
+  #[test]
+  fn test_from_evals_quartic() {
+    test_from_evals_quartic_with::<pallas::Scalar>();
+    test_from_evals_quartic_with::<bn256::Scalar>();
+    test_from_evals_quartic_with::<secp256k1::Scalar>();
   }
 }
