@@ -9,18 +9,16 @@ use crate::{
   },
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
-  spartan::{
-    polys::{
-      power::PowPolynomial,
-      univariate::{CompressedUniPoly, UniPoly},
-    },
-    sumcheck::SumcheckProof,
+  spartan::polys::{
+    power::PowPolynomial,
+    univariate::{CompressedUniPoly, UniPoly},
   },
   traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
   Commitment, CommitmentKey, CE,
 };
 use ff::Field;
 use rand_core::OsRng;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// An NIFS message from NeutronNova's folding scheme
@@ -36,6 +34,92 @@ type ROConstants<E> =
   <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants;
 
 impl<E: Engine> NIFS<E> {
+  /// Computes the evaluations of the sum-check polynomial at 0, 2, 3, and 4
+  #[inline]
+  pub fn prove_helper(
+    rho: &E::Scalar,
+    e1: &[E::Scalar],
+    Az1: &[E::Scalar],
+    Bz1: &[E::Scalar],
+    Cz1: &[E::Scalar],
+    e2: &[E::Scalar],
+    Az2: &[E::Scalar],
+    Bz2: &[E::Scalar],
+    Cz2: &[E::Scalar],
+  ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar) {
+    let comb_func = |c1: &E::Scalar, c2: &E::Scalar, c3: &E::Scalar, c4: &E::Scalar| -> E::Scalar {
+      *c1 * (*c2 * *c3 - *c4)
+    };
+
+    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4) = (0..Az1.len())
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: bound_func is A(low)
+        let eval_point_0 = comb_func(&e1[i], &Az1[i], &Bz1[i], &Cz1[i]);
+
+        // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_e_bound_point = e2[i] + e2[i] - e1[i];
+        let poly_Az_bound_point = Az2[i] + Az2[i] - Az1[i];
+        let poly_Bz_bound_point = Bz2[i] + Bz2[i] - Bz1[i];
+        let poly_Cz_bound_point = Cz2[i] + Cz2[i] - Cz1[i];
+        let eval_point_2 = comb_func(
+          &poly_e_bound_point,
+          &poly_Az_bound_point,
+          &poly_Bz_bound_point,
+          &poly_Cz_bound_point,
+        );
+
+        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
+        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
+        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
+        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
+        let eval_point_3 = comb_func(
+          &poly_e_bound_point,
+          &poly_Az_bound_point,
+          &poly_Bz_bound_point,
+          &poly_Cz_bound_point,
+        );
+
+        // eval 4: bound_func is -3A(low) + 4A(high); computed incrementally with bound_func applied to eval(3)
+        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
+        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
+        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
+        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
+        let eval_point_4 = comb_func(
+          &poly_e_bound_point,
+          &poly_Az_bound_point,
+          &poly_Bz_bound_point,
+          &poly_Cz_bound_point,
+        );
+
+        (eval_point_0, eval_point_2, eval_point_3, eval_point_4)
+      })
+      .reduce(
+        || {
+          (
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+          )
+        },
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3),
+      );
+
+    // multiply by the common factors
+    let one_minus_rho = E::Scalar::ONE - rho;
+    let three_rho_minus_one = E::Scalar::from(3) * rho - E::Scalar::ONE;
+    let five_rho_minus_two = E::Scalar::from(5) * rho - E::Scalar::from(2);
+    let seven_rho_minus_three = E::Scalar::from(7) * rho - E::Scalar::from(3);
+    (
+      eval_at_0 * one_minus_rho,
+      eval_at_2 * three_rho_minus_one,
+      eval_at_3 * five_rho_minus_two,
+      eval_at_4 * seven_rho_minus_three,
+    )
+  }
+
   /// Takes as input a folded instance-witness tuple `(U1, W1)` and
   /// an R1CS instance-witness tuple `(U2, W2)` with a compatible structure `shape`
   /// and defined with respect to the same `ck`, and outputs
@@ -103,9 +187,7 @@ impl<E: Engine> NIFS<E> {
 
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
-      SumcheckProof::<E>::compute_eval_points_quartic_with_additive_term(
-        &rho, &W1.E, &g1, &g2, &g3, &E, &h1, &h2, &h3,
-      );
+      Self::prove_helper(&rho, &W1.E, &g1, &g2, &g3, &E, &h1, &h2, &h3);
 
     let evals = vec![
       eval_point_0,
