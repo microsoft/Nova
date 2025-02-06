@@ -446,7 +446,9 @@ where
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness on the secondary curve".to_string(),
+      })?;
 
     // update the running instances and witnesses
     self.zi_primary = zi_primary

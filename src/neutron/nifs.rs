@@ -102,6 +102,31 @@ impl<E: Engine> NIFS<E> {
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
     let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
 
+    // sum W1. E * (g1 * g2 - g3) = T1
+    let T1: E::Scalar = W1
+      .E
+      .iter()
+      .zip(g1.iter())
+      .zip(g2.iter())
+      .zip(g3.iter())
+      .map(|(((e1, e2), e3), e4)| *e1 * (*e2 * *e3 - *e4))
+      .sum();
+
+    assert_eq!(T1, U1.T);
+
+    let T2: E::Scalar = E
+      .iter()
+      .zip(h1.iter())
+      .zip(h2.iter())
+      .zip(h3.iter())
+      .map(|(((e1, e2), e3), e4)| *e1 * (*e2 * *e3 - *e4))
+      .sum();
+    assert_eq!(T2, E::Scalar::ZERO);
+
+    let rho_low = vec![E::Scalar::ONE - rho; E.len()];
+    let rho_high = vec![rho; E.len()];
+    let poly_rho = MultilinearPolynomial::new([rho_low, rho_high].concat());
+
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     // todo: remove the need to wrap
     let poly_E = MultilinearPolynomial::new([W1.E.clone(), E.clone()].concat());
@@ -110,18 +135,19 @@ impl<E: Engine> NIFS<E> {
     let poly_C = MultilinearPolynomial::new([g3, h3].concat());
 
     let comb_func =
-      |poly_E_comp: &E::Scalar,
+      |poly_rho_comp: &E::Scalar,
+      poly_E_comp: &E::Scalar,
        poly_A_comp: &E::Scalar,
        poly_B_comp: &E::Scalar,
        poly_C_comp: &E::Scalar|
-       -> E::Scalar { *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp) };
+       -> E::Scalar { *poly_rho_comp * *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp) };
 
-    let (eval_point_0, eval_point_2, eval_point_3) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_additive_term(
-        &poly_E, &poly_A, &poly_B, &poly_C, &comb_func,
+    let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
+      SumcheckProof::<E>::compute_eval_points_quartic_with_additive_term(
+        &poly_rho, &poly_E, &poly_A, &poly_B, &poly_C, &comb_func,
       );
 
-    let evals = vec![eval_point_0, T - eval_point_0, eval_point_2, eval_point_3];
+    let evals = vec![eval_point_0, T - eval_point_0, eval_point_2, eval_point_3, eval_point_4];
     let poly = UniPoly::<E::Scalar>::from_evals(&evals);
 
     // absorb poly in the RO
@@ -131,7 +157,8 @@ impl<E: Engine> NIFS<E> {
     let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute the sum-check polynomial's evaluations at r_b
-    let T_out = poly.evaluate(&r_b);
+    let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
+    let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
 
     let U = U1.fold(U2, &comm_E, &r_b, &T_out)?;
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
@@ -198,7 +225,8 @@ impl<E: Engine> NIFS<E> {
     let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute the sum-check polynomial's evaluations at r_b
-    let T_out = poly.evaluate(&r_b);
+    let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
+    let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
 
     let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
 
@@ -321,6 +349,12 @@ mod tests {
     let mut running_W = FoldedWitness::default(&str);
     let mut running_U = FoldedInstance::default(&str);
 
+    let res = str.is_sat(ck, &running_U, &running_W);
+    if res != Ok(()) {
+      println!("Error: {:?}", res);
+    }
+    assert!(res.is_ok());
+
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let res = NIFS::prove(
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U1, W1,
@@ -338,6 +372,12 @@ mod tests {
     // update the running witness and instance
     running_W = W;
     running_U = U;
+
+    let res = str.is_sat(ck, &running_U, &running_W);
+    if res != Ok(()) {
+      println!("Error: {:?}", res);
+    }
+    assert!(res.is_ok());
 
     // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
     let res = NIFS::prove(
@@ -358,6 +398,10 @@ mod tests {
     running_U = U;
 
     // check if the running instance is satisfiable
-    assert!(str.is_sat(ck, &running_U, &running_W).is_ok());
+    let res = str.is_sat(ck, &running_U, &running_W);
+    if res != Ok(()) {
+      println!("Error: {:?}", res);
+    }
+    assert!(res.is_ok());
   }
 }

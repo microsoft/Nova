@@ -29,19 +29,19 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
   pub fn from_evals(evals: &[Scalar]) -> Self {
-    // we only support degree-2 or degree-3 univariate polynomials
-    assert!(evals.len() == 3 || evals.len() == 4);
+    // we only support degree-2, degree-3, or degree-4 univariate polynomials
+    assert!(evals.len() == 3 || evals.len() == 4 || evals.len() == 5);
     let two_inv = Scalar::from(2).invert().unwrap();
+    let six_inv = Scalar::from(6).invert().unwrap();
+    let twenty_four_inv = Scalar::from(24).invert().unwrap();
     let coeffs = if evals.len() == 3 {
       // ax^2 + bx + c
       let c = evals[0];
       let a = two_inv * (evals[2] - evals[1] - evals[1] + c);
       let b = evals[1] - c - a;
       vec![c, b, a]
-    } else {
+    } else if evals.len() == 4 {
       // ax^3 + bx^2 + cx + d
-      let six_inv = Scalar::from(6).invert().unwrap();
-
       let d = evals[0];
       let a = six_inv
         * (evals[3] - evals[2] - evals[2] - evals[2] + evals[1] + evals[1] + evals[1] - evals[0]);
@@ -54,8 +54,18 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
           - evals[3]);
       let c = evals[1] - d - a - b;
       vec![d, c, b, a]
+    } else {
+      // ax^4 + bx^3 + cx^2 + dx + e
+      let e = evals[0];
+      let a = twenty_four_inv
+        * (evals[4] - evals[3] * Scalar::from(4) + evals[2] * Scalar::from(6) - evals[1] * Scalar::from(4) + evals[0]);
+      let b = six_inv
+        * (evals[3] - evals[2] * Scalar::from(3) + evals[1] * Scalar::from(3) - evals[0]);
+      let c = two_inv
+        * (evals[2] - evals[1] * Scalar::from(2) + evals[0]);
+      let d = evals[1] - e - a - b - c;
+      vec![e, d, c, b, a]
     };
-
     UniPoly { coeffs }
   }
 
