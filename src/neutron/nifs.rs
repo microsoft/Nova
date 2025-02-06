@@ -78,7 +78,7 @@ impl<E: Engine> NIFS<E> {
     // compute a commitment to the eq polynomial
     let E = PowPolynomial::new(&tau, S.ell).evals();
     let r_E = E::Scalar::random(&mut OsRng);
-    let comm_E = CE::<E>::commit(&ck, &E, &r_E);
+    let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
     // absorb tau in bignum format
     // TODO: factor out this code
@@ -101,28 +101,10 @@ impl<E: Engine> NIFS<E> {
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
     let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
 
-    let rho_low = vec![E::Scalar::ONE - rho; E.len()];
-    let rho_high = vec![rho; E.len()];
-    let poly_rho = [rho_low, rho_high].concat();
-
     // compute the sum-check polynomial's evaluations at 0, 2, 3
-    let poly_E = [W1.E.clone(), E.clone()].concat();
-    let poly_A = [g1, h1].concat();
-    let poly_B = [g2, h2].concat();
-    let poly_C = [g3, h3].concat();
-
-    let comb_func = |poly_rho_comp: &E::Scalar,
-                     poly_E_comp: &E::Scalar,
-                     poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     poly_C_comp: &E::Scalar|
-     -> E::Scalar {
-      *poly_rho_comp * *poly_E_comp * (*poly_A_comp * *poly_B_comp - *poly_C_comp)
-    };
-
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
       SumcheckProof::<E>::compute_eval_points_quartic_with_additive_term(
-        &poly_rho, &poly_E, &poly_A, &poly_B, &poly_C, &comb_func,
+        &rho, &W1.E, &g1, &g2, &g3, &E, &h1, &h2, &h3,
       );
 
     let evals = vec![
