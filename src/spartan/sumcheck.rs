@@ -372,7 +372,7 @@ impl<E: Engine> SumcheckProof<E> {
     poly_D: &MultilinearPolynomial<E::Scalar>,
     poly_E: &MultilinearPolynomial<E::Scalar>,
     comb_func: &F,
-  ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar,)
+  ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar)
   where
     F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
@@ -425,11 +425,17 @@ impl<E: Engine> SumcheckProof<E> {
           &poly_E_bound_point,
         );
 
-
         (eval_point_0, eval_point_2, eval_point_3, eval_point_4)
       })
       .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+        || {
+          (
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+            E::Scalar::ZERO,
+          )
+        },
         |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3),
       )
   }
