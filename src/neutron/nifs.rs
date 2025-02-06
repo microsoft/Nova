@@ -11,7 +11,6 @@ use crate::{
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::{
     polys::{
-      multilinear::MultilinearPolynomial,
       power::PowPolynomial,
       univariate::{CompressedUniPoly, UniPoly},
     },
@@ -102,37 +101,15 @@ impl<E: Engine> NIFS<E> {
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
     let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
 
-    // sum W1. E * (g1 * g2 - g3) = T1
-    let T1: E::Scalar = W1
-      .E
-      .iter()
-      .zip(g1.iter())
-      .zip(g2.iter())
-      .zip(g3.iter())
-      .map(|(((e1, e2), e3), e4)| *e1 * (*e2 * *e3 - *e4))
-      .sum();
-
-    assert_eq!(T1, U1.T);
-
-    let T2: E::Scalar = E
-      .iter()
-      .zip(h1.iter())
-      .zip(h2.iter())
-      .zip(h3.iter())
-      .map(|(((e1, e2), e3), e4)| *e1 * (*e2 * *e3 - *e4))
-      .sum();
-    assert_eq!(T2, E::Scalar::ZERO);
-
     let rho_low = vec![E::Scalar::ONE - rho; E.len()];
     let rho_high = vec![rho; E.len()];
-    let poly_rho = MultilinearPolynomial::new([rho_low, rho_high].concat());
+    let poly_rho = [rho_low, rho_high].concat();
 
     // compute the sum-check polynomial's evaluations at 0, 2, 3
-    // todo: remove the need to wrap
-    let poly_E = MultilinearPolynomial::new([W1.E.clone(), E.clone()].concat());
-    let poly_A = MultilinearPolynomial::new([g1, h1].concat());
-    let poly_B = MultilinearPolynomial::new([g2, h2].concat());
-    let poly_C = MultilinearPolynomial::new([g3, h3].concat());
+    let poly_E = [W1.E.clone(), E.clone()].concat();
+    let poly_A = [g1, h1].concat();
+    let poly_B = [g2, h2].concat();
+    let poly_C = [g3, h3].concat();
 
     let comb_func = |poly_rho_comp: &E::Scalar,
                      poly_E_comp: &E::Scalar,
