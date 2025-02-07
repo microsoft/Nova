@@ -1,7 +1,7 @@
 //! `PowPolynomial`: Represents multilinear extension of power polynomials
 
+use core::iter::successors;
 use ff::PrimeField;
-//use std::iter::successors;
 
 /// Represents the multilinear extension polynomial (MLE) of the equality polynomial $pow(x,t)$, denoted as $\tilde{pow}(x, t)$.
 ///
@@ -10,29 +10,18 @@ use ff::PrimeField;
 /// \tilde{power}(x, t) = \prod_{i=1}^m(1 + (t^{2^i} - 1) * x_i)
 /// $$
 pub struct PowPolynomial<Scalar: PrimeField> {
-  t: Scalar,
   t_pow: Vec<Scalar>,
 }
 
-#[allow(dead_code)]
 impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Creates a new `PowPolynomial` from a Scalars `t`.
   pub fn new(t: &Scalar, ell: usize) -> Self {
     // t_pow = [t^{2^0}, t^{2^1}, ..., t^{2^{ell-1}}]
-    let mut t_pow = vec![Scalar::ONE; ell];
-    t_pow[0] = *t;
-    for i in 1..ell {
-      t_pow[i] = t_pow[i-1].square();
-    }
-
-    /*let t_pow = successors(Some(*t), |p: &Scalar| Some(p.square()))
+    let t_pow = successors(Some(*t), |p: &Scalar| Some(p.square()))
       .take(ell)
-      .collect::<Vec<_>>();*/
+      .collect::<Vec<_>>();
 
-    PowPolynomial {
-      t: *t,
-      t_pow
-    }
+    PowPolynomial { t_pow }
   }
 
   /// Evaluates the `PowPolynomial` at a given point `rx`.
@@ -44,7 +33,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   #[allow(dead_code)]
   pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
     assert_eq!(rx.len(), self.t_pow.len());
-    
+
     // compute the polynomial evaluation using \prod_{i=1}^m(1 + (t^{2^i} - 1) * x_i)
     let mut result = Scalar::ONE;
     for (t_pow, x) in self.t_pow.iter().zip(rx.iter()) {
@@ -53,19 +42,13 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
     result
   }
 
-  pub fn coordinates(self) -> Vec<Scalar> {
-    self.t_pow
-  }
-
   /// Evaluates the `PowPolynomial` at all the `2^|t_pow|` points in its domain.
   ///
   /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
   pub fn evals(&self) -> Vec<Scalar> {
-    let mut powers = vec![Scalar::ONE; 1 << self.t_pow.len()];
-    powers[0] = Scalar::ONE;
-    for i in 1..(1 << self.t_pow.len()) {
-      powers[i] = powers[i-1] * self.t;
-    }
+    let powers = successors(Some(Scalar::ONE), |p| Some(*p * self.t_pow[0]))
+      .take(1 << self.t_pow.len())
+      .collect::<Vec<_>>();
     powers
   }
 
@@ -73,28 +56,27 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   pub fn split_evals(&self) -> (Vec<Scalar>, Vec<Scalar>) {
     // Compute the number of elements in the left and right halves
     let ell = self.t_pow.len();
-    let (len_left, len_right) = (1 << ell/2, 1 << (ell - ell/2));
+    let (len_left, len_right) = (1 << ell / 2, 1 << (ell - ell / 2));
+
+    let t = self.t_pow[0];
 
     // Compute the left and right halves of the evaluations
     // left = [1, t, t^2, ..., t^{2^{ell/2} - 1}]
     //let left = successors(Some(Scalar::ONE), |p| Some(*p * self.t))
     //  .take(len_left)
     //  .collect::<Vec<_>>();
-    let mut left = vec![Scalar::ONE; len_left];
-    left[0] = Scalar::ONE;
-    for i in 1..len_left {
-      left[i] = left[i-1] * self.t;
-    }
-
+    let left = successors(Some(Scalar::ONE), |p| Some(*p * t))
+      .take(len_left)
+      .collect::<Vec<_>>();
 
     // right = [1, t^{2^{ell/2}}, t^{2^{ell/2 + 1}}, ..., t^{2^{ell} - 1}]
     // take the last entry from left, multiply with t to get the second entry in right
-    let left_last_times_t = left[left.len()-1] * self.t;
+    let left_last_times_t = left[left.len() - 1] * t;
     let mut right = vec![Scalar::ONE; len_right];
     right[0] = Scalar::ONE;
     right[1] = left_last_times_t;
     for i in 2..len_right {
-      right[i] = right[i-1] * left_last_times_t;
+      right[i] = right[i - 1] * left_last_times_t;
     }
 
     (left, right)
@@ -107,7 +89,7 @@ mod tests {
   use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
   use rand::rngs::OsRng;
 
-  fn test_split_evals_with<Scalar: PrimeField>() {
+  fn test_evals_with<Scalar: PrimeField>() {
     let t = Scalar::random(&mut OsRng);
     let ell = 4;
     let pow = PowPolynomial::new(&t, ell);
@@ -119,14 +101,34 @@ mod tests {
     let mut evals_alt = vec![Scalar::ONE; 1 << ell];
     evals_alt[0] = Scalar::ONE;
     for i in 1..(1 << ell) {
-      evals_alt[i] = evals_alt[i-1] * t;
+      evals_alt[i] = evals_alt[i - 1] * t;
     }
     for i in 0..(1 << ell) {
       if evals[i] != evals_alt[i] {
-        println!("Mismatch at index {}: expected {:?}, got {:?}", i, evals_alt[i], evals[i]);
+        println!(
+          "Mismatch at index {}: expected {:?}, got {:?}",
+          i, evals_alt[i], evals[i]
+        );
       }
       assert_eq!(evals[i], evals_alt[i]);
     }
+  }
+
+  #[test]
+  fn test_evals() {
+    test_evals_with::<bn256::Scalar>();
+    test_evals_with::<pallas::Scalar>();
+    test_evals_with::<secp256k1::Scalar>();
+  }
+
+  fn test_split_evals_with<Scalar: PrimeField>() {
+    let t = Scalar::random(&mut OsRng);
+    let ell = 4;
+    let pow = PowPolynomial::new(&t, ell);
+
+    // compute evaluations which should be of length 2^ell
+    let evals = pow.evals();
+    assert_eq!(evals.len(), 1 << ell);
 
     // now compute split evals
     let (left, right) = pow.split_evals();
@@ -136,11 +138,17 @@ mod tests {
     let mut evals_iter = evals.iter();
     for (i, l) in right.iter().enumerate() {
       for (j, r) in left.iter().enumerate() {
-      let eval = evals_iter.next().unwrap();
-      if eval != &(*l * r) {
-        println!("Mismatch at left index {}, right index {}: expected {:?}, got {:?}", i, j, *l * r, eval);
-      }
-      assert_eq!(eval, &(*l * r));
+        let eval = evals_iter.next().unwrap();
+        if eval != &(*l * r) {
+          println!(
+            "Mismatch at left index {}, right index {}: expected {:?}, got {:?}",
+            i,
+            j,
+            *l * r,
+            eval
+          );
+        }
+        assert_eq!(eval, &(*l * r));
       }
     }
   }
