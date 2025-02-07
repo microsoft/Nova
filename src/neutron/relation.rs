@@ -32,8 +32,9 @@ pub struct FoldedWitness<E: Engine> {
   pub(crate) W: Vec<E::Scalar>,
   r_W: E::Scalar,
 
-  /// eq polynomial
-  pub(crate) E: Vec<E::Scalar>,
+  /// eq polynomial in tensor form
+  pub(crate) E1: Vec<E::Scalar>,
+  pub(crate) E2: Vec<E::Scalar>,
   r_E: E::Scalar,
 }
 
@@ -65,6 +66,25 @@ impl<E: Engine> Structure<E> {
     // check if the witness is satisfying
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
     let (Az, Bz, Cz) = self.S.multiply_vec(&z)?;
+
+    fn extract_x_y(z: usize, k: usize) -> (usize, usize) {
+      let x = z >> k; // Extract higher k bits
+      let y = z & ((1 << k) - 1); // Extract lower k bits
+      (x, y)
+    }
+
+    let sum = Az
+      .iter()
+      .zip(Bz.iter())
+      .zip(Cz.iter())
+      .enumerate()
+      .map(|(i, ((a, b), c))| {
+        let e1 = W.E1[i];
+        let e2 = W.E2[i];
+        *a * *b - *c + e1 * e2
+      })
+      .sum();
+
     let sum = W
       .E
       .par_iter()
