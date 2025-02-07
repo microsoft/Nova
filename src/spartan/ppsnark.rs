@@ -15,7 +15,6 @@ use crate::{
       identity::IdentityPolynomial,
       masked_eq::MaskedEqPolynomial,
       multilinear::{MultilinearPolynomial, SparsePolynomial},
-      power::PowPolynomial,
       univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
@@ -204,7 +203,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   fn evaluation_oracles(
     &self,
     S: &R1CSShape<E>,
-    r_x: &E::Scalar,
+    r_x: &[E::Scalar],
     z: &[E::Scalar],
   ) -> (
     Vec<E::Scalar>,
@@ -212,7 +211,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     Vec<E::Scalar>,
     Vec<E::Scalar>,
   ) {
-    let mem_row = PowPolynomial::new(r_x, self.N.log_2()).evals();
+    let mem_row = EqPolynomial::new(r_x.to_vec()).evals();
     let mem_col = padded::<E>(z, self.N, &E::Scalar::ZERO);
 
     let (L_row, L_col) = {
@@ -257,16 +256,15 @@ pub struct WitnessBoundSumcheck<E: Engine> {
 }
 
 impl<E: Engine> WitnessBoundSumcheck<E> {
-  fn new(tau: E::Scalar, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
+  fn new(tau: Vec<E::Scalar>, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
     let num_vars_log = num_vars.log_2();
     // When num_vars = num_rounds, we shouldn't have to prove anything
     // but we still want this instance to compute the evaluation of W
     let num_rounds = poly_W_padded.len().log_2();
     assert!(num_vars_log < num_rounds);
 
-    let tau_coords = PowPolynomial::new(&tau, num_rounds).coordinates();
     let poly_masked_eq_evals =
-      MaskedEqPolynomial::new(&EqPolynomial::new(tau_coords), num_vars_log).evals();
+      MaskedEqPolynomial::new(&EqPolynomial::new(tau), num_vars_log).evals();
 
     Self {
       poly_W: MultilinearPolynomial::new(poly_W_padded),
@@ -1135,8 +1133,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // number of rounds of sum-check
     let num_rounds_sc = pk.S_repr.N.log_2();
-    let tau = transcript.squeeze(b"t")?;
-    let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
+    let tau = (0..num_rounds_sc)
+      .map(|_| transcript.squeeze(b"t"))
+      .collect::<Result<Vec<_>, NovaError>>()?;
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
     let (Az, Bz, Cz, W, E) = {
@@ -1151,7 +1150,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau) = {
       let evals_at_tau = [&Az, &Bz, &Cz]
         .into_par_iter()
-        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau_coords))
+        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
         .collect::<Vec<E::Scalar>>();
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
@@ -1177,7 +1176,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let poly_vec = vec![&Az, &Bz, &Cz];
     let c = transcript.squeeze(b"c")?;
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
-    let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
+    let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
 
     // we now need to prove four claims
     // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
@@ -1191,7 +1190,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       || {
         // a sum-check instance to prove the first claim
         let outer_sc_inst = OuterSumcheckInstance::new(
-          PowPolynomial::new(&tau, num_rounds_sc).evals(),
+          EqPolynomial::new(tau.clone()).evals(),
           Az.clone(),
           Bz.clone(),
           (0..Cz.len())
@@ -1240,8 +1239,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         // absorb the commitments
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());
 
-        let rho = transcript.squeeze(b"r")?;
-        let poly_eq = MultilinearPolynomial::new(PowPolynomial::new(&rho, num_rounds_sc).evals());
+        let rho = (0..num_rounds_sc)
+          .map(|_| transcript.squeeze(b"r"))
+          .collect::<Result<Vec<_>, NovaError>>()?;
+        let poly_eq = MultilinearPolynomial::new(EqPolynomial::new(rho).evals());
 
         Ok::<_, NovaError>((
           MemorySumcheckInstance::new(
@@ -1428,8 +1429,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(b"c", &[self.comm_Az, self.comm_Bz, self.comm_Cz].as_slice());
 
     let num_rounds_sc = vk.S_comm.N.log_2();
-    let tau = transcript.squeeze(b"t")?;
-    let tau_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
+    let tau = (0..num_rounds_sc)
+      .map(|_| transcript.squeeze(b"t"))
+      .collect::<Result<Vec<_>, NovaError>>()?;
 
     // add claims about Az, Bz, and Cz to be checked later
     // since all the three polynomials are opened at tau,
@@ -1445,7 +1447,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(b"e", &vec![self.comm_L_row, self.comm_L_col].as_slice());
     let comm_vec = vec![self.comm_Az, self.comm_Bz, self.comm_Cz];
     let c = transcript.squeeze(b"c")?;
-    let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau_coords, &eval_vec, &c);
+    let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
     let claim = u.e;
 
     let gamma = transcript.squeeze(b"g")?;
@@ -1463,7 +1465,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .as_slice(),
     );
 
-    let rho = transcript.squeeze(b"r")?;
+    let rho = (0..num_rounds_sc)
+      .map(|_| transcript.squeeze(b"r"))
+      .collect::<Result<Vec<_>, NovaError>>()?;
 
     let num_claims = 10;
     let s = transcript.squeeze(b"r")?;
@@ -1475,12 +1479,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // verify claim_sc_final
     let claim_sc_final_expected = {
-      let rand_eq_bound_rand_sc = {
-        let poly_eq_coords = PowPolynomial::new(&rho, num_rounds_sc).coordinates();
-        EqPolynomial::new(poly_eq_coords).evaluate(&rand_sc)
-      };
-      let taus_coords = PowPolynomial::new(&tau, num_rounds_sc).coordinates();
-      let eq_tau = EqPolynomial::new(taus_coords);
+      let rand_eq_bound_rand_sc = { EqPolynomial::new(rho).evaluate(&rand_sc) };
+      let eq_tau = EqPolynomial::new(tau);
 
       let taus_bound_rand_sc = eq_tau.evaluate(&rand_sc);
       let taus_masked_bound_rand_sc =
