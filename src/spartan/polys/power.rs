@@ -13,6 +13,7 @@ pub struct PowPolynomial<Scalar: PrimeField> {
   t_pow: Vec<Scalar>,
 }
 
+#[allow(dead_code)]
 impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Creates a new `PowPolynomial` from a Scalars `t`.
   pub fn new(t: &Scalar, ell: usize) -> Self {
