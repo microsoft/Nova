@@ -85,8 +85,8 @@ where
     .zip(pc_evals.iter())
     .enumerate()
     .map(|(i, (r1cs, pc))| {
-      let poly_eval = eq_poly.evaluate(&[E::Scalar::from(i as u64)]);
-      poly_eval * (*r1cs + gamma * pc)
+      let eq_poly_eval = eq_poly.evaluate(&[E::Scalar::from(i as u64)]);
+      eq_poly_eval * (*r1cs + gamma * pc)
     })
     .collect_vec();
   let uni_poly = UniPoly::vandermonde_interpolation(&uni_poly_evals);
@@ -103,6 +103,7 @@ where
   Ok((SumFoldProof { uni_poly }, r_b, T, T_pc))
 }
 
+/// Compute the polynomial evalations needed for the 1 round of sumcheck in the sumfold proof
 pub fn sumfold_evals<E, F>(
   g: &impl SumFoldInputTrait<E>,
   h: &impl SumFoldInputTrait<E>,
