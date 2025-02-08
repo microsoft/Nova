@@ -1,14 +1,24 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{Group, TranscriptReprTrait};
+use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::scalar_as_base,
+  },
+  traits::{AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
+};
 use ff::PrimeField;
+use gaussian_elimination::gaussian_elimination;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
+mod gaussian_elimination;
+
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct UniPoly<Scalar: PrimeField> {
   coeffs: Vec<Scalar>,
 }
@@ -21,6 +31,28 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
+  pub fn vandermonde_interpolation(evals: &[Scalar]) -> Self {
+    // This code is from: https://github.com/a16z/jolt/blob/f1e5ab3cb2f55eb49c17c249039294184d27fdba/jolt-core/src/poly/unipoly.rs#L38
+    let n = evals.len();
+    let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
+
+    let mut vandermonde: Vec<Vec<Scalar>> = Vec::with_capacity(n);
+    for i in 0..n {
+      let mut row = Vec::with_capacity(n);
+      let x = xs[i];
+      row.push(Scalar::ONE);
+      row.push(x);
+      for j in 2..n {
+        row.push(row[j - 1] * x);
+      }
+      row.push(evals[i]);
+      vandermonde.push(row);
+    }
+
+    let coeffs = gaussian_elimination(&mut vandermonde);
+    Self { coeffs }
+  }
+
   pub fn from_evals(evals: &[Scalar]) -> Self {
     // we only support degree-2 or degree-3 univariate polynomials
     assert!(evals.len() == 3 || evals.len() == 4);
@@ -114,10 +146,24 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
       .collect::<Vec<u8>>()
   }
 }
+
+impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
+  fn absorb_in_ro(&self, ro: &mut E::RO) {
+    // absorb each element of self.X in bignum format
+    for x in &self.coeffs {
+      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      for limb in limbs {
+        ro.absorb(scalar_as_base::<E>(limb));
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
-  use super::*;
   use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
+
+  use super::*;
 
   fn test_from_evals_quad_with<F: PrimeField>() {
     // polynomial is 2x^2 + 3x + 1

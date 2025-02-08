@@ -17,6 +17,7 @@ pub mod nova;
 pub mod errors;
 pub mod frontend;
 pub mod gadgets;
+pub mod neutron_nova;
 pub mod provider;
 pub mod spartan;
 pub mod traits;

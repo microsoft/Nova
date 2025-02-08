@@ -42,6 +42,20 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     MultilinearPolynomial { num_vars, Z }
   }
 
+  /// Create a new instance of [`MlPoly`] and pad the evaluation vector with
+  /// zeros if it is not a power of two
+  pub fn new_padded(evaluation_vec: Vec<Scalar>, ell: usize) -> MultilinearPolynomial<Scalar> {
+    let len = evaluation_vec.len();
+    let padded_len = 2usize.pow(ell as u32);
+    let mut padded_evaluation_vec = vec![Scalar::ZERO; padded_len];
+    padded_evaluation_vec[..len].copy_from_slice(&evaluation_vec);
+
+    MultilinearPolynomial {
+      Z: padded_evaluation_vec,
+      num_vars: ell,
+    }
+  }
+
   /// Returns the number of variables in the multilinear polynomial
   pub const fn get_num_vars(&self) -> usize {
     self.num_vars
