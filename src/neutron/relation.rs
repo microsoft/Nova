@@ -23,6 +23,8 @@ pub struct Structure<E: Engine> {
 
   /// the number of variables in the Eq polynomial
   pub(crate) ell: usize,
+  pub(crate) left: usize,
+  pub(crate) right: usize,
 }
 
 /// A type that holds witness information for a zero-fold relation
@@ -33,8 +35,7 @@ pub struct FoldedWitness<E: Engine> {
   r_W: E::Scalar,
 
   /// eq polynomial in tensor form
-  pub(crate) E1: Vec<E::Scalar>,
-  pub(crate) E2: Vec<E::Scalar>,
+  pub(crate) E: Vec<E::Scalar>,
   r_E: E::Scalar,
 }
 
@@ -51,9 +52,13 @@ pub struct FoldedInstance<E: Engine> {
 #[allow(unused)]
 impl<E: Engine> Structure<E> {
   pub fn new(S: &R1CSShape<E>) -> Self {
+    let ell = S.num_cons.next_power_of_two().log_2();
+    let (ell1, ell2) = (ell / 2, ell - ell / 2);
     Structure {
       S: S.clone(),
-      ell: S.num_cons.next_power_of_two().log_2(),
+      ell,
+      left: 1 << ell1,
+      right: 1 << ell2,
     }
   }
 
@@ -67,26 +72,17 @@ impl<E: Engine> Structure<E> {
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
     let (Az, Bz, Cz) = self.S.multiply_vec(&z)?;
 
-    fn extract_x_y(z: usize, k: usize) -> (usize, usize) {
-      let x = z >> k; // Extract higher k bits
-      let y = z & ((1 << k) - 1); // Extract lower k bits
-      (x, y)
+    // full_E is the outer outer product of E1 and E2
+    // E1 and E2 are splits of E
+    let (E1, E2) = W.E.split_at(self.left);
+    let mut full_E = vec![E::Scalar::ONE; self.left * self.right];
+    for i in 0..self.left {
+      for j in 0..self.right {
+        full_E[i * self.right + j] = E1[i] * E2[j];
+      }
     }
 
-    let sum = Az
-      .iter()
-      .zip(Bz.iter())
-      .zip(Cz.iter())
-      .enumerate()
-      .map(|(i, ((a, b), c))| {
-        let e1 = W.E1[i];
-        let e2 = W.E2[i];
-        *a * *b - *c + e1 * e2
-      })
-      .sum();
-
-    let sum = W
-      .E
+    let sum = full_E
       .par_iter()
       .zip(Az.par_iter())
       .zip(Bz.par_iter())
@@ -122,7 +118,7 @@ impl<E: Engine> FoldedWitness<E> {
     FoldedWitness {
       W: vec![E::Scalar::ZERO; S.S.num_vars],
       r_W: E::Scalar::ZERO,
-      E: vec![E::Scalar::ZERO; S.S.num_cons],
+      E: vec![E::Scalar::ZERO; S.left + S.right],
       r_E: E::Scalar::ZERO,
     }
   }
