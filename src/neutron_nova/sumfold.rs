@@ -53,6 +53,7 @@ where
   }
 }
 
+/// Implements the sumfold prover over structure (F′(g, h_1 ,h_ 2,g_pc, h_pc_1,,h_pc_2), G′(w ,e ,w_pc, e_pc,(x ,x_pc)))
 pub fn sumfold<E, PCFunc, R1CSFunc>(
   ro: &mut E::RO,
   ro_consts: &ROConstants<E>,
@@ -72,8 +73,12 @@ where
   R1CSFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
 {
   let beta = ro.squeeze(NUM_CHALLENGE_BITS);
+
+  // Get uni-poly evals from the 1 round of sumcheck
   let r1cs_evals = sumfold_evals(g, h, comb_func_r1cs, g_claim)?;
   let pc_evals = sumfold_evals(g_pc, h_pc, comb_func_pc, g_claim_pc)?;
+
+  // Compute the sumfold proof
   let eq_poly = EqPolynomial::new(vec![beta]);
   let uni_poly_evals = r1cs_evals
     .iter()
@@ -85,10 +90,14 @@ where
     })
     .collect_vec();
   let uni_poly = UniPoly::vandermonde_interpolation(&uni_poly_evals);
+
+  // Squeeze out r_b which is used in the folding for the running zero-fold instance and witness
   let mut ro = E::RO::new(ro_consts.clone());
   ro.absorb(scalar_as_base::<E>(beta));
   <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&uni_poly, &mut ro);
   let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
+
+  // Get T & T_pc to send to the verifier to confirm T_gamma = T + gamma * T_pc
   let T = UniPoly::vandermonde_interpolation(&r1cs_evals).evaluate(&r_b);
   let T_pc = UniPoly::vandermonde_interpolation(&pc_evals).evaluate(&r_b);
   Ok((SumFoldProof { uni_poly }, r_b, T, T_pc))
