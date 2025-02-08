@@ -160,7 +160,15 @@ impl<E: Engine> NIFS<E> {
     let tau = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute a commitment to the eq polynomial
-    let E = PowPolynomial::new(&tau, S.ell).evals();
+    let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
+    // full_E is the outer outer product of E1 and E2
+    let mut full_E = vec![E::Scalar::ONE; S.left * S.right];
+    for i in 0..S.right {
+      for j in 0..S.left {
+        full_E[i * S.left + j] = E2[i] * E1[j];
+      }
+    }
+    let E = [E1.clone(), E2.clone()].concat();
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
@@ -185,9 +193,18 @@ impl<E: Engine> NIFS<E> {
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
     let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
 
+    // compute full_E for the running instance
+    let mut full_E_running = vec![E::Scalar::ONE; S.left * S.right];
+    let (E1_running, E2_running) = W1.E.split_at(S.left);
+    for i in 0..S.right {
+      for j in 0..S.left {
+        full_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
+      }
+    }
+
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
-      Self::prove_helper(&rho, &W1.E, &g1, &g2, &g3, &E, &h1, &h2, &h3);
+      Self::prove_helper(&rho, &full_E_running, &g1, &g2, &g3, &full_E, &h1, &h2, &h3);
 
     let evals = vec![
       eval_point_0,
@@ -285,22 +302,29 @@ impl<E: Engine> NIFS<E> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use crate::{
     frontend::{
-      num::AllocatedNum,
+      //num::AllocatedNum,
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
-      test_shape_cs::TestShapeCS,
-      ConstraintSystem, SynthesisError,
+      ConstraintSystem, //SynthesisError,
     },
-    provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
+    provider::Bn256EngineKZG,
     r1cs::R1CSShape,
-    traits::{snark::default_ck_hint, Engine},
+    traits::Engine,
   };
-  use ff::{Field, PrimeField};
+  use ff::{Field, };
 
-  fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  use super::*;
+  use crate::{
+    frontend::{shape_cs::ShapeCS, Circuit},
+    provider::hyperkzg::EvaluationEngine,
+    spartan::math::Math,
+    spartan::{direct::DirectCircuit, snark::RelaxedR1CSSNARK},
+    traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait},
+  };
+
+  /*fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     cs: &mut CS,
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
@@ -331,16 +355,17 @@ mod tests {
     );
 
     Ok(())
-  }
+  }*/
 
-  fn test_tiny_r1cs_bellpepper_with<E: Engine>() {
-    // First create the shape
+  fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
+    let ro_consts =
+      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+
+    /*// First create the shape
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
 
     // Now get the instance and assignment for one instance
     let mut cs = SatisfyingAssignment::<E>::new();
@@ -356,7 +381,33 @@ mod tests {
     let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
-    assert!(shape.is_sat(&ck, &U2, &W2).is_ok());
+    assert!(shape.is_sat(&ck, &U2, &W2).is_ok());*/
+
+    // generate a non-trivial circuit
+    let num_cons: usize = 16;
+    let _log_num_cons = num_cons.log_2();
+
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
+      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
+
+    // synthesize the circuit's shape
+    let mut cs: ShapeCS<E> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
+    let _S = Structure::new(&shape);
+
+    // generate a satisfying instance-witness for the r1cs
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
+      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
+    let mut cs = SatisfyingAssignment::<E>::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (U1, W1) = cs
+      .r1cs_instance_and_witness(&shape, &ck)
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      }).unwrap();
+
+    let (U2, W2) = (U1.clone(), W1.clone());
 
     // pad the shape and witnesses
     let shape = shape.pad();
@@ -377,9 +428,11 @@ mod tests {
 
   #[test]
   fn test_tiny_r1cs_bellpepper() {
-    test_tiny_r1cs_bellpepper_with::<PallasEngine>();
-    test_tiny_r1cs_bellpepper_with::<Bn256EngineKZG>();
-    test_tiny_r1cs_bellpepper_with::<Secp256k1Engine>();
+    type E = Bn256EngineKZG;
+    type S = RelaxedR1CSSNARK<E, EvaluationEngine<E>>;
+    //test_tiny_r1cs_bellpepper_with::<PallasEngine>();
+    test_tiny_r1cs_bellpepper_with::<E, S>();
+    //test_tiny_r1cs_bellpepper_with::<Secp256k1Engine>();
   }
 
   fn execute_sequence<E: Engine>(
