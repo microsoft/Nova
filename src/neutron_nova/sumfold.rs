@@ -33,6 +33,7 @@ where
     T2: E::Scalar,
   ) -> Result<(E::Scalar, E::Scalar, E::Scalar), NovaError> {
     let beta = transcript.squeeze(b"beta")?;
+
     // check first claim
     {
       let ml_poly = MultilinearPolynomial::new(vec![T1, T2]);
@@ -47,7 +48,7 @@ where
   }
 }
 
-pub fn sumfold<E, PcFunc, R1CSFunc>(
+pub fn sumfold<E, PCFunc, R1CSFunc>(
   transcript: &mut E::TE,
   g: &R1CSSumfoldInputs<E>,
   h: &R1CSSumfoldInputs<E>,
@@ -56,37 +57,33 @@ pub fn sumfold<E, PcFunc, R1CSFunc>(
   g_pc: &PCSumFoldInputs<E>,
   h_pc: &PCSumFoldInputs<E>,
   g_claim_pc: E::Scalar,
-  comb_func_pc: PcFunc,
+  comb_func_pc: PCFunc,
   gamma: E::Scalar,
-) -> Result<(E::Scalar, SumFoldProof<E>, E::Scalar, E::Scalar), NovaError>
-//
+) -> Result<(SumFoldProof<E>, E::Scalar, E::Scalar, E::Scalar), NovaError>
 where
   E: Engine,
-  PcFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
+  PCFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
   R1CSFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
 {
   let beta = transcript.squeeze(b"beta")?;
   let r1cs_evals = sumfold_evals(g, h, comb_func_r1cs, g_claim)?;
   let pc_evals = sumfold_evals(g_pc, h_pc, comb_func_pc, g_claim_pc)?;
+  let eq_poly = EqPolynomial::new(vec![beta]);
   let uni_poly_evals = r1cs_evals
-    .into_iter()
-    .zip(pc_evals)
-    .map(|(r1cs, pc)| r1cs + gamma * pc)
-    .collect_vec();
-  let uni_poly_evals = uni_poly_evals
-    .into_iter()
+    .iter()
+    .zip(pc_evals.iter())
     .enumerate()
-    .map(|(i, v)| EqPolynomial::new(vec![beta]).evaluate(&[E::Scalar::from(i as u64)]) * v)
+    .map(|(i, (r1cs, pc))| {
+      let poly_eval = eq_poly.evaluate(&[E::Scalar::from(i as u64)]);
+      poly_eval * (*r1cs + gamma * pc)
+    })
     .collect_vec();
   let uni_poly = UniPoly::vandermonde_interpolation(&uni_poly_evals);
   transcript.absorb(b"uni_poly", &uni_poly);
   let r_b = transcript.squeeze(b"r_b")?;
-  Ok((
-    uni_poly.evaluate(&r_b),
-    SumFoldProof { uni_poly },
-    beta,
-    r_b,
-  ))
+  let T = UniPoly::vandermonde_interpolation(&r1cs_evals).evaluate(&r_b);
+  let T_pc = UniPoly::vandermonde_interpolation(&pc_evals).evaluate(&r_b);
+  Ok((SumFoldProof { uni_poly }, r_b, T, T_pc))
 }
 
 pub fn sumfold_evals<E, F>(
@@ -140,6 +137,7 @@ where
       poly_E_bound_point,
     );
 
+    // eval 4: bound_func is -3A(low) + 4A(high);
     let poly_A_bound_point = poly_A_bound_point + h0[b] - g0[b];
     let poly_B_bound_point = poly_B_bound_point + h1[b] - g1[b];
     let poly_C_bound_point = poly_C_bound_point + h2[b] - g2[b];
@@ -153,6 +151,7 @@ where
       poly_E_bound_point,
     );
 
+    // eval 5: bound_func is -4A(low) + 5A(high);
     let poly_A_bound_point = poly_A_bound_point + h0[b] - g0[b];
     let poly_B_bound_point = poly_B_bound_point + h1[b] - g1[b];
     let poly_C_bound_point = poly_C_bound_point + h2[b] - g2[b];
