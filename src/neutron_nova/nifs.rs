@@ -9,13 +9,18 @@ use super::{
   },
   sumfold::SumFoldProof,
 };
+
 use crate::{
+  constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
+  gadgets::utils::scalar_as_base,
   neutron_nova::sumfold::{nsc_pc_to_sumfold_inputs, nsc_to_sumfold_inputs, sumfold},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
-  spartan::polys::eq::EqPolynomial,
-  spartan::{math::Math, polys::power::PowPoly},
-  traits::{Engine, TranscriptEngineTrait},
+  spartan::{
+    math::Math,
+    polys::{eq::EqPolynomial, power::PowPoly},
+  },
+  traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -42,22 +47,30 @@ where
   /// Implement prover for the R1CS NeutronNova folding scheme
   pub fn prove(
     S: &R1CSShape<E>,
+    ro_consts: &ROConstants<E>,
+    pp_digest: E::Scalar,
     ck: &CommitmentKey<E>,
     U1: &RunningZFInstance<E>,
     W1: &RunningZFWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
   ) -> Result<(Self, (RunningZFInstance<E>, RunningZFWitness<E>)), NovaError> {
-    let mut transcript = E::TE::new(b"NeutronNova");
-    transcript.absorb(b"U2", U2);
+    // initialize a new RO
+    let mut ro = E::RO::new(ro_consts.clone());
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<E>(pp_digest));
+
+    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
+    U2.absorb_in_ro(&mut ro);
 
     // Collect the instance & witness in ZC_PC from (U1, W1) and reduce them along with zero-check
     // instance, witness (U2, W2) via the zero-check reduction into an instances, witnesses in NSC,
     // an instance, witness pair in NSC_PC, and a fresh instance, witness in ZC_PC
-    let (nsc_U2, nsc_W2, nsc_pc_U2, nsc_pc_W2, new_zc_pc_U, new_zc_pc_W) =
+    let (nsc_U2, nsc_W2, nsc_pc_U2, nsc_pc_W2, new_zc_pc_U, new_zc_pc_W, mut ro) =
       ZeroCheckReduction::prove(
         ck,
-        &mut transcript,
+        &mut ro,
+        ro_consts,
         U1.zc_pc(),
         W1.zc_pc(),
         U2.clone(),
@@ -78,9 +91,12 @@ where
       |g1: E::Scalar, g2: E::Scalar, g3: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
         (g1 - g2 * g3) * h1 * h2
       };
-    let gamma = transcript.squeeze(b"gamma")?;
+    let gamma = ro.squeeze(NUM_CHALLENGE_BITS);
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(gamma));
     let (sf_proof, r_b, T, T_pc) = sumfold(
-      &mut transcript,
+      &mut ro,
+      ro_consts,
       &g,
       &h,
       U1.nsc().T(),
@@ -91,10 +107,6 @@ where
       F_pc,
       gamma,
     )?;
-
-    // Send T & T_pc to verifier
-    transcript.absorb(b"T", &T);
-    transcript.absorb(b"T_pc", &T_pc);
 
     // create NIFS
     let nifs = Self {
@@ -113,29 +125,37 @@ where
   /// Implement verifier for the R1CS NeutronNova folding scheme
   pub fn verify(
     &self,
+    ro_consts: &ROConstants<E>,
+    pp_digest: E::Scalar,
     U1: &RunningZFInstance<E>,
     U2: &R1CSInstance<E>,
   ) -> Result<RunningZFInstance<E>, NovaError> {
-    let mut transcript = E::TE::new(b"NeutronNova");
-    transcript.absorb(b"U2", U2);
+    // initialize a new RO
+    let mut ro = E::RO::new(ro_consts.clone());
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<E>(pp_digest));
+
+    // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
+    U2.absorb_in_ro(&mut ro);
 
     // Collect the instance in ZC_PC from U1 and reduce them along with zero-check
     // instance U2 via the zero-check reduction into an instances in NSC,
     // an instance in NSC_PC, and a fresh instance in ZC_PC
-    let (nsc_U2, nsc_pc_U2, new_zc_pc_U) =
-      ZeroCheckReduction::verify(&mut transcript, U1.zc_pc(), U2.clone(), self.comm_e)?;
+    let (nsc_U2, nsc_pc_U2, new_zc_pc_U, mut ro) =
+      ZeroCheckReduction::verify(&mut ro, ro_consts, U1.zc_pc(), U2.clone(), self.comm_e)?;
 
     // Verify the sumfold proof
-    let gamma = transcript.squeeze(b"gamma")?;
+    let gamma = ro.squeeze(NUM_CHALLENGE_BITS);
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(gamma));
     let (c, beta, r_b) = self.sf_proof.verify(
-      &mut transcript,
+      &mut ro,
+      ro_consts,
       U1.nsc().T() + gamma * U1.nsc_pc.T(),
       E::Scalar::ZERO,
     )?;
 
     //  Check T_γ = T + γ · T_pc,
-    transcript.absorb(b"T", &self.T);
-    transcript.absorb(b"T_pc", &self.T_pc);
     let T_gamma = c
       * (EqPolynomial::new(vec![beta])
         .evaluate(&[r_b])
@@ -157,7 +177,8 @@ struct ZeroCheckReduction;
 impl ZeroCheckReduction {
   fn prove<E>(
     ck: &CommitmentKey<E>,
-    transcript: &mut E::TE,
+    ro: &mut E::RO,
+    ro_consts: &ROConstants<E>,
     ZC_PC_U: &ZCPCInstance<E>,
     ZC_PC_W: &ZCPCWitness<E>,
     U: R1CSInstance<E>,
@@ -171,40 +192,54 @@ impl ZeroCheckReduction {
       NSCPCWitness<E>,
       ZCPCInstance<E>,
       ZCPCWitness<E>,
+      E::RO,
     ),
     NovaError,
   >
   where
     E: Engine,
   {
-    let tau = transcript.squeeze(b"tau")?;
+    let tau = ro.squeeze(NUM_CHALLENGE_BITS);
     let e = PowPoly::new(tau, ell);
     let r_e = E::Scalar::random(&mut OsRng);
     let comm_e = e.commit::<E>(ck, r_e);
-    transcript.absorb(b"comm_e", &comm_e);
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(tau));
+    comm_e.absorb_in_ro(&mut ro);
     let nsc_U = NSCInstance::new(E::Scalar::ZERO, U, comm_e);
     let nsc_W = NSCWitness::new(W, e.clone(), r_e);
     let nsc_pc_U = NSCPCInstance::new(E::Scalar::ZERO, ZC_PC_U.comm_e(), tau, comm_e);
     let nsc_pc_W = NSCPCWitness::new(ZC_PC_W.e().clone(), e.clone(), ZC_PC_W.r_e(), r_e);
     let new_zc_pc_U = ZCPCInstance::new(comm_e, tau);
     let new_zc_pc_W = ZCPCWitness::new(e, r_e);
-    Ok((nsc_U, nsc_W, nsc_pc_U, nsc_pc_W, new_zc_pc_U, new_zc_pc_W))
+    Ok((
+      nsc_U,
+      nsc_W,
+      nsc_pc_U,
+      nsc_pc_W,
+      new_zc_pc_U,
+      new_zc_pc_W,
+      ro,
+    ))
   }
 
   fn verify<E>(
-    transcript: &mut E::TE,
+    ro: &mut E::RO,
+    ro_consts: &ROConstants<E>,
     ZC_PC_U: &ZCPCInstance<E>,
     U: R1CSInstance<E>,
     comm_e: Commitment<E>,
-  ) -> Result<(NSCInstance<E>, NSCPCInstance<E>, ZCPCInstance<E>), NovaError>
+  ) -> Result<(NSCInstance<E>, NSCPCInstance<E>, ZCPCInstance<E>, E::RO), NovaError>
   where
     E: Engine,
   {
-    let tau = transcript.squeeze(b"tau")?;
-    transcript.absorb(b"comm_e", &comm_e);
+    let tau = ro.squeeze(NUM_CHALLENGE_BITS);
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(tau));
+    comm_e.absorb_in_ro(&mut ro);
     let nsc_U = NSCInstance::new(E::Scalar::ZERO, U, comm_e);
     let nsc_pc_U = NSCPCInstance::new(E::Scalar::ZERO, ZC_PC_U.comm_e(), tau, comm_e);
     let new_zc_pc_U = ZCPCInstance::new(comm_e, tau);
-    Ok((nsc_U, nsc_pc_U, new_zc_pc_U))
+    Ok((nsc_U, nsc_pc_U, new_zc_pc_U, ro))
   }
 }

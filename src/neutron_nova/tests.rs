@@ -14,7 +14,7 @@ use crate::{
   provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::math::Math,
-  traits::{snark::default_ck_hint, Engine},
+  traits::{snark::default_ck_hint, Engine, ROTrait},
   CommitmentKey,
 };
 use ff::{Field, PrimeField};
@@ -109,14 +109,17 @@ fn execute_sequence<E: Engine>(
   W4: R1CSWitness<E>,
   ck: &CommitmentKey<E>,
 ) -> Result<(), NovaError> {
+  let ro_consts =
+    <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default(
+    );
   let ell = S.num_cons.log_2();
   // TODO: Create proper default running instances and witnesses withoug cloning a satisiable R1CS instance and witness
   let mut r_W = RunningZFWitness::default(W1.clone(), ell);
   let default_comm_e = r_W.nsc().e().commit::<E>(ck, E::Scalar::ZERO);
   let mut r_U = RunningZFInstance::default(U1.clone(), default_comm_e);
 
-  let (nifs, (_U, W)) = NIFS::prove(S, ck, &r_U, &r_W, &U1, &W1)?;
-  let U = nifs.verify(&r_U, &U1)?;
+  let (nifs, (_U, W)) = NIFS::prove(S, &ro_consts, E::Scalar::ZERO, ck, &r_U, &r_W, &U1, &W1)?;
+  let U = nifs.verify(&ro_consts, E::Scalar::ZERO, &r_U, &U1)?;
 
   assert_eq!(U, _U);
 
@@ -125,8 +128,8 @@ fn execute_sequence<E: Engine>(
   // check first fold
   S.check_running_zerofold_instance(&r_U, &r_W, ck);
 
-  let (nifs, (_U, W)) = NIFS::prove(S, ck, &r_U, &r_W, &U2, &W2)?;
-  let U = nifs.verify(&r_U, &U2)?;
+  let (nifs, (_U, W)) = NIFS::prove(S, &ro_consts, E::Scalar::ZERO, ck, &r_U, &r_W, &U2, &W2)?;
+  let U = nifs.verify(&ro_consts, E::Scalar::ZERO, &r_U, &U2)?;
 
   assert_eq!(U, _U);
 
@@ -135,8 +138,8 @@ fn execute_sequence<E: Engine>(
   // check second fold
   S.check_running_zerofold_instance(&r_U, &r_W, ck);
 
-  let (nifs, (_U, W)) = NIFS::prove(S, ck, &r_U, &r_W, &U3, &W3)?;
-  let U = nifs.verify(&r_U, &U3)?;
+  let (nifs, (_U, W)) = NIFS::prove(S, &ro_consts, E::Scalar::ZERO, ck, &r_U, &r_W, &U3, &W3)?;
+  let U = nifs.verify(&ro_consts, E::Scalar::ZERO, &r_U, &U3)?;
 
   assert_eq!(U, _U);
 
@@ -145,8 +148,8 @@ fn execute_sequence<E: Engine>(
   // check third fold
   S.check_running_zerofold_instance(&r_U, &r_W, ck);
 
-  let (nifs, (_U, W)) = NIFS::prove(S, ck, &r_U, &r_W, &U4, &W4)?;
-  let U = nifs.verify(&r_U, &U4)?;
+  let (nifs, (_U, W)) = NIFS::prove(S, &ro_consts, E::Scalar::ZERO, ck, &r_U, &r_W, &U4, &W4)?;
+  let U = nifs.verify(&ro_consts, E::Scalar::ZERO, &r_U, &U4)?;
 
   assert_eq!(U, _U);
 

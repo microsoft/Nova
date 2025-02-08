@@ -1,10 +1,12 @@
 use crate::{
+  constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
+  gadgets::utils::scalar_as_base,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::polys::{
     eq::EqPolynomial, multilinear::MultilinearPolynomial, power::PowPoly, univariate::UniPoly,
   },
-  traits::{Engine, TranscriptEngineTrait},
+  traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
 };
 use ff::Field;
 use itertools::Itertools;
@@ -28,11 +30,12 @@ where
 {
   pub fn verify(
     &self,
-    transcript: &mut E::TE,
+    ro: &mut E::RO,
+    ro_consts: &ROConstants<E>,
     T1: E::Scalar,
     T2: E::Scalar,
   ) -> Result<(E::Scalar, E::Scalar, E::Scalar), NovaError> {
-    let beta = transcript.squeeze(b"beta")?;
+    let beta = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // check first claim
     {
@@ -41,15 +44,18 @@ where
         return Err(NovaError::InvalidSumcheckProof);
       }
     }
-    transcript.absorb(b"uni_poly", &self.uni_poly);
-    let r_b = transcript.squeeze(b"r_b")?;
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(beta));
+    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&self.uni_poly, &mut ro);
+    let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
     let c = self.uni_poly.evaluate(&r_b);
     Ok((c, beta, r_b))
   }
 }
 
 pub fn sumfold<E, PCFunc, R1CSFunc>(
-  transcript: &mut E::TE,
+  ro: &mut E::RO,
+  ro_consts: &ROConstants<E>,
   g: &R1CSSumfoldInputs<E>,
   h: &R1CSSumfoldInputs<E>,
   g_claim: E::Scalar,
@@ -65,7 +71,7 @@ where
   PCFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
   R1CSFunc: Fn(E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) -> E::Scalar,
 {
-  let beta = transcript.squeeze(b"beta")?;
+  let beta = ro.squeeze(NUM_CHALLENGE_BITS);
   let r1cs_evals = sumfold_evals(g, h, comb_func_r1cs, g_claim)?;
   let pc_evals = sumfold_evals(g_pc, h_pc, comb_func_pc, g_claim_pc)?;
   let eq_poly = EqPolynomial::new(vec![beta]);
@@ -79,8 +85,10 @@ where
     })
     .collect_vec();
   let uni_poly = UniPoly::vandermonde_interpolation(&uni_poly_evals);
-  transcript.absorb(b"uni_poly", &uni_poly);
-  let r_b = transcript.squeeze(b"r_b")?;
+  let mut ro = E::RO::new(ro_consts.clone());
+  ro.absorb(scalar_as_base::<E>(beta));
+  <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&uni_poly, &mut ro);
+  let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
   let T = UniPoly::vandermonde_interpolation(&r1cs_evals).evaluate(&r_b);
   let T_pc = UniPoly::vandermonde_interpolation(&pc_evals).evaluate(&r_b);
   Ok((SumFoldProof { uni_poly }, r_b, T, T_pc))
@@ -177,7 +185,6 @@ where
   Ok(uni_poly_evals)
 }
 
-// G(w,x)
 pub fn nsc_to_sumfold_inputs<E>(
   S: &R1CSShape<E>,
   U: &R1CSInstance<E>,
