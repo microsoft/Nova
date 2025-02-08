@@ -28,26 +28,22 @@ where
   pub fn new(tau: F, ell: usize) -> Self {
     // compute e1
     let (left_num_vars, right_num_vars) = compute_split_point_dims(ell);
+
     // We use `right_num_vars` here becuase we treat the boolean hypercube as big
     // endian
     let e1_len = 2usize.pow(right_num_vars as u32);
     let mut e1 = vec![F::ONE; e1_len];
-
     for i in 1..e1_len {
       e1[i] = e1[i - 1] * tau;
     }
 
     // compute e2
     let e2_len = 2usize.pow(left_num_vars as u32);
-
     let mut e2 = vec![F::ONE; e2_len];
-
     let e_sqrt_m_1 = e1[e1_len - 1] * tau;
-
     for i in 1..e2_len {
       e2[i] = e2[i - 1] * e_sqrt_m_1
     }
-
     PowPoly { e1, e2, ell }
   }
 
@@ -60,7 +56,6 @@ where
     let num_vars = 2usize.pow(self.ell as u32);
     let (_, right_num_vars) = compute_split_point_dims(self.ell);
     let right_num_evals = 2usize.pow(right_num_vars as u32);
-
     let h1 = {
       let e1 = self.e1.clone().into_iter().cycle().take(num_vars).collect();
       MultilinearPolynomial::new(e1)
@@ -74,7 +69,6 @@ where
         .collect();
       MultilinearPolynomial::new(e2)
     };
-
     (h1, h2)
   }
 
@@ -86,10 +80,8 @@ where
         .map(|(w1, w2)| *w1 * (F::ONE - r_b) + *w2 * r_b)
         .collect()
     };
-
     let e1 = inner_fold(&self.e1, &other.e1);
     let e2 = inner_fold(&self.e2, &other.e2);
-
     PowPoly {
       e1,
       e2,
@@ -119,7 +111,6 @@ where
   > {
     let tau = self.tau();
     let g1 = [self.e1.clone(), self.e2.clone()].concat();
-
     let sqrt_m = self.e1.len();
 
     /*
@@ -129,9 +120,7 @@ where
     for i in 1..sqrt_m {
       g2[i] = g1[i - 1];
     }
-
     g2[sqrt_m + 1] = g1[sqrt_m - 1];
-
     if g1.len() > sqrt_m + 2 {
       g2[sqrt_m + 2] = g1[sqrt_m + 1];
 
@@ -148,7 +137,6 @@ where
       g3[i] = tau;
     }
     g3[sqrt_m + 1] = tau;
-
     for i in sqrt_m + 2..g1.len() {
       g3[i] = g1[i - 1]
     }
@@ -164,6 +152,5 @@ where
 fn compute_split_point_dims(ell: usize) -> (usize, usize) {
   let l = ell / 2;
   let r = ell - l;
-
   (l, r)
 }
