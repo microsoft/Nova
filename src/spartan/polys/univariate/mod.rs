@@ -161,7 +161,7 @@ impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
 
 #[cfg(test)]
 mod tests {
-  use crate::provider::{bn256_grumpkin, pasta::pallas, secp_secq::secp256k1};
+  use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
 
   use super::*;
 
@@ -194,7 +194,7 @@ mod tests {
   #[test]
   fn test_from_evals_quad() {
     test_from_evals_quad_with::<pallas::Scalar>();
-    test_from_evals_quad_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_quad_with::<bn256::Scalar>();
     test_from_evals_quad_with::<secp256k1::Scalar>();
   }
 
@@ -229,7 +229,7 @@ mod tests {
   #[test]
   fn test_from_evals_cubic() {
     test_from_evals_cubic_with::<pallas::Scalar>();
-    test_from_evals_cubic_with::<bn256_grumpkin::bn256::Scalar>();
+    test_from_evals_cubic_with::<bn256::Scalar>();
     test_from_evals_cubic_with::<secp256k1::Scalar>()
   }
 }
