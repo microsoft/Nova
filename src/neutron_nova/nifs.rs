@@ -14,7 +14,6 @@ use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
   gadgets::utils::scalar_as_base,
-  neutron_nova::sumfold::{nsc_pc_to_sumfold_inputs, nsc_to_sumfold_inputs, sumfold},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::{
     math::Math,
@@ -79,33 +78,26 @@ where
         S.num_cons.log_2(),
       )?;
 
+    // prepare the sumfold prover inputs
+    let (g, h, g_pc, h_pc, gamma, mut ro) =
+      utils::sumfold_inputs(S, &mut ro, ro_consts, U1, W1, &nsc_U2, &nsc_W2, &nsc_pc_W2)?;
+
     // Run sumfold prover
-    let g = nsc_to_sumfold_inputs(S, U1.nsc().U(), W1.nsc().W(), W1.nsc().e())?;
-    let h = nsc_to_sumfold_inputs(S, nsc_U2.U(), nsc_W2.W(), nsc_W2.e())?;
-    let F =
-      |az: E::Scalar, bz: E::Scalar, cz: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
-        (az * bz - cz) * h1 * h2
-      };
-    let g_pc = nsc_pc_to_sumfold_inputs(W1.nsc_pc().e(), W1.nsc_pc().new_e())?;
-    let h_pc = nsc_pc_to_sumfold_inputs(nsc_pc_W2.e(), nsc_pc_W2.new_e())?;
-    let F_pc =
-      |g1: E::Scalar, g2: E::Scalar, g3: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
-        (g1 - g2 * g3) * h1 * h2
-      };
-    let gamma = ro.squeeze(NUM_CHALLENGE_BITS);
-    let mut ro = E::RO::new(ro_consts.clone());
-    ro.absorb(scalar_as_base::<E>(gamma));
-    let (sf_proof, r_b, T, T_pc) = sumfold(
+    let (sf_proof, r_b, T, T_pc) = SumFoldProof::prove_zerofold(
       &mut ro,
       ro_consts,
       &g,
       &h,
       U1.nsc().T(),
-      F,
+      |az: E::Scalar, bz: E::Scalar, cz: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
+        (az * bz - cz) * h1 * h2
+      },
       &g_pc,
       &h_pc,
       U1.nsc_pc().T(),
-      F_pc,
+      |g1: E::Scalar, g2: E::Scalar, g3: E::Scalar, h1: E::Scalar, h2: E::Scalar| -> E::Scalar {
+        (g1 - g2 * g3) * h1 * h2
+      },
       gamma,
     )?;
 
@@ -242,5 +234,54 @@ impl ZeroCheckReduction {
     let nsc_pc_U = NSCPCInstance::new(E::Scalar::ZERO, ZC_PC_U.comm_e(), tau, comm_e);
     let new_zc_pc_U = ZCPCInstance::new(comm_e, tau);
     Ok((nsc_U, nsc_pc_U, new_zc_pc_U, ro))
+  }
+}
+
+mod utils {
+  use crate::{
+    constants::NUM_CHALLENGE_BITS,
+    errors::NovaError,
+    gadgets::utils::scalar_as_base,
+    neutron_nova::{
+      running_instance::{
+        NSCInstance, NSCPCWitness, NSCWitness, RunningZFInstance, RunningZFWitness,
+      },
+      sumfold::{PCSumFoldInputs, R1CSSumfoldInputs, SumFoldProof},
+    },
+    r1cs::R1CSShape,
+    traits::{Engine, ROConstants, ROTrait},
+  };
+
+  pub fn sumfold_inputs<E>(
+    S: &R1CSShape<E>,
+    ro: &mut E::RO,
+    ro_consts: &ROConstants<E>,
+    U1: &RunningZFInstance<E>,
+    W1: &RunningZFWitness<E>,
+    nsc_U2: &NSCInstance<E>,
+    nsc_W2: &NSCWitness<E>,
+    nsc_pc_W2: &NSCPCWitness<E>,
+  ) -> Result<
+    (
+      R1CSSumfoldInputs<E>,
+      R1CSSumfoldInputs<E>,
+      PCSumFoldInputs<E>,
+      PCSumFoldInputs<E>,
+      E::Scalar,
+      E::RO,
+    ),
+    NovaError,
+  >
+  where
+    E: Engine,
+  {
+    let g = SumFoldProof::nsc_to_sumfold_inputs(S, U1.nsc().U(), W1.nsc().W(), W1.nsc().e())?;
+    let h = SumFoldProof::nsc_to_sumfold_inputs(S, nsc_U2.U(), nsc_W2.W(), nsc_W2.e())?;
+    let g_pc = SumFoldProof::nsc_pc_to_sumfold_inputs(W1.nsc_pc().e(), W1.nsc_pc().new_e())?;
+    let h_pc = SumFoldProof::nsc_pc_to_sumfold_inputs(nsc_pc_W2.e(), nsc_pc_W2.new_e())?;
+    let gamma = ro.squeeze(NUM_CHALLENGE_BITS);
+    let mut ro = E::RO::new(ro_consts.clone());
+    ro.absorb(scalar_as_base::<E>(gamma));
+    Ok((g, h, g_pc, h_pc, gamma, ro))
   }
 }
