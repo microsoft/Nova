@@ -163,9 +163,9 @@ impl<E: Engine> NIFS<E> {
     let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
     // full_E is the outer outer product of E1 and E2
     let mut full_E = vec![E::Scalar::ONE; S.left * S.right];
-    for i in 0..S.right {
-      for j in 0..S.left {
-        full_E[i * S.left + j] = E2[i] * E1[j];
+    for i in 0..S.left {
+      for j in 0..S.right {
+        full_E[i * S.right + j] = E1[i] * E2[j];
       }
     }
     let E = [E1.clone(), E2.clone()].concat();
@@ -196,9 +196,9 @@ impl<E: Engine> NIFS<E> {
     // compute full_E for the running instance
     let mut full_E_running = vec![E::Scalar::ONE; S.left * S.right];
     let (E1_running, E2_running) = W1.E.split_at(S.left);
-    for i in 0..S.right {
-      for j in 0..S.left {
-        full_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
+    for i in 0..S.left {
+      for j in 0..S.right {
+        full_E_running[i * S.right + j] = E1_running[i] * E2_running[j];
       }
     }
 
