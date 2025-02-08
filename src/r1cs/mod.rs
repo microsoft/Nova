@@ -12,6 +12,7 @@ use crate::{
       NSCInstance, NSCPCInstance, NSCPCWitness, NSCWitness, RunningZFInstance, RunningZFWitness,
     },
     sumfold::{nsc_pc_to_sumfold_inputs, nsc_to_sumfold_inputs},
+    sumfold::{PCSumFoldInputs, SumFoldInputTrait},
   },
   traits::{
     commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -451,7 +452,7 @@ impl<E: Engine> R1CSShape<E> {
 
   /// Check running NSC instance
   pub fn check_nsc_instance(&self, U: &NSCInstance<E>, W: &NSCWitness<E>, ck: &CommitmentKey<E>) {
-    let sumfold_inputs = nsc_to_sumfold_inputs(self, U, W).unwrap();
+    let sumfold_inputs = nsc_to_sumfold_inputs(self, U.U(), W.W(), W.e()).unwrap();
     let T = U.T();
     let expected_comm_W = CE::<E>::commit(ck, &W.W().W, &W.W().r_W);
     let expected_comm_e = W.e().commit::<E>(ck, W.r_e());
@@ -476,7 +477,7 @@ impl<E: Engine> R1CSShape<E> {
 
   /// Check running NSC power-check instance
   pub fn check_nsc_pc_instance(U: &NSCPCInstance<E>, W: &NSCPCWitness<E>, ck: &CommitmentKey<E>) {
-    let sumfold_inputs = nsc_pc_to_sumfold_inputs(W).unwrap();
+    let sumfold_inputs: PCSumFoldInputs<E> = nsc_pc_to_sumfold_inputs(W.e(), W.new_e()).unwrap();
     let T = U.T();
 
     // let expected_comm_e = W.e().commit(ck);

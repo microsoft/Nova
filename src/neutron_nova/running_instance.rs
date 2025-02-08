@@ -18,9 +18,9 @@ pub struct RunningZFInstance<E>
 where
   E: Engine,
 {
-  nsc: NSCInstance<E>,
-  nsc_pc: NSCPCInstance<E>,
-  zc_pc: ZCPCInstance<E>,
+  pub(crate) nsc: NSCInstance<E>,
+  pub(crate) nsc_pc: NSCPCInstance<E>,
+  pub(crate) zc_pc: ZCPCInstance<E>,
 }
 
 impl<E> RunningZFInstance<E>
@@ -257,9 +257,9 @@ pub struct RunningZFWitness<E>
 where
   E: Engine,
 {
-  nsc: NSCWitness<E>,
-  nsc_pc: NSCPCWitness<E>,
-  zc_pc: ZCPCWitness<E>,
+  pub(crate) nsc: NSCWitness<E>,
+  pub(crate) nsc_pc: NSCPCWitness<E>,
+  pub(crate) zc_pc: ZCPCWitness<E>,
 }
 
 impl<E> RunningZFWitness<E>

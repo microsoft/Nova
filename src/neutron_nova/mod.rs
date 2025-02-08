@@ -2,7 +2,6 @@
 
 pub mod nifs;
 pub mod running_instance;
-
 pub(crate) mod sumfold;
 #[cfg(test)]
 mod tests;
