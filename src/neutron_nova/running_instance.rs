@@ -4,7 +4,7 @@
 
 use crate::{
   r1cs::{R1CSInstance, R1CSWitness},
-  spartan::polys::{eq::EqPolynomial, power2::PowPoly},
+  spartan::polys::{eq::EqPolynomial, power::PowPoly},
   traits::Engine,
   Commitment,
 };

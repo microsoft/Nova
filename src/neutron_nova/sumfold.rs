@@ -2,7 +2,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::polys::{
-    eq::EqPolynomial, multilinear::MultilinearPolynomial, power2::PowPoly, univariate::UniPoly,
+    eq::EqPolynomial, multilinear::MultilinearPolynomial, power::PowPoly, univariate::UniPoly,
   },
   traits::{Engine, TranscriptEngineTrait},
 };

@@ -15,7 +15,7 @@ use crate::{
   },
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::polys::eq::EqPolynomial,
-  spartan::{math::Math, polys::power2::PowPoly},
+  spartan::{math::Math, polys::power::PowPoly},
   traits::{Engine, TranscriptEngineTrait},
   Commitment, CommitmentKey,
 };
