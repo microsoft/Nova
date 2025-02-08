@@ -57,6 +57,7 @@ where
   ) -> Result<(Self, (RunningZFInstance<E>, RunningZFWitness<E>)), NovaError> {
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
+
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(pp_digest));
 
@@ -138,7 +139,7 @@ where
     // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
     U2.absorb_in_ro(&mut ro);
 
-    // Collect the instance in ZC_PC from U1 and reduce them along with zero-check
+    // Collect the instance in ZC_PC from U1 and reduce it along with the zero-check
     // instance U2 via the zero-check reduction into an instances in NSC,
     // an instance in NSC_PC, and a fresh instance in ZC_PC
     let (nsc_U2, nsc_pc_U2, new_zc_pc_U, mut ro) =
