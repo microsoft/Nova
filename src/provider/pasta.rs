@@ -6,6 +6,7 @@ use crate::{
 };
 use digest::{ExtendableOutput, Update};
 use ff::FromUniformBytes;
+// TODO -> Make halo2curves be optional (use only on STD)
 use halo2curves::{
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
   msm::msm_best,
