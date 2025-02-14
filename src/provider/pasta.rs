@@ -1,4 +1,5 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
+#[cfg(feature = "std")]
 use crate::{
   impl_traits,
   provider::traits::DlogGroup,

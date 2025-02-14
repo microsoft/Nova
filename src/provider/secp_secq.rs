@@ -1,4 +1,5 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
+#[cfg(feature = "std")]
 use crate::{
   impl_traits,
   provider::traits::DlogGroup,
