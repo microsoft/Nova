@@ -190,7 +190,7 @@ where
     if ck.h.is_some() {
       Commitment {
         comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
-          + <E::GE as DlogGroup>::group(&ck.h.as_ref().unwrap().clone()) * r,
+          + <E::GE as DlogGroup>::group(ck.h.as_ref().unwrap()) * r,
       }
     } else {
       assert_eq!(*r, E::Scalar::ZERO);
