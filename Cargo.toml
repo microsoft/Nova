@@ -39,6 +39,8 @@ once_cell = { version = "1.18.0", features = [
     "critical-section",
 ], default-features = false }
 itertools = { version = "0.14.0", default-features = false }
+pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
+libm = { version = "0.2.11", default-features = false }
 
 
 # ! OPTIONAL 

@@ -1,11 +1,18 @@
 //! This module implements Nova's traits using the following several different combinations
 
 // public modules to be used as an evaluation engine with Spartan
+#[cfg(feature = "std")]
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
+#[cfg(not(feature = "std"))]
+pub mod msm_no_std_impl;
+
+#[cfg(feature = "std")]
 pub mod pasta;
+pub mod pasta_curves;
 pub mod poseidon;
+#[cfg(feature = "std")]
 pub mod secp_secq;
 
 // crate-private modules
