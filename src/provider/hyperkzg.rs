@@ -272,13 +272,9 @@ where
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
 
-    let mut scalars: Vec<E::Scalar> = v.to_vec();
-    scalars.push(*r);
-    let mut bases = ck.ck[..v.len()].to_vec();
-    bases.push(ck.h.clone());
-
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
     }
   }
 

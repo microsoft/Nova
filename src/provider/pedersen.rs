@@ -188,13 +188,9 @@ where
     assert!(ck.ck.len() >= v.len());
 
     if ck.h.is_some() {
-      let mut scalars: Vec<E::Scalar> = v.to_vec();
-      scalars.push(*r);
-      let mut bases = ck.ck[..v.len()].to_vec();
-      bases.push(ck.h.as_ref().unwrap().clone());
-
       Commitment {
-        comm: E::GE::vartime_multiscalar_mul(&scalars, &bases),
+        comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+          + <E::GE as DlogGroup>::group(ck.h.as_ref().unwrap()) * r,
       }
     } else {
       assert_eq!(*r, E::Scalar::ZERO);
