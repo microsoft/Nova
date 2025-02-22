@@ -163,9 +163,9 @@ impl<E: Engine> NIFS<E> {
     let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
     // full_E is the outer outer product of E1 and E2
     let mut full_E = vec![E::Scalar::ONE; S.left * S.right];
-    for i in 0..S.left {
-      for j in 0..S.right {
-        full_E[i * S.right + j] = E1[i] * E2[j];
+    for i in 0..S.right {
+      for j in 0..S.left {
+        full_E[i * S.left + j] = E2[i] * E1[j];
       }
     }
     let E = [E1.clone(), E2.clone()].concat();
@@ -196,9 +196,9 @@ impl<E: Engine> NIFS<E> {
     // compute full_E for the running instance
     let mut full_E_running = vec![E::Scalar::ONE; S.left * S.right];
     let (E1_running, E2_running) = W1.E.split_at(S.left);
-    for i in 0..S.left {
-      for j in 0..S.right {
-        full_E_running[i * S.right + j] = E1_running[i] * E2_running[j];
+    for i in 0..S.right {
+      for j in 0..S.left {
+        full_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
       }
     }
 
@@ -313,7 +313,7 @@ mod tests {
     r1cs::R1CSShape,
     traits::Engine,
   };
-  use ff::{Field, };
+  use ff::Field;
 
   use super::*;
   use crate::{
@@ -397,17 +397,32 @@ mod tests {
     let _S = Structure::new(&shape);
 
     // generate a satisfying instance-witness for the r1cs
-    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
-      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
+      Some(vec![E::Scalar::from(2)]),
+      NonTrivialCircuit::<E::Scalar>::new(num_cons),
+    );
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
     let (U1, W1) = cs
       .r1cs_instance_and_witness(&shape, &ck)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness".to_string(),
-      }).unwrap();
+      })
+      .unwrap();
 
-    let (U2, W2) = (U1.clone(), W1.clone());
+    // generate a satisfying instance-witness for the r1cs
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
+      Some(vec![E::Scalar::from(3)]),
+      NonTrivialCircuit::<E::Scalar>::new(num_cons),
+    );
+    let mut cs = SatisfyingAssignment::<E>::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (U2, W2) = cs
+      .r1cs_instance_and_witness(&shape, &ck)
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      })
+      .unwrap();
 
     // pad the shape and witnesses
     let shape = shape.pad();
