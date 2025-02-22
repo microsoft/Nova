@@ -76,9 +76,9 @@ impl<E: Engine> Structure<E> {
     // E1 and E2 are splits of E
     let (E1, E2) = W.E.split_at(self.left);
     let mut full_E = vec![E::Scalar::ONE; self.left * self.right];
-    for i in 0..self.left {
-      for j in 0..self.right {
-        full_E[i * self.right + j] = E1[i] * E2[j];
+    for i in 0..self.right {
+      for j in 0..self.left {
+        full_E[i * self.left + j] = E2[i] * E1[j];
       }
     }
 
@@ -255,8 +255,10 @@ mod tests {
     S.is_sat(&ck, &U, &W)?;
 
     // generate a satisfying instance-witness for the r1cs
-    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
-      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
+      Some(vec![E::Scalar::from(2)]),
+      NonTrivialCircuit::<E::Scalar>::new(num_cons),
+    );
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
     let (u, w) = cs
