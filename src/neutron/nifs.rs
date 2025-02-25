@@ -49,82 +49,111 @@ impl<E: Engine> NIFS<E> {
     Bz2: &[E::Scalar],
     Cz2: &[E::Scalar],
   ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) {
-    let comb_func = |c1: &E::Scalar,
-                     c2: &E::Scalar,
-                     c3: &E::Scalar,
-                     c4: &E::Scalar,
-                     c5: &E::Scalar|
-     -> E::Scalar { *c1 * *c2 * (*c3 * *c4 - *c5) };
+    let comb_func = |c1: &E::Scalar, c2: &E::Scalar, c3: &E::Scalar, c4: &E::Scalar| -> E::Scalar {
+      *c1 * (*c2 * *c3 - *c4)
+    };
 
-    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5) = (0..Az1.len())
+    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5) = (0..f1.len())
       .into_par_iter()
       .map(|i| {
+        let (i_eval_at_0, i_eval_at_2, i_eval_at_3, i_eval_at_4, i_eval_at_5) = (0..e1.len())
+          .into_par_iter()
+          .map(|j| {
+            // Turn the two dimensional (i, j) into a single dimension index
+            let k = i * e1.len() + j;
+
+            // eval 0: bound_func is A(low)
+            let eval_point_0 = comb_func(&e1[j], &Az1[k], &Bz1[k], &Cz1[k]);
+
+            // eval 2: bound_func is -A(low) + 2*A(high)
+            let poly_e_bound_point = e2[j] + e2[j] - e1[j];
+            let poly_Az_bound_point = Az2[k] + Az2[k] - Az1[k];
+            let poly_Bz_bound_point = Bz2[k] + Bz2[k] - Bz1[k];
+            let poly_Cz_bound_point = Cz2[k] + Cz2[k] - Cz1[k];
+            let eval_point_2 = comb_func(
+              &poly_e_bound_point,
+              &poly_Az_bound_point,
+              &poly_Bz_bound_point,
+              &poly_Cz_bound_point,
+            );
+
+            // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+            let poly_e_bound_point = poly_e_bound_point + e2[j] - e1[j];
+            let poly_Az_bound_point = poly_Az_bound_point + Az2[k] - Az1[k];
+            let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[k] - Bz1[k];
+            let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[k] - Cz1[k];
+            let eval_point_3 = comb_func(
+              &poly_e_bound_point,
+              &poly_Az_bound_point,
+              &poly_Bz_bound_point,
+              &poly_Cz_bound_point,
+            );
+
+            // eval 4: bound_func is -3A(low) + 4A(high); computed incrementally with bound_func applied to eval(3)
+            let poly_e_bound_point = poly_e_bound_point + e2[j] - e1[j];
+            let poly_Az_bound_point = poly_Az_bound_point + Az2[k] - Az1[k];
+            let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[k] - Bz1[k];
+            let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[k] - Cz1[k];
+            let eval_point_4 = comb_func(
+              &poly_e_bound_point,
+              &poly_Az_bound_point,
+              &poly_Bz_bound_point,
+              &poly_Cz_bound_point,
+            );
+
+            // eval 5: bound_func is -4A(low) + 5A(high); computed incrementally with bound_func applied to eval(4)
+            let poly_e_bound_point = poly_e_bound_point + e2[j] - e1[j];
+            let poly_Az_bound_point = poly_Az_bound_point + Az2[k] - Az1[k];
+            let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[k] - Bz1[k];
+            let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[k] - Cz1[k];
+            let eval_point_5 = comb_func(
+              &poly_e_bound_point,
+              &poly_Az_bound_point,
+              &poly_Bz_bound_point,
+              &poly_Cz_bound_point,
+            );
+
+            (
+              eval_point_0,
+              eval_point_2,
+              eval_point_3,
+              eval_point_4,
+              eval_point_5,
+            )
+          })
+          .reduce(
+            || {
+              (
+                E::Scalar::ZERO,
+                E::Scalar::ZERO,
+                E::Scalar::ZERO,
+                E::Scalar::ZERO,
+                E::Scalar::ZERO,
+              )
+            },
+            |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3, a.4 + b.4),
+          );
+
         // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&f1[i], &e1[i], &Az1[i], &Bz1[i], &Cz1[i]);
+        let eval_at_0 = f1[i] * i_eval_at_0;
 
         // eval 2: bound_func is -A(low) + 2*A(high)
         let poly_f_bound_point = f2[i] + f2[i] - f1[i];
-        let poly_e_bound_point = e2[i] + e2[i] - e1[i];
-        let poly_Az_bound_point = Az2[i] + Az2[i] - Az1[i];
-        let poly_Bz_bound_point = Bz2[i] + Bz2[i] - Bz1[i];
-        let poly_Cz_bound_point = Cz2[i] + Cz2[i] - Cz1[i];
-        let eval_point_2 = comb_func(
-          &poly_f_bound_point,
-          &poly_e_bound_point,
-          &poly_Az_bound_point,
-          &poly_Bz_bound_point,
-          &poly_Cz_bound_point,
-        );
+        let eval_at_2 = poly_f_bound_point * i_eval_at_2;
 
         // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
         let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
-        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
-        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
-        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
-        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
-        let eval_point_3 = comb_func(
-          &poly_f_bound_point,
-          &poly_e_bound_point,
-          &poly_Az_bound_point,
-          &poly_Bz_bound_point,
-          &poly_Cz_bound_point,
-        );
+        let eval_at_3 = poly_f_bound_point * i_eval_at_3;
 
         // eval 4: bound_func is -3A(low) + 4A(high); computed incrementally with bound_func applied to eval(3)
         let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
-        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
-        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
-        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
-        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
-        let eval_point_4 = comb_func(
-          &poly_f_bound_point,
-          &poly_e_bound_point,
-          &poly_Az_bound_point,
-          &poly_Bz_bound_point,
-          &poly_Cz_bound_point,
-        );
+        let eval_at_4 = poly_f_bound_point * i_eval_at_4;
 
         // eval 5: bound_func is -4A(low) + 5A(high); computed incrementally with bound_func applied to eval(4)
         let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
-        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
-        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
-        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
-        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
-        let eval_point_5 = comb_func(
-          &poly_f_bound_point,
-          &poly_e_bound_point,
-          &poly_Az_bound_point,
-          &poly_Bz_bound_point,
-          &poly_Cz_bound_point,
-        );
+        let eval_at_5 = poly_f_bound_point * i_eval_at_5;
 
-        (
-          eval_point_0,
-          eval_point_2,
-          eval_point_3,
-          eval_point_4,
-          eval_point_5,
-        )
+        (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5)
       })
       .reduce(
         || {
@@ -197,42 +226,6 @@ impl<E: Engine> NIFS<E> {
     // compute a commitment to the eq polynomial
     let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
 
-    let mut expanded_E1 = vec![E::Scalar::ONE; S.left * S.right];
-    let mut expanded_E2 = vec![E::Scalar::ONE; S.left * S.right];
-
-    // expanded_E1 = [E1, E1, ..., E1]
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E1[i * S.left + j] = E1[j];
-      }
-    }
-
-    // expanded_E2 = [[E2[0], ..., E2[0]], [E2[1], ..., E2[1]], ..., [E2[right-1], ..., E2[right-1]]]
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E2[i * S.left + j] = E2[i];
-      }
-    }
-
-    // expanded_E is the outer outer product of E1 and E2
-    let mut expanded_E = vec![E::Scalar::ONE; S.left * S.right];
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E[i * S.left + j] = E2[i] * E1[j];
-      }
-    }
-
-    // check if expanded_E1 and expanded_E2 are correct
-    for i in 0..expanded_E.len() {
-      assert_eq!(expanded_E[i], expanded_E1[i] * expanded_E2[i]);
-    }
-
-    // lets check if the expanded_E contains powers of \tau
-    let powers_of_tau = PowPolynomial::new(&tau, S.ell).evals();
-    for i in 0..expanded_E.len() {
-      assert_eq!(expanded_E[i], powers_of_tau[i]);
-    }
-
     let E = [E1.clone(), E2.clone()].concat();
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
@@ -261,47 +254,16 @@ impl<E: Engine> NIFS<E> {
     // computed expanded_E1_running for the running instance
     let (E1_running, E2_running) = W1.E.split_at(S.left);
 
-    let mut expanded_E1_running = vec![E::Scalar::ONE; S.left * S.right];
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E1_running[i * S.left + j] = E1_running[j];
-      }
-    }
-
-    let mut expanded_E2_running = vec![E::Scalar::ONE; S.left * S.right];
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E2_running[i * S.left + j] = E2_running[i];
-      }
-    }
-
-    // compute expanded_E for the running instance
-    let mut expanded_E_running = vec![E::Scalar::ONE; S.left * S.right];
-    let (E1_running, E2_running) = W1.E.split_at(S.left);
-    for i in 0..S.right {
-      for j in 0..S.left {
-        expanded_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
-      }
-    }
-
-    // check if expanded_E1_running and expanded_E2_running are correct
-    for i in 0..expanded_E_running.len() {
-      assert_eq!(
-        expanded_E_running[i],
-        expanded_E1_running[i] * expanded_E2_running[i]
-      );
-    }
-
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4, eval_point_5) = Self::prove_helper(
       &rho,
-      &expanded_E2_running,
-      &expanded_E1_running,
+      &E2_running,
+      &E1_running,
       &g1,
       &g2,
       &g3,
-      &expanded_E2,
-      &expanded_E1,
+      &E2,
+      &E1,
       &h1,
       &h2,
       &h3,
