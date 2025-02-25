@@ -389,77 +389,6 @@ mod tests {
   };
   use ff::Field;
 
-  fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
-
-    // generate a non-trivial circuit
-    let num_cons: usize = 8;
-    let _log_num_cons = num_cons.log_2();
-
-    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
-      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
-
-    // synthesize the circuit's shape
-    let mut cs: ShapeCS<E> = ShapeCS::new();
-    let _ = circuit.synthesize(&mut cs);
-    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
-    let _S = Structure::new(&shape);
-
-    // generate a satisfying instance-witness for the r1cs
-    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
-      Some(vec![E::Scalar::from(2)]),
-      NonTrivialCircuit::<E::Scalar>::new(num_cons),
-    );
-    let mut cs = SatisfyingAssignment::<E>::new();
-    let _ = circuit.synthesize(&mut cs);
-    let (U1, W1) = cs
-      .r1cs_instance_and_witness(&shape, &ck)
-      .map_err(|_e| NovaError::UnSat {
-        reason: "Unable to generate a satisfying witness".to_string(),
-      })
-      .unwrap();
-
-    // generate a satisfying instance-witness for the r1cs
-    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
-      Some(vec![E::Scalar::from(3)]),
-      NonTrivialCircuit::<E::Scalar>::new(num_cons),
-    );
-    let mut cs = SatisfyingAssignment::<E>::new();
-    let _ = circuit.synthesize(&mut cs);
-    let (U2, W2) = cs
-      .r1cs_instance_and_witness(&shape, &ck)
-      .map_err(|_e| NovaError::UnSat {
-        reason: "Unable to generate a satisfying witness".to_string(),
-      })
-      .unwrap();
-
-    // pad the shape and witnesses
-    let shape = shape.pad();
-    let W1 = W1.pad(&shape);
-    let W2 = W2.pad(&shape);
-
-
-    // execute a sequence of folds
-    execute_sequence(
-      &ck,
-      &ro_consts,
-      &<E as Engine>::Scalar::ZERO,
-      &shape,
-      &U1,
-      &W1,
-      &U2,
-      &W2,
-    );
-  }
-
-  #[test]
-  fn test_tiny_r1cs_bellpepper() {
-    test_tiny_r1cs_bellpepper_with::<PallasEngine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
-    test_tiny_r1cs_bellpepper_with::<Bn256EngineKZG, RelaxedR1CSSNARK<_, HyperKZGEE<_>>>();
-    test_tiny_r1cs_bellpepper_with::<Secp256k1Engine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
-  }
-
   fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
     ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
@@ -529,5 +458,74 @@ mod tests {
       println!("Error: {:?}", res);
     }
     assert!(res.is_ok());
+  }
+
+  fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
+    let ro_consts =
+      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+
+    // generate a non-trivial circuit
+    let num_cons: usize = 32;
+
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
+      DirectCircuit::new(None, NonTrivialCircuit::<E::Scalar>::new(num_cons));
+
+    // synthesize the circuit's shape
+    let mut cs: ShapeCS<E> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
+    let _S = Structure::new(&shape);
+
+    // generate a satisfying instance-witness for the r1cs
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
+      Some(vec![E::Scalar::from(2)]),
+      NonTrivialCircuit::<E::Scalar>::new(num_cons),
+    );
+    let mut cs = SatisfyingAssignment::<E>::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (U1, W1) = cs
+      .r1cs_instance_and_witness(&shape, &ck)
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      })
+      .unwrap();
+
+    // generate a satisfying instance-witness for the r1cs
+    let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
+      Some(vec![E::Scalar::from(3)]),
+      NonTrivialCircuit::<E::Scalar>::new(num_cons),
+    );
+    let mut cs = SatisfyingAssignment::<E>::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (U2, W2) = cs
+      .r1cs_instance_and_witness(&shape, &ck)
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness".to_string(),
+      })
+      .unwrap();
+
+    // pad the shape and witnesses
+    let shape = shape.pad();
+    let W1 = W1.pad(&shape);
+    let W2 = W2.pad(&shape);
+
+    // execute a sequence of folds
+    execute_sequence(
+      &ck,
+      &ro_consts,
+      &<E as Engine>::Scalar::ZERO,
+      &shape,
+      &U1,
+      &W1,
+      &U2,
+      &W2,
+    );
+  }
+
+  #[test]
+  fn test_tiny_r1cs_bellpepper() {
+    test_tiny_r1cs_bellpepper_with::<PallasEngine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
+    test_tiny_r1cs_bellpepper_with::<Bn256EngineKZG, RelaxedR1CSSNARK<_, HyperKZGEE<_>>>();
+    test_tiny_r1cs_bellpepper_with::<Secp256k1Engine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
   }
 }
