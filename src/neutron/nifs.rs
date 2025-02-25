@@ -38,29 +38,37 @@ impl<E: Engine> NIFS<E> {
   #[inline]
   pub fn prove_helper(
     rho: &E::Scalar,
-    f1: &[E::Scalar],
+    (left, right): (usize, usize),
     e1: &[E::Scalar],
     Az1: &[E::Scalar],
     Bz1: &[E::Scalar],
     Cz1: &[E::Scalar],
-    f2: &[E::Scalar],
     e2: &[E::Scalar],
     Az2: &[E::Scalar],
     Bz2: &[E::Scalar],
     Cz2: &[E::Scalar],
   ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) {
+    // sanity check sizes
+    assert_eq!(e1.len(), left + right);
+    assert_eq!(Az1.len(), left * right);
+    assert_eq!(Bz1.len(), left * right);
+    assert_eq!(Cz1.len(), left * right);
+    assert_eq!(e2.len(), left + right);
+    assert_eq!(Az2.len(), left * right);
+    assert_eq!(Bz2.len(), left * right);
+    assert_eq!(Cz2.len(), left * right);
+
     let comb_func = |c1: &E::Scalar, c2: &E::Scalar, c3: &E::Scalar, c4: &E::Scalar| -> E::Scalar {
       *c1 * (*c2 * *c3 - *c4)
     };
-
-    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5) = (0..f1.len())
+    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5) = (0..right)
       .into_par_iter()
       .map(|i| {
-        let (i_eval_at_0, i_eval_at_2, i_eval_at_3, i_eval_at_4, i_eval_at_5) = (0..e1.len())
+        let (i_eval_at_0, i_eval_at_2, i_eval_at_3, i_eval_at_4, i_eval_at_5) = (0..left)
           .into_par_iter()
           .map(|j| {
             // Turn the two dimensional (i, j) into a single dimension index
-            let k = i * e1.len() + j;
+            let k = i * left + j;
 
             // eval 0: bound_func is A(low)
             let eval_point_0 = comb_func(&e1[j], &Az1[k], &Bz1[k], &Cz1[k]);
@@ -133,6 +141,9 @@ impl<E: Engine> NIFS<E> {
             },
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3, a.4 + b.4),
           );
+
+        let f1 = &e1[left..];
+        let f2 = &e2[left..];
 
         // eval 0: bound_func is A(low)
         let eval_at_0 = f1[i] * i_eval_at_0;
@@ -224,9 +235,7 @@ impl<E: Engine> NIFS<E> {
     let tau = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute a commitment to the eq polynomial
-    let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
-
-    let E = [E1.clone(), E2.clone()].concat();
+    let E = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
@@ -246,27 +255,23 @@ impl<E: Engine> NIFS<E> {
     let T = (E::Scalar::ONE - rho) * U1.T;
 
     let z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let (g1, g2, g3) = S.S.multiply_vec(&z1)?;
+    let (Az1, Bz1, Cz1) = S.S.multiply_vec(&z1)?;
 
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-    let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
-
-    // computed expanded_E1_running for the running instance
-    let (E1_running, E2_running) = W1.E.split_at(S.left);
+    let (Az2, Bz2, Cz2) = S.S.multiply_vec(&z2)?;
 
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4, eval_point_5) = Self::prove_helper(
       &rho,
-      &E2_running,
-      &E1_running,
-      &g1,
-      &g2,
-      &g3,
-      &E2,
-      &E1,
-      &h1,
-      &h2,
-      &h3,
+      (S.left, S.right),
+      &W1.E,
+      &Az1,
+      &Bz1,
+      &Cz1,
+      &E,
+      &Az2,
+      &Bz2,
+      &Cz2,
     );
 
     let evals = vec![
