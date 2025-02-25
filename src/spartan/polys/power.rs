@@ -66,10 +66,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{
-    provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1},
-    spartan::polys::multilinear::MultilinearPolynomial,
-  };
+  use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
   use rand::rngs::OsRng;
 
   fn test_evals_with<Scalar: PrimeField>() {
