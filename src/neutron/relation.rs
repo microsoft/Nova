@@ -49,11 +49,14 @@ pub struct FoldedInstance<E: Engine> {
   pub(crate) u: E::Scalar,
 }
 
-#[allow(unused)]
 impl<E: Engine> Structure<E> {
   pub fn new(S: &R1CSShape<E>) -> Self {
     let ell = S.num_cons.next_power_of_two().log_2();
-    let (ell1, ell2) = (ell / 2, ell - ell / 2);
+
+    // we split ell into ell1 and ell2 such that ell1 + ell2 = ell and ell1 >= ell2
+    let ell1 = (ell + 1) / 2; // This ensures ell1 >= ell2
+    let ell2 = ell / 2;
+
     Structure {
       S: S.clone(),
       ell,
@@ -112,7 +115,6 @@ impl<E: Engine> Structure<E> {
   }
 }
 
-#[allow(unused)]
 impl<E: Engine> FoldedWitness<E> {
   pub fn default(S: &Structure<E>) -> Self {
     FoldedWitness {
@@ -152,7 +154,6 @@ impl<E: Engine> FoldedWitness<E> {
   }
 }
 
-#[allow(unused)]
 impl<E: Engine> FoldedInstance<E> {
   pub fn default(S: &Structure<E>) -> Self {
     FoldedInstance {

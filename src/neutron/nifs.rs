@@ -384,7 +384,7 @@ mod tests {
       PallasEngine, Secp256k1Engine,
     },
     r1cs::R1CSShape,
-    spartan::{direct::DirectCircuit, math::Math, snark::RelaxedR1CSSNARK},
+    spartan::{direct::DirectCircuit, snark::RelaxedR1CSSNARK},
     traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine},
   };
   use ff::Field;
