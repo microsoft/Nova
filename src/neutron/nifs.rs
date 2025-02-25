@@ -371,86 +371,27 @@ impl<E: Engine> NIFS<E> {
 
 #[cfg(test)]
 mod tests {
-  use crate::{
-    frontend::{
-      //num::AllocatedNum,
-      r1cs::{NovaShape, NovaWitness},
-      solver::SatisfyingAssignment,
-      ConstraintSystem, //SynthesisError,
-    },
-    provider::Bn256EngineKZG,
-    r1cs::R1CSShape,
-    traits::Engine,
-  };
-  use ff::Field;
-
   use super::*;
   use crate::{
-    frontend::{shape_cs::ShapeCS, Circuit},
-    provider::hyperkzg::EvaluationEngine,
-    spartan::math::Math,
-    spartan::{direct::DirectCircuit, snark::RelaxedR1CSSNARK},
-    traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait},
+    frontend::{
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+      Circuit, ConstraintSystem,
+    },
+    provider::{
+      hyperkzg::EvaluationEngine as HyperKZGEE, ipa_pc::EvaluationEngine, Bn256EngineKZG,
+      PallasEngine, Secp256k1Engine,
+    },
+    r1cs::R1CSShape,
+    spartan::{direct::DirectCircuit, math::Math, snark::RelaxedR1CSSNARK},
+    traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine},
   };
-
-  fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
-    cs: &mut CS,
-    x_val: Option<Scalar>,
-  ) -> Result<(), SynthesisError> {
-    // Consider a cubic equation: `x^3 + x + 5 = y`, where `x` and `y` are respectively the input and output.
-    let x = AllocatedNum::alloc_infallible(cs.namespace(|| "x"), || x_val.unwrap());
-    let _ = x.inputize(cs.namespace(|| "x is input"));
-
-    let x_sq = x.square(cs.namespace(|| "x_sq"))?;
-    let x_cu = x_sq.mul(cs.namespace(|| "x_cu"), &x)?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-      Ok(x_cu.get_value().unwrap() + x.get_value().unwrap() + Scalar::from(5u64))
-    })?;
-    let _ = y.inputize(cs.namespace(|| "y is output"));
-
-    cs.enforce(
-      || "y = x^3 + x + 5",
-      |lc| {
-        lc + x_cu.get_variable()
-          + x.get_variable()
-          + CS::one()
-          + CS::one()
-          + CS::one()
-          + CS::one()
-          + CS::one()
-      },
-      |lc| lc + CS::one(),
-      |lc| lc + y.get_variable(),
-    );
-
-    Ok(())
-  }
+  use ff::Field;
 
   fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
     let ro_consts =
       <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
-
-    // First create the shape
-    let mut cs: TestShapeCS<E> = TestShapeCS::new();
-    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
-    let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
-
-
-    // Now get the instance and assignment for one instance
-    let mut cs = SatisfyingAssignment::<E>::new();
-    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(E::Scalar::from(5)));
-    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
-
-    // Make sure that the first instance is satisfiable
-    assert!(shape.is_sat(&ck, &U1, &W1).is_ok());
-
-    // Now get the instance and assignment for second instance
-    let mut cs = SatisfyingAssignment::<E>::new();
-    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(E::Scalar::from(135)));
-    let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
-
-    // Make sure that the second instance is satisfiable
-    assert!(shape.is_sat(&ck, &U2, &W2).is_ok());*/
 
     // generate a non-trivial circuit
     let num_cons: usize = 16;
@@ -512,11 +453,9 @@ mod tests {
 
   #[test]
   fn test_tiny_r1cs_bellpepper() {
-    type E = Bn256EngineKZG;
-    type S = RelaxedR1CSSNARK<E, EvaluationEngine<E>>;
-    //test_tiny_r1cs_bellpepper_with::<PallasEngine>();
-    test_tiny_r1cs_bellpepper_with::<E, S>();
-    //test_tiny_r1cs_bellpepper_with::<Secp256k1Engine>();
+    test_tiny_r1cs_bellpepper_with::<PallasEngine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
+    test_tiny_r1cs_bellpepper_with::<Bn256EngineKZG, RelaxedR1CSSNARK<_, HyperKZGEE<_>>>();
+    test_tiny_r1cs_bellpepper_with::<Secp256k1Engine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
   }
 
   fn execute_sequence<E: Engine>(
