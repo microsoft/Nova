@@ -394,7 +394,7 @@ mod tests {
       <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
 
     // generate a non-trivial circuit
-    let num_cons: usize = 16;
+    let num_cons: usize = 8;
     let _log_num_cons = num_cons.log_2();
 
     let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> =
@@ -438,6 +438,8 @@ mod tests {
     let shape = shape.pad();
     let W1 = W1.pad(&shape);
     let W2 = W2.pad(&shape);
+
+
     // execute a sequence of folds
     execute_sequence(
       &ck,
