@@ -47,10 +47,9 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
   #[cfg(test)]
   pub fn evals(&self) -> Vec<Scalar> {
-    let powers = successors(Some(Scalar::ONE), |p| Some(*p * self.t_pow[0]))
+    successors(Some(Scalar::ONE), |p| Some(*p * self.t_pow[0]))
       .take(1 << self.t_pow.len())
-      .collect::<Vec<_>>();
-    powers
+      .collect::<Vec<_>>()
   }
 
   /// Computes two vectors such that their outer product equals the output of the `evals` function.
