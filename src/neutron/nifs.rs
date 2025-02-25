@@ -38,31 +38,38 @@ impl<E: Engine> NIFS<E> {
   #[inline]
   pub fn prove_helper(
     rho: &E::Scalar,
+    f1: &[E::Scalar],
     e1: &[E::Scalar],
     Az1: &[E::Scalar],
     Bz1: &[E::Scalar],
     Cz1: &[E::Scalar],
+    f2: &[E::Scalar],
     e2: &[E::Scalar],
     Az2: &[E::Scalar],
     Bz2: &[E::Scalar],
     Cz2: &[E::Scalar],
-  ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar) {
-    let comb_func = |c1: &E::Scalar, c2: &E::Scalar, c3: &E::Scalar, c4: &E::Scalar| -> E::Scalar {
-      *c1 * (*c2 * *c3 - *c4)
-    };
+  ) -> (E::Scalar, E::Scalar, E::Scalar, E::Scalar, E::Scalar) {
+    let comb_func = |c1: &E::Scalar,
+                     c2: &E::Scalar,
+                     c3: &E::Scalar,
+                     c4: &E::Scalar,
+                     c5: &E::Scalar|
+     -> E::Scalar { *c1 * *c2 * (*c3 * *c4 - *c5) };
 
-    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4) = (0..Az1.len())
+    let (eval_at_0, eval_at_2, eval_at_3, eval_at_4, eval_at_5) = (0..Az1.len())
       .into_par_iter()
       .map(|i| {
         // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&e1[i], &Az1[i], &Bz1[i], &Cz1[i]);
+        let eval_point_0 = comb_func(&f1[i], &e1[i], &Az1[i], &Bz1[i], &Cz1[i]);
 
         // eval 2: bound_func is -A(low) + 2*A(high)
+        let poly_f_bound_point = f2[i] + f2[i] - f1[i];
         let poly_e_bound_point = e2[i] + e2[i] - e1[i];
         let poly_Az_bound_point = Az2[i] + Az2[i] - Az1[i];
         let poly_Bz_bound_point = Bz2[i] + Bz2[i] - Bz1[i];
         let poly_Cz_bound_point = Cz2[i] + Cz2[i] - Cz1[i];
         let eval_point_2 = comb_func(
+          &poly_f_bound_point,
           &poly_e_bound_point,
           &poly_Az_bound_point,
           &poly_Bz_bound_point,
@@ -70,11 +77,13 @@ impl<E: Engine> NIFS<E> {
         );
 
         // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+        let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
         let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
         let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
         let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
         let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
         let eval_point_3 = comb_func(
+          &poly_f_bound_point,
           &poly_e_bound_point,
           &poly_Az_bound_point,
           &poly_Bz_bound_point,
@@ -82,18 +91,40 @@ impl<E: Engine> NIFS<E> {
         );
 
         // eval 4: bound_func is -3A(low) + 4A(high); computed incrementally with bound_func applied to eval(3)
+        let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
         let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
         let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
         let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
         let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
         let eval_point_4 = comb_func(
+          &poly_f_bound_point,
           &poly_e_bound_point,
           &poly_Az_bound_point,
           &poly_Bz_bound_point,
           &poly_Cz_bound_point,
         );
 
-        (eval_point_0, eval_point_2, eval_point_3, eval_point_4)
+        // eval 5: bound_func is -4A(low) + 5A(high); computed incrementally with bound_func applied to eval(4)
+        let poly_f_bound_point = poly_f_bound_point + f2[i] - f1[i];
+        let poly_e_bound_point = poly_e_bound_point + e2[i] - e1[i];
+        let poly_Az_bound_point = poly_Az_bound_point + Az2[i] - Az1[i];
+        let poly_Bz_bound_point = poly_Bz_bound_point + Bz2[i] - Bz1[i];
+        let poly_Cz_bound_point = poly_Cz_bound_point + Cz2[i] - Cz1[i];
+        let eval_point_5 = comb_func(
+          &poly_f_bound_point,
+          &poly_e_bound_point,
+          &poly_Az_bound_point,
+          &poly_Bz_bound_point,
+          &poly_Cz_bound_point,
+        );
+
+        (
+          eval_point_0,
+          eval_point_2,
+          eval_point_3,
+          eval_point_4,
+          eval_point_5,
+        )
       })
       .reduce(
         || {
@@ -102,9 +133,10 @@ impl<E: Engine> NIFS<E> {
             E::Scalar::ZERO,
             E::Scalar::ZERO,
             E::Scalar::ZERO,
+            E::Scalar::ZERO,
           )
         },
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2, a.3 + b.3, a.4 + b.4),
       );
 
     // multiply by the common factors
@@ -112,11 +144,14 @@ impl<E: Engine> NIFS<E> {
     let three_rho_minus_one = E::Scalar::from(3) * rho - E::Scalar::ONE;
     let five_rho_minus_two = E::Scalar::from(5) * rho - E::Scalar::from(2);
     let seven_rho_minus_three = E::Scalar::from(7) * rho - E::Scalar::from(3);
+    let nine_rho_minus_four = E::Scalar::from(9) * rho - E::Scalar::from(4);
+
     (
       eval_at_0 * one_minus_rho,
       eval_at_2 * three_rho_minus_one,
       eval_at_3 * five_rho_minus_two,
       eval_at_4 * seven_rho_minus_three,
+      eval_at_5 * nine_rho_minus_four,
     )
   }
 
@@ -161,13 +196,43 @@ impl<E: Engine> NIFS<E> {
 
     // compute a commitment to the eq polynomial
     let (E1, E2) = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
-    // full_E is the outer outer product of E1 and E2
-    let mut full_E = vec![E::Scalar::ONE; S.left * S.right];
+
+    let mut expanded_E1 = vec![E::Scalar::ONE; S.left * S.right];
+    let mut expanded_E2 = vec![E::Scalar::ONE; S.left * S.right];
+
+    // expanded_E1 = [E1, E1, ..., E1]
     for i in 0..S.right {
       for j in 0..S.left {
-        full_E[i * S.left + j] = E2[i] * E1[j];
+        expanded_E1[i * S.left + j] = E1[j];
       }
     }
+
+    // expanded_E2 = [[E2[0], ..., E2[0]], [E2[1], ..., E2[1]], ..., [E2[right-1], ..., E2[right-1]]]
+    for i in 0..S.right {
+      for j in 0..S.left {
+        expanded_E2[i * S.left + j] = E2[i];
+      }
+    }
+
+    // expanded_E is the outer outer product of E1 and E2
+    let mut expanded_E = vec![E::Scalar::ONE; S.left * S.right];
+    for i in 0..S.right {
+      for j in 0..S.left {
+        expanded_E[i * S.left + j] = E2[i] * E1[j];
+      }
+    }
+
+    // check if expanded_E1 and expanded_E2 are correct
+    for i in 0..expanded_E.len() {
+      assert_eq!(expanded_E[i], expanded_E1[i] * expanded_E2[i]);
+    }
+
+    // lets check if the expanded_E contains powers of \tau
+    let powers_of_tau = PowPolynomial::new(&tau, S.ell).evals();
+    for i in 0..expanded_E.len() {
+      assert_eq!(expanded_E[i], powers_of_tau[i]);
+    }
+
     let E = [E1.clone(), E2.clone()].concat();
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
@@ -193,18 +258,54 @@ impl<E: Engine> NIFS<E> {
     let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
     let (h1, h2, h3) = S.S.multiply_vec(&z2)?;
 
-    // compute full_E for the running instance
-    let mut full_E_running = vec![E::Scalar::ONE; S.left * S.right];
+    // computed expanded_E1_running for the running instance
     let (E1_running, E2_running) = W1.E.split_at(S.left);
+
+    let mut expanded_E1_running = vec![E::Scalar::ONE; S.left * S.right];
     for i in 0..S.right {
       for j in 0..S.left {
-        full_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
+        expanded_E1_running[i * S.left + j] = E1_running[j];
       }
     }
 
+    let mut expanded_E2_running = vec![E::Scalar::ONE; S.left * S.right];
+    for i in 0..S.right {
+      for j in 0..S.left {
+        expanded_E2_running[i * S.left + j] = E2_running[i];
+      }
+    }
+
+    // compute expanded_E for the running instance
+    let mut expanded_E_running = vec![E::Scalar::ONE; S.left * S.right];
+    let (E1_running, E2_running) = W1.E.split_at(S.left);
+    for i in 0..S.right {
+      for j in 0..S.left {
+        expanded_E_running[i * S.left + j] = E2_running[i] * E1_running[j];
+      }
+    }
+
+    // check if expanded_E1_running and expanded_E2_running are correct
+    for i in 0..expanded_E_running.len() {
+      assert_eq!(
+        expanded_E_running[i],
+        expanded_E1_running[i] * expanded_E2_running[i]
+      );
+    }
+
     // compute the sum-check polynomial's evaluations at 0, 2, 3
-    let (eval_point_0, eval_point_2, eval_point_3, eval_point_4) =
-      Self::prove_helper(&rho, &full_E_running, &g1, &g2, &g3, &full_E, &h1, &h2, &h3);
+    let (eval_point_0, eval_point_2, eval_point_3, eval_point_4, eval_point_5) = Self::prove_helper(
+      &rho,
+      &expanded_E2_running,
+      &expanded_E1_running,
+      &g1,
+      &g2,
+      &g3,
+      &expanded_E2,
+      &expanded_E1,
+      &h1,
+      &h2,
+      &h3,
+    );
 
     let evals = vec![
       eval_point_0,
@@ -212,6 +313,7 @@ impl<E: Engine> NIFS<E> {
       eval_point_2,
       eval_point_3,
       eval_point_4,
+      eval_point_5,
     ];
     let poly = UniPoly::<E::Scalar>::from_evals(&evals);
 
@@ -471,14 +573,14 @@ mod tests {
     }
     assert!(res.is_ok());
 
-    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
+    // produce an NIFS with (W1, U1) as the first incoming witness-instance pair
     let res = NIFS::prove(
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U1, W1,
     );
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
-    // verify the step SNARK with U1 as the first incoming instance
+    // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U1);
     assert!(res.is_ok());
     let U = res.unwrap();
@@ -495,14 +597,14 @@ mod tests {
     }
     assert!(res.is_ok());
 
-    // produce a step SNARK with (W2, U2) as the second incoming witness-instance pair
+    // produce an NIFS with (W2, U2) as the second incoming witness-instance pair
     let res = NIFS::prove(
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U2, W2,
     );
     assert!(res.is_ok());
     let (nifs, (_U, W)) = res.unwrap();
 
-    // verify the step SNARK with U1 as the first incoming instance
+    // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U2);
     assert!(res.is_ok());
     let U = res.unwrap();
