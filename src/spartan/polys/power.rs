@@ -13,7 +13,6 @@ pub struct PowPolynomial<Scalar: PrimeField> {
   t_pow: Vec<Scalar>,
 }
 
-#[allow(dead_code)]
 impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Creates a new `PowPolynomial` from a Scalars `t`.
   pub fn new(t: &Scalar, ell: usize) -> Self {
@@ -31,7 +30,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// It expects `rx` to have the same length as the internal vector `t_pow`.
   ///
   /// Panics if `rx` and `t_pow` have different lengths.
-  #[allow(dead_code)]
+  #[cfg(test)]
   pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
     assert_eq!(rx.len(), self.t_pow.len());
 
@@ -46,6 +45,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Evaluates the `PowPolynomial` at all the `2^|t_pow|` points in its domain.
   ///
   /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
+  #[cfg(test)]
   pub fn evals(&self) -> Vec<Scalar> {
     let powers = successors(Some(Scalar::ONE), |p| Some(*p * self.t_pow[0]))
       .take(1 << self.t_pow.len())
@@ -54,6 +54,7 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   }
 
   /// Computes two vectors such that their outer product equals the output of the `evals` function.
+  /// This code ensures
   pub fn split_evals(&self, len_left: usize, len_right: usize) -> Vec<Scalar> {
     // Compute the number of elements in the left and right halves
     let ell = self.t_pow.len();
@@ -63,9 +64,6 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
 
     // Compute the left and right halves of the evaluations
     // left = [1, t, t^2, ..., t^{2^{ell/2} - 1}]
-    //let left = successors(Some(Scalar::ONE), |p| Some(*p * self.t))
-    //  .take(len_left)
-    //  .collect::<Vec<_>>();
     let left = successors(Some(Scalar::ONE), |p| Some(*p * t))
       .take(len_left)
       .collect::<Vec<_>>();
@@ -87,7 +85,10 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
+  use crate::{
+    provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1},
+    spartan::polys::multilinear::MultilinearPolynomial,
+  };
   use rand::rngs::OsRng;
 
   fn test_evals_with<Scalar: PrimeField>() {
@@ -113,6 +114,14 @@ mod tests {
       }
       assert_eq!(evals[i], evals_alt[i]);
     }
+
+    // check if the evaluate method is correct
+    let rx = (0..ell)
+      .map(|_| Scalar::random(&mut OsRng))
+      .collect::<Vec<_>>();
+    let eval = pow.evaluate(&rx);
+    let expected_eval = MultilinearPolynomial::evaluate_with(&evals, &rx);
+    assert_eq!(eval, expected_eval);
   }
 
   #[test]
