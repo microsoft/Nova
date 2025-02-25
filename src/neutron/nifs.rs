@@ -393,7 +393,7 @@ mod tests {
     traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait},
   };
 
-  /*fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  fn synthesize_tiny_r1cs_bellpepper<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     cs: &mut CS,
     x_val: Option<Scalar>,
   ) -> Result<(), SynthesisError> {
@@ -424,13 +424,13 @@ mod tests {
     );
 
     Ok(())
-  }*/
+  }
 
   fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
     let ro_consts =
       <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
 
-    /*// First create the shape
+    // First create the shape
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
