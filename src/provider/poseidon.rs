@@ -8,7 +8,6 @@ use crate::{
     num::AllocatedNum,
     AllocatedBit, Boolean, ConstraintSystem, SynthesisError,
   },
-  gadgets::utils::le_bits_to_num,
   traits::{ROCircuitTrait, ROTrait},
 };
 use core::marker::PhantomData;
@@ -71,24 +70,19 @@ where
     let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
     sponge.finish(acc).unwrap();
 
+    // reset the state to only contain the squeezed value
+    self.state = vec![hash[0]];
+
     // Only return `num_bits`
     let bits = hash[0].to_le_bits();
     let mut res = Scalar::ZERO;
-    let mut res2 = Base::ZERO;
     let mut coeff = Scalar::ONE;
-    let mut coeff2 = Base::ONE;
     for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;
-        res2 += coeff2;
       }
       coeff += coeff;
-      coeff2 += coeff2;
     }
-
-    // reset the state to only contain the squeezed value
-    self.state = vec![res2];
-
     res
   }
 }
@@ -153,24 +147,22 @@ where
     };
 
     let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
-    let c_bits = hash
-      .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
-      .iter()
-      .map(|boolean| match boolean {
-        Boolean::Is(ref x) => x.clone(),
-        _ => panic!("Wrong type of input. We should have never reached there"),
-      })
-      .collect::<Vec<AllocatedBit>>()[..num_bits]
-      .to_vec();
-
-    // convert a vector of bits to a number
-    let c = le_bits_to_num(ns.namespace(|| "bits to num"), &c_bits)?;
 
     // reset the state to only contain the squeezed value
-    self.state = vec![c];
+    self.state = vec![hash.clone()];
 
     // return the hash as a vector of bits, truncated
-    Ok(c_bits)
+    Ok(
+      hash
+        .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
+        .iter()
+        .map(|boolean| match boolean {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Wrong type of input. We should have never reached there"),
+        })
+        .collect::<Vec<AllocatedBit>>()[..num_bits]
+        .to_vec(),
+    )
   }
 }
 

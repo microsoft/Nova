@@ -24,24 +24,6 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
     PowPolynomial { t_pow }
   }
 
-  /// Evaluates the `PowPolynomial` at a given point `rx`.
-  ///
-  /// This function computes the value of the polynomial at the point specified by `rx`.
-  /// It expects `rx` to have the same length as the internal vector `t_pow`.
-  ///
-  /// Panics if `rx` and `t_pow` have different lengths.
-  #[cfg(test)]
-  pub fn evaluate(&self, rx: &[Scalar]) -> Scalar {
-    assert_eq!(rx.len(), self.t_pow.len());
-
-    // compute the polynomial evaluation using \prod_{i=1}^m(1 + (t^{2^i} - 1) * x_i)
-    let mut result = Scalar::ONE;
-    for (t_pow, x) in self.t_pow.iter().zip(rx.iter()) {
-      result *= Scalar::ONE + (*t_pow - Scalar::ONE) * x;
-    }
-    result
-  }
-
   /// Evaluates the `PowPolynomial` at all the `2^|t_pow|` points in its domain.
   ///
   /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
@@ -113,14 +95,6 @@ mod tests {
       }
       assert_eq!(evals[i], evals_alt[i]);
     }
-
-    // check if the evaluate method is correct
-    let rx = (0..ell)
-      .map(|_| Scalar::random(&mut OsRng))
-      .collect::<Vec<_>>();
-    let eval = pow.evaluate(&rx);
-    let expected_eval = MultilinearPolynomial::evaluate_with(&evals, &rx);
-    assert_eq!(eval, expected_eval);
   }
 
   #[test]
