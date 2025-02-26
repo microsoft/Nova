@@ -3,7 +3,10 @@ use crate::{
   frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
-    nonnative::{bignat::BigNat, util::f_to_nat},
+    nonnative::{
+      bignat::BigNat,
+      util::{f_to_nat, Num},
+    },
     r1cs::AllocatedR1CSInstance,
     utils::conditionally_select_bignat,
   },
@@ -209,11 +212,14 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     r_b_bn: &BigNat<E::Base>,
     T_out: &BigNat<E::Base>,
     m_bn: &BigNat<E::Base>,
+    limb_width: usize,
+    n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     // comm_W_fold = self.comm_W + r * (U2.comm_W - self.comm_W)
+    let neg_self_comm_W = self.comm_W.negate(cs.namespace(|| "-self.comm_W"))?;
     let sub = U2
       .comm_W
-      .sub(cs.namespace(|| "U2.comm_W - self.comm_W"), &self.comm_W)?;
+      .add(cs.namespace(|| "U2.comm_W - self.comm_W"), &neg_self_comm_W)?;
     let r_sub = sub.scalar_mul(cs.namespace(|| "r * (U2.comm_W - self.comm_W)"), &r_b_bits)?;
     let comm_W_fold = self.comm_W.add(
       cs.namespace(|| "self.comm_W + r * (U2.comm_W - self.comm_W)"),
@@ -221,7 +227,8 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     )?;
 
     // comm_E_fold = self.comm_E + r * (comm_E - self.comm_E)
-    let sub = comm_E.sub(cs.namespace(|| "comm_E - self.comm_E"), &self.comm_E)?;
+    let neg_self_comm_E = self.comm_E.negate(cs.namespace(|| "-self.comm_E"))?;
+    let sub = comm_E.add(cs.namespace(|| "comm_E - self.comm_E"), &neg_self_comm_E)?;
     let r_sub = sub.scalar_mul(cs.namespace(|| "r * (comm_E - self.comm_E)"), &r_b_bits)?;
     let comm_E_fold = self.comm_E.add(
       cs.namespace(|| "self.comm_E + r * (comm_E - self.comm_E)"),
@@ -240,9 +247,13 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     // Fold the IO:
 
     // Fold self.X[0] + r_b_bn * (X[0] - self.X[0])
-    let sub = U2
-      .X0
-      .sub(cs.namespace(|| "U2.X[0] - self.X[0]"), &self.X0)?;
+    let U2_X0 = BigNat::from_num(
+      cs.namespace(|| "allocate U2_X0"),
+      &Num::from(U2.X0.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+    let sub = U2_X0.sub(cs.namespace(|| "U2.X[0] - self.X[0]"), &self.X0)?;
     let (_, r_sub) = sub.mult_mod(
       cs.namespace(|| "r_b_bn * (X[0] - self.X[0])"),
       &r_b_bn,
@@ -252,9 +263,13 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     let X0_fold = res.red_mod(cs.namespace(|| "reduce folded X[0]"), m_bn)?;
 
     // Fold self.X[1] + r_b_bn * (X[1] - self.X[1])
-    let sub = U2
-      .X1
-      .sub(cs.namespace(|| "U2.X[1] - self.X[1]"), &self.X1)?;
+    let U2_X1 = BigNat::from_num(
+      cs.namespace(|| "allocate U2_X1"),
+      &Num::from(U2.X1.clone()),
+      limb_width,
+      n_limbs,
+    )?;
+    let sub = U2_X1.sub(cs.namespace(|| "U2.X[1] - self.X[1]"), &self.X1)?;
     let (_, r_sub) = sub.mult_mod(
       cs.namespace(|| "r_b_bn * (X[1] - self.X[1])"),
       &r_b_bn,
