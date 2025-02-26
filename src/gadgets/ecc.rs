@@ -112,17 +112,6 @@ where
     })
   }
 
-  /// Returns coordinates associated with the point.
-  pub const fn get_coordinates(
-    &self,
-  ) -> (
-    &AllocatedNum<E::Base>,
-    &AllocatedNum<E::Base>,
-    &AllocatedNum<E::Base>,
-  ) {
-    (&self.x, &self.y, &self.is_infinity)
-  }
-
   /// Negates the provided point
   pub fn negate<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
     let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(-*self.y.get_value().get()?))?;
@@ -594,30 +583,7 @@ pub struct AllocatedPointNonInfinity<E: Engine> {
   y: AllocatedNum<E::Base>,
 }
 
-impl<E> AllocatedPointNonInfinity<E>
-where
-  E: Engine,
-{
-  /// Creates a new `AllocatedPointNonInfinity` from the specified coordinates
-  pub const fn new(x: AllocatedNum<E::Base>, y: AllocatedNum<E::Base>) -> Self {
-    Self { x, y }
-  }
-
-  /// Allocates a new point on the curve using coordinates provided by `coords`.
-  pub fn alloc<CS: ConstraintSystem<E::Base>>(
-    mut cs: CS,
-    coords: Option<(E::Base, E::Base)>,
-  ) -> Result<Self, SynthesisError> {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
-    })?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.1))
-    })?;
-
-    Ok(Self { x, y })
-  }
-
+impl<E: Engine> AllocatedPointNonInfinity<E> {
   /// Turns an `AllocatedPoint` into an `AllocatedPointNonInfinity` (assumes it is not infinity)
   pub fn from_allocated_point(p: &AllocatedPoint<E>) -> Self {
     Self {
@@ -636,11 +602,6 @@ where
       y: self.y.clone(),
       is_infinity: is_infinity.clone(),
     })
-  }
-
-  /// Returns coordinates associated with the point.
-  pub const fn get_coordinates(&self) -> (&AllocatedNum<E::Base>, &AllocatedNum<E::Base>) {
-    (&self.x, &self.y)
   }
 
   /// Add two points assuming self != +/- other

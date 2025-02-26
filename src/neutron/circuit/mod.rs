@@ -11,7 +11,6 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedPoint,
-    r1cs::AllocatedR1CSInstance,
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
@@ -26,16 +25,18 @@ use ff::Field;
 use serde::{Deserialize, Serialize};
 
 mod r1cs;
-use r1cs::AllocatedRelaxedR1CSInstance;
+use r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 
+/// A type that holds the parameters for the augmented circuit
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct NovaAugmentedCircuitParams {
+pub struct NeutronAugmentedCircuitParams {
   limb_width: usize,
   n_limbs: usize,
   is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
-impl NovaAugmentedCircuitParams {
+impl NeutronAugmentedCircuitParams {
+  /// Create new parameters for the augmented circuit
   pub const fn new(limb_width: usize, n_limbs: usize, is_primary_circuit: bool) -> Self {
     Self {
       limb_width,
@@ -45,9 +46,10 @@ impl NovaAugmentedCircuitParams {
   }
 }
 
+/// A type that holds the non-deterministic inputs for the augmented circuit
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NovaAugmentedCircuitInputs<E: Engine> {
+pub struct NeutronAugmentedCircuitInputs<E: Engine> {
   params: E::Scalar,
   i: E::Base,
   z0: Vec<E::Base>,
@@ -59,7 +61,7 @@ pub struct NovaAugmentedCircuitInputs<E: Engine> {
   T: Option<Commitment<E>>,
 }
 
-impl<E: Engine> NovaAugmentedCircuitInputs<E> {
+impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
     params: E::Scalar,
@@ -88,18 +90,18 @@ impl<E: Engine> NovaAugmentedCircuitInputs<E> {
 
 /// The augmented circuit F' in Nova that includes a step circuit F
 /// and the circuit for the verifier in Nova's non-interactive folding scheme
-pub struct NovaAugmentedCircuit<'a, E: Engine, SC: StepCircuit<E::Base>> {
-  params: &'a NovaAugmentedCircuitParams,
+pub struct NeutronAugmentedCircuit<'a, E: Engine, SC: StepCircuit<E::Base>> {
+  params: &'a NeutronAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<E>,
-  inputs: Option<NovaAugmentedCircuitInputs<E>>,
+  inputs: Option<NeutronAugmentedCircuitInputs<E>>,
   step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
+impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC> {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
-    params: &'a NovaAugmentedCircuitParams,
-    inputs: Option<NovaAugmentedCircuitInputs<E>>,
+    params: &'a NeutronAugmentedCircuitParams,
+    inputs: Option<NeutronAugmentedCircuitInputs<E>>,
     step_circuit: &'a SC,
     ro_consts: ROConstantsCircuit<E>,
   ) -> Self {
@@ -268,7 +270,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   }
 }
 
-impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
+impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
   /// synthesize circuit giving constraint system
   pub fn synthesize<CS: ConstraintSystem<<E as Engine>::Base>>(
     self,
@@ -394,8 +396,8 @@ mod tests {
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
   fn test_recursive_circuit_with<E1, E2>(
-    primary_params: &NovaAugmentedCircuitParams,
-    secondary_params: &NovaAugmentedCircuitParams,
+    primary_params: &NeutronAugmentedCircuitParams,
+    secondary_params: &NeutronAugmentedCircuitParams,
     ro_consts1: ROConstantsCircuit<E2>,
     ro_consts2: ROConstantsCircuit<E1>,
     num_constraints_primary: usize,
@@ -406,8 +408,8 @@ mod tests {
   {
     let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary
-    let circuit1: NovaAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
-      NovaAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
+    let circuit1: NeutronAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
+      NeutronAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
     let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
@@ -415,8 +417,8 @@ mod tests {
 
     let tc2 = TrivialCircuit::default();
     // Initialize the shape and ck for the secondary
-    let circuit2: NovaAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
-      NovaAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
+    let circuit2: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
+      NeutronAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
@@ -426,7 +428,7 @@ mod tests {
     let zero1 = <<E2 as Engine>::Base as Field>::ZERO;
     let ri_1 = <<E2 as Engine>::Base as Field>::ZERO;
     let mut cs1 = SatisfyingAssignment::<E1>::new();
-    let inputs1: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
+    let inputs1: NeutronAugmentedCircuitInputs<E2> = NeutronAugmentedCircuitInputs::new(
       scalar_as_base::<E1>(zero1), // pass zero for testing
       zero1,
       vec![zero1],
@@ -437,8 +439,8 @@ mod tests {
       None,
       None,
     );
-    let circuit1: NovaAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
-      NovaAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
+    let circuit1: NeutronAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
+      NeutronAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
     let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
     // Make sure that this is satisfiable
@@ -448,7 +450,7 @@ mod tests {
     let zero2 = <<E1 as Engine>::Base as Field>::ZERO;
     let ri_2 = <<E1 as Engine>::Base as Field>::ZERO;
     let mut cs2 = SatisfyingAssignment::<E2>::new();
-    let inputs2: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
+    let inputs2: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
       scalar_as_base::<E2>(zero2), // pass zero for testing
       zero2,
       vec![zero2],
@@ -459,8 +461,8 @@ mod tests {
       Some(inst1),
       None,
     );
-    let circuit2: NovaAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
-      NovaAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
+    let circuit2: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
+      NeutronAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
     let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
     // Make sure that it is satisfiable
@@ -470,8 +472,8 @@ mod tests {
   #[test]
   fn test_recursive_circuit_pasta() {
     // this test checks against values that must be replicated in benchmarks if changed here
-    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<VestaEngine> = PoseidonConstantsCircuit::default();
     let ro_consts2: ROConstantsCircuit<PallasEngine> = PoseidonConstantsCircuit::default();
 
@@ -482,8 +484,8 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit_bn256_grumpkin() {
-    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<GrumpkinEngine> = PoseidonConstantsCircuit::default();
     let ro_consts2: ROConstantsCircuit<Bn256EngineKZG> = PoseidonConstantsCircuit::default();
 
@@ -494,8 +496,8 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit_secpq() {
-    let params1 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NovaAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
+    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
+    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
     let ro_consts1: ROConstantsCircuit<Secq256k1Engine> = PoseidonConstantsCircuit::default();
     let ro_consts2: ROConstantsCircuit<Secp256k1Engine> = PoseidonConstantsCircuit::default();
 
