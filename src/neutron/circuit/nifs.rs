@@ -86,7 +86,7 @@ impl<E: Engine> AllocatedNIFS<E> {
     // absorb poly in the RO
     self
       .poly
-      .absorb_in_ro(cs.namespace(|| "absorb poly"), &mut ro);
+      .absorb_in_ro(cs.namespace(|| "absorb poly"), &mut ro)?;
 
     // squeeze a challenge
     let r_b_bits = ro.squeeze(cs.namespace(|| "r_b_bits"), NUM_CHALLENGE_BITS)?;
@@ -130,6 +130,8 @@ impl<E: Engine> AllocatedNIFS<E> {
       &r_b_bn,
       &T_out,
       &m_bn,
+      limb_width,
+      n_limbs,
     )?;
 
     // return the folded instance and witness
