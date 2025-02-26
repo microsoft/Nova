@@ -1,12 +1,9 @@
 //! This module implements a non-interactive folding scheme from NeutronNova
 #![allow(non_snake_case)]
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_CHALLENGE_BITS},
+  constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  gadgets::{
-    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
-    utils::scalar_as_base,
-  },
+  gadgets::utils::scalar_as_base,
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::polys::{power::PowPolynomial, univariate::UniPoly},
@@ -199,8 +196,7 @@ impl<E: Engine> NIFS<E> {
   /// with the guarantee that the folded witness `W` satisfies the folded instance `U`
   /// if and only if `W1` satisfies `U1` and `W2` satisfies `U2`.
   ///
-  /// TODO: Revisit the following note
-  /// Note that this code is tailored for use with Nova's IVC scheme, which enforces
+  /// Note that this code is tailored for use with NeutronNova's IVC scheme, which enforces
   /// certain requirements between the two instances that are folded.
   /// In particular, it requires that `U1` and `U2` are such that the hash of `U1` is stored in the public IO of `U2`.
   /// In this particular setting, this means that if `U2` is absorbed in the RO, it implicitly absorbs `U1` as well.
@@ -221,10 +217,6 @@ impl<E: Engine> NIFS<E> {
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
 
-    // append U1 to transcript
-    // TODO: revisit this once we have the full folding scheme
-    U1.absorb_in_ro(&mut ro);
-
     // append U2 to transcript
     U2.absorb_in_ro(&mut ro);
 
@@ -236,13 +228,7 @@ impl<E: Engine> NIFS<E> {
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
-    // absorb tau in bignum format
-    // TODO: factor out this code
-    let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(&tau), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-    for limb in limbs {
-      ro.absorb(scalar_as_base::<E>(limb));
-    }
-    comm_E.absorb_in_ro(&mut ro); // absorb the commitment
+    comm_E.absorb_in_ro(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
     let rho = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -316,23 +302,13 @@ impl<E: Engine> NIFS<E> {
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
 
-    // append U1 to transcript
-    // TODO: revisit this once we have the full folding scheme
-    U1.absorb_in_ro(&mut ro);
-
     // append U2 to transcript
     U2.absorb_in_ro(&mut ro);
 
     // generate a challenge for the eq polynomial
-    let tau = ro.squeeze(NUM_CHALLENGE_BITS);
+    let _tau = ro.squeeze(NUM_CHALLENGE_BITS);
 
-    // absorb tau in bignum format
-    // TODO: factor out this code
-    let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(&tau), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-    for limb in limbs {
-      ro.absorb(scalar_as_base::<E>(limb));
-    }
-    self.comm_E.absorb_in_ro(&mut ro); // absorb the commitment
+    self.comm_E.absorb_in_ro(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
     let rho = ro.squeeze(NUM_CHALLENGE_BITS);
