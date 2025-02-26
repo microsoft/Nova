@@ -11,6 +11,7 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedPoint,
+    r1cs::AllocatedR1CSInstance,
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
@@ -25,7 +26,7 @@ use ff::Field;
 use serde::{Deserialize, Serialize};
 
 mod r1cs;
-use r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
+use r1cs::AllocatedRelaxedR1CSInstance;
 
 /// A type that holds the parameters for the augmented circuit
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
