@@ -28,7 +28,7 @@ use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};*/
 
-//pub mod circuit;
+pub mod circuit;
 pub mod nifs;
 mod relation;
 

@@ -42,8 +42,8 @@ pub struct FoldedWitness<E: Engine> {
 /// A type that holds instance information for a zero-fold relation
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FoldedInstance<E: Engine> {
-  comm_W: Commitment<E>,
-  comm_E: Commitment<E>,
+  pub(crate) comm_W: Commitment<E>,
+  pub(crate) comm_E: Commitment<E>,
   pub(crate) T: E::Scalar,
   pub(crate) u: E::Scalar,
   pub(crate) X: Vec<E::Scalar>,

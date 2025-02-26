@@ -1,21 +1,14 @@
 //! This module implements various gadgets necessary for folding R1CS types with NeutronNova folding scheme.
 use crate::{
-  constants::NUM_CHALLENGE_BITS,
-  frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
+  frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
-    nonnative::{
-      bignat::BigNat,
-      util::{f_to_nat, Num},
-    },
+    nonnative::{bignat::BigNat, util::f_to_nat},
     r1cs::AllocatedR1CSInstance,
-    utils::{
-      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
-      conditionally_select_bignat, le_bits_to_num,
-    },
+    utils::conditionally_select_bignat,
   },
   neutron::relation::FoldedInstance,
-  traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
+  traits::{commitment::CommitmentTrait, Engine, ROCircuitTrait},
 };
 use ff::Field;
 
@@ -98,7 +91,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     let comm_W = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
-    let comm_E = W.clone();
+    let comm_E = comm_W.clone();
 
     // Allocate T = 0. Similar to X0 and X1, we do not need to check that T is well-formed
     let T = BigNat::alloc_from_nat(
@@ -207,98 +200,73 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
   }
 
   /// Folds self with an r1cs instance and returns the result
-  pub fn fold_with_r1cs<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn fold<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    vk: &AllocatedNum<E::Base>, // verifier key
-    u: &AllocatedR1CSInstance<E>,
-    T: &AllocatedPoint<E>,
-    ro_consts: ROConstantsCircuit<E>,
-    limb_width: usize,
-    n_limbs: usize,
-  ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
-    // Compute r:
-    let mut ro = E::ROCircuit::new(ro_consts);
-    ro.absorb(vk);
+    U2: &AllocatedR1CSInstance<E>,
+    comm_E: &AllocatedPoint<E>,
+    r_b_bits: &[AllocatedBit],
+    r_b_bn: &BigNat<E::Base>,
+    T_out: &BigNat<E::Base>,
+    m_bn: &BigNat<E::Base>,
+  ) -> Result<Self, SynthesisError> {
+    // comm_W_fold = self.comm_W + r * (U2.comm_W - self.comm_W)
+    let sub = U2
+      .comm_W
+      .sub(cs.namespace(|| "U2.comm_W - self.comm_W"), &self.comm_W)?;
+    let r_sub = sub.scalar_mul(cs.namespace(|| "r * (U2.comm_W - self.comm_W)"), &r_b_bits)?;
+    let comm_W_fold = self.comm_W.add(
+      cs.namespace(|| "self.comm_W + r * (U2.comm_W - self.comm_W)"),
+      &r_sub,
+    )?;
 
-    // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
-    u.absorb_in_ro(&mut ro);
+    // comm_E_fold = self.comm_E + r * (comm_E - self.comm_E)
+    let sub = comm_E.sub(cs.namespace(|| "comm_E - self.comm_E"), &self.comm_E)?;
+    let r_sub = sub.scalar_mul(cs.namespace(|| "r * (comm_E - self.comm_E)"), &r_b_bits)?;
+    let comm_E_fold = self.comm_E.add(
+      cs.namespace(|| "self.comm_E + r * (comm_E - self.comm_E)"),
+      &r_sub,
+    )?;
 
-    ro.absorb(&T.x);
-    ro.absorb(&T.y);
-    ro.absorb(&T.is_infinity);
-    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
-    let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
-
-    // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
-    let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
-
-    // E_fold = self.E + r * T
-    let rT = T.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
-    let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rT)?;
-
-    // u_fold = u_r + r
-    let u_fold = AllocatedNum::alloc(cs.namespace(|| "u_fold"), || {
-      Ok(*self.u.get_value().get()? + r.get_value().get()?)
-    })?;
-    cs.enforce(
-      || "Check u_fold",
-      |lc| lc,
-      |lc| lc,
-      |lc| lc + u_fold.get_variable() - self.u.get_variable() - r.get_variable(),
-    );
+    // u_fold = self.u - self.u * r_b_bn
+    let (_, mul) = self
+      .u
+      .mult_mod(cs.namespace(|| "self.u * r_b_bn"), &r_b_bn, &m_bn)?;
+    let res = self
+      .u
+      .sub(cs.namespace(|| "self.u - self.u * r_b_bn"), &mul)?;
+    let u_fold = res.red_mod(cs.namespace(|| "reduce folded u"), m_bn)?;
 
     // Fold the IO:
-    // Analyze r into limbs
-    let r_bn = BigNat::from_num(
-      cs.namespace(|| "allocate r_bn"),
-      &Num::from(r),
-      limb_width,
-      n_limbs,
+
+    // Fold self.X[0] + r_b_bn * (X[0] - self.X[0])
+    let sub = U2
+      .X0
+      .sub(cs.namespace(|| "U2.X[0] - self.X[0]"), &self.X0)?;
+    let (_, r_sub) = sub.mult_mod(
+      cs.namespace(|| "r_b_bn * (X[0] - self.X[0])"),
+      &r_b_bn,
+      m_bn,
     )?;
+    let res = self.X0.add(&r_sub)?;
+    let X0_fold = res.red_mod(cs.namespace(|| "reduce folded X[0]"), m_bn)?;
 
-    // Allocate the order of the non-native field as a constant
-    let m_bn = alloc_bignat_constant(
-      cs.namespace(|| "alloc m"),
-      &E::GE::group_params().2,
-      limb_width,
-      n_limbs,
+    // Fold self.X[1] + r_b_bn * (X[1] - self.X[1])
+    let sub = U2
+      .X1
+      .sub(cs.namespace(|| "U2.X[1] - self.X[1]"), &self.X1)?;
+    let (_, r_sub) = sub.mult_mod(
+      cs.namespace(|| "r_b_bn * (X[1] - self.X[1])"),
+      &r_b_bn,
+      m_bn,
     )?;
-
-    // Analyze X0 to bignat
-    let X0_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X0_bn"),
-      &Num::from(u.X0.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
-    // Fold self.X[0] + r * X[0]
-    let (_, r_0) = X0_bn.mult_mod(cs.namespace(|| "r*X[0]"), &r_bn, &m_bn)?;
-    // add X_r[0]
-    let r_new_0 = self.X0.add(&r_0)?;
-    // Now reduce
-    let X0_fold = r_new_0.red_mod(cs.namespace(|| "reduce folded X[0]"), &m_bn)?;
-
-    // Analyze X1 to bignat
-    let X1_bn = BigNat::from_num(
-      cs.namespace(|| "allocate X1_bn"),
-      &Num::from(u.X1.clone()),
-      limb_width,
-      n_limbs,
-    )?;
-
-    // Fold self.X[1] + r * X[1]
-    let (_, r_1) = X1_bn.mult_mod(cs.namespace(|| "r*X[1]"), &r_bn, &m_bn)?;
-    // add X_r[1]
-    let r_new_1 = self.X1.add(&r_1)?;
-    // Now reduce
-    let X1_fold = r_new_1.red_mod(cs.namespace(|| "reduce folded X[1]"), &m_bn)?;
+    let res = self.X1.add(&r_sub)?;
+    let X1_fold = res.red_mod(cs.namespace(|| "reduce folded X[1]"), m_bn)?;
 
     Ok(Self {
-      W: W_fold,
-      E: E_fold,
+      comm_W: comm_W_fold,
+      comm_E: comm_E_fold,
+      T: T_out.clone(),
       u: u_fold,
       X0: X0_fold,
       X1: X1_fold,
@@ -309,9 +277,9 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
   pub fn conditionally_select<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    other: &AllocatedRelaxedR1CSInstance<E>,
+    other: &Self,
     condition: &Boolean,
-  ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
+  ) -> Result<Self, SynthesisError> {
     let comm_W = AllocatedPoint::conditionally_select(
       cs.namespace(|| "W = cond ? self.W : other.W"),
       &self.comm_W,
@@ -354,7 +322,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
       condition,
     )?;
 
-    Ok(AllocatedRelaxedR1CSInstance {
+    Ok(Self {
       comm_W,
       comm_E,
       T,

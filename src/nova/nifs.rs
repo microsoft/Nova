@@ -123,7 +123,7 @@ impl<E: Engine> NIFSRelaxed<E> {
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
-    pp_digest: &E::Scalar,
+    vk: &E::Scalar,
     S: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
     W1: &RelaxedR1CSWitness<E>,
@@ -139,8 +139,8 @@ impl<E: Engine> NIFSRelaxed<E> {
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
 
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    // append vk to the transcript
+    ro.absorb(scalar_as_base::<E>(*vk));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)

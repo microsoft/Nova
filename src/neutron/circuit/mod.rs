@@ -4,7 +4,7 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
-use crate::{
+/*use crate::{
   constants::NUM_HASH_BITS,
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
@@ -23,15 +23,16 @@ use crate::{
   Commitment,
 };
 use ff::Field;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};*/
 
-mod nifs;
-mod relation;
-mod univariate;
+pub mod nifs;
+pub mod relation;
+pub mod univariate;
 
-use nifs::AllocatedNIFS;
-use relation::AllocatedRelaxedR1CSInstance;
+//use nifs::AllocatedNIFS;
+//use relation::AllocatedFoldedInstance;
 
+/*
 /// A type that holds the parameters for the augmented circuit
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NeutronAugmentedCircuitParams {
@@ -486,3 +487,4 @@ mod tests {
     );
   }
 }
+*/

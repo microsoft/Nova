@@ -130,7 +130,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance {
-      W: inst.W,
+      W: inst.comm_W,
       E,
       u,
       X0,
@@ -212,7 +212,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
+    let rW = u.comm_W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T

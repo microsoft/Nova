@@ -1,30 +1,18 @@
 //! Circuit representation of a univariate polynomial
 use crate::{
-  constants::NUM_CHALLENGE_BITS,
-  frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
-  gadgets::{
-    ecc::AllocatedPoint,
-    nonnative::{
-      bignat::BigNat,
-      util::{f_to_nat, Num},
-    },
-    r1cs::AllocatedR1CSInstance,
-    utils::{
-      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
-      conditionally_select_bignat, le_bits_to_num,
-    },
-  },
-  neutron::relation::FoldedInstance,
-  traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
+  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
+  gadgets::nonnative::{bignat::BigNat, util::f_to_nat},
+  spartan::polys::univariate::UniPoly,
+  traits::{Engine, ROCircuitTrait},
 };
 use ff::Field;
 
-/// An in-circuit representation of NeutronNova's NIFS
+/// An in-circuit representation of `UniPoly` type
 pub struct AllocatedUniPoly<E: Engine> {
   coeffs: Vec<BigNat<E::Base>>,
 }
 
-impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
+impl<E: Engine> AllocatedUniPoly<E> {
   /// Allocates the given `UniPoly` as a witness of the circuit
   pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
     mut cs: CS,
@@ -49,7 +37,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
       })
       .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(AllocatedUniPoly { coeffs })
+    Ok(Self { coeffs })
   }
 
   /// Returns the evaluation of the polynomial at 0
@@ -58,19 +46,24 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   }
 
   /// Returns the evaluation of the polynomial at 1
-  pub fn eval_at_one(&self) -> Result<BigNat<E::Base>, SynthesisError> {
+  pub fn eval_at_one<CS: ConstraintSystem<<E as Engine>::Base>>(
+    &self,
+    mut cs: CS,
+    m_bn: &BigNat<E::Base>,
+  ) -> Result<BigNat<E::Base>, SynthesisError> {
     let mut eval = self.coeffs[0].clone();
     for coeff in self.coeffs.iter().skip(1) {
-      eval = eval.add(cs.namespace(|| "eval + coeff"), &coeff)?;
+      eval = eval.add(&coeff)?;
     }
-    eval = eval.red_mod(cs.namespace(|| "eval reduced"))?;
+    eval = eval.red_mod(cs.namespace(|| "eval reduced"), &m_bn)?;
     Ok(eval)
   }
 
   /// Evaluate the polynomial at the provided point
   /// `m_bn` is the modulus of the scalar field that is emulated by the bignat
-  pub fn evaluate(
+  pub fn evaluate<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
+    mut cs: CS,
     r: &BigNat<E::Base>,
     m_bn: &BigNat<E::Base>,
   ) -> Result<BigNat<E::Base>, SynthesisError> {
@@ -80,14 +73,22 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
       // eval = eval + power * coeff
       let (_, power_times_coeff) =
         power.mult_mod(cs.namespace(|| "power * coeff"), &coeff, &m_bn)?;
-      eval = eval.add(cs.namespace(|| "eval + power * coeff"), &power_times_coeff)?;
+      eval = eval.add(&power_times_coeff)?;
       eval = eval.red_mod(cs.namespace(|| "eval reduced"), &m_bn)?;
+
+      // power = power * r
+      let (_, new_power) = power.mult_mod(cs.namespace(|| "power * r"), &r, &m_bn)?;
+      power = new_power.red_mod(cs.namespace(|| "power reduced"), &m_bn)?;
     }
     Ok(eval)
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
+  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::ROCircuit,
+  ) -> Result<(), SynthesisError> {
     for coeff in &self.coeffs {
       let coeff_bn = coeff
         .as_limbs()
@@ -103,5 +104,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
         ro.absorb(&limb);
       }
     }
+    Ok(())
   }
 }
