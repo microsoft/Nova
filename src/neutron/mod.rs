@@ -1,5 +1,4 @@
-//! This module implements an IVC scheme and a proof compression scheme
-//! based on the NeutronNova folding scheme.
+//! This module implements an IVC scheme based on the NeutronNova folding scheme.
 
 /*use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
