@@ -4,35 +4,32 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
-/*use crate::{
+use crate::{
   constants::NUM_HASH_BITS,
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
   },
   gadgets::{
-    ecc::AllocatedPoint,
+    nonnative::{bignat::BigNat, util::f_to_nat},
     r1cs::AllocatedR1CSInstance,
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
     },
   },
-  r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
-  },
-  Commitment,
+  neutron::{nifs::NIFS, relation::FoldedInstance},
+  r1cs::R1CSInstance,
+  traits::{circuit::StepCircuit, Engine, ROCircuitTrait, ROConstantsCircuit},
 };
 use ff::Field;
-use serde::{Deserialize, Serialize};*/
+use serde::{Deserialize, Serialize};
 
 pub mod nifs;
 pub mod relation;
 pub mod univariate;
 
-//use nifs::AllocatedNIFS;
-//use relation::AllocatedFoldedInstance;
+use nifs::AllocatedNIFS;
+use relation::AllocatedFoldedInstance;
 
-/*
 /// A type that holds the parameters for the augmented circuit
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NeutronAugmentedCircuitParams {
@@ -60,11 +57,12 @@ pub struct NeutronAugmentedCircuitInputs<E: Engine> {
   i: E::Base,
   z0: Vec<E::Base>,
   zi: Option<Vec<E::Base>>,
-  U: Option<RelaxedR1CSInstance<E>>,
+  U: Option<FoldedInstance<E>>,
   ri: Option<E::Base>,
   r_next: E::Base,
   u: Option<R1CSInstance<E>>,
-  T: Option<Commitment<E>>,
+  nifs: Option<NIFS<E>>,
+  eq_rho_r_b_inv: Option<E::Scalar>,
 }
 
 impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
@@ -74,11 +72,12 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
     i: E::Base,
     z0: Vec<E::Base>,
     zi: Option<Vec<E::Base>>,
-    U: Option<RelaxedR1CSInstance<E>>,
+    U: Option<FoldedInstance<E>>,
     ri: Option<E::Base>,
     r_next: E::Base,
     u: Option<R1CSInstance<E>>,
-    T: Option<Commitment<E>>,
+    nifs: Option<NIFS<E>>,
+    eq_rho_r_b_inv: Option<E::Scalar>,
   ) -> Self {
     Self {
       params,
@@ -89,13 +88,14 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
       ri,
       r_next,
       u,
-      T,
+      nifs,
+      eq_rho_r_b_inv,
     }
   }
 }
 
-/// The augmented circuit F' in Nova that includes a step circuit F
-/// and the circuit for the verifier in Nova's non-interactive folding scheme
+/// The augmented circuit F' in Neutron that includes a step circuit F
+/// and the circuit for the verifier in Neutron's non-interactive folding scheme
 pub struct NeutronAugmentedCircuit<'a, E: Engine, SC: StepCircuit<E::Base>> {
   params: &'a NeutronAugmentedCircuitParams,
   ro_consts: ROConstantsCircuit<E>,
@@ -130,11 +130,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       AllocatedNum<E::Base>,
       Vec<AllocatedNum<E::Base>>,
       Vec<AllocatedNum<E::Base>>,
-      AllocatedRelaxedR1CSInstance<E>,
+      AllocatedFoldedInstance<E>,
       AllocatedNum<E::Base>,
       AllocatedNum<E::Base>,
       AllocatedR1CSInstance<E>,
-      AllocatedPoint<E>,
+      AllocatedNIFS<E>,
+      BigNat<E::Base>,
     ),
     SynthesisError,
   > {
@@ -167,7 +168,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
     // Allocate the running instance
-    let U: AllocatedRelaxedR1CSInstance<E> = AllocatedRelaxedR1CSInstance::alloc(
+    let U: AllocatedFoldedInstance<E> = AllocatedFoldedInstance::alloc(
       cs.namespace(|| "Allocate U"),
       self.inputs.as_ref().and_then(|inputs| inputs.U.as_ref()),
       self.params.limb_width,
@@ -188,17 +189,33 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       self.inputs.as_ref().and_then(|inputs| inputs.u.as_ref()),
     )?;
 
-    // Allocate T
-    let T = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate T"),
-      self
-        .inputs
-        .as_ref()
-        .and_then(|inputs| inputs.T.map(|T| T.to_coordinates())),
+    // Allocate nifs
+    let nifs = AllocatedNIFS::alloc(
+      cs.namespace(|| "allocate nifs"),
+      self.inputs.as_ref().and_then(|inputs| inputs.nifs.as_ref()),
+      5, // TODO: take this as input
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
-    T.check_on_curve(cs.namespace(|| "check T on curve"))?;
 
-    Ok((params, i, z_0, z_i, U, r_i, r_next, u, T))
+    // Allocate eq_rho_r_b_inv
+    let eq_rho_r_b_inv = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate eq_rho_r_b_inv"),
+      || {
+        Ok(f_to_nat(
+          &self
+            .inputs
+            .get()?
+            .eq_rho_r_b_inv
+            .clone()
+            .unwrap_or(E::Scalar::ZERO),
+        ))
+      },
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
+
+    Ok((params, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv))
   }
 
   /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
@@ -210,11 +227,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     i: &AllocatedNum<E::Base>,
     z_0: &[AllocatedNum<E::Base>],
     z_i: &[AllocatedNum<E::Base>],
-    U: &AllocatedFoldedR1CSInstance<E>,
+    U: &AllocatedFoldedInstance<E>,
     r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
-    T: &AllocatedPoint<E>,
-  ) -> Result<(AllocatedRelaxedR1CSInstance<E>, AllocatedBit), SynthesisError> {
+    nifs: &AllocatedNIFS<E>,
+    eq_rho_r_b_inv: &BigNat<E::Base>,
+  ) -> Result<(AllocatedFoldedInstance<E>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = E::ROCircuit::new(self.ro_consts.clone());
     ro.absorb(params);
@@ -237,11 +255,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     )?;
 
     // Run NIFS Verifier
-    let U_fold = U.fold_with_r1cs(
+    let U_fold = nifs.verify(
       cs.namespace(|| "compute fold of U and u"),
       params,
+      U,
       u,
-      T,
+      eq_rho_r_b_inv,
       self.ro_consts.clone(),
       self.params.limb_width,
       self.params.n_limbs,
@@ -260,7 +279,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, r_i, r_next, u, T) =
+    let (params, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -268,7 +287,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // Synthesize the circuit for the base case and get the new running instance
-    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
+    //let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
@@ -281,7 +300,8 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
       &U,
       &r_i,
       &u,
-      &T,
+      &nifs,
+      &eq_rho_r_b_inv,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -298,11 +318,13 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     );
 
     // Compute the U_new
-    let Unew = Unew_base.conditionally_select(
+    let Unew = Unew_non_base;
+
+    /*Unew_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
       &Unew_non_base,
       &Boolean::from(is_base_case.clone()),
-    )?;
+    )?;*/
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
@@ -487,4 +509,3 @@ mod tests {
     );
   }
 }
-*/
