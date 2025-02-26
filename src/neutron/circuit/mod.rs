@@ -25,8 +25,12 @@ use crate::{
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-mod r1cs;
-use r1cs::AllocatedRelaxedR1CSInstance;
+mod nifs;
+mod relation;
+mod univariate;
+
+use nifs::AllocatedNIFS;
+use relation::AllocatedRelaxedR1CSInstance;
 
 /// A type that holds the parameters for the augmented circuit
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,31 +200,6 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     Ok((params, i, z_0, z_i, U, r_i, r_next, u, T))
   }
 
-  /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-  fn synthesize_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
-    &self,
-    mut cs: CS,
-    u: AllocatedR1CSInstance<E>,
-  ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
-    let U_default: AllocatedRelaxedR1CSInstance<E> = if self.params.is_primary_circuit {
-      // The primary circuit just returns the default R1CS instance
-      AllocatedRelaxedR1CSInstance::default(
-        cs.namespace(|| "Allocate U_default"),
-        self.params.limb_width,
-        self.params.n_limbs,
-      )?
-    } else {
-      // The secondary circuit returns the incoming R1CS instance
-      AllocatedRelaxedR1CSInstance::from_r1cs_instance(
-        cs.namespace(|| "Allocate U_default"),
-        u,
-        self.params.limb_width,
-        self.params.n_limbs,
-      )?
-    };
-    Ok(U_default)
-  }
-
   /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
   fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
@@ -230,7 +209,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     i: &AllocatedNum<E::Base>,
     z_0: &[AllocatedNum<E::Base>],
     z_i: &[AllocatedNum<E::Base>],
-    U: &AllocatedRelaxedR1CSInstance<E>,
+    U: &AllocatedFoldedR1CSInstance<E>,
     r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
     T: &AllocatedPoint<E>,

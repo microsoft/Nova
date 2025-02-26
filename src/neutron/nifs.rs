@@ -9,10 +9,7 @@ use crate::{
   },
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
-  spartan::polys::{
-    power::PowPolynomial,
-    univariate::{CompressedUniPoly, UniPoly},
-  },
+  spartan::polys::{power::PowPolynomial, univariate::UniPoly},
   traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
   Commitment, CommitmentKey, CE,
 };
@@ -27,7 +24,7 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct NIFS<E: Engine> {
   pub(crate) comm_E: Commitment<E>,
-  pub(crate) poly: CompressedUniPoly<E::Scalar>,
+  pub(crate) poly: UniPoly<E::Scalar>,
 }
 
 type ROConstants<E> =
@@ -298,13 +295,7 @@ impl<E: Engine> NIFS<E> {
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((
-      Self {
-        comm_E,
-        poly: poly.compress(),
-      },
-      (U, W),
-    ))
+    Ok((Self { comm_E, poly }, (U, W)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -349,18 +340,20 @@ impl<E: Engine> NIFS<E> {
     // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
     let T = (E::Scalar::ONE - rho) * U1.T;
 
-    // decompress the provided polynomial with T as hint
-    let poly = self.poly.decompress(&T);
+    // check if poly(0) + poly(1) = T
+    if self.poly.eval_at_zero() + self.poly.eval_at_one() != T {
+      return Err(NovaError::InvalidSumcheckProof);
+    }
 
     // absorb poly in the RO
-    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&poly, &mut ro);
+    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&self.poly, &mut ro);
 
     // squeeze a challenge
     let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
+    let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
 
     let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
 
