@@ -45,8 +45,8 @@ pub struct FoldedInstance<E: Engine> {
   comm_W: Commitment<E>,
   comm_E: Commitment<E>,
   pub(crate) T: E::Scalar,
-  pub(crate) X: Vec<E::Scalar>,
   pub(crate) u: E::Scalar,
+  pub(crate) X: Vec<E::Scalar>,
 }
 
 impl<E: Engine> Structure<E> {
@@ -160,8 +160,8 @@ impl<E: Engine> FoldedInstance<E> {
       comm_W: Commitment::<E>::default(),
       comm_E: Commitment::<E>::default(),
       T: E::Scalar::ZERO,
-      X: vec![E::Scalar::ZERO; S.S.num_io],
       u: E::Scalar::ZERO,
+      X: vec![E::Scalar::ZERO; S.S.num_io],
     }
   }
 
@@ -189,8 +189,8 @@ impl<E: Engine> FoldedInstance<E> {
       comm_W,
       comm_E,
       T: *T_out,
-      X,
       u,
+      X,
     })
   }
 }

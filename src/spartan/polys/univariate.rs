@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UniPoly<Scalar: PrimeField> {
   coeffs: Vec<Scalar>,
 }
