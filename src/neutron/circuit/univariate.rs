@@ -69,16 +69,16 @@ impl<E: Engine> AllocatedUniPoly<E> {
   ) -> Result<BigNat<E::Base>, SynthesisError> {
     let mut eval = self.coeffs[0].clone();
     let mut power = r.clone();
-    for coeff in self.coeffs.iter().skip(1) {
+    for (i, coeff) in self.coeffs.iter().skip(1).enumerate() {
       // eval = eval + power * coeff
       let (_, power_times_coeff) =
-        power.mult_mod(cs.namespace(|| "power * coeff"), &coeff, &m_bn)?;
+        power.mult_mod(cs.namespace(|| format!("{i} power * coeff")), &coeff, &m_bn)?;
       eval = eval.add(&power_times_coeff)?;
-      eval = eval.red_mod(cs.namespace(|| "eval reduced"), &m_bn)?;
+      eval = eval.red_mod(cs.namespace(|| format!("{i} eval reduced")), &m_bn)?;
 
       // power = power * r
-      let (_, new_power) = power.mult_mod(cs.namespace(|| "power * r"), &r, &m_bn)?;
-      power = new_power.red_mod(cs.namespace(|| "power reduced"), &m_bn)?;
+      let (_, new_power) = power.mult_mod(cs.namespace(|| format!("{i} power * r")), &r, &m_bn)?;
+      power = new_power.red_mod(cs.namespace(|| format!("{i} power reduced")), &m_bn)?;
     }
     Ok(eval)
   }
@@ -89,13 +89,13 @@ impl<E: Engine> AllocatedUniPoly<E> {
     mut cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    for coeff in &self.coeffs {
+    for (i, coeff) in self.coeffs.iter().enumerate() {
       let coeff_bn = coeff
         .as_limbs()
         .iter()
         .enumerate()
-        .map(|(i, limb)| {
-          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of coeff to num")))
+        .map(|(j, limb)| {
+          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} {j} of coeff to num")))
         })
         .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
 
