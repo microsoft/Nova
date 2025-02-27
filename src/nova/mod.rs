@@ -357,8 +357,7 @@ where
     })
   }
 
-  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
-  /// by executing a step of the incremental computation
+  /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
   pub fn prove_step(
     &mut self,
     pp: &PublicParams<E1, E2, C1, C2>,

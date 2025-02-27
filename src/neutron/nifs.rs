@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 pub struct NIFS<E: Engine> {
   pub(crate) comm_E: Commitment<E>,
   pub(crate) poly: UniPoly<E::Scalar>,
+  pub(crate) eq_rho_r_b_inv: E::Scalar, // provided as a hint for the verifier
 }
 
 type ROConstants<E> =
@@ -30,7 +31,7 @@ type ROConstants<E> =
 impl<E: Engine> NIFS<E> {
   /// Computes the evaluations of the sum-check polynomial at 0, 2, 3, and 4
   #[inline]
-  pub fn prove_helper(
+  fn prove_helper(
     rho: &E::Scalar,
     (left, right): (usize, usize),
     e1: &[E::Scalar],
@@ -275,13 +276,21 @@ impl<E: Engine> NIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
+    let eq_rho_r_b_inv = eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
+    let T_out = poly.evaluate(&r_b) * eq_rho_r_b_inv;
 
     let U = U1.fold(U2, &comm_E, &r_b, &T_out)?;
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((Self { comm_E, poly }, (U, W)))
+    Ok((
+      Self {
+        comm_E,
+        poly,
+        eq_rho_r_b_inv,
+      },
+      (U, W),
+    ))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -289,6 +298,7 @@ impl<E: Engine> NIFS<E> {
   /// and outputs a folded instance `U` with the same shape,
   /// with the guarantee that the folded instance `U`
   /// if and only if `U1` and `U2` are satisfiable.
+  #[cfg(test)]
   pub fn verify(
     &self,
     ro_consts: &ROConstants<E>,
@@ -329,7 +339,10 @@ impl<E: Engine> NIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
+    if eq_rho_r_b * self.eq_rho_r_b_inv != E::Scalar::ONE {
+      return Err(NovaError::InvalidSumcheckProof);
+    }
+    let T_out = self.poly.evaluate(&r_b) * self.eq_rho_r_b_inv;
 
     let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
 

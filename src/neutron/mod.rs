@@ -1,6 +1,5 @@
 //! This module implements an IVC scheme based on the NeutronNova folding scheme.
-
-/*use crate::{
+use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -11,13 +10,9 @@
     ConstraintSystem, SynthesisError,
   },
   gadgets::utils::scalar_as_base,
-  r1cs::{
-    CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
-    RelaxedR1CSWitness,
-  },
+  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSWitness},
   traits::{
-    circuit::StepCircuit, snark::RelaxedR1CSSNARKTrait,
-    AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
+    circuit::StepCircuit, AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
   },
   CommitmentKey,
 };
@@ -25,15 +20,17 @@ use core::marker::PhantomData;
 use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
-use serde::{Deserialize, Serialize};*/
+use serde::{Deserialize, Serialize};
 
-pub mod circuit;
-pub mod nifs;
+mod circuit;
+mod nifs;
 mod relation;
 
-/*
-use circuit::{NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs, NeutronAugmentedCircuitParams};
-use nifs::{NIFS};
+use circuit::{
+  NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs, NeutronAugmentedCircuitParams,
+};
+use nifs::NIFS;
+use relation::{FoldedInstance, FoldedWitness, Structure};
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize)]
@@ -47,16 +44,20 @@ where
 {
   F_arity_primary: usize,
   F_arity_secondary: usize,
+
   ro_consts_primary: ROConstants<E1>,
   ro_consts_circuit_primary: ROConstantsCircuit<E2>,
   ck_primary: CommitmentKey<E1>,
-  r1cs_shape_primary: R1CSShape<E1>,
+  structure_primary: Structure<E1>,
+
   ro_consts_secondary: ROConstants<E2>,
   ro_consts_circuit_secondary: ROConstantsCircuit<E1>,
   ck_secondary: CommitmentKey<E2>,
-  r1cs_shape_secondary: R1CSShape<E2>,
+  structure_secondary: Structure<E2>,
+
   augmented_circuit_params_primary: NeutronAugmentedCircuitParams,
   augmented_circuit_params_secondary: NeutronAugmentedCircuitParams,
+
   #[serde(skip, default = "OnceCell::new")]
   digest: OnceCell<E1::Scalar>,
   _p: PhantomData<(C1, C2)>,
@@ -168,17 +169,23 @@ where
       return Err(NovaError::InvalidStepCircuitIO);
     }
 
+    let structure_primary = Structure::new(&r1cs_shape_primary);
+    let structure_secondary = Structure::new(&r1cs_shape_secondary);
+
     let pp = PublicParams {
       F_arity_primary,
       F_arity_secondary,
+
       ro_consts_primary,
       ro_consts_circuit_primary,
       ck_primary,
-      r1cs_shape_primary,
+      structure_primary,
+
       ro_consts_secondary,
       ro_consts_circuit_secondary,
       ck_secondary,
-      r1cs_shape_secondary,
+      structure_secondary,
+
       augmented_circuit_params_primary,
       augmented_circuit_params_secondary,
       digest: OnceCell::new(),
@@ -199,22 +206,6 @@ where
       .cloned()
       .expect("Failure in retrieving digest")
   }
-
-  /// Returns the number of constraints in the primary and secondary circuits
-  pub const fn num_constraints(&self) -> (usize, usize) {
-    (
-      self.r1cs_shape_primary.num_cons,
-      self.r1cs_shape_secondary.num_cons,
-    )
-  }
-
-  /// Returns the number of variables in the primary and secondary circuits
-  pub const fn num_variables(&self) -> (usize, usize) {
-    (
-      self.r1cs_shape_primary.num_vars,
-      self.r1cs_shape_secondary.num_vars,
-    )
-  }
 }
 
 /// A SNARK that proves the correct execution of an incremental computation
@@ -229,17 +220,23 @@ where
 {
   z0_primary: Vec<E1::Scalar>,
   z0_secondary: Vec<E2::Scalar>,
-  r_W_primary: RelaxedR1CSWitness<E1>,
-  r_U_primary: RelaxedR1CSInstance<E1>,
+
+  r_W_primary: FoldedWitness<E1>,
+  r_U_primary: FoldedInstance<E1>,
   ri_primary: E1::Scalar,
-  r_W_secondary: RelaxedR1CSWitness<E2>,
-  r_U_secondary: RelaxedR1CSInstance<E2>,
+
+  r_W_secondary: FoldedWitness<E2>,
+  r_U_secondary: FoldedInstance<E2>,
   ri_secondary: E2::Scalar,
+
   l_w_secondary: R1CSWitness<E2>,
   l_u_secondary: R1CSInstance<E2>,
+
   i: usize,
+
   zi_primary: Vec<E1::Scalar>,
   zi_secondary: Vec<E2::Scalar>,
+
   _p: PhantomData<(C1, C2)>,
 }
 
@@ -287,7 +284,7 @@ where
     );
     let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
     let (u_primary, w_primary) =
-      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
+      cs_primary.r1cs_instance_and_witness(&pp.structure_primary.S, &pp.ck_primary)?;
 
     // base case for the secondary
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
@@ -310,21 +307,21 @@ where
     );
     let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
     let (u_secondary, w_secondary) =
-      cs_secondary.r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)?;
+      cs_secondary.r1cs_instance_and_witness(&pp.structure_secondary.S, &pp.ck_secondary)?;
 
     // IVC proof for the primary circuit
-    let l_w_primary = w_primary;
-    let l_u_primary = u_primary;
-    let r_W_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
-    let r_U_primary =
-      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+    let _l_w_primary = w_primary;
+    let _l_u_primary = u_primary;
+
+    // TODO: fold l_u, l_w with default instances to get the running instance
+    let r_W_primary = FoldedWitness::<E1>::default(&pp.structure_primary);
+    let r_U_primary = FoldedInstance::<E1>::default(&pp.structure_primary);
 
     // IVC proof for the secondary circuit
     let l_w_secondary = w_secondary;
     let l_u_secondary = u_secondary;
-    let r_W_secondary = RelaxedR1CSWitness::<E2>::default(&pp.r1cs_shape_secondary);
-    let r_U_secondary =
-      RelaxedR1CSInstance::<E2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
+    let r_W_secondary = FoldedWitness::<E2>::default(&pp.structure_secondary);
+    let r_U_secondary = FoldedInstance::<E2>::default(&pp.structure_secondary);
 
     assert!(
       !(zi_primary.len() != pp.F_arity_primary || zi_secondary.len() != pp.F_arity_secondary),
@@ -359,8 +356,7 @@ where
     })
   }
 
-  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
-  /// by executing a step of the incremental computation
+  /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
   pub fn prove_step(
     &mut self,
     pp: &PublicParams<E1, E2, C1, C2>,
@@ -378,7 +374,7 @@ where
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
-      &pp.r1cs_shape_secondary,
+      &pp.structure_secondary,
       &self.r_U_secondary,
       &self.r_W_secondary,
       &self.l_u_secondary,
@@ -397,7 +393,7 @@ where
       Some(self.ri_primary),
       r_next_primary,
       Some(self.l_u_secondary.clone()),
-      Some(nifs_secondary.comm_T),
+      Some(nifs_secondary),
     );
 
     let circuit_primary: NeutronAugmentedCircuit<'_, E2, C1> = NeutronAugmentedCircuit::new(
@@ -409,14 +405,14 @@ where
     let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
 
     let (l_u_primary, l_w_primary) =
-      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
+      cs_primary.r1cs_instance_and_witness(&pp.structure_primary.S, &pp.ck_primary)?;
 
     // fold the primary circuit's instance
     let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
       &pp.ck_primary,
       &pp.ro_consts_primary,
       &pp.digest(),
-      &pp.r1cs_shape_primary,
+      &pp.structure_primary,
       &self.r_U_primary,
       &self.r_W_primary,
       &l_u_primary,
@@ -435,7 +431,7 @@ where
       Some(self.ri_secondary),
       r_next_secondary,
       Some(l_u_primary),
-      Some(nifs_primary.comm_T),
+      Some(nifs_primary),
     );
 
     let circuit_secondary: NeutronAugmentedCircuit<'_, E1, C2> = NeutronAugmentedCircuit::new(
@@ -447,7 +443,7 @@ where
     let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
-      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
+      .r1cs_instance_and_witness(&pp.structure_secondary.S, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness on the secondary curve".to_string(),
       })?;
@@ -550,20 +546,20 @@ where
     // check the satisfiability of the provided instances
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
-        pp.r1cs_shape_primary
-          .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
+        pp.structure_primary
+          .is_sat(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
       },
       || {
         rayon::join(
           || {
-            pp.r1cs_shape_secondary.is_sat_relaxed(
+            pp.structure_secondary.is_sat(
               &pp.ck_secondary,
               &self.r_U_secondary,
               &self.r_W_secondary,
             )
           },
           || {
-            pp.r1cs_shape_secondary.is_sat(
+            pp.structure_secondary.S.is_sat(
               &pp.ck_secondary,
               &self.l_u_secondary,
               &self.l_w_secondary,
@@ -1312,4 +1308,3 @@ mod tests {
     test_setup_with::<Bn256EngineKZG, GrumpkinEngine>();
   }
 }
-*/

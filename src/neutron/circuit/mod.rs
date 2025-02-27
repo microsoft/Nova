@@ -10,7 +10,6 @@ use crate::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
   },
   gadgets::{
-    nonnative::{bignat::BigNat, util::f_to_nat},
     r1cs::AllocatedR1CSInstance,
     utils::{
       alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
@@ -53,7 +52,7 @@ impl NeutronAugmentedCircuitParams {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NeutronAugmentedCircuitInputs<E: Engine> {
-  vk: E::Scalar,
+  pp_digest: E::Scalar,
   i: E::Base,
   z0: Vec<E::Base>,
   zi: Option<Vec<E::Base>>,
@@ -62,13 +61,12 @@ pub struct NeutronAugmentedCircuitInputs<E: Engine> {
   r_next: E::Base,
   u: Option<R1CSInstance<E>>,
   nifs: Option<NIFS<E>>,
-  eq_rho_r_b_inv: Option<E::Scalar>,
 }
 
 impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
-    vk: E::Scalar,
+    pp_digest: E::Scalar,
     i: E::Base,
     z0: Vec<E::Base>,
     zi: Option<Vec<E::Base>>,
@@ -77,10 +75,9 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
     r_next: E::Base,
     u: Option<R1CSInstance<E>>,
     nifs: Option<NIFS<E>>,
-    eq_rho_r_b_inv: Option<E::Scalar>,
   ) -> Self {
     Self {
-      vk,
+      pp_digest,
       i,
       z0,
       zi,
@@ -89,7 +86,6 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
       r_next,
       u,
       nifs,
-      eq_rho_r_b_inv,
     }
   }
 }
@@ -135,14 +131,13 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       AllocatedNum<E::Base>,
       AllocatedR1CSInstance<E>,
       AllocatedNIFS<E>,
-      BigNat<E::Base>,
     ),
     SynthesisError,
   > {
-    // Allocate the vk
-    let vk = alloc_scalar_as_base::<E, _>(
-      cs.namespace(|| "vk"),
-      self.inputs.as_ref().map(|inputs| inputs.vk),
+    // Allocate the pp_digest
+    let pp_digest = alloc_scalar_as_base::<E, _>(
+      cs.namespace(|| "pp_digest"),
+      self.inputs.as_ref().map(|inputs| inputs.pp_digest),
     )?;
 
     // Allocate i
@@ -198,24 +193,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       self.params.n_limbs,
     )?;
 
-    // Allocate eq_rho_r_b_inv
-    let eq_rho_r_b_inv = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate eq_rho_r_b_inv"),
-      || {
-        Ok(f_to_nat(
-          &self
-            .inputs
-            .get()?
-            .eq_rho_r_b_inv
-            .clone()
-            .unwrap_or(E::Scalar::ZERO),
-        ))
-      },
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;
-
-    Ok((vk, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv))
+    Ok((pp_digest, i, z_0, z_i, U, r_i, r_next, u, nifs))
   }
 
   /// Synthesizes non base case and returns the new relaxed `FoldedInstance`
@@ -223,7 +201,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
   fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    vk: &AllocatedNum<E::Base>,
+    pp_digest: &AllocatedNum<E::Base>,
     i: &AllocatedNum<E::Base>,
     z_0: &[AllocatedNum<E::Base>],
     z_i: &[AllocatedNum<E::Base>],
@@ -231,11 +209,10 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
     nifs: &AllocatedNIFS<E>,
-    eq_rho_r_b_inv: &BigNat<E::Base>,
   ) -> Result<(AllocatedFoldedInstance<E>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = E::ROCircuit::new(self.ro_consts.clone());
-    ro.absorb(vk);
+    ro.absorb(pp_digest);
     ro.absorb(i);
     for e in z_0 {
       ro.absorb(e);
@@ -257,10 +234,9 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     // Run NIFS Verifier
     let U_fold = nifs.verify(
       cs.namespace(|| "compute fold of U and u"),
-      vk,
+      pp_digest,
       U,
       u,
-      eq_rho_r_b_inv,
       self.ro_consts.clone(),
       self.params.limb_width,
       self.params.n_limbs,
@@ -279,7 +255,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (vk, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv) =
+    let (pp_digest, i, z_0, z_i, U, r_i, r_next, u, nifs) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -290,7 +266,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     // instance along with a boolean indicating if all checks have passed
     let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
-      &vk,
+      &pp_digest,
       &i,
       &z_0,
       &z_i,
@@ -298,7 +274,6 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
       &r_i,
       &u,
       &nifs,
-      &eq_rho_r_b_inv,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case
@@ -362,9 +337,9 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
       ));
     }
 
-    // Compute the new hash H(vk, Unew, i+1, z0, z_{i+1})
+    // Compute the new hash H(pp_digest, Unew, i+1, z0, z_{i+1})
     let mut ro = E::ROCircuit::new(self.ro_consts);
-    ro.absorb(&vk);
+    ro.absorb(&pp_digest);
     ro.absorb(&i_new);
     for e in &z_0 {
       ro.absorb(e);
