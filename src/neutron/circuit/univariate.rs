@@ -41,11 +41,15 @@ impl<E: Engine> AllocatedUniPoly<E> {
   }
 
   /// Returns the evaluation of the polynomial at 0
+  // TODO: remove this
+  #[cfg(test)]
   pub fn eval_at_zero(&self) -> Result<BigNat<E::Base>, SynthesisError> {
     Ok(self.coeffs[0].clone())
   }
 
   /// Returns the evaluation of the polynomial at 1
+  // TODO: remove this
+  #[cfg(test)]
   pub fn eval_at_one<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,

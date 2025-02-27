@@ -4,7 +4,10 @@ use crate::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
-    nonnative::{bignat::BigNat, util::Num},
+    nonnative::{
+      bignat::BigNat,
+      util::{f_to_nat, Num},
+    },
     r1cs::AllocatedR1CSInstance,
     utils::{alloc_bignat_constant, le_bits_to_num},
   },
@@ -14,11 +17,13 @@ use crate::{
   },
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
+use ff::Field;
 
 /// An in-circuit representation of NeutronNova's NIFS
 pub struct AllocatedNIFS<E: Engine> {
   pub(crate) comm_E: AllocatedPoint<E>,
   pub(crate) poly: AllocatedUniPoly<E>,
+  pub(crate) eq_rho_r_b_inv: BigNat<E::Base>,
 }
 
 impl<E: Engine> AllocatedNIFS<E> {
@@ -45,7 +50,38 @@ impl<E: Engine> AllocatedNIFS<E> {
       n_limbs,
     )?;
 
-    Ok(Self { comm_E, poly })
+    // Allocate the inverse
+    let eq_rho_r_b_inv = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate eq_rho_r_b_inv"),
+      || {
+        Ok(f_to_nat(
+          &nifs.map_or(E::Scalar::ZERO, |nifs| nifs.eq_rho_r_b_inv),
+        ))
+      },
+      limb_width,
+      n_limbs,
+    )?;
+    /*let eq_rho_r_b_inv = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate eq_rho_r_b_inv"),
+      || {
+        Ok(f_to_nat(
+          &self
+            .inputs
+            .get()?
+            .eq_rho_r_b_inv
+            .clone()
+            .unwrap_or(E::Scalar::ZERO),
+        ))
+      },
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;*/
+
+    Ok(Self {
+      comm_E,
+      poly,
+      eq_rho_r_b_inv,
+    })
   }
 
   /// verify the provided NIFS inside the circuit
@@ -55,7 +91,6 @@ impl<E: Engine> AllocatedNIFS<E> {
     vk: &AllocatedNum<E::Base>,      // verifier key
     U1: &AllocatedFoldedInstance<E>, // folded instance
     U2: &AllocatedR1CSInstance<E>,
-    eq_rho_r_b_inv: &BigNat<E::Base>, // untrusted advice
     ro_consts: ROConstantsCircuit<E>,
     limb_width: usize,
     n_limbs: usize,
@@ -100,7 +135,7 @@ impl<E: Engine> AllocatedNIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     // let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    // check that eq_rho_r_b * eq_rho_r_b_inv = 1
+    // TODO: check that eq_rho_r_b * eq_rho_r_b_inv = 1
 
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
@@ -117,7 +152,7 @@ impl<E: Engine> AllocatedNIFS<E> {
           .poly
           .evaluate(cs.namespace(|| "eval"), &r_b_bn, &m_bn)?
       };
-      let (_, res) = eval.mult_mod(cs.namespace(|| "mult_mod"), &eq_rho_r_b_inv, &m_bn)?;
+      let (_, res) = eval.mult_mod(cs.namespace(|| "mult_mod"), &self.eq_rho_r_b_inv, &m_bn)?;
       res.red_mod(cs.namespace(|| "reduce"), &m_bn)?
     };
 

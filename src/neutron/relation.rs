@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 /// A type that holds structure information for a zero-fold relation
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct Structure<E: Engine> {
   /// Shape of the R1CS relation
   pub(crate) S: R1CSShape<E>,
@@ -29,6 +30,7 @@ pub struct Structure<E: Engine> {
 
 /// A type that holds witness information for a zero-fold relation
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct FoldedWitness<E: Engine> {
   /// Running witness of the main relation
   pub(crate) W: Vec<E::Scalar>,
