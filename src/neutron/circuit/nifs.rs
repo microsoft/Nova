@@ -95,6 +95,14 @@ impl<E: Engine> AllocatedNIFS<E> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<AllocatedFoldedInstance<E>, SynthesisError> {
+    // Allocate the order of the non-native field as a constant
+    let m_bn = alloc_bignat_constant(
+      cs.namespace(|| "alloc m"),
+      &E::GE::group_params().2,
+      limb_width,
+      n_limbs,
+    )?;
+
     // Compute r:
     let mut ro = E::ROCircuit::new(ro_consts);
     ro.absorb(vk);
@@ -117,6 +125,12 @@ impl<E: Engine> AllocatedNIFS<E> {
     let _rho = le_bits_to_num(cs.namespace(|| "rho"), &rho_bits)?;
 
     // TODO: assemble rho as a num and check that poly(0) + poly(1) = T
+    let poly_at_zero = self.poly.eval_at_zero()?;
+    let poly_at_one = self
+      .poly
+      .eval_at_one(cs.namespace(|| "poly_at_one"), &m_bn)?;
+    let expected = poly_at_zero.add(&poly_at_one)?;
+    expected.equal_when_carried(cs.namespace(|| "check T"), &U1.T)?; // TODO: T should be (1-rho) * U1.T
 
     // absorb poly in the RO
     self
@@ -136,14 +150,6 @@ impl<E: Engine> AllocatedNIFS<E> {
     // compute the sum-check polynomial's evaluations at r_b
     // let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
     // TODO: check that eq_rho_r_b * eq_rho_r_b_inv = 1
-
-    // Allocate the order of the non-native field as a constant
-    let m_bn = alloc_bignat_constant(
-      cs.namespace(|| "alloc m"),
-      &E::GE::group_params().2,
-      limb_width,
-      n_limbs,
-    )?;
 
     // let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
     let T_out = {

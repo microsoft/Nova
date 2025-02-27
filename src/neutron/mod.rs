@@ -597,15 +597,17 @@ mod tests {
       pedersen::CommitmentKeyExtTrait, traits::DlogGroup, Bn256EngineIPA, Bn256EngineKZG,
       GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
-    traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
+    traits::{
+      circuit::TrivialCircuit,
+      snark::{default_ck_hint, RelaxedR1CSSNARKTrait},
+    },
+    CommitmentEngineTrait,
   };
   use core::{fmt::Write, marker::PhantomData};
   use expect_test::{expect, Expect};
   use ff::PrimeField;
 
   type EE<E> = crate::provider::ipa_pc::EvaluationEngine<E>;
-  type EEPrime<E> = crate::provider::hyperkzg::EvaluationEngine<E>;
-  type S<E, EE> = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
   type SPrime<E, EE> = crate::spartan::ppsnark::RelaxedR1CSSNARK<E, EE>;
 
   #[derive(Clone, Debug, Default)]
@@ -690,19 +692,19 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["b3da591d9a3c7dc2632e550e009f2b745d60cf919956cf02e9ca68e8e5e17603"],
+      &expect!["d155311b6dfdfaa84d15db86536ce6fbf0600c0aa47089ae4183686222189800"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["aaf1f0b723e281603838004327e73a02f3a2b5e2f2087e34b6f4f2c8f34e8401"],
+      &expect!["a75f5f19cb34141f366533f657bdc02e89f2161a2bc64dbc6b6f75bca9b76602"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["890b992d9c431625610659fe62b5c00859188e60802a5852cf5db0d10ca59403"],
+      &expect!["311a440fd05bb46df31230a995d27dd21f72b167d27707f7f111683112383a00"],
     );
   }
 
@@ -840,349 +842,6 @@ mod tests {
     test_ivc_nontrivial_with::<PallasEngine, VestaEngine>();
     test_ivc_nontrivial_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();
-  }
-
-  fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
-  where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
-    EE1: EvaluationEngineTrait<E1>,
-    EE2: EvaluationEngineTrait<E2>,
-  {
-    let circuit_primary = TrivialCircuit::default();
-    let circuit_secondary = CubicCircuit::default();
-
-    // produce public parameters
-    let pp = PublicParams::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::setup(
-      &circuit_primary,
-      &circuit_secondary,
-      &*default_ck_hint(),
-      &*default_ck_hint(),
-    )
-    .unwrap();
-
-    let num_steps = 3;
-
-    // produce a recursive SNARK
-    let mut recursive_snark = RecursiveSNARK::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::new(
-      &pp,
-      &circuit_primary,
-      &circuit_secondary,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    )
-    .unwrap();
-
-    for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
-      assert!(res.is_ok());
-    }
-
-    // verify the recursive SNARK
-    let res = recursive_snark.verify(
-      &pp,
-      num_steps,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-
-    let (zn_primary, zn_secondary) = res.unwrap();
-
-    // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<E2 as Engine>::Scalar::ZERO];
-    for _i in 0..num_steps {
-      zn_secondary_direct = circuit_secondary.clone().output(&zn_secondary_direct);
-    }
-    assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(zn_secondary, vec![<E2 as Engine>::Scalar::from(2460515u64)]);
-
-    // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
-
-    // produce a compressed SNARK
-    let res =
-      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
-    assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
-
-    // verify the compressed SNARK
-    let res = compressed_snark.verify(
-      &vk,
-      num_steps,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-  }
-
-  #[test]
-  fn test_ivc_nontrivial_with_compression() {
-    test_ivc_nontrivial_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>(
-    );
-    test_ivc_nontrivial_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
-
-    test_ivc_nontrivial_with_spark_compression_with::<
-      Bn256EngineKZG,
-      GrumpkinEngine,
-      crate::provider::hyperkzg::EvaluationEngine<_>,
-      EE<_>,
-    >();
-  }
-
-  fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
-  where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
-    EE1: EvaluationEngineTrait<E1>,
-    EE2: EvaluationEngineTrait<E2>,
-  {
-    let circuit_primary = TrivialCircuit::default();
-    let circuit_secondary = CubicCircuit::default();
-
-    // produce public parameters, which we'll use with a spark-compressed SNARK
-    let pp = PublicParams::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::setup(
-      &circuit_primary,
-      &circuit_secondary,
-      &*SPrime::<E1, EE1>::ck_floor(),
-      &*SPrime::<E2, EE2>::ck_floor(),
-    )
-    .unwrap();
-
-    let num_steps = 3;
-
-    // produce a recursive SNARK
-    let mut recursive_snark = RecursiveSNARK::<
-      E1,
-      E2,
-      TrivialCircuit<<E1 as Engine>::Scalar>,
-      CubicCircuit<<E2 as Engine>::Scalar>,
-    >::new(
-      &pp,
-      &circuit_primary,
-      &circuit_secondary,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    )
-    .unwrap();
-
-    for _i in 0..num_steps {
-      let res = recursive_snark.prove_step(&pp, &circuit_primary, &circuit_secondary);
-      assert!(res.is_ok());
-    }
-
-    // verify the recursive SNARK
-    let res = recursive_snark.verify(
-      &pp,
-      num_steps,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-
-    let (zn_primary, zn_secondary) = res.unwrap();
-
-    // sanity: check the claimed output with a direct computation of the same
-    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::ONE]);
-    let mut zn_secondary_direct = vec![<E2 as Engine>::Scalar::ZERO];
-    for _i in 0..num_steps {
-      zn_secondary_direct = CubicCircuit::default().output(&zn_secondary_direct);
-    }
-    assert_eq!(zn_secondary, zn_secondary_direct);
-    assert_eq!(zn_secondary, vec![<E2 as Engine>::Scalar::from(2460515u64)]);
-
-    // run the compressed snark with Spark compiler
-    // produce the prover and verifier keys for compressed snark
-    let (pk, vk) =
-      CompressedSNARK::<_, _, _, _, SPrime<E1, EE1>, SPrime<E2, EE2>>::setup(&pp).unwrap();
-
-    // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, _, SPrime<E1, EE1>, SPrime<E2, EE2>>::prove(
-      &pp,
-      &pk,
-      &recursive_snark,
-    );
-    assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
-
-    // verify the compressed SNARK
-    let res = compressed_snark.verify(
-      &vk,
-      num_steps,
-      &[<E1 as Engine>::Scalar::ONE],
-      &[<E2 as Engine>::Scalar::ZERO],
-    );
-    assert!(res.is_ok());
-  }
-
-  #[test]
-  fn test_ivc_nontrivial_with_spark_compression() {
-    test_ivc_nontrivial_with_spark_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nontrivial_with_spark_compression_with::<
-      Bn256EngineKZG,
-      GrumpkinEngine,
-      EEPrime<_>,
-      EE<_>,
-    >();
-    test_ivc_nontrivial_with_spark_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>(
-    );
-  }
-
-  fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
-  where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
-    EE1: EvaluationEngineTrait<E1>,
-    EE2: EvaluationEngineTrait<E2>,
-  {
-    // y is a non-deterministic advice representing the fifth root of the input at a step.
-    #[derive(Clone, Debug)]
-    struct FifthRootCheckingCircuit<F: PrimeField> {
-      y: F,
-    }
-
-    impl<F: PrimeField> FifthRootCheckingCircuit<F> {
-      fn new(num_steps: usize) -> (Vec<F>, Vec<Self>) {
-        let mut powers = Vec::new();
-        let rng = &mut rand::rngs::OsRng;
-        let mut seed = F::random(rng);
-        for _i in 0..num_steps + 1 {
-          seed *= seed.clone().square().square();
-
-          powers.push(Self { y: seed });
-        }
-
-        // reverse the powers to get roots
-        let roots = powers.into_iter().rev().collect::<Vec<Self>>();
-        (vec![roots[0].y], roots[1..].to_vec())
-      }
-    }
-
-    impl<F> StepCircuit<F> for FifthRootCheckingCircuit<F>
-    where
-      F: PrimeField,
-    {
-      fn arity(&self) -> usize {
-        1
-      }
-
-      fn synthesize<CS: ConstraintSystem<F>>(
-        &self,
-        cs: &mut CS,
-        z: &[AllocatedNum<F>],
-      ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-        let x = &z[0];
-
-        // we allocate a variable and set it to the provided non-deterministic advice.
-        let y = AllocatedNum::alloc_infallible(cs.namespace(|| "y"), || self.y);
-
-        // We now check if y = x^{1/5} by checking if y^5 = x
-        let y_sq = y.square(cs.namespace(|| "y_sq"))?;
-        let y_quad = y_sq.square(cs.namespace(|| "y_quad"))?;
-        let y_pow_5 = y_quad.mul(cs.namespace(|| "y_fifth"), &y)?;
-
-        cs.enforce(
-          || "y^5 = x",
-          |lc| lc + y_pow_5.get_variable(),
-          |lc| lc + CS::one(),
-          |lc| lc + x.get_variable(),
-        );
-
-        Ok(vec![y])
-      }
-    }
-
-    let circuit_primary = FifthRootCheckingCircuit {
-      y: <E1 as Engine>::Scalar::ZERO,
-    };
-
-    let circuit_secondary = TrivialCircuit::default();
-
-    // produce public parameters
-    let pp = PublicParams::<
-      E1,
-      E2,
-      FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
-      TrivialCircuit<<E2 as Engine>::Scalar>,
-    >::setup(
-      &circuit_primary,
-      &circuit_secondary,
-      &*default_ck_hint(),
-      &*default_ck_hint(),
-    )
-    .unwrap();
-
-    let num_steps = 3;
-
-    // produce non-deterministic advice
-    let (z0_primary, roots) = FifthRootCheckingCircuit::new(num_steps);
-    let z0_secondary = vec![<E2 as Engine>::Scalar::ZERO];
-
-    // produce a recursive SNARK
-    let mut recursive_snark: RecursiveSNARK<
-      E1,
-      E2,
-      FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
-      TrivialCircuit<<E2 as Engine>::Scalar>,
-    > = RecursiveSNARK::<
-      E1,
-      E2,
-      FifthRootCheckingCircuit<<E1 as Engine>::Scalar>,
-      TrivialCircuit<<E2 as Engine>::Scalar>,
-    >::new(
-      &pp,
-      &roots[0],
-      &circuit_secondary,
-      &z0_primary,
-      &z0_secondary,
-    )
-    .unwrap();
-
-    for circuit_primary in roots.iter().take(num_steps) {
-      let res = recursive_snark.prove_step(&pp, circuit_primary, &circuit_secondary);
-      assert!(res.is_ok());
-    }
-
-    // verify the recursive SNARK
-    let res = recursive_snark.verify(&pp, num_steps, &z0_primary, &z0_secondary);
-    assert!(res.is_ok());
-
-    // produce the prover and verifier keys for compressed snark
-    let (pk, vk) = CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
-
-    // produce a compressed SNARK
-    let res =
-      CompressedSNARK::<_, _, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
-    assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
-
-    // verify the compressed SNARK
-    let res = compressed_snark.verify(&vk, num_steps, &z0_primary, &z0_secondary);
-    assert!(res.is_ok());
-  }
-
-  #[test]
-  fn test_ivc_nondet_with_compression() {
-    test_ivc_nondet_with_compression_with::<PallasEngine, VestaEngine, EE<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<Bn256EngineKZG, GrumpkinEngine, EEPrime<_>, EE<_>>();
-    test_ivc_nondet_with_compression_with::<Secp256k1Engine, Secq256k1Engine, EE<_>, EE<_>>();
   }
 
   fn test_ivc_base_with<E1, E2>()

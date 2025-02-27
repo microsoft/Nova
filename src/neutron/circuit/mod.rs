@@ -424,7 +424,6 @@ mod tests {
       ri_1,
       None,
       None,
-      None,
     );
     let circuit1: NeutronAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
       NeutronAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
@@ -446,7 +445,6 @@ mod tests {
       None,
       ri_2,
       Some(inst1),
-      None,
       None,
     );
     let circuit2: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
@@ -470,8 +468,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["33773"],
-      &expect!["33764"],
+      &expect!["34440"],
+      &expect!["34431"],
     );
   }
 
@@ -487,8 +485,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["34053"],
-      &expect!["34079"],
+      &expect!["34720"],
+      &expect!["34746"],
     );
   }
 
@@ -504,8 +502,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["34518"],
-      &expect!["34784"],
+      &expect!["35185"],
+      &expect!["35451"],
     );
   }
 }
