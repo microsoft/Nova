@@ -53,7 +53,7 @@ impl NeutronAugmentedCircuitParams {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NeutronAugmentedCircuitInputs<E: Engine> {
-  params: E::Scalar,
+  vk: E::Scalar,
   i: E::Base,
   z0: Vec<E::Base>,
   zi: Option<Vec<E::Base>>,
@@ -68,7 +68,7 @@ pub struct NeutronAugmentedCircuitInputs<E: Engine> {
 impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
-    params: E::Scalar,
+    vk: E::Scalar,
     i: E::Base,
     z0: Vec<E::Base>,
     zi: Option<Vec<E::Base>>,
@@ -80,7 +80,7 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
     eq_rho_r_b_inv: Option<E::Scalar>,
   ) -> Self {
     Self {
-      params,
+      vk,
       i,
       z0,
       zi,
@@ -139,10 +139,10 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     ),
     SynthesisError,
   > {
-    // Allocate the params
-    let params = alloc_scalar_as_base::<E, _>(
-      cs.namespace(|| "params"),
-      self.inputs.as_ref().map(|inputs| inputs.params),
+    // Allocate the vk
+    let vk = alloc_scalar_as_base::<E, _>(
+      cs.namespace(|| "vk"),
+      self.inputs.as_ref().map(|inputs| inputs.vk),
     )?;
 
     // Allocate i
@@ -215,7 +215,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
       self.params.n_limbs,
     )?;
 
-    Ok((params, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv))
+    Ok((vk, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv))
   }
 
   /// Synthesizes non base case and returns the new relaxed `FoldedInstance`
@@ -223,7 +223,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
   fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    params: &AllocatedNum<E::Base>,
+    vk: &AllocatedNum<E::Base>,
     i: &AllocatedNum<E::Base>,
     z_0: &[AllocatedNum<E::Base>],
     z_i: &[AllocatedNum<E::Base>],
@@ -235,7 +235,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
   ) -> Result<(AllocatedFoldedInstance<E>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = E::ROCircuit::new(self.ro_consts.clone());
-    ro.absorb(params);
+    ro.absorb(vk);
     ro.absorb(i);
     for e in z_0 {
       ro.absorb(e);
@@ -257,7 +257,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     // Run NIFS Verifier
     let U_fold = nifs.verify(
       cs.namespace(|| "compute fold of U and u"),
-      params,
+      vk,
       U,
       u,
       eq_rho_r_b_inv,
@@ -279,21 +279,18 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (params, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv) =
+    let (vk, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"));
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
-    // Synthesize the circuit for the base case and get the new running instance
-    //let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
-
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
     let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
       cs.namespace(|| "synthesize non base case"),
-      &params,
+      &vk,
       &i,
       &z_0,
       &z_i,
@@ -365,9 +362,9 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
       ));
     }
 
-    // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
+    // Compute the new hash H(vk, Unew, i+1, z0, z_{i+1})
     let mut ro = E::ROCircuit::new(self.ro_consts);
-    ro.absorb(&params);
+    ro.absorb(&vk);
     ro.absorb(&i_new);
     for e in &z_0 {
       ro.absorb(e);
