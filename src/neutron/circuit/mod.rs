@@ -218,7 +218,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'a, E, SC>
     Ok((params, i, z_0, z_i, U, r_i, r_next, u, nifs, eq_rho_r_b_inv))
   }
 
-  /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
+  /// Synthesizes non base case and returns the new relaxed `FoldedInstance`
   /// And a boolean indicating if all checks pass
   fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
@@ -317,14 +317,24 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NeutronAugmentedCircuit<'_, E, SC> {
       |lc| lc,
     );
 
-    // Compute the U_new
-    let Unew = Unew_non_base;
-
-    /*Unew_base.conditionally_select(
-      cs.namespace(|| "compute U_new"),
-      &Unew_non_base,
-      &Boolean::from(is_base_case.clone()),
-    )?;*/
+    // In the primary circuit, the base case simply returns a default running instance
+    // In the secondary circuit, the base case returns Unew_non_base
+    let Unew = if self.params.is_primary_circuit {
+      let Unew_base = AllocatedFoldedInstance::default(
+        cs.namespace(|| "Allocate U_default"),
+        self.params.limb_width,
+        self.params.n_limbs,
+      )?;
+      Unew_base.conditionally_select(
+        cs.namespace(|| "compute U_new"),
+        &Unew_non_base,
+        &Boolean::from(is_base_case.clone()),
+      )?
+    } else {
+      // TODO: This ends up folding something with unconstrained running instance
+      // enforce checks on running instance
+      Unew_non_base
+    };
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
@@ -396,6 +406,7 @@ mod tests {
     },
     traits::{circuit::TrivialCircuit, snark::default_ck_hint},
   };
+  use expect_test::{expect, Expect};
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
   fn test_recursive_circuit_with<E1, E2>(
@@ -403,8 +414,8 @@ mod tests {
     secondary_params: &NeutronAugmentedCircuitParams,
     ro_consts1: ROConstantsCircuit<E2>,
     ro_consts2: ROConstantsCircuit<E1>,
-    num_constraints_primary: usize,
-    num_constraints_secondary: usize,
+    num_constraints_primary: &Expect,
+    num_constraints_secondary: &Expect,
   ) where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
@@ -416,7 +427,7 @@ mod tests {
     let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
-    assert_eq!(cs.num_constraints(), num_constraints_primary);
+    num_constraints_primary.assert_eq(cs.num_constraints().to_string().as_str());
 
     let tc2 = TrivialCircuit::default();
     // Initialize the shape and ck for the secondary
@@ -425,7 +436,7 @@ mod tests {
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
-    assert_eq!(cs.num_constraints(), num_constraints_secondary);
+    num_constraints_secondary.assert_eq(cs.num_constraints().to_string().as_str());
 
     // Execute the base case for the primary
     let zero1 = <<E2 as Engine>::Base as Field>::ZERO;
@@ -483,7 +494,12 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<PallasEngine> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<PallasEngine, VestaEngine>(
-      &params1, &params2, ro_consts1, ro_consts2, 9817, 10349,
+      &params1,
+      &params2,
+      ro_consts1,
+      ro_consts2,
+      &expect!["33773"],
+      &expect!["33764"],
     );
   }
 
@@ -495,7 +511,12 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<Bn256EngineKZG> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(
-      &params1, &params2, ro_consts1, ro_consts2, 34029, 34079,
+      &params1,
+      &params2,
+      ro_consts1,
+      ro_consts2,
+      &expect!["34053"],
+      &expect!["34079"],
     );
   }
 
@@ -507,7 +528,12 @@ mod tests {
     let ro_consts2: ROConstantsCircuit<Secp256k1Engine> = PoseidonConstantsCircuit::default();
 
     test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(
-      &params1, &params2, ro_consts1, ro_consts2, 10264, 10961,
+      &params1,
+      &params2,
+      ro_consts1,
+      ro_consts2,
+      &expect!["34518"],
+      &expect!["34784"],
     );
   }
 }
