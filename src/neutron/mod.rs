@@ -286,6 +286,17 @@ where
     let (u_primary, w_primary) =
       cs_primary.r1cs_instance_and_witness(&pp.structure_primary.S, &pp.ck_primary)?;
 
+    let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
+      &pp.ck_primary,
+      &pp.ro_consts_primary,
+      &pp.digest(),
+      &pp.structure_primary,
+      &FoldedInstance::<E1>::default(&pp.structure_primary),
+      &FoldedWitness::<E1>::default(&pp.structure_primary),
+      &u_primary,
+      &w_primary,
+    )?;
+
     // base case for the secondary
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
     let inputs_secondary: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
@@ -297,7 +308,7 @@ where
       None,
       ri_secondary, // "r next"
       Some(u_primary.clone()),
-      None,
+      Some(nifs_primary),
     );
     let circuit_secondary: NeutronAugmentedCircuit<'_, E1, C2> = NeutronAugmentedCircuit::new(
       &pp.augmented_circuit_params_secondary,
@@ -308,14 +319,6 @@ where
     let zi_secondary = circuit_secondary.synthesize(&mut cs_secondary)?;
     let (u_secondary, w_secondary) =
       cs_secondary.r1cs_instance_and_witness(&pp.structure_secondary.S, &pp.ck_secondary)?;
-
-    // IVC proof for the primary circuit
-    let _l_w_primary = w_primary;
-    let _l_u_primary = u_primary;
-
-    // TODO: fold l_u, l_w with default instances to get the running instance
-    let r_W_primary = FoldedWitness::<E1>::default(&pp.structure_primary);
-    let r_U_primary = FoldedInstance::<E1>::default(&pp.structure_primary);
 
     // IVC proof for the secondary circuit
     let l_w_secondary = w_secondary;
@@ -692,19 +695,19 @@ mod tests {
     test_pp_digest_with::<PallasEngine, VestaEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["d155311b6dfdfaa84d15db86536ce6fbf0600c0aa47089ae4183686222189800"],
+      &expect!["2a986098d308738ed977342a831784a79694d15a355f840f38fd60934009fb01"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["a75f5f19cb34141f366533f657bdc02e89f2161a2bc64dbc6b6f75bca9b76602"],
+      &expect!["05164926a161718300db8463a372e9f739209a10fa0a58c189a0bde1fbf9e402"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _, _>(
       &TrivialCircuit::<_>::default(),
       &TrivialCircuit::<_>::default(),
-      &expect!["311a440fd05bb46df31230a995d27dd21f72b167d27707f7f111683112383a00"],
+      &expect!["f91a1822d94817348acd352602d583368ff96115b2f3a68cb3e93b36065a6803"],
     );
   }
 

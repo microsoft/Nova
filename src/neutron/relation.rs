@@ -54,6 +54,9 @@ pub struct FoldedInstance<E: Engine> {
 
 impl<E: Engine> Structure<E> {
   pub fn new(S: &R1CSShape<E>) -> Self {
+    // pad to the regular shape
+    let S = S.pad();
+
     let ell = S.num_cons.next_power_of_two().log_2();
 
     // we split ell into ell1 and ell2 such that ell1 + ell2 = ell and ell1 >= ell2
