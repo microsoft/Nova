@@ -442,14 +442,13 @@ impl<E: Engine> R1CSShape<E> {
 impl<E: Engine> R1CSWitness<E> {
   /// A method to create a witness object using a vector of scalars
   pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
-    if S.num_vars != W.len() {
-      Err(NovaError::InvalidWitnessLength)
-    } else {
-      Ok(R1CSWitness {
-        W: W.to_owned(),
-        r_W: E::Scalar::random(&mut OsRng),
-      })
-    }
+    let mut W = W.to_vec();
+    W.resize(S.num_vars, E::Scalar::ZERO);
+
+    Ok(R1CSWitness {
+      W,
+      r_W: E::Scalar::random(&mut OsRng),
+    })
   }
 
   /// Commits to the witness using the supplied generators

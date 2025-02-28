@@ -468,8 +468,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["34440"],
-      &expect!["34431"],
+      &expect!["38361"],
+      &expect!["38352"],
     );
   }
 
@@ -485,8 +485,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["34720"],
-      &expect!["34746"],
+      &expect!["38641"],
+      &expect!["38667"],
     );
   }
 
@@ -502,8 +502,8 @@ mod tests {
       &params2,
       ro_consts1,
       ro_consts2,
-      &expect!["35185"],
-      &expect!["35451"],
+      &expect!["39106"],
+      &expect!["39372"],
     );
   }
 }

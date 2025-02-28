@@ -55,27 +55,12 @@ impl<E: Engine> AllocatedNIFS<E> {
       cs.namespace(|| "allocate eq_rho_r_b_inv"),
       || {
         Ok(f_to_nat(
-          &nifs.map_or(E::Scalar::ZERO, |nifs| nifs.eq_rho_r_b_inv),
+          &nifs.map_or(E::Scalar::ONE, |nifs| nifs.eq_rho_r_b_inv),
         ))
       },
       limb_width,
       n_limbs,
     )?;
-    /*let eq_rho_r_b_inv = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate eq_rho_r_b_inv"),
-      || {
-        Ok(f_to_nat(
-          &self
-            .inputs
-            .get()?
-            .eq_rho_r_b_inv
-            .clone()
-            .unwrap_or(E::Scalar::ZERO),
-        ))
-      },
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;*/
 
     Ok(Self {
       comm_E,
@@ -103,6 +88,13 @@ impl<E: Engine> AllocatedNIFS<E> {
       n_limbs,
     )?;
 
+    let one_bn = alloc_bignat_constant(
+      cs.namespace(|| "alloc one"),
+      &f_to_nat(&E::Scalar::ONE),
+      limb_width,
+      n_limbs,
+    )?;
+
     // Compute r:
     let mut ro = E::ROCircuit::new(ro_consts);
     ro.absorb(vk);
@@ -122,15 +114,29 @@ impl<E: Engine> AllocatedNIFS<E> {
 
     // squeeze a challenge from the RO
     let rho_bits = ro.squeeze(cs.namespace(|| "rho_bits"), NUM_CHALLENGE_BITS)?;
-    let _rho = le_bits_to_num(cs.namespace(|| "rho"), &rho_bits)?;
+    let rho = le_bits_to_num(cs.namespace(|| "rho"), &rho_bits)?;
+    let rho_bn = BigNat::from_num(
+      cs.namespace(|| "allocate rho_bn"),
+      &Num::from(rho),
+      limb_width,
+      n_limbs,
+    )?;
 
-    // TODO: assemble rho as a num and check that poly(0) + poly(1) = T
+    let T = {
+      // T = (1-rho) * U1.T + rho * U2.T, but U2.T = 0
+      let (_, mul) = U1
+        .T
+        .mult_mod(cs.namespace(|| "mul_mod for T"), &rho_bn, &m_bn)?;
+      let sub = U1.T.sub(cs.namespace(|| "sub U1.T - mul"), &mul)?;
+      sub.red_mod(cs.namespace(|| "reduce T"), &m_bn)?
+    };
+
     let poly_at_zero = self.poly.eval_at_zero()?;
     let poly_at_one = self
       .poly
       .eval_at_one(cs.namespace(|| "poly_at_one"), &m_bn)?;
     let expected = poly_at_zero.add(&poly_at_one)?;
-    expected.equal_when_carried(cs.namespace(|| "check T"), &U1.T)?; // TODO: T should be (1-rho) * U1.T
+    expected.equal_when_carried(cs.namespace(|| "check T"), &T)?;
 
     // absorb poly in the RO
     self
@@ -149,7 +155,23 @@ impl<E: Engine> AllocatedNIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     // let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    // TODO: check that eq_rho_r_b * eq_rho_r_b_inv = 1
+    let eq_rho_r_b = {
+      // 1 - rho - r_b + 2 * rho * r_b
+      let (_, mul) = rho_bn.mult_mod(cs.namespace(|| "mul rho * r_b"), &r_b_bn, &m_bn)?;
+      let two_mul = mul.add(&mul)?;
+      let sub = two_mul.sub(cs.namespace(|| "sub 2*rho - rho"), &rho_bn)?;
+      let sub = sub.sub(cs.namespace(|| "sub 2*rho - r_b - r_b"), &r_b_bn)?;
+      sub.add(&one_bn)?
+    };
+
+    // check that eq_rho_r_b * eq_rho_r_b_inv = 1
+    // TODO: we need to check this only when we are not in the base case of the primary circuit
+    let (_, _mul) = eq_rho_r_b.mult_mod(
+      cs.namespace(|| "mult eq_rho_r_b * eq_rho_r_b_inv "),
+      &self.eq_rho_r_b_inv,
+      &m_bn,
+    )?;
+    //mul.equal_when_carried(cs.namespace(|| "check eq_rho_r_b"), &one_bn)?;
 
     // let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
     let T_out = {
