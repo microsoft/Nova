@@ -278,6 +278,24 @@ where
     }
   }
 
+  fn batch_commit(
+    ck: &Self::CommitmentKey,
+    v: &[Vec<<E as Engine>::Scalar>],
+    r: &<E as Engine>::Scalar,
+  ) -> Vec<Self::Commitment> {
+    let max = v.iter().map(|v| v.len()).max().unwrap_or(0);
+    assert!(ck.ck.len() >= max);
+
+    let blinding_factor = <E::GE as DlogGroup>::group(&ck.h) * r;
+
+    E::GE::batch_vartime_multiscalar_mul(v, &ck.ck[..max])
+      .iter()
+      .map(|commit| Commitment {
+        comm: *commit + blinding_factor,
+      })
+      .collect()
+  }
+
   fn derandomize(
     dk: &Self::DerandKey,
     commit: &Self::Commitment,
@@ -550,9 +568,9 @@ where
 
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
-    let com: Vec<G1Affine<E>> = (1..polys.len())
-      .into_par_iter()
-      .map(|i| E::CE::commit(ck, &polys[i], &E::Scalar::ZERO).comm.affine())
+    let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], &E::Scalar::ZERO)
+      .iter()
+      .map(|i| i.comm.affine())
       .collect();
 
     // Phase 2
