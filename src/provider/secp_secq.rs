@@ -5,7 +5,7 @@ use crate::{
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
-use ff::FromUniformBytes;
+use ff::{FromUniformBytes, PrimeField};
 use halo2curves::{
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
   msm::msm_best,

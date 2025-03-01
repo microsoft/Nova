@@ -65,6 +65,14 @@ pub trait DlogGroup:
 
   /// Returns the affine coordinates (x, y, infinity) for the point
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
+
+  // * The following default methods uses bincode which is slow.
+  fn to_vec_u8(point: &Self::AffineGroupElement) -> Vec<u8> {
+    bincode::serialize(point).unwrap()
+  }
+  fn from_reader(mut reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
+    Some(bincode::deserialize_from(&mut reader).unwrap())
+  }
 }
 
 /// A trait that defines extensions to the DlogGroup trait, to be implemented for
@@ -111,6 +119,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
+        bases[0].x;
         msm_best(scalars, bases)
       }
 
@@ -185,6 +194,28 @@ macro_rules! impl_traits {
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
         }
+      }
+
+      // * The following using [u8; 32] repr, which is faster
+      fn to_vec_u8(point: &Self::AffineGroupElement) -> Vec<u8> {
+        let x: [u8; 32] = point.x.to_repr().into();
+        let y: [u8; 32] = point.y.to_repr().into();
+        
+        let mut res = Vec::with_capacity(32 + 32);
+        res.extend(x);
+        res.extend(y);
+        res
+      }
+      fn from_reader(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
+        let mut x = [0u8; 32];
+        let mut y = [0u8; 32];
+
+        reader.read_exact(&mut x).unwrap();
+        reader.read_exact(&mut y).unwrap();
+
+        let x = Self::Base::from_repr(x.into()).unwrap();
+        let y = Self::Base::from_repr(y.into()).unwrap();
+        Some(Self::AffineGroupElement::from_xy(x, y).unwrap())
       }
     }
 

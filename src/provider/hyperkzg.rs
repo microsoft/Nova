@@ -25,6 +25,9 @@ use ff::Field;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Read, path::Path};
+
+use super::Bn256EngineKZG;
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -69,6 +72,138 @@ where
   /// Returns a reference to the tau_H field
   pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
     &self.tau_H
+  }
+
+  // * Key File Format:
+  // * EngineID (1-byte)
+  // * #ck.     (8-byte)
+  // * h
+  // * tau_h
+  // * ck list
+  /// Save the commitment key to a writer
+  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+    // Write the engine ID
+    let engine_id = get_engine_id::<E>().expect("unsupported engine");
+    writer.write(&[engine_id])?;
+
+    // Write the ck length
+    let ck_len = self.ck.len() as u64;
+    writer.write(&ck_len.to_le_bytes())?;
+
+    // Write h
+    let bin = <E::GE as DlogGroup>::to_vec_u8(&self.h);
+    writer.write(&bin)?;
+
+    // Write tau_h
+    let bin = <<E::GE as PairingGroup>::G2 as DlogGroup>::to_vec_u8(&self.tau_H);
+    writer.write(&bin)?;
+
+    for p in &self.ck {
+      let bin = <E::GE as DlogGroup>::to_vec_u8(p);
+      writer.write(&bin)?;
+    }
+
+    writer.flush()
+  }
+
+  /// Load commitment key from a reader
+  pub fn load_from(
+    reader: &mut impl std::io::Read,
+    needed_num_ck: usize,
+  ) -> Result<Self, std::io::Error> {
+    // Read the engine ID
+    let mut engine_id = [0u8; 1];
+    reader.read_exact(&mut engine_id)?;
+
+    // Read the ck length
+    let mut ck_len = [0u8; 8];
+    reader.read_exact(&mut ck_len)?;
+    let ck_len = u64::from_le_bytes(ck_len) as usize;
+
+    assert!(needed_num_ck <= ck_len);
+
+    // Read h
+    let h = <E::GE as DlogGroup>::from_reader(reader).unwrap();
+
+    // Read tau_h
+    let tau_h = <<E::GE as PairingGroup>::G2 as DlogGroup>::from_reader(reader).unwrap();
+
+    // Read ck list
+    let mut ck = Vec::with_capacity(ck_len);
+    for _ in 0..needed_num_ck {
+      let p = <E::GE as DlogGroup>::from_reader(reader).unwrap();
+      ck.push(p);
+    }
+
+    Ok(Self {
+      ck,
+      h,
+      tau_H: tau_h,
+    })
+  }
+
+  /// check sanity of key file
+  pub fn check_sanity_of_file(path: impl AsRef<Path>, required_len_ck_list: usize) -> bool {
+    let file = File::open(path);
+    if file.is_err() {
+      return false;
+    }
+    let mut reader = file.unwrap();
+
+    // Read the engine ID
+    let expected_id = get_engine_id::<E>();
+    if expected_id.is_none() {
+      return false;
+    }
+
+    let expected_id = expected_id.unwrap();
+
+    let mut engine_id = [0u8; 1];
+    if reader.read_exact(&mut engine_id).is_err() {
+      return false;
+    }
+
+    if engine_id[0] != expected_id {
+      return false;
+    }
+    // Read the ck length
+    let mut ck_len = [0u8; 8];
+    if reader.read_exact(&mut ck_len).is_err() {
+      return false;
+    }
+    let ck_len = u64::from_le_bytes(ck_len) as usize;
+
+    if required_len_ck_list > ck_len {
+      return false;
+    }
+
+    if let Some(point) = <E::GE as DlogGroup>::from_reader(&mut reader) {
+      let bin = <E::GE as DlogGroup>::to_vec_u8(&point);
+      let size_point = bin.len();
+
+      let expcted_size = size_point * (ck_len + 2) + 8 + 1;
+
+      expcted_size == reader.metadata().unwrap().len() as usize
+    } else {
+      false
+    }
+  }
+}
+
+fn name_of_engine<E: Engine>() -> String {
+  std::any::type_name::<E>().chars()
+        .filter(|c| c.is_alphanumeric())  // Keep only alphanumeric characters
+        .collect()
+}
+
+fn get_engine_id<E: Engine>() -> Option<u8> {
+  let name = name_of_engine::<E>();
+  let engine_1 = name_of_engine::<Bn256EngineKZG>();
+
+  if name == engine_1 {
+    Some(1)
+  } else {
+    None
   }
 }
 
@@ -701,6 +836,8 @@ where
 
 #[cfg(test)]
 mod tests {
+  use std::{fs::OpenOptions, io::{BufReader, BufWriter}};
+
   use super::*;
   use crate::{
     provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
@@ -859,5 +996,43 @@ mod tests {
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
       );
     }
+  }
+
+  #[test]
+  fn test_save_load_ck() {
+    let n = 4;
+    let filename = "/tmp/kzg.keys";
+    const BUFFER_SIZE: usize = 64 * 1024;
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+
+    let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .truncate(true)
+      .open(filename)
+      .unwrap();
+    let mut writer = BufWriter::with_capacity(BUFFER_SIZE, file);
+
+    ck.save_to(&mut writer).unwrap();
+
+    assert!(CommitmentKey::<E>::check_sanity_of_file(&filename, ck.ck.len()));
+
+    let file = OpenOptions::new()
+      .read(true)
+      .open(filename)
+      .unwrap();
+
+    let mut reader = BufReader::new(file);
+
+    let read_ck = CommitmentKey::<E>::load_from(&mut reader, ck.ck.len()).unwrap();
+
+    assert_eq!(ck.ck.len(), read_ck.ck.len());
+    assert_eq!(ck.h, read_ck.h);
+    assert_eq!(ck.tau_H, read_ck.tau_H);
+    for i in 0..ck.ck.len() {
+      assert_eq!(ck.ck[i], read_ck.ck[i]);
+    }
+
+
   }
 }
