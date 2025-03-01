@@ -197,6 +197,7 @@ macro_rules! impl_traits {
       }
 
       // * The following using [u8; 32] repr, which is faster
+      // ~ Loading time reduces from 35s to 370ms, w/ ck.len() == 2_100_000.next_pow_2()
       fn to_vec_u8(point: &Self::AffineGroupElement) -> Vec<u8> {
         let x: [u8; 32] = point.x.to_repr().into();
         let y: [u8; 32] = point.y.to_repr().into();

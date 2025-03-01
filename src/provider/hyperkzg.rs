@@ -21,7 +21,7 @@ use core::{
   ops::{Add, Mul, MulAssign},
   slice,
 };
-use ff::Field;
+use ff::{Field, PrimeFieldBits};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -363,6 +363,36 @@ where
   /// NOTE: this is for testing purposes and should not be used in production
   /// This can be used instead of `setup` to generate a reproducible commitment key
   pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
+    let num_gens = n.next_power_of_two();
+
+    if num_gens < 100_000 {
+      Self::setup_from_rng_v1(label, n, rng)
+    } else {
+      Self::setup_from_rng_par(label, n, rng)
+    }
+  }
+
+  fn setup_from_rng_par(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
+    let num_gens = n.next_power_of_two();
+
+    let tau = E::Scalar::random(rng);
+    let powers_of_tau = Self::_compute_powers_par(tau, num_gens);
+
+    let gen = <E::GE as DlogGroup>::gen();
+
+    let ck = _fixed_base_exp_comb_batch::<4, 16, 64, 8, 8, _>(gen, &powers_of_tau);
+    let ck = ck.par_iter().map(|p| p.affine()).collect();
+
+    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+
+    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
+
+    Self { ck, h, tau_H }
+  }
+
+  /// NOTE: this is for testing purposes and should not be used in production
+  /// This can be used instead of `setup` to generate a reproducible commitment key
+  fn setup_from_rng_v1(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
     let tau = E::Scalar::random(rng);
     let num_gens = n.next_power_of_two();
 
@@ -384,6 +414,128 @@ where
 
     Self { ck, h, tau_H }
   }
+
+  fn _compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+    let mut powers_of_tau = Vec::with_capacity(n);
+    powers_of_tau.insert(0, E::Scalar::ONE);
+    for i in 1..n {
+      powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
+    }
+    powers_of_tau
+  }
+
+  fn _compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+    let num_threads = rayon::current_num_threads();
+    (0..n)
+      .collect::<Vec<_>>()
+      .par_chunks(std::cmp::max(n / num_threads, 1))
+      .into_par_iter()
+      .map(|sub_list| {
+        let mut res = Vec::with_capacity(sub_list.len());
+        res.push(tau.pow(&([sub_list[0] as u64])));
+        for i in 1..sub_list.len() {
+          res.push(res[i - 1] * tau);
+        }
+        res
+      })
+      .flatten()
+      .collect::<Vec<_>>()
+  }
+}
+
+// * Implemtation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
+fn _fixed_base_exp_comb_batch<
+  const H: usize,
+  const POW_2_H: usize,
+  const A: usize,
+  const B: usize,
+  const V: usize,
+  G: DlogGroup,
+>(
+  gen: G,
+  scalars: &[G::Scalar],
+) -> Vec<G> {
+  assert_eq!(1 << H, POW_2_H);
+  assert_eq!(A, V * B);
+  assert!(A <= 64);
+  // assert!((A * H) as u32 > G::Scalar::NUM_BITS);
+
+  let zero = G::zero();
+  let one = gen;
+
+  let gi = {
+    let mut res = [zero; H];
+    res[0] = one;
+
+    // ~ H * A
+    for i in 1..H {
+      let prod = (0..A).fold(res[i - 1], |acc, _| acc + acc);
+
+      res[i] = prod;
+    }
+
+    res
+  };
+
+  let mut precompute_res = (1..POW_2_H)
+    .into_par_iter()
+    .map(|i| {
+      let mut res = [zero; V];
+
+      // * G[0][i]
+      let mut g_0_i = zero;
+      for j in 0..H {
+        if (1 << j) & i > 0 {
+          g_0_i += gi[j];
+        }
+      }
+
+      res[0] = g_0_i;
+
+      // * G[j][i]
+      for j in 1..V {
+        res[j] = (0..B).fold(res[j - 1], |acc, _| acc + acc);
+      }
+
+      res
+    })
+    .collect::<Vec<_>>();
+
+  precompute_res.insert(0, [zero; V]);
+
+  let precomputed_g: [_; POW_2_H] = std::array::from_fn(|j| precompute_res[j]);
+
+  let zero = G::zero();
+
+  scalars
+    .par_iter()
+    .map(|e| {
+      let mut a = zero;
+      let mut bits = e.to_le_bits().into_iter().collect::<Vec<_>>();
+
+      while bits.len() % A != 0 {
+        bits.push(false);
+      }
+
+      for k in (0..B).rev() {
+        a += a;
+        for j in (0..V).rev() {
+          let i_j_k = (0..H)
+            .map(|h| {
+              let b = bits[h * A + j * B + k];
+              (1 << h) * b as usize
+            })
+            .fold(0, |acc, item| acc + item);
+
+          if i_j_k > 0 {
+            a += precomputed_g[i_j_k][j];
+          }
+        }
+      }
+
+      a
+    })
+    .collect::<Vec<_>>()
 }
 
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
@@ -836,7 +988,10 @@ where
 
 #[cfg(test)]
 mod tests {
-  use std::{fs::OpenOptions, io::{BufReader, BufWriter}};
+  use std::{
+    fs::OpenOptions,
+    io::{BufReader, BufWriter},
+  };
 
   use super::*;
   use crate::{
@@ -1015,12 +1170,12 @@ mod tests {
 
     ck.save_to(&mut writer).unwrap();
 
-    assert!(CommitmentKey::<E>::check_sanity_of_file(&filename, ck.ck.len()));
+    assert!(CommitmentKey::<E>::check_sanity_of_file(
+      &filename,
+      ck.ck.len()
+    ));
 
-    let file = OpenOptions::new()
-      .read(true)
-      .open(filename)
-      .unwrap();
+    let file = OpenOptions::new().read(true).open(filename).unwrap();
 
     let mut reader = BufReader::new(file);
 
@@ -1032,7 +1187,87 @@ mod tests {
     for i in 0..ck.ck.len() {
       assert_eq!(ck.ck[i], read_ck.ck[i]);
     }
+  }
 
+  // #[ignore = "benchmark only"]
+  #[test]
+  fn test_power_computation_benchmark() {
+    let tau = <Bn256EngineKZG as Engine>::Scalar::random(OsRng);
 
+    for n in [10, 100, 1000, 10000, 100000, 200000, 2_000_000, 4_000_000] {
+      let start = std::time::Instant::now();
+      let res_serial = CommitmentKey::<E>::_compute_powers_par(tau, n);
+      let elapsed_serial = start.elapsed();
+
+      let start = std::time::Instant::now();
+      let res_par = CommitmentKey::<E>::_compute_powers_par(tau, n);
+      let elapsed_par = start.elapsed();
+
+      println!(
+        "n = {}, serial: {:?}, parallel: {:?}",
+        n, elapsed_serial, elapsed_par
+      );
+
+      assert_eq!(n, res_par.len());
+      assert_eq!(n, res_serial.len());
+      for i in 0..n {
+        assert_eq!(res_serial[i], res_par[i]);
+      }
+    }
+  }
+
+  #[test]
+  fn test_setup_from_rng_benchmark() {
+    for n in [10, 100, 1000, 10000, 100000, 200000, 2_000_000, 4_000_000] {
+      let start = std::time::Instant::now();
+      let _ = CommitmentKey::<E>::setup_from_rng_v1(&[1], n, OsRng);
+      let elapsed_serial = start.elapsed();
+
+      let start = std::time::Instant::now();
+      let _ = CommitmentKey::<E>::setup_from_rng_par(&[1], n, OsRng);
+      let elapsed_par = start.elapsed();
+
+      println!(
+        "n = {}, serial: {:?}, parallel: {:?}",
+        n, elapsed_serial, elapsed_par
+      );
+
+      // assert_eq!(n, res_par.len());
+      // assert_eq!(n, res_serial.len());
+      // for i in 0..n {
+      //   assert_eq!(res_serial[i], res_par[i]);
+      // }
+    }
+  }
+
+  // #[ignore]
+  #[test]
+  fn test_save_load_large_file() {
+    const N: usize = 2_100_000;
+    const FILENAME: &str = "/tmp/kzg_large.keys";
+    {
+      let ck = CommitmentKey::<E>::setup_from_rng_v1(&[1], N, OsRng);
+      let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(FILENAME)
+        .unwrap();
+      let mut writer = BufWriter::new(file);
+
+      ck.save_to(&mut writer).unwrap();
+    }
+    {
+      let file = OpenOptions::new().read(true).open(FILENAME).unwrap();
+      println!(
+        "File size: {:?} MB",
+        file.metadata().unwrap().len() / 1024 / 1024
+      );
+      let now = std::time::Instant::now();
+      let mut reader = BufReader::new(file);
+      let _ = CommitmentKey::<E>::load_from(&mut reader, N.next_power_of_two()).unwrap();
+      let elapsed = now.elapsed();
+      println!("Loading time: {:?}", elapsed);
+    }
   }
 }
