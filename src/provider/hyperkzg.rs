@@ -357,7 +357,7 @@ where
   }
 
   fn setup_from_tau_fixed_base_exp(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
-    let tau = powers_of_tau[0];
+    let tau = powers_of_tau[1];
 
     let gen = <E::GE as DlogGroup>::gen();
 
@@ -373,7 +373,7 @@ where
 
   fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
     let num_gens = powers_of_tau.len();
-    let tau = powers_of_tau[0];
+    let tau = powers_of_tau[1];
 
     let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
