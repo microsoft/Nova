@@ -8,7 +8,10 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::{commitment_key_io::load_ck_vec, traits::{DlogGroup, PairingGroup}},
+  provider::{
+    commitment_key_io::load_ck_vec,
+    traits::{DlogGroup, PairingGroup},
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -168,9 +171,9 @@ where
       let bin = <E::GE as DlogGroup>::encode(&point);
       let size_point = bin.len();
 
-      let expcted_size = size_point * (ck_len + 2) + 8 + 1;
+      let expected_size = size_point * (ck_len + 2) + 8 + 1;
 
-      expcted_size == reader.metadata().unwrap().len() as usize
+      expected_size == reader.metadata().unwrap().len() as usize
     } else {
       false
     }
@@ -412,7 +415,7 @@ where
   }
 }
 
-// * Implemtation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
+// * Implementation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
 fn fixed_base_exp_comb_batch<
   const H: usize,
   const POW_2_H: usize,

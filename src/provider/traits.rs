@@ -199,7 +199,7 @@ macro_rules! impl_traits {
       fn encode(point: &Self::AffineGroupElement) -> Vec<u8> {
         let x: [u8; 32] = point.x.to_repr().into();
         let y: [u8; 32] = point.y.to_repr().into();
-        
+
         let mut res = Vec::with_capacity(32 + 32);
         res.extend(x);
         res.extend(y);

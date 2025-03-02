@@ -75,12 +75,7 @@ fn keygen_save_large() {
     CommitmentKey::<E>::load_from(&mut reader, MAX_NUM_GENS)
   });
 
-  println!(
-    "Loaded {} keys from {} in {:?}",
-    MAX_NUM_GENS,
-    &path,
-    dur
-  );
+  println!("Loaded {} keys from {} in {:?}", MAX_NUM_GENS, &path, dur);
 }
 
 fn main() {

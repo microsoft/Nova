@@ -9,7 +9,7 @@ pub mod poseidon;
 pub mod secp_secq;
 
 pub(crate) mod commitment_key_io;
-pub use commitment_key_io::{CommitmentKeyIO, id_of};
+pub use commitment_key_io::{id_of, CommitmentKeyIO};
 
 // crate-private modules
 pub(crate) mod keccak;

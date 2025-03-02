@@ -26,7 +26,7 @@ impl<Scalar: PrimeField> BitAccess for Scalar {
 
     let (byte_pos, bit_pos) = (i / 8, i % 8);
     let byte = self.to_repr().as_ref()[byte_pos];
-    let bit = byte >> bit_pos & 1;
+    let bit = (byte >> bit_pos) & 1;
     Some(bit == 1)
   }
 }

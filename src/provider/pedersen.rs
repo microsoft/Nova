@@ -12,10 +12,10 @@ use core::{
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
 };
-use std::{fs::File, io::Read};
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Read};
 
 use super::commitment_key_io::{id_of, write_ck_vec, CommitmentKeyIO};
 
@@ -408,11 +408,11 @@ where
       let bin = <E::GE as DlogGroup>::encode(&point);
       let size_point = bin.len();
 
-      let expcted_size = size_point as u64 * (ck_len + 2) as u64
+      let expected_size = size_point as u64 * (ck_len + 2) as u64
         + bincode::serialized_size(&E::GE::zero()).unwrap()
         + 1;
 
-      expcted_size == reader.metadata().unwrap().len()
+      expected_size == reader.metadata().unwrap().len()
     } else {
       false
     }
