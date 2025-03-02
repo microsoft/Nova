@@ -153,7 +153,7 @@ fn load_keys_benchmark() {
   println!("| {:<12} | {:<12} |", "size", "load_time");
   println!("|--------------|--------------|");
 
-  for p in 0..21 {
+  for p in 0..=21 {
     if 1 << p > MAX_NUM_GENS {
       break;
     }
