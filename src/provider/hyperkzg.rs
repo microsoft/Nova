@@ -8,7 +8,7 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::traits::{DlogGroup, PairingGroup},
+  provider::{commitment_key_io::load_ck_vec, traits::{DlogGroup, PairingGroup}},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -27,7 +27,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read, path::Path};
 
-use super::Bn256EngineKZG;
+use super::commitment_key_io::{id_of, write_ck_vec, CommitmentKeyIO};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -73,19 +73,16 @@ where
   pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
     &self.tau_H
   }
+}
 
-  // * Key File Format:
-  // * EngineID (1-byte)
-  // * #ck.     (8-byte)
-  // * h
-  // * tau_h
-  // * ck list
-  /// Save the commitment key to a writer
-  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-    let chunk_size = rayon::current_num_threads() * 1000;
-    // Write the engine ID
-    let engine_id = get_engine_id::<E>().expect("unsupported engine");
-    writer.write_all(&[engine_id])?;
+impl<E: Engine> CommitmentKeyIO for CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
+  fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+    // Write the Group ID
+    let group_id = id_of::<E::GE>().unwrap();
+    writer.write_all(&[group_id])?;
 
     // Write the ck length
     let ck_len = self.ck.len() as u64;
@@ -99,26 +96,16 @@ where
     let bin = <<E::GE as PairingGroup>::G2 as DlogGroup>::encode(&self.tau_H);
     writer.write_all(&bin)?;
 
-    self.ck.chunks(chunk_size).for_each(|cks| {
-      let bins = cks
-        .par_iter()
-        .map(<E::GE as DlogGroup>::encode)
-        .flatten()
-        .collect::<Vec<_>>();
-      writer.write_all(&bins).unwrap();
-    });
+    // Write ck
+    write_ck_vec::<E>(writer, &self.ck)?;
 
     writer.flush()
   }
 
-  /// Load commitment key from a reader
-  pub fn load_from(
-    reader: &mut impl std::io::Read,
-    needed_num_ck: usize,
-  ) -> Result<Self, std::io::Error> {
-    // Read the engine ID
-    let mut engine_id = [0u8; 1];
-    reader.read_exact(&mut engine_id)?;
+  fn load_from(reader: &mut impl Read, needed_num_ck: usize) -> Result<Self, std::io::Error> {
+    // Read the group ID
+    let mut group_id = [0u8; 1];
+    reader.read_exact(&mut group_id)?;
 
     // Read the ck length
     let mut ck_len = [0u8; 8];
@@ -134,11 +121,7 @@ where
     let tau_h = <<E::GE as PairingGroup>::G2 as DlogGroup>::decode_from(reader).unwrap();
 
     // Read ck list
-    let mut ck = Vec::with_capacity(ck_len);
-    for _ in 0..needed_num_ck {
-      let p = <E::GE as DlogGroup>::decode_from(reader).unwrap();
-      ck.push(p);
-    }
+    let ck = load_ck_vec::<E>(reader, needed_num_ck);
 
     Ok(Self {
       ck,
@@ -147,28 +130,27 @@ where
     })
   }
 
-  /// check sanity of key file
-  pub fn check_sanity_of_file(path: impl AsRef<Path>, required_len_ck_list: usize) -> bool {
+  fn check_sanity_of_file(path: impl AsRef<Path>, required_len_ck_list: usize) -> bool {
     let file = File::open(path);
     if file.is_err() {
       return false;
     }
     let mut reader = file.unwrap();
 
-    // Read the engine ID
-    let expected_id = get_engine_id::<E>();
+    // Read the group ID
+    let expected_id = id_of::<E::GE>();
     if expected_id.is_none() {
       return false;
     }
 
     let expected_id = expected_id.unwrap();
 
-    let mut engine_id = [0u8; 1];
-    if reader.read_exact(&mut engine_id).is_err() {
+    let mut group_id = [0u8; 1];
+    if reader.read_exact(&mut group_id).is_err() {
       return false;
     }
 
-    if engine_id[0] != expected_id {
+    if group_id[0] != expected_id {
       return false;
     }
     // Read the ck length
@@ -192,23 +174,6 @@ where
     } else {
       false
     }
-  }
-}
-
-pub fn name_of_engine<E: Engine>() -> String {
-  std::any::type_name::<E>().chars()
-        .filter(|c| c.is_alphanumeric())  // Keep only alphanumeric characters
-        .collect()
-}
-
-fn get_engine_id<E: Engine>() -> Option<u8> {
-  let name = name_of_engine::<E>();
-  let engine_1 = name_of_engine::<Bn256EngineKZG>();
-
-  if name == engine_1 {
-    Some(1)
-  } else {
-    None
   }
 }
 
@@ -388,7 +353,7 @@ where
     }
   }
 
-  pub fn setup_from_tau_fixed_base_exp(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+  fn setup_from_tau_fixed_base_exp(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
     let tau = powers_of_tau[0];
 
     let gen = <E::GE as DlogGroup>::gen();
@@ -403,9 +368,7 @@ where
     Self { ck, h, tau_H }
   }
 
-  /// NOTE: this is for testing purposes and should not be used in production
-  /// This can be used instead of `setup` to generate a reproducible commitment key
-  pub fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+  fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
     let num_gens = powers_of_tau.len();
     let tau = powers_of_tau[0];
 
@@ -421,7 +384,7 @@ where
     Self { ck, h, tau_H }
   }
 
-  pub fn compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+  fn compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
     let mut powers_of_tau = Vec::with_capacity(n);
     powers_of_tau.insert(0, E::Scalar::ONE);
     for i in 1..n {
@@ -430,7 +393,7 @@ where
     powers_of_tau
   }
 
-  pub fn compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+  fn compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
     let num_threads = rayon::current_num_threads();
     (0..n)
       .collect::<Vec<_>>()
@@ -1176,7 +1139,7 @@ mod tests {
     ck.save_to(&mut writer).unwrap();
 
     assert!(CommitmentKey::<E>::check_sanity_of_file(
-      &filename,
+      filename,
       ck.ck.len()
     ));
 
