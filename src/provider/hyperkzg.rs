@@ -82,26 +82,31 @@ where
   // * ck list
   /// Save the commitment key to a writer
   pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+    let chunk_size = rayon::current_num_threads() * 1000;
     // Write the engine ID
     let engine_id = get_engine_id::<E>().expect("unsupported engine");
-    writer.write(&[engine_id])?;
+    writer.write_all(&[engine_id])?;
 
     // Write the ck length
     let ck_len = self.ck.len() as u64;
-    writer.write(&ck_len.to_le_bytes())?;
+    writer.write_all(&ck_len.to_le_bytes())?;
 
     // Write h
-    let bin = <E::GE as DlogGroup>::to_vec_u8(&self.h);
-    writer.write(&bin)?;
+    let bin = <E::GE as DlogGroup>::encode(&self.h);
+    writer.write_all(&bin)?;
 
     // Write tau_h
-    let bin = <<E::GE as PairingGroup>::G2 as DlogGroup>::to_vec_u8(&self.tau_H);
-    writer.write(&bin)?;
+    let bin = <<E::GE as PairingGroup>::G2 as DlogGroup>::encode(&self.tau_H);
+    writer.write_all(&bin)?;
 
-    for p in &self.ck {
-      let bin = <E::GE as DlogGroup>::to_vec_u8(p);
-      writer.write(&bin)?;
-    }
+    self.ck.chunks(chunk_size).for_each(|cks| {
+      let bins = cks
+        .par_iter()
+        .map(<E::GE as DlogGroup>::encode)
+        .flatten()
+        .collect::<Vec<_>>();
+      writer.write_all(&bins).unwrap();
+    });
 
     writer.flush()
   }
@@ -123,15 +128,15 @@ where
     assert!(needed_num_ck <= ck_len);
 
     // Read h
-    let h = <E::GE as DlogGroup>::from_reader(reader).unwrap();
+    let h = <E::GE as DlogGroup>::decode_from(reader).unwrap();
 
     // Read tau_h
-    let tau_h = <<E::GE as PairingGroup>::G2 as DlogGroup>::from_reader(reader).unwrap();
+    let tau_h = <<E::GE as PairingGroup>::G2 as DlogGroup>::decode_from(reader).unwrap();
 
     // Read ck list
     let mut ck = Vec::with_capacity(ck_len);
     for _ in 0..needed_num_ck {
-      let p = <E::GE as DlogGroup>::from_reader(reader).unwrap();
+      let p = <E::GE as DlogGroup>::decode_from(reader).unwrap();
       ck.push(p);
     }
 
@@ -177,8 +182,8 @@ where
       return false;
     }
 
-    if let Some(point) = <E::GE as DlogGroup>::from_reader(&mut reader) {
-      let bin = <E::GE as DlogGroup>::to_vec_u8(&point);
+    if let Some(point) = <E::GE as DlogGroup>::decode_from(&mut reader) {
+      let bin = <E::GE as DlogGroup>::encode(&point);
       let size_point = bin.len();
 
       let expcted_size = size_point * (ck_len + 2) + 8 + 1;
@@ -190,7 +195,7 @@ where
   }
 }
 
-fn name_of_engine<E: Engine>() -> String {
+pub fn name_of_engine<E: Engine>() -> String {
   std::any::type_name::<E>().chars()
         .filter(|c| c.is_alphanumeric())  // Keep only alphanumeric characters
         .collect()
@@ -363,24 +368,32 @@ where
   /// NOTE: this is for testing purposes and should not be used in production
   /// This can be used instead of `setup` to generate a reproducible commitment key
   pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
-    let num_gens = n.next_power_of_two();
+    const T1: usize = 1 << 16;
+    const T2: usize = 100_000;
 
-    if num_gens < 100_000 {
-      Self::setup_from_rng_v1(label, n, rng)
-    } else {
-      Self::setup_from_rng_par(label, n, rng)
-    }
-  }
-
-  fn setup_from_rng_par(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
     let num_gens = n.next_power_of_two();
 
     let tau = E::Scalar::random(rng);
-    let powers_of_tau = Self::_compute_powers_par(tau, num_gens);
+
+    let powers_of_tau = if num_gens < T1 {
+      Self::compute_powers_serial(tau, num_gens)
+    } else {
+      Self::compute_powers_par(tau, num_gens)
+    };
+
+    if num_gens < T2 {
+      Self::setup_from_tau_direct(label, &powers_of_tau)
+    } else {
+      Self::setup_from_tau_fixed_base_exp(label, &powers_of_tau)
+    }
+  }
+
+  pub fn setup_from_tau_fixed_base_exp(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+    let tau = powers_of_tau[0];
 
     let gen = <E::GE as DlogGroup>::gen();
 
-    let ck = _fixed_base_exp_comb_batch::<4, 16, 64, 8, 8, _>(gen, &powers_of_tau);
+    let ck = fixed_base_exp_comb_batch::<4, 16, 64, 8, 8, _>(gen, powers_of_tau);
     let ck = ck.par_iter().map(|p| p.affine()).collect();
 
     let h = E::GE::from_label(label, 1).first().unwrap().clone();
@@ -392,16 +405,9 @@ where
 
   /// NOTE: this is for testing purposes and should not be used in production
   /// This can be used instead of `setup` to generate a reproducible commitment key
-  fn setup_from_rng_v1(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
-    let tau = E::Scalar::random(rng);
-    let num_gens = n.next_power_of_two();
-
-    // Compute powers of tau in E::Scalar, then scalar muls in parallel
-    let mut powers_of_tau: Vec<E::Scalar> = Vec::with_capacity(num_gens);
-    powers_of_tau.insert(0, E::Scalar::ONE);
-    for i in 1..num_gens {
-      powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
-    }
+  pub fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+    let num_gens = powers_of_tau.len();
+    let tau = powers_of_tau[0];
 
     let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
@@ -415,7 +421,7 @@ where
     Self { ck, h, tau_H }
   }
 
-  fn _compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+  pub fn compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
     let mut powers_of_tau = Vec::with_capacity(n);
     powers_of_tau.insert(0, E::Scalar::ONE);
     for i in 1..n {
@@ -424,7 +430,7 @@ where
     powers_of_tau
   }
 
-  fn _compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+  pub fn compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
     let num_threads = rayon::current_num_threads();
     (0..n)
       .collect::<Vec<_>>()
@@ -432,7 +438,7 @@ where
       .into_par_iter()
       .map(|sub_list| {
         let mut res = Vec::with_capacity(sub_list.len());
-        res.push(tau.pow(&([sub_list[0] as u64])));
+        res.push(tau.pow([sub_list[0] as u64]));
         for i in 1..sub_list.len() {
           res.push(res[i - 1] * tau);
         }
@@ -444,7 +450,7 @@ where
 }
 
 // * Implemtation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
-fn _fixed_base_exp_comb_batch<
+fn fixed_base_exp_comb_batch<
   const H: usize,
   const POW_2_H: usize,
   const A: usize,
@@ -484,9 +490,9 @@ fn _fixed_base_exp_comb_batch<
 
       // * G[0][i]
       let mut g_0_i = zero;
-      for j in 0..H {
+      for (j, item) in gi.iter().enumerate().take(H) {
         if (1 << j) & i > 0 {
-          g_0_i += gi[j];
+          g_0_i += item;
         }
       }
 
@@ -525,7 +531,7 @@ fn _fixed_base_exp_comb_batch<
               let b = bits[h * A + j * B + k];
               (1 << h) * b as usize
             })
-            .fold(0, |acc, item| acc + item);
+            .sum::<usize>();
 
           if i_j_k > 0 {
             a += precomputed_g[i_j_k][j];
@@ -548,7 +554,6 @@ where
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
-    // TODO: we need to decide how to generate load/store parameters
     Self::CommitmentKey::setup_from_rng(label, n, OsRng)
   }
 
@@ -1156,7 +1161,7 @@ mod tests {
   #[test]
   fn test_save_load_ck() {
     let n = 4;
-    let filename = "/tmp/kzg.keys";
+    let filename = "/tmp/kzg_test.keys";
     const BUFFER_SIZE: usize = 64 * 1024;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
 
@@ -1186,88 +1191,6 @@ mod tests {
     assert_eq!(ck.tau_H, read_ck.tau_H);
     for i in 0..ck.ck.len() {
       assert_eq!(ck.ck[i], read_ck.ck[i]);
-    }
-  }
-
-  // #[ignore = "benchmark only"]
-  #[test]
-  fn test_power_computation_benchmark() {
-    let tau = <Bn256EngineKZG as Engine>::Scalar::random(OsRng);
-
-    for n in [10, 100, 1000, 10000, 100000, 200000, 2_000_000, 4_000_000] {
-      let start = std::time::Instant::now();
-      let res_serial = CommitmentKey::<E>::_compute_powers_par(tau, n);
-      let elapsed_serial = start.elapsed();
-
-      let start = std::time::Instant::now();
-      let res_par = CommitmentKey::<E>::_compute_powers_par(tau, n);
-      let elapsed_par = start.elapsed();
-
-      println!(
-        "n = {}, serial: {:?}, parallel: {:?}",
-        n, elapsed_serial, elapsed_par
-      );
-
-      assert_eq!(n, res_par.len());
-      assert_eq!(n, res_serial.len());
-      for i in 0..n {
-        assert_eq!(res_serial[i], res_par[i]);
-      }
-    }
-  }
-
-  #[test]
-  fn test_setup_from_rng_benchmark() {
-    for n in [10, 100, 1000, 10000, 100000, 200000, 2_000_000, 4_000_000] {
-      let start = std::time::Instant::now();
-      let _ = CommitmentKey::<E>::setup_from_rng_v1(&[1], n, OsRng);
-      let elapsed_serial = start.elapsed();
-
-      let start = std::time::Instant::now();
-      let _ = CommitmentKey::<E>::setup_from_rng_par(&[1], n, OsRng);
-      let elapsed_par = start.elapsed();
-
-      println!(
-        "n = {}, serial: {:?}, parallel: {:?}",
-        n, elapsed_serial, elapsed_par
-      );
-
-      // assert_eq!(n, res_par.len());
-      // assert_eq!(n, res_serial.len());
-      // for i in 0..n {
-      //   assert_eq!(res_serial[i], res_par[i]);
-      // }
-    }
-  }
-
-  // #[ignore]
-  #[test]
-  fn test_save_load_large_file() {
-    const N: usize = 2_100_000;
-    const FILENAME: &str = "/tmp/kzg_large.keys";
-    {
-      let ck = CommitmentKey::<E>::setup_from_rng_v1(&[1], N, OsRng);
-      let file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(FILENAME)
-        .unwrap();
-      let mut writer = BufWriter::new(file);
-
-      ck.save_to(&mut writer).unwrap();
-    }
-    {
-      let file = OpenOptions::new().read(true).open(FILENAME).unwrap();
-      println!(
-        "File size: {:?} MB",
-        file.metadata().unwrap().len() / 1024 / 1024
-      );
-      let now = std::time::Instant::now();
-      let mut reader = BufReader::new(file);
-      let _ = CommitmentKey::<E>::load_from(&mut reader, N.next_power_of_two()).unwrap();
-      let elapsed = now.elapsed();
-      println!("Loading time: {:?}", elapsed);
     }
   }
 }

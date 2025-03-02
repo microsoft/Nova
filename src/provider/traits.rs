@@ -67,11 +67,11 @@ pub trait DlogGroup:
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 
   // * The following default methods uses bincode which is slow.
-  fn to_vec_u8(point: &Self::AffineGroupElement) -> Vec<u8> {
+  fn encode(point: &Self::AffineGroupElement) -> Vec<u8> {
     bincode::serialize(point).unwrap()
   }
-  fn from_reader(mut reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
-    Some(bincode::deserialize_from(&mut reader).unwrap())
+  fn decode_from(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
+    Some(bincode::deserialize_from(reader).unwrap())
   }
 }
 
@@ -198,7 +198,7 @@ macro_rules! impl_traits {
 
       // * The following using [u8; 32] repr, which is faster
       // ~ Loading time reduces from 35s to 370ms, w/ ck.len() == 2_100_000.next_pow_2()
-      fn to_vec_u8(point: &Self::AffineGroupElement) -> Vec<u8> {
+      fn encode(point: &Self::AffineGroupElement) -> Vec<u8> {
         let x: [u8; 32] = point.x.to_repr().into();
         let y: [u8; 32] = point.y.to_repr().into();
         
@@ -207,7 +207,7 @@ macro_rules! impl_traits {
         res.extend(y);
         res
       }
-      fn from_reader(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
+      fn decode_from(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
         let mut x = [0u8; 32];
         let mut y = [0u8; 32];
 
