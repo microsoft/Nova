@@ -361,7 +361,7 @@ where
 
     let gen = <E::GE as DlogGroup>::gen();
 
-    let ck = fixed_base_exp_comb_batch::<4, 16, 64, 8, 8, _>(gen, powers_of_tau);
+    let ck = fixed_base_exp_comb_batch::<4, 16, 64, 2, 32, _>(gen, powers_of_tau);
     let ck = ck.par_iter().map(|p| p.affine()).collect();
 
     let h = E::GE::from_label(label, 1).first().unwrap().clone();
@@ -430,22 +430,16 @@ fn fixed_base_exp_comb_batch<
   assert_eq!(1 << H, POW_2_H);
   assert_eq!(A, V * B);
   assert!(A <= 64);
-  // assert!((A * H) as u32 > G::Scalar::NUM_BITS);
 
   let zero = G::zero();
   let one = gen;
 
   let gi = {
-    let mut res = [zero; H];
-    res[0] = one;
-
-    // ~ H * A
+    let mut res = [one; H];
     for i in 1..H {
       let prod = (0..A).fold(res[i - 1], |acc, _| acc + acc);
-
       res[i] = prod;
     }
-
     res
   };
 
@@ -1121,6 +1115,23 @@ mod tests {
       assert!(
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
       );
+    }
+  }
+
+  #[test]
+  fn test_key_gen() {
+    let n = 100;
+    let tau = Fr::random(OsRng);
+    let powers_of_tau = CommitmentKey::<E>::compute_powers_serial(tau, n);
+    let label = b"test";
+    let res1 = CommitmentKey::<E>::setup_from_tau_direct(label, &powers_of_tau);
+    let res2 = CommitmentKey::<E>::setup_from_tau_fixed_base_exp(label, &powers_of_tau);
+
+    assert_eq!(res1.ck.len(), res2.ck.len());
+    assert_eq!(res1.h, res2.h);
+    assert_eq!(res1.tau_H, res2.tau_H);
+    for i in 0..res1.ck.len() {
+      assert_eq!(res1.ck[i], res2.ck[i]);
     }
   }
 
