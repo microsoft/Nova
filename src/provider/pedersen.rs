@@ -323,9 +323,6 @@ where
   }
 }
 
-// ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
-//   h: Option<<E::GE as DlogGroup>::AffineGroupElement>,
-
 impl<E: Engine> CommitmentKeyIO for CommitmentKey<E>
 where
   E::GE: DlogGroup,
