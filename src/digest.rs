@@ -1,14 +1,14 @@
-use crate::constants::NUM_HASH_BITS;
-use bincode::Options;
+use crate::{constants::NUM_HASH_BITS, errors::NovaError};
+use bincode::config::legacy;
 use ff::PrimeField;
 use serde::Serialize;
 use sha3::{Digest, Sha3_256};
-use std::{io, marker::PhantomData};
+use std::marker::PhantomData;
 
 /// Trait for components with potentially discrete digests to be included in their container's digest.
 pub trait Digestible {
   /// Write the byte representation of Self in a byte buffer
-  fn write_bytes<W: Sized + io::Write>(&self, byte_sink: &mut W) -> Result<(), io::Error>;
+  fn write_bytes<W: Sized>(&self, byte_sink: &mut W) -> Result<(), NovaError>;
 }
 
 /// Marker trait to be implemented for types that implement `Digestible` and `Serialize`.
@@ -16,14 +16,24 @@ pub trait Digestible {
 pub trait SimpleDigestible: Serialize {}
 
 impl<T: SimpleDigestible> Digestible for T {
-  fn write_bytes<W: Sized + io::Write>(&self, byte_sink: &mut W) -> Result<(), io::Error> {
-    let config = bincode::DefaultOptions::new()
-      .with_little_endian()
-      .with_fixint_encoding();
-    // Note: bincode recursively length-prefixes every field!
-    config
-      .serialize_into(byte_sink, self)
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+  // TODO -> remove _byte_sink ?
+  fn write_bytes<W: Sized>(&self, _byte_sink: &mut W) -> Result<(), NovaError> {
+    // ! Original ->
+    // let config = bincode::DefaultOptions::new()
+    //   .with_little_endian()
+    //   .with_fixint_encoding();
+    // // Note: bincode recursively length-prefixes every field!
+    // config
+    //   .serialize_into(byte_sink, self)
+    //   .map_err(|e| NovaError::DigestError {
+    //     reason: e.to_string(),
+    //   })
+
+    let config = legacy();
+    bincode::serde::encode_to_vec(self, config).map_err(|e| NovaError::DigestError {
+      reason: e.to_string(),
+    })?;
+    Ok(())
   }
 }
 
@@ -65,7 +75,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
   }
 
   /// Compute the digest of a `Digestible` instance.
-  pub fn digest(&self) -> Result<F, io::Error> {
+  pub fn digest(&self) -> Result<F, core::fmt::Error> {
     let mut hasher = Self::hasher();
     self
       .inner
@@ -80,6 +90,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 mod tests {
   use super::{DigestComputer, SimpleDigestible};
   use crate::{provider::PallasEngine, traits::Engine};
+  use bincode::config::legacy;
   use ff::Field;
   use once_cell::sync::OnceCell;
   use serde::{Deserialize, Serialize};
@@ -153,9 +164,15 @@ mod tests {
     // this justifies the adjective "bad"
     assert_ne!(good_s.digest(), bad_s.digest());
 
-    let naughty_bytes = bincode::serialize(&bad_s).unwrap();
+    // let naughty_bytes = bincode::serialize(&bad_s).unwrap();
 
-    let retrieved_s: S<E> = bincode::deserialize(&naughty_bytes).unwrap();
+    // let retrieved_s: S<E> = bincode::deserialize(&naughty_bytes).unwrap();
+
+    let naughty_bytes = bincode::serde::encode_to_vec(&bad_s, legacy()).unwrap();
+    let retrieved_s: S<E> = bincode::serde::decode_from_slice(&naughty_bytes, legacy())
+      .unwrap()
+      .0;
+
     assert_eq!(good_s.digest(), retrieved_s.digest())
   }
 }

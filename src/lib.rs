@@ -35,11 +35,10 @@ type DerandKey<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::DerandKey;
 type Commitment<E> = <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment;
 type CE<E> = <E as Engine>::CE;
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
+// TODO -> See how to handle this in best way possible
 #[cfg(not(feature = "std"))]
 pub(crate) mod prelude {
+  extern crate alloc;
   pub use alloc::borrow::ToOwned;
   pub use alloc::boxed::Box;
   pub use alloc::format;
