@@ -253,8 +253,8 @@ pub fn write_be<F: PrimeField>(f: &F, buffer: &mut [u8]) -> Result<(), ()> {
 
 /// Convert a field element to a natural number
 pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
-  let mut s = Vec::new();
-  write_be(f, &mut s).unwrap(); // f.to_repr().write_be(&mut s).unwrap();
+  let mut buffer = [0u8; 256]; // Fixed-size buffer for the serialized representation of the field element
+  write_be(f, &mut buffer).unwrap();
   BigInt::from_bytes_le(Sign::Plus, f.to_repr().as_ref())
 }
 
