@@ -22,6 +22,7 @@ use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for pallas
 pub mod pallas {
+  // ! TODO Here make halo2curves only on STD and pasta_curves on NO_STD instead of having 2 separate files
   pub use halo2curves::pasta::{Fp as Base, Fq as Scalar, Pallas as Point, PallasAffine as Affine};
 }
 
