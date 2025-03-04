@@ -134,10 +134,10 @@ where
     mut writer: &mut (impl std::io::Write + std::io::Seek),
   ) -> Result<(), PtauFileError> {
     let mut g1_points = Vec::with_capacity(self.ck.len() + 1);
-    g1_points.push(self.h.clone());
+    g1_points.push(self.h);
     g1_points.extend(self.ck.iter().cloned());
 
-    let g2_points = vec![self.tau_H.clone()];
+    let g2_points = vec![self.tau_H];
     let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
 
     write_ptau(&mut writer, g1_points, g2_points, power)
@@ -277,7 +277,7 @@ where
     let ck = fixed_base_exp_comb_batch::<4, 16, 64, 2, 32, _>(gen, powers_of_tau);
     let ck = ck.par_iter().map(|p| p.affine()).collect();
 
-    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+    let h = *E::GE::from_label(label, 1).first().unwrap();
 
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
@@ -293,7 +293,7 @@ where
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
 
-    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+    let h = *E::GE::from_label(label, 1).first().unwrap();
 
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
@@ -431,7 +431,7 @@ where
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
-    Self::DerandKey { h: ck.h.clone() }
+    Self::DerandKey { h: ck.h }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
@@ -590,7 +590,7 @@ where
     let vk = VerifierKey {
       G: E::GE::gen().affine(),
       H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().affine(),
-      tau_H: ck.tau_H.clone(),
+      tau_H: ck.tau_H
     };
 
     (pk, vk)

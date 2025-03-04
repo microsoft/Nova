@@ -169,7 +169,7 @@ where
   pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
     writer.write_all(&KEY_FILE_HEAD)?;
     let mut points = Vec::with_capacity(self.ck.len() + 1);
-    points.push(self.h.clone().unwrap());
+    points.push(self.h.unwrap());
     points.extend(self.ck.iter().cloned());
     write_points(writer, points)
   }
@@ -190,14 +190,14 @@ where
 
     Self::CommitmentKey {
       ck: ck.to_vec(),
-      h: Some(h.clone()),
+      h: Some(*h),
     }
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
     assert!(ck.h.is_some());
     Self::DerandKey {
-      h: ck.h.as_ref().unwrap().clone(),
+      h: *ck.h.as_ref().unwrap(),
     }
   }
 
@@ -247,7 +247,7 @@ where
 
     Ok(Self::CommitmentKey {
       ck: second.to_vec(),
-      h: Some(first[0].clone()),
+      h: Some(first[0]),
     })
   }
 }
@@ -288,11 +288,11 @@ where
     (
       CommitmentKey {
         ck: self.ck[0..n].to_vec(),
-        h: self.h.clone(),
+        h: self.h,
       },
       CommitmentKey {
         ck: self.ck[n..].to_vec(),
-        h: self.h.clone(),
+        h: self.h,
       },
     )
   }
@@ -305,7 +305,7 @@ where
     };
     CommitmentKey {
       ck,
-      h: self.h.clone(),
+      h: self.h,
     }
   }
 
@@ -317,14 +317,14 @@ where
     let ck = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
-        let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
+        let bases = [L.ck[i], R.ck[i]].to_vec();
         E::GE::vartime_multiscalar_mul(&w, &bases).affine()
       })
       .collect();
 
     CommitmentKey {
       ck,
-      h: self.h.clone(),
+      h: self.h
     }
   }
 
@@ -339,7 +339,7 @@ where
 
     CommitmentKey {
       ck: ck_scaled,
-      h: self.h.clone(),
+      h: self.h,
     }
   }
 

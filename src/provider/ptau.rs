@@ -98,6 +98,9 @@ where
 {
   write_header::<G1::Base>(&mut writer, power)?;
 
+  writer.write_u32::<LittleEndian>(0)?;
+  writer.write_i64::<LittleEndian>(0)?;
+
   for id in 4..NUM_SECTIONS {
     writer.write_u32::<LittleEndian>(id)?;
     writer.write_i64::<LittleEndian>(0)?;
@@ -181,7 +184,7 @@ fn read_meta_data(reader: &mut (impl Read + Seek)) -> Result<MetaData, PtauFileE
     };
     reader.seek(SeekFrom::Current(size))?;
   }
-
+  
   assert_ne!(pos_header, 0);
   assert_ne!(pos_tau_g1, 0);
   assert_ne!(pos_tau_g2, 0);

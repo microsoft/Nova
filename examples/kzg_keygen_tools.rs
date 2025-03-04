@@ -1,5 +1,4 @@
 use std::{
-  any::type_name,
   fs::OpenOptions,
   io::{BufReader, BufWriter},
 };
@@ -46,8 +45,6 @@ fn keygen_save_large() {
 
   let path = get_key_file_path(MAX_NUM_GENS);
 
-  dbg!(check_sanity_of_file::<bn256::G1Affine>(&path, MAX_NUM_GENS + 1, 1))
-;
   if check_sanity_of_file::<bn256::G1Affine>(&path, MAX_NUM_GENS + 1, 1).is_err() {
     println!("Generating {} KZG keys ", MAX_NUM_GENS);
 
