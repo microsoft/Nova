@@ -3,9 +3,9 @@
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
+  gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{AbsorbInROTrait, Engine, ROTrait},
+  traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -19,9 +19,6 @@ use serde::{Deserialize, Serialize};
 pub struct NIFS<E: Engine> {
   pub(crate) comm_T: Commitment<E>,
 }
-
-type ROConstants<E> =
-  <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants;
 
 impl<E: Engine> NIFS<E> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
@@ -63,7 +60,7 @@ impl<E: Engine> NIFS<E> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r);
@@ -103,7 +100,7 @@ impl<E: Engine> NIFS<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r);
+    let U = U1.fold(U2, &self.comm_T, &base_as_scalar::<E>(r));
 
     // return the folded instance
     Ok(U)
@@ -161,10 +158,10 @@ impl<E: Engine> NIFSRelaxed<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &comm_T, &r);
+    let U = U1.fold_relaxed(U2, &comm_T, &base_as_scalar::<E>(r));
 
     // fold the witness using `r` and `T`
-    let W = W1.fold_relaxed(W2, &T, &r_T, &r)?;
+    let W = W1.fold_relaxed(W2, &T, &r_T, &base_as_scalar::<E>(r))?;
 
     // return the folded instance and witness
     Ok((Self { comm_T }, (U, W)))
@@ -198,7 +195,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &self.comm_T, &r);
+    let U = U1.fold_relaxed(U2, &self.comm_T, &base_as_scalar::<E>(r));
 
     // return the folded instance
     Ok(U)

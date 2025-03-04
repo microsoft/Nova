@@ -7,7 +7,7 @@ use crate::{
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::polys::{power::PowPolynomial, univariate::UniPoly},
-  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
+  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey, CE,
 };
 use ff::Field;
@@ -24,9 +24,6 @@ pub struct NIFS<E: Engine> {
   pub(crate) poly: UniPoly<E::Scalar>,
   pub(crate) eq_rho_r_b_inv: E::Scalar, // provided as a hint for the verifier
 }
-
-type ROConstants<E> =
-  <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants;
 
 impl<E: Engine> NIFS<E> {
   /// Computes the evaluations of the sum-check polynomial at 0, 2, 3, and 4

@@ -10,7 +10,6 @@ use crate::{
   },
   traits::{ROCircuitTrait, ROTrait},
 };
-use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
 use generic_array::typenum::U24;
 use serde::{Deserialize, Serialize};
@@ -28,17 +27,15 @@ impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
 
 /// A Poseidon-based RO to use outside circuits
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonRO<Base: PrimeField, Scalar: PrimeField> {
+pub struct PoseidonRO<Base: PrimeField> {
   // internal State
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
-  _p: PhantomData<Scalar>,
 }
 
-impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
+impl<Base> ROTrait<Base> for PoseidonRO<Base>
 where
   Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
-  Scalar: PrimeField,
 {
   type CircuitRO = PoseidonROCircuit<Base>;
   type Constants = PoseidonConstantsCircuit<Base>;
@@ -47,7 +44,6 @@ where
     Self {
       state: Vec::new(),
       constants,
-      _p: PhantomData,
     }
   }
 
@@ -57,7 +53,7 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze(&mut self, num_bits: usize) -> Scalar {
+  fn squeeze(&mut self, num_bits: usize) -> Base {
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -75,8 +71,8 @@ where
 
     // Only return `num_bits`
     let bits = hash[0].to_le_bits();
-    let mut res = Scalar::ZERO;
-    let mut coeff = Scalar::ONE;
+    let mut res = Base::ZERO;
+    let mut coeff = Base::ONE;
     for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;
@@ -99,7 +95,7 @@ impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
-  type NativeRO<T: PrimeField> = PoseidonRO<Scalar, T>;
+  type NativeRO = PoseidonRO<Scalar>;
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
   /// Initialize the internal state and set the poseidon constants

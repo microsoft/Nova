@@ -542,9 +542,7 @@ where
       )
     };
 
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
-    {
+    if hash_primary != self.l_u_secondary.X[0] || hash_secondary != self.l_u_secondary.X[1] {
       return Err(NovaError::ProofVerifyError {
         reason: "Invalid output hash in R1CS instances".to_string(),
       });

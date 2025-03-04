@@ -10,7 +10,7 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  gadgets::utils::scalar_as_base,
+  gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
     CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
     RelaxedR1CSWitness,
@@ -540,8 +540,8 @@ where
       )
     };
 
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
+    if hash_primary != scalar_as_base::<E2>(self.l_u_secondary.X[0])
+      || hash_secondary != self.l_u_secondary.X[1]
     {
       return Err(NovaError::ProofVerifyError {
         reason: "Invalid output hash in R1CS instances".to_string(),
@@ -896,8 +896,8 @@ where
       )
     };
 
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
+    if hash_primary != base_as_scalar::<E1>(self.l_u_secondary.X[0])
+      || hash_secondary != self.l_u_secondary.X[1]
     {
       return Err(NovaError::ProofVerifyError {
         reason: "Invalid output hash in R1CS instances".to_string(),
