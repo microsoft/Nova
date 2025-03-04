@@ -5,7 +5,7 @@ use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
 };
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types implementing scalar multiplication.
@@ -67,9 +67,13 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   fn batch_commit(
     ck: &Self::CommitmentKey,
     v: &[Vec<E::Scalar>],
-    r: &E::Scalar,
+    r: &[E::Scalar],
   ) -> Vec<Self::Commitment> {
-    v.par_iter().map(|v_i| Self::commit(ck, v_i, r)).collect()
+    assert!(v.len() == r.len());
+    v.par_iter()
+      .zip(r.par_iter())
+      .map(|(v_i, r_i)| Self::commit(ck, v_i, r_i))
+      .collect()
   }
 
   /// Remove given blind from commitment
