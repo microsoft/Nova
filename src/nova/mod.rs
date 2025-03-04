@@ -544,6 +544,7 @@ where
     }
 
     // check the satisfiability of the provided instances
+    #[cfg(feature = "std")]
     let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
       || {
         pp.r1cs_shape_primary
@@ -568,6 +569,23 @@ where
         )
       },
     );
+
+    #[cfg(not(feature = "std"))]
+    let res_r_primary =
+      pp.r1cs_shape_primary
+        .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary);
+
+    #[cfg(not(feature = "std"))]
+    let res_r_secondary = pp.r1cs_shape_secondary.is_sat_relaxed(
+      &pp.ck_secondary,
+      &self.r_U_secondary,
+      &self.r_W_secondary,
+    );
+
+    #[cfg(not(feature = "std"))]
+    let res_l_secondary =
+      pp.r1cs_shape_secondary
+        .is_sat(&pp.ck_secondary, &self.l_u_secondary, &self.l_w_secondary);
 
     // check the returned res objects
     res_r_primary?;
@@ -782,6 +800,7 @@ where
     );
 
     // create SNARKs proving the knowledge of Wn primary/secondary
+    #[cfg(feature = "std")]
     let (snark_primary, snark_secondary) = rayon::join(
       || {
         S1::prove(
@@ -801,6 +820,24 @@ where
           &derandom_r_Wn_secondary,
         )
       },
+    );
+
+    #[cfg(not(feature = "std"))]
+    let snark_primary = S1::prove(
+      &pp.ck_primary,
+      &pk.pk_primary,
+      &pp.r1cs_shape_primary,
+      &derandom_r_Un_primary,
+      &derandom_r_Wn_primary,
+    );
+
+    #[cfg(not(feature = "std"))]
+    let snark_secondary = S2::prove(
+      &pp.ck_secondary,
+      &pk.pk_secondary,
+      &pp.r1cs_shape_secondary,
+      &derandom_r_Un_secondary,
+      &derandom_r_Wn_secondary,
     );
 
     Ok(Self {
@@ -931,6 +968,7 @@ where
 
     // check the satisfiability of the folded instances using
     // SNARKs proving the knowledge of their satisfying witnesses
+    #[cfg(feature = "std")]
     let (res_primary, res_secondary) = rayon::join(
       || {
         self
@@ -943,6 +981,15 @@ where
           .verify(&vk.vk_secondary, &derandom_r_Un_secondary)
       },
     );
+
+    #[cfg(not(feature = "std"))]
+    let res_primary = self
+      .snark_primary
+      .verify(&mut vk.vk_primary, &derandom_r_Un_primary);
+    #[cfg(not(feature = "std"))]
+    let res_secondary = self
+      .snark_secondary
+      .verify(&mut vk.vk_secondary, &derandom_r_Un_secondary);
 
     res_primary?;
     res_secondary?;

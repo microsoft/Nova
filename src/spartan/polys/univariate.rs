@@ -3,6 +3,7 @@
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
 use crate::traits::{Group, TranscriptReprTrait};
 use ff::PrimeField;
+#[cfg(feature = "std")]
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -61,10 +62,12 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   }
 
   pub fn eval_at_one(&self) -> Scalar {
-    (0..self.coeffs.len())
-      .into_par_iter()
-      .map(|i| self.coeffs[i])
-      .sum()
+    #[cfg(feature = "std")]
+    let iter = (0..self.coeffs.len()).into_par_iter();
+    #[cfg(not(feature = "std"))]
+    let iter = (0..self.coeffs.len()).into_iter();
+
+    iter.map(|i| self.coeffs[i]).sum()
   }
 
   pub fn evaluate(&self, r: &Scalar) -> Scalar {

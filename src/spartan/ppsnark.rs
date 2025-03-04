@@ -33,6 +33,7 @@ use core::cmp::max;
 use ff::Field;
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -147,8 +148,13 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     };
 
     // timestamp polynomials for row
+    #[cfg(feature = "std")]
     let (ts_row, ts_col) =
       rayon::join(|| timestamp_calc(N, N, &row), || timestamp_calc(N, N, &col));
+    #[cfg(not(feature = "std"))]
+    let ts_row = timestamp_calc(N, N, &row);
+    #[cfg(not(feature = "std"))]
+    let ts_col = timestamp_calc(N, N, &col);
 
     // a routine to turn a vector of usize into a vector scalars
     let to_vec_scalar = |v: &[usize]| -> Vec<E::Scalar> {
@@ -174,6 +180,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
   }
 
   fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
+    #[cfg(feature = "std")]
     let comm_vec: Vec<Commitment<E>> = [
       &self.row,
       &self.col,
@@ -184,6 +191,19 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
       &self.ts_col,
     ]
     .par_iter()
+    .map(|v| E::CE::commit(ck, v, &E::Scalar::ZERO))
+    .collect();
+    #[cfg(not(feature = "std"))]
+    let comm_vec: Vec<Commitment<E>> = [
+      &self.row,
+      &self.col,
+      &self.val_A,
+      &self.val_B,
+      &self.val_C,
+      &self.ts_row,
+      &self.ts_col,
+    ]
+    .iter()
     .map(|v| E::CE::commit(ck, v, &E::Scalar::ZERO))
     .collect();
 
@@ -303,8 +323,13 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    #[cfg(feature = "std")]
     [&mut self.poly_W, &mut self.poly_masked_eq]
       .par_iter_mut()
+      .for_each(|poly| poly.bind_poly_var_top(r));
+    #[cfg(not(feature = "std"))]
+    [&mut self.poly_W, &mut self.poly_masked_eq]
+      .iter_mut()
       .for_each(|poly| poly.bind_poly_var_top(r));
   }
 
@@ -376,7 +401,8 @@ impl<E: Engine> MemorySumcheckInstance<E> {
      -> (Vec<E::Scalar>, Vec<E::Scalar>) {
       let hash_func = |addr: &E::Scalar, val: &E::Scalar| -> E::Scalar { *val * gamma + *addr };
       assert_eq!(addr.len(), lookups.len());
-      rayon::join(
+      #[cfg(feature = "std")]
+      let (result_1, result_2) = rayon::join(
         || {
           (0..mem.len())
             .map(|i| hash_func(&E::Scalar::from(i as u64), &mem[i]))
@@ -387,13 +413,28 @@ impl<E: Engine> MemorySumcheckInstance<E> {
             .map(|i| hash_func(&addr[i], &lookups[i]))
             .collect::<Vec<E::Scalar>>()
         },
-      )
+      );
+      #[cfg(not(feature = "std"))]
+      let result_1: Vec<E::Scalar> = (0..mem.len())
+        .map(|i| hash_func(&E::Scalar::from(i as u64), &mem[i]))
+        .collect();
+      #[cfg(not(feature = "std"))]
+      let result_2: Vec<E::Scalar> = (0..addr.len())
+        .map(|i| hash_func(&addr[i], &lookups[i]))
+        .collect();
+
+      (result_1, result_2)
     };
 
+    #[cfg(feature = "std")]
     let ((T_row, W_row), (T_col, W_col)) = rayon::join(
       || hash_func_vec(mem_row, addr_row, L_row),
       || hash_func_vec(mem_col, addr_col, L_col),
     );
+    #[cfg(not(feature = "std"))]
+    let (T_row, W_row) = hash_func_vec(mem_row, addr_row, L_row);
+    #[cfg(not(feature = "std"))]
+    let (T_col, W_col) = hash_func_vec(mem_col, addr_col, L_col);
 
     let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
       let mut products = vec![E::Scalar::ZERO; v.len()];
@@ -437,7 +478,8 @@ impl<E: Engine> MemorySumcheckInstance<E> {
         Result<Vec<E::Scalar>, NovaError>,
       ),
     ) {
-      rayon::join(
+      #[cfg(feature = "std")]
+      let ((inv_T_plus_r, inv_W_plus_r), (T_plus_r, W_plus_r)) = rayon::join(
         || {
           rayon::join(
             || {
@@ -458,9 +500,26 @@ impl<E: Engine> MemorySumcheckInstance<E> {
             || Ok(W.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
           )
         },
-      )
+      );
+
+      // Sequential execution instead of parallel
+      #[cfg(not(feature = "std"))]
+      let inv_T_plus_r = {
+        // TODO -> handle unwrap
+        let inv = batch_invert(&T.iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()).unwrap();
+        Ok(zip_with!((inv.into_iter(), TS.iter()), |e1, e2| e1 * *e2).collect::<Vec<_>>())
+      };
+      #[cfg(not(feature = "std"))]
+      let inv_W_plus_r = batch_invert(&W.iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>());
+      #[cfg(not(feature = "std"))]
+      let T_plus_r = Ok(T.iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>());
+      #[cfg(not(feature = "std"))]
+      let W_plus_r = Ok(W.iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>());
+
+      ((inv_T_plus_r, inv_W_plus_r), (T_plus_r, W_plus_r))
     };
 
+    #[cfg(feature = "std")]
     let (
       ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)),
       ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)),
@@ -469,11 +528,19 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       || helper(&T_col, &W_col, ts_col, r),
     );
 
+    #[cfg(not(feature = "std"))]
+    let ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)) =
+      helper(&T_row, &W_row, ts_row, r);
+    #[cfg(not(feature = "std"))]
+    let ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)) =
+      helper(&T_col, &W_col, ts_col, r);
+
     let t_plus_r_inv_row = t_plus_r_inv_row?;
     let w_plus_r_inv_row = w_plus_r_inv_row?;
     let t_plus_r_inv_col = t_plus_r_inv_col?;
     let w_plus_r_inv_col = w_plus_r_inv_col?;
 
+    #[cfg(feature = "std")]
     let (
       (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
       (comm_t_plus_r_inv_col, comm_w_plus_r_inv_col),
@@ -491,6 +558,16 @@ impl<E: Engine> MemorySumcheckInstance<E> {
         )
       },
     );
+
+    // Sequential execution instead of parallel
+    #[cfg(not(feature = "std"))]
+    let comm_t_plus_r_inv_row = E::CE::commit(ck, &t_plus_r_inv_row, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_w_plus_r_inv_row = E::CE::commit(ck, &w_plus_r_inv_row, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_t_plus_r_inv_col = E::CE::commit(ck, &t_plus_r_inv_col, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_w_plus_r_inv_col = E::CE::commit(ck, &w_plus_r_inv_col, &E::Scalar::ZERO);
 
     let comm_vec = [
       comm_t_plus_r_inv_row,
@@ -647,6 +724,7 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    #[cfg(feature = "std")]
     [
       &mut self.t_plus_r_row,
       &mut self.t_plus_r_inv_row,
@@ -661,6 +739,22 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
       &mut self.poly_eq,
     ]
     .par_iter_mut()
+    .for_each(|poly| poly.bind_poly_var_top(r));
+    #[cfg(not(feature = "std"))]
+    [
+      &mut self.t_plus_r_row,
+      &mut self.t_plus_r_inv_row,
+      &mut self.w_plus_r_row,
+      &mut self.w_plus_r_inv_row,
+      &mut self.ts_row,
+      &mut self.t_plus_r_col,
+      &mut self.t_plus_r_inv_col,
+      &mut self.w_plus_r_col,
+      &mut self.w_plus_r_inv_col,
+      &mut self.ts_col,
+      &mut self.poly_eq,
+    ]
+    .iter_mut()
     .for_each(|poly| poly.bind_poly_var_top(r));
   }
 
@@ -769,6 +863,7 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    #[cfg(feature = "std")]
     [
       &mut self.poly_tau,
       &mut self.poly_Az,
@@ -777,6 +872,16 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
       &mut self.poly_Mz,
     ]
     .par_iter_mut()
+    .for_each(|poly| poly.bind_poly_var_top(r));
+    #[cfg(not(feature = "std"))]
+    [
+      &mut self.poly_tau,
+      &mut self.poly_Az,
+      &mut self.poly_Bz,
+      &mut self.poly_uCz_E,
+      &mut self.poly_Mz,
+    ]
+    .iter_mut()
     .for_each(|poly| poly.bind_poly_var_top(r));
   }
 
@@ -821,12 +926,22 @@ impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    #[cfg(feature = "std")]
     [
       &mut self.poly_L_row,
       &mut self.poly_L_col,
       &mut self.poly_val,
     ]
     .par_iter_mut()
+    .for_each(|poly| poly.bind_poly_var_top(r));
+
+    #[cfg(not(feature = "std"))]
+    [
+      &mut self.poly_L_row,
+      &mut self.poly_L_col,
+      &mut self.poly_val,
+    ]
+    .iter_mut()
     .for_each(|poly| poly.bind_poly_var_top(r));
   }
 
@@ -966,10 +1081,20 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
     let mut cubic_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _ in 0..num_rounds {
+      #[cfg(feature = "std")]
       let ((evals_mem, evals_outer), (evals_inner, evals_witness)) = rayon::join(
         || rayon::join(|| mem.evaluation_points(), || outer.evaluation_points()),
         || rayon::join(|| inner.evaluation_points(), || witness.evaluation_points()),
       );
+      // Sequential execution instead of parallel
+      #[cfg(not(feature = "std"))]
+      let evals_mem = mem.evaluation_points();
+      #[cfg(not(feature = "std"))]
+      let evals_outer = outer.evaluation_points();
+      #[cfg(not(feature = "std"))]
+      let evals_inner = inner.evaluation_points();
+      #[cfg(not(feature = "std"))]
+      let evals_witness = witness.evaluation_points();
 
       let evals: Vec<Vec<E::Scalar>> = evals_mem
         .into_iter()
@@ -998,10 +1123,19 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
+      #[cfg(feature = "std")]
       let _ = rayon::join(
         || rayon::join(|| mem.bound(&r_i), || outer.bound(&r_i)),
         || rayon::join(|| inner.bound(&r_i), || witness.bound(&r_i)),
       );
+      #[cfg(not(feature = "std"))]
+      mem.bound(&r_i);
+      #[cfg(not(feature = "std"))]
+      outer.bound(&r_i);
+      #[cfg(not(feature = "std"))]
+      inner.bound(&r_i);
+      #[cfg(not(feature = "std"))]
+      witness.bound(&r_i);
 
       e = poly.evaluate(&r_i);
       cubic_polys.push(poly.compress());
@@ -1119,6 +1253,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
 
     // commit to Az, Bz, Cz
+    #[cfg(feature = "std")]
     let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
       || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
       || {
@@ -1128,6 +1263,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         )
       },
     );
+    #[cfg(not(feature = "std"))]
+    let comm_Az = E::CE::commit(ck, &Az, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_Bz = E::CE::commit(ck, &Bz, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_Cz = E::CE::commit(ck, &Cz, &E::Scalar::ZERO);
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
@@ -1148,10 +1289,17 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       (Az, Bz, Cz, W, E)
     };
     let (eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau) = {
+      #[cfg(feature = "std")]
       let evals_at_tau = [&Az, &Bz, &Cz]
         .into_par_iter()
         .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
         .collect::<Vec<E::Scalar>>();
+      #[cfg(not(feature = "std"))]
+      let evals_at_tau = [&Az, &Bz, &Cz]
+        .into_iter()
+        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
+        .collect::<Vec<E::Scalar>>();
+
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
 
@@ -1159,10 +1307,15 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // L_row(i) = eq(tau, row(i)) for all i
     // L_col(i) = z(col(i)) for all i
     let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
+    #[cfg(feature = "std")]
     let (comm_L_row, comm_L_col) = rayon::join(
       || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
       || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
     );
+    #[cfg(not(feature = "std"))]
+    let comm_L_row = E::CE::commit(ck, &L_row, &E::Scalar::ZERO);
+    #[cfg(not(feature = "std"))]
+    let comm_L_col = E::CE::commit(ck, &L_col, &E::Scalar::ZERO);
 
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau
@@ -1186,6 +1339,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let gamma = transcript.squeeze(b"g")?;
     let r = transcript.squeeze(b"r")?;
 
+    #[cfg(feature = "std")]
     let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
       || {
         // a sum-check instance to prove the first claim
@@ -1258,6 +1412,70 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       },
     );
 
+    #[cfg(not(feature = "std"))]
+    let mut outer_sc_inst = OuterSumcheckInstance::new(
+      EqPolynomial::new(&tau.clone()).evals(),
+      Az.clone(),
+      Bz.clone(),
+      (0..Cz.len())
+        .map(|i| U.u * Cz[i] + E[i])
+        .collect::<Vec<E::Scalar>>(),
+      w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
+      &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
+    );
+
+    // a sum-check instance to prove the second claim
+    #[cfg(not(feature = "std"))]
+    let val = zip_with!(
+      iter,
+      (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
+      |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
+    )
+    .collect::<Vec<E::Scalar>>();
+
+    #[cfg(not(feature = "std"))]
+    let mut inner_sc_inst = InnerSumcheckInstance {
+      claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
+      poly_L_row: MultilinearPolynomial::new(L_row.clone()),
+      poly_L_col: MultilinearPolynomial::new(L_col.clone()),
+      poly_val: MultilinearPolynomial::new(val),
+    };
+
+    #[cfg(not(feature = "std"))]
+    let (comm_mem_oracles, mem_oracles, mem_aux) = MemorySumcheckInstance::<E>::compute_oracles(
+      ck,
+      &r,
+      &gamma,
+      &mem_row,
+      &pk.S_repr.row,
+      &L_row,
+      &pk.S_repr.ts_row,
+      &mem_col,
+      &pk.S_repr.col,
+      &L_col,
+      &pk.S_repr.ts_col,
+    )?;
+    // absorb the commitments
+    #[cfg(not(feature = "std"))]
+    transcript.absorb(b"l", &comm_mem_oracles.as_slice());
+    #[cfg(not(feature = "std"))]
+    let rho = transcript.squeeze(b"r")?;
+    #[cfg(not(feature = "std"))]
+    let poly_eq = MultilinearPolynomial::new(EqPolynomial::new(&rho).evals());
+
+    #[cfg(not(feature = "std"))]
+    let mem_res = Ok::<_, NovaError>((
+      MemorySumcheckInstance::new(
+        mem_oracles.clone(),
+        mem_aux,
+        poly_eq.Z,
+        pk.S_repr.ts_row.clone(),
+        pk.S_repr.ts_col.clone(),
+      ),
+      comm_mem_oracles,
+      mem_oracles,
+    ));
+
     let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
 
     let mut witness_sc_inst = WitnessBoundSumcheck::new(tau, W.clone(), S.num_vars);
@@ -1287,7 +1505,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_W = claims_witness[0][0];
 
     // compute the remaining claims that did not come for free from the sum-check prover
+
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
+      #[cfg(feature = "std")]
       let e = [
         &Cz,
         &E,
@@ -1298,6 +1518,19 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         &pk.S_repr.col,
       ]
       .into_par_iter()
+      .map(|p| MultilinearPolynomial::evaluate_with(p, &rand_sc))
+      .collect::<Vec<E::Scalar>>();
+      #[cfg(not(feature = "std"))]
+      let e = [
+        &Cz,
+        &E,
+        &pk.S_repr.val_A,
+        &pk.S_repr.val_B,
+        &pk.S_repr.val_C,
+        &pk.S_repr.row,
+        &pk.S_repr.col,
+      ]
+      .into_iter()
       .map(|p| MultilinearPolynomial::evaluate_with(p, &rand_sc))
       .collect::<Vec<E::Scalar>>();
       (e[0], e[1], e[2], e[3], e[4], e[5], e[6])

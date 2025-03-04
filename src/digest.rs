@@ -100,7 +100,7 @@ mod tests {
 
     fn digest(&mut self) -> E::Scalar {
       let digest: E::Scalar = DigestComputer::new(self).digest().unwrap();
-      self.digest.get_or_insert_with(|| digest).clone()
+      *self.digest.get_or_insert(digest)
     }
   }
 

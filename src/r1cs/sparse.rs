@@ -4,6 +4,7 @@
 //! Specifically, we implement sparse matrix / dense vector multiplication
 //! to compute the `A z`, `B z`, and `C z` in Nova.
 use ff::PrimeField;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -84,9 +85,12 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// Multiply by a dense vector; uses rayon/gpu.
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
-    self
-      .indptr
-      .par_windows(2)
+    #[cfg(feature = "std")]
+    let windows = self.indptr.par_windows(2);
+    #[cfg(not(feature = "std"))]
+    let windows = self.indptr.windows(2);
+
+    windows
       .map(|ptrs| {
         self
           .get_row_unchecked(ptrs.try_into().unwrap())

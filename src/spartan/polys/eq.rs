@@ -1,5 +1,6 @@
 //! `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
 use ff::PrimeField;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 
 /// Represents the multilinear extension polynomial (MLE) of the equality polynomial $eq(x,e)$, denoted as $\tilde{eq}(x, e)$.
@@ -60,7 +61,13 @@ impl<Scalar: PrimeField> EqPolynomial<Scalar> {
       let (evals_left, evals_right) = evals.split_at_mut(size);
       let (evals_right, _) = evals_right.split_at_mut(size);
 
+      #[cfg(feature = "std")]
       zip_with_for_each!(par_iter_mut, (evals_left, evals_right), |x, y| {
+        *y = *x * r;
+        *x -= &*y;
+      });
+      #[cfg(not(feature = "std"))]
+      zip_with_for_each!(iter_mut, (evals_left, evals_right), |x, y| {
         *y = *x * r;
         *x -= &*y;
       });

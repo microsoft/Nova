@@ -8,6 +8,7 @@ use crate::{
 };
 use ff::Field;
 use itertools::Itertools as _;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -129,22 +130,34 @@ impl<E: Engine> SumcheckProof<E> {
     F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
-    (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
+    let iter = 0..len;
 
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
-        (eval_point_0, eval_point_2)
-      })
-      .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1),
-      )
+    #[cfg(feature = "std")]
+    let iter = iter.into_par_iter();
+    #[cfg(not(feature = "std"))]
+    let iter = iter.into_iter();
+
+    let eval_fn = |i| {
+      let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
+      let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+      let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+      let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
+      (eval_point_0, eval_point_2)
+    };
+
+    #[cfg(feature = "std")]
+    let res = iter.map(eval_fn).reduce(
+      || (E::Scalar::ZERO, E::Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1),
+    );
+    #[cfg(not(feature = "std"))]
+    let res = iter
+      .map(eval_fn)
+      .fold((E::Scalar::ZERO, E::Scalar::ZERO), |a, b| {
+        (a.0 + b.0, a.1 + b.1)
+      });
+
+    res
   }
 
   pub fn prove_quad<F>(
@@ -182,10 +195,15 @@ impl<E: Engine> SumcheckProof<E> {
       claim_per_round = poly.evaluate(&r_i);
 
       // bind all tables to the verifier's challenge
+      #[cfg(feature = "std")]
       rayon::join(
         || poly_A.bind_poly_var_top(&r_i),
         || poly_B.bind_poly_var_top(&r_i),
       );
+      #[cfg(not(feature = "std"))]
+      poly_A.bind_poly_var_top(&r_i);
+      #[cfg(not(feature = "std"))]
+      poly_B.bind_poly_var_top(&r_i);
     }
 
     Ok((
@@ -247,8 +265,25 @@ impl<E: Engine> SumcheckProof<E> {
 
     for current_round in 0..num_rounds_max {
       let remaining_rounds = num_rounds_max - current_round;
+
+      #[cfg(feature = "std")]
       let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
         par_iter,
+        (num_rounds, claims, poly_A_vec, poly_B_vec),
+        |num_rounds, claim, poly_A, poly_B| {
+          if remaining_rounds <= *num_rounds {
+            Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
+          } else {
+            let remaining_variables = remaining_rounds - num_rounds - 1;
+            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
+            (scaled_claim, scaled_claim)
+          }
+        }
+      )
+      .collect();
+      #[cfg(not(feature = "std"))]
+      let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
+        iter,
         (num_rounds, claims, poly_A_vec, poly_B_vec),
         |num_rounds, claim, poly_A, poly_B| {
           if remaining_rounds <= *num_rounds {
@@ -276,6 +311,7 @@ impl<E: Engine> SumcheckProof<E> {
       r.push(r_i);
 
       // bound all tables to the verifier's challenge
+      #[cfg(feature = "std")]
       zip_with_for_each!(
         (
           num_rounds.par_iter(),
@@ -284,10 +320,24 @@ impl<E: Engine> SumcheckProof<E> {
         ),
         |num_rounds, poly_A, poly_B| {
           if remaining_rounds <= *num_rounds {
-            let _ = rayon::join(
+            rayon::join(
               || poly_A.bind_poly_var_top(&r_i),
               || poly_B.bind_poly_var_top(&r_i),
             );
+          }
+        }
+      );
+      #[cfg(not(feature = "std"))]
+      zip_with_for_each!(
+        (
+          num_rounds.iter(),
+          poly_A_vec.iter_mut(),
+          poly_B_vec.iter_mut()
+        ),
+        |num_rounds, poly_A, poly_B| {
+          if remaining_rounds <= *num_rounds {
+            poly_A.bind_poly_var_top(&r_i);
+            poly_B.bind_poly_var_top(&r_i);
           }
         }
       );
@@ -331,37 +381,44 @@ impl<E: Engine> SumcheckProof<E> {
     F: Fn(&E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
-    (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i]);
+    let map_func = |i| {
+      // eval 0: bound_func is A(low)
+      let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i]);
 
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-        );
+      // eval 2: bound_func is -A(low) + 2*A(high)
+      let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+      let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+      let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+      let eval_point_2 = comb_func(
+        &poly_A_bound_point,
+        &poly_B_bound_point,
+        &poly_C_bound_point,
+      );
 
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
-      })
-      .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      )
+      // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+      let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+      let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+      let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+      let eval_point_3 = comb_func(
+        &poly_A_bound_point,
+        &poly_B_bound_point,
+        &poly_C_bound_point,
+      );
+      (eval_point_0, eval_point_2, eval_point_3)
+    };
+
+    #[cfg(feature = "std")]
+    let res = (0..len).into_par_iter().map(map_func).reduce(
+      || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+    );
+    #[cfg(not(feature = "std"))]
+    let res = (0..len).into_iter().map(map_func).fold(
+      (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+    );
+
+    res
   }
 
   #[inline]
@@ -376,41 +433,49 @@ impl<E: Engine> SumcheckProof<E> {
     F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let len = poly_A.len() / 2;
-    (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
 
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
+    let map_func = |i| {
+      // eval 0: bound_func is A(low)
+      let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
 
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
-      })
-      .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      )
+      // eval 2: bound_func is -A(low) + 2*A(high)
+      let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
+      let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
+      let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
+      let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
+      let eval_point_2 = comb_func(
+        &poly_A_bound_point,
+        &poly_B_bound_point,
+        &poly_C_bound_point,
+        &poly_D_bound_point,
+      );
+
+      // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
+      let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
+      let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
+      let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
+      let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
+      let eval_point_3 = comb_func(
+        &poly_A_bound_point,
+        &poly_B_bound_point,
+        &poly_C_bound_point,
+        &poly_D_bound_point,
+      );
+      (eval_point_0, eval_point_2, eval_point_3)
+    };
+
+    #[cfg(feature = "std")]
+    let res = (0..len).into_par_iter().map(map_func).reduce(
+      || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+    );
+    #[cfg(not(feature = "std"))]
+    let res = (0..len).into_iter().map(map_func).fold(
+      (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+    );
+
+    res
   }
 
   pub fn prove_cubic_with_additive_term<F>(
@@ -459,6 +524,7 @@ impl<E: Engine> SumcheckProof<E> {
       claim_per_round = poly.evaluate(&r_i);
 
       // bound all tables to the verifier's challenge
+      #[cfg(feature = "std")]
       rayon::join(
         || {
           rayon::join(
@@ -473,6 +539,14 @@ impl<E: Engine> SumcheckProof<E> {
           )
         },
       );
+      #[cfg(not(feature = "std"))]
+      poly_A.bind_poly_var_top(&r_i);
+      #[cfg(not(feature = "std"))]
+      poly_B.bind_poly_var_top(&r_i);
+      #[cfg(not(feature = "std"))]
+      poly_C.bind_poly_var_top(&r_i);
+      #[cfg(not(feature = "std"))]
+      poly_D.bind_poly_var_top(&r_i);
     }
 
     Ok((

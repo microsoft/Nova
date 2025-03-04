@@ -11,6 +11,7 @@ use crate::{
 };
 use core::iter;
 use ff::Field;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -100,10 +101,17 @@ where
 
 fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
   assert_eq!(a.len(), b.len());
-  (0..a.len())
+  #[cfg(feature = "std")]
+  let res = (0..a.len())
     .into_par_iter()
     .map(|i| a[i] * b[i])
-    .reduce(|| T::ZERO, |x, y| x + y)
+    .reduce(|| T::ZERO, |x, y| x + y);
+  #[cfg(not(feature = "std"))]
+  let res = (0..a.len())
+    .into_iter()
+    .map(|i| a[i] * b[i])
+    .reduce(|| T::ZERO, |x, y| x + y);
+  res
 }
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
@@ -239,15 +247,28 @@ where
       let r_inverse = r.invert().unwrap();
 
       // fold the left half and the right half
+      #[cfg(feature = "std")]
       let a_vec_folded = a_vec[0..n / 2]
         .par_iter()
         .zip(a_vec[n / 2..n].par_iter())
         .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
         .collect::<Vec<E::Scalar>>();
-
+      #[cfg(not(feature = "std"))]
+      let a_vec_folded = a_vec[0..n / 2]
+        .iter()
+        .zip(a_vec[n / 2..n].iter())
+        .map(|(a_L, a_R)| *a_L * r + r_inverse * *a_R)
+        .collect::<Vec<E::Scalar>>();
+      #[cfg(feature = "std")]
       let b_vec_folded = b_vec[0..n / 2]
         .par_iter()
         .zip(b_vec[n / 2..n].par_iter())
+        .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
+        .collect::<Vec<E::Scalar>>();
+      #[cfg(not(feature = "std"))]
+      let b_vec_folded = b_vec[0..n / 2]
+        .iter()
+        .zip(b_vec[n / 2..n].iter())
         .map(|(b_L, b_R)| *b_L * r_inverse + r * *b_R)
         .collect::<Vec<E::Scalar>>();
 
@@ -346,13 +367,25 @@ where
       .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
 
     // precompute scalars necessary for verification
+    #[cfg(feature = "std")]
     let r_square: Vec<E::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
       .map(|i| r[i] * r[i])
       .collect();
+    #[cfg(not(feature = "std"))]
+    let r_square: Vec<E::Scalar> = (0..self.L_vec.len())
+      .into_iter()
+      .map(|i| r[i] * r[i])
+      .collect();
     let r_inverse = batch_invert(&r)?;
+    #[cfg(feature = "std")]
     let r_inverse_square: Vec<E::Scalar> = (0..self.L_vec.len())
       .into_par_iter()
+      .map(|i| r_inverse[i] * r_inverse[i])
+      .collect();
+    #[cfg(not(feature = "std"))]
+    let r_inverse_square: Vec<E::Scalar> = (0..self.L_vec.len())
+      .into_iter()
       .map(|i| r_inverse[i] * r_inverse[i])
       .collect();
 

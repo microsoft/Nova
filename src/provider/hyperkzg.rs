@@ -23,6 +23,7 @@ use core::{
 };
 use ff::Field;
 use rand_core::OsRng;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -238,10 +239,30 @@ where
       powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
     }
 
+    #[cfg(feature = "std")]
     let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
+    #[cfg(not(feature = "std"))]
+    let ck: Vec<G1Affine<E>> = (0..num_gens)
+      .into_iter()
+      .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
+      .collect();
+    // TODO -> another way of doing this, maybe more readable but is it less performant?
+    // let ck: Vec<G1Affine<E>> = {
+    //   let iter = 0..num_gens;
+
+    //   #[cfg(feature = "std")]
+    //   let iter = iter.into_par_iter(); // Parallel iterator
+
+    //   #[cfg(not(feature = "std"))]
+    //   let iter = iter.into_iter(); // Sequential iterator
+
+    //   iter
+    //     .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
+    //     .collect()
+    // };
 
     let h = E::GE::from_label(label, 1).first().unwrap().clone();
 
@@ -500,9 +521,19 @@ where
       // The verifier needs f_i(u_j), so we compute them here
       // (V will compute B(u_j) itself)
       let mut v = vec![vec!(E::Scalar::ZERO; k); t];
+      #[cfg(feature = "std")]
       v.par_iter_mut().enumerate().for_each(|(i, v_i)| {
         // for each point u
         v_i.par_iter_mut().zip_eq(f).for_each(|(v_ij, f)| {
+          // for each poly f
+          // for each poly f (except the last one - since it is constant)
+          *v_ij = poly_eval(f, u[i]);
+        });
+      });
+      #[cfg(not(feature = "std"))]
+      v.iter_mut().enumerate().for_each(|(i, v_i)| {
+        // for each point u
+        v_i.iter_mut().zip_eq(f).for_each(|(v_ij, f)| {
           // for each poly f
           // for each poly f (except the last one - since it is constant)
           *v_ij = poly_eval(f, u[i]);
@@ -513,8 +544,14 @@ where
       let B = kzg_compute_batch_polynomial(f, q);
 
       // Now open B at u0, ..., u_{t-1}
+      #[cfg(feature = "std")]
       let w = u
         .into_par_iter()
+        .map(|ui| kzg_open(&B, *ui))
+        .collect::<Vec<G1Affine<E>>>();
+      #[cfg(not(feature = "std"))]
+      let w = u
+        .into_iter()
         .map(|ui| kzg_open(&B, *ui))
         .collect::<Vec<G1Affine<E>>>();
 
@@ -541,7 +578,13 @@ where
       let mut Pi = vec![E::Scalar::ZERO; Pi_len];
 
       #[allow(clippy::needless_range_loop)]
+      #[cfg(feature = "std")]
       Pi.par_iter_mut().enumerate().for_each(|(j, Pi_j)| {
+        *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
+      });
+      #[allow(clippy::needless_range_loop)]
+      #[cfg(not(feature = "std"))]
+      Pi.iter_mut().enumerate().for_each(|(j, Pi_j)| {
         *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
       });
 
@@ -550,8 +593,14 @@ where
 
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
+    #[cfg(feature = "std")]
     let com: Vec<G1Affine<E>> = (1..polys.len())
       .into_par_iter()
+      .map(|i| E::CE::commit(ck, &polys[i], &E::Scalar::ZERO).comm.affine())
+      .collect();
+    #[cfg(not(feature = "std"))]
+    let com: Vec<G1Affine<E>> = (1..polys.len())
+      .into_iter()
       .map(|i| E::CE::commit(ck, &polys[i], &E::Scalar::ZERO).comm.affine())
       .collect();
 
@@ -652,9 +701,21 @@ where
 
     // Compute the batched openings
     // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
+    #[cfg(feature = "std")]
     let B_u = pi
       .v
       .par_iter()
+      .map(|v_i| {
+        v_i
+          .iter()
+          .rev()
+          .fold(E::Scalar::ZERO, |acc, v_ij| acc * q + v_ij)
+      })
+      .collect::<Vec<E::Scalar>>();
+    #[cfg(not(feature = "std"))]
+    let B_u = pi
+      .v
+      .iter()
       .map(|v_i| {
         v_i
           .iter()

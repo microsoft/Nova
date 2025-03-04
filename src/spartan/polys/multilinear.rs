@@ -6,6 +6,7 @@ use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +63,12 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
+    #[cfg(feature = "std")]
     zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
+      *a += *r * (*b - *a);
+    });
+    #[cfg(not(feature = "std"))]
+    zip_with_for_each!((left.iter_mut(), right.iter()), |a, b| {
       *a += *r * (*b - *a);
     });
 
@@ -79,23 +85,37 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     assert_eq!(r.len(), self.get_num_vars());
     let chis = EqPolynomial::evals_from_points(r);
 
-    zip_with!(
+    #[cfg(feature = "std")]
+    let res = zip_with!(
       (chis.into_par_iter(), self.Z.par_iter()),
       |chi_i, Z_i| chi_i * Z_i
     )
-    .sum()
+    .sum();
+    #[cfg(not(feature = "std"))]
+    let res = zip_with!((chis.into_iter(), self.Z.iter()), |chi_i, Z_i| chi_i * Z_i).sum();
+
+    res
   }
 
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
-    zip_with!(
+    #[cfg(feature = "std")]
+    let res = zip_with!(
       (
         EqPolynomial::evals_from_points(r).into_par_iter(),
         Z.par_iter()
       ),
       |a, b| a * b
     )
-    .sum()
+    .sum();
+    #[cfg(not(feature = "std"))]
+    let res = zip_with!(
+      (EqPolynomial::evals_from_points(r).into_iter(), Z.ter()),
+      |a, b| a * b
+    )
+    .sum();
+
+    res
   }
 }
 

@@ -26,6 +26,7 @@ use crate::{
 use ff::Field;
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
+#[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -196,10 +197,19 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
       assert_eq!(evals_A.len(), evals_B.len());
       assert_eq!(evals_A.len(), evals_C.len());
-      (0..evals_A.len())
+
+      #[cfg(feature = "std")]
+      let res = (0..evals_A.len())
         .into_par_iter()
         .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
-        .collect::<Vec<E::Scalar>>()
+        .collect::<Vec<E::Scalar>>();
+      #[cfg(not(feature = "std"))]
+      let res = (0..evals_A.len())
+        .into_iter()
+        .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
+        .collect::<Vec<E::Scalar>>();
+
+      res
     };
 
     let poly_z = {
@@ -341,8 +351,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
      -> Vec<E::Scalar> {
       let evaluate_with_table =
         |M: &SparseMatrix<E::Scalar>, T_x: &[E::Scalar], T_y: &[E::Scalar]| -> E::Scalar {
-          M.indptr
-            .par_windows(2)
+          #[cfg(feature = "std")]
+          let windows = M.indptr.par_windows(2);
+          #[cfg(not(feature = "std"))]
+          let windows = M.indptr.windows(2);
+
+          windows
             .enumerate()
             .map(|(row_idx, ptrs)| {
               M.get_row_unchecked(ptrs.try_into().unwrap())
@@ -352,15 +366,28 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             .sum()
         };
 
+      #[cfg(feature = "std")]
       let (T_x, T_y) = rayon::join(
         || EqPolynomial::evals_from_points(r_x),
         || EqPolynomial::evals_from_points(r_y),
       );
+      #[cfg(not(feature = "std"))]
+      let T_x = EqPolynomial::evals_from_points(r_x);
+      #[cfg(not(feature = "std"))]
+      let T_y = EqPolynomial::evals_from_points(r_y);
 
-      (0..M_vec.len())
+      #[cfg(feature = "std")]
+      let res = (0..M_vec.len())
         .into_par_iter()
         .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
-        .collect()
+        .collect();
+      #[cfg(not(feature = "std"))]
+      let res = (0..M_vec.len())
+        .into_iter()
+        .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
+        .collect();
+
+      res
     };
 
     let evals = multi_evaluate(&[&vk.S.A, &vk.S.B, &vk.S.C], &r_x, &r_y);
