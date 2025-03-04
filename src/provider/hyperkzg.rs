@@ -21,10 +21,12 @@ use core::{
   ops::{Add, Mul, MulAssign},
   slice,
 };
-use ff::Field;
+use ff::{Field, PrimeFieldBits};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use super::{ptau::PtauFileError, read_ptau, write_ptau};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -120,6 +122,26 @@ where
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
     self.comm.to_coordinates()
+  }
+}
+
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Save keys
+  pub fn save_to(
+    &self,
+    mut writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError> {
+    let mut g1_points = Vec::with_capacity(self.ck.len() + 1);
+    g1_points.push(self.h);
+    g1_points.extend(self.ck.iter().cloned());
+
+    let g2_points = vec![self.tau_H];
+    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
+
+    write_ptau(&mut writer, g1_points, g2_points, power)
   }
 }
 
@@ -228,27 +250,172 @@ where
   /// NOTE: this is for testing purposes and should not be used in production
   /// This can be used instead of `setup` to generate a reproducible commitment key
   pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
-    let tau = E::Scalar::random(rng);
+    const T1: usize = 1 << 16;
+    const T2: usize = 100_000;
+
     let num_gens = n.next_power_of_two();
 
-    // Compute powers of tau in E::Scalar, then scalar muls in parallel
-    let mut powers_of_tau: Vec<E::Scalar> = Vec::with_capacity(num_gens);
-    powers_of_tau.insert(0, E::Scalar::ONE);
-    for i in 1..num_gens {
-      powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
+    let tau = E::Scalar::random(rng);
+
+    let powers_of_tau = if num_gens < T1 {
+      Self::compute_powers_serial(tau, num_gens)
+    } else {
+      Self::compute_powers_par(tau, num_gens)
+    };
+
+    if num_gens < T2 {
+      Self::setup_from_tau_direct(label, &powers_of_tau)
+    } else {
+      Self::setup_from_tau_fixed_base_exp(label, &powers_of_tau)
     }
+  }
+
+  fn setup_from_tau_fixed_base_exp(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+    let tau = powers_of_tau[1];
+
+    let gen = <E::GE as DlogGroup>::gen();
+
+    let ck = fixed_base_exp_comb_batch::<4, 16, 64, 2, 32, _>(gen, powers_of_tau);
+    let ck = ck.par_iter().map(|p| p.affine()).collect();
+
+    let h = *E::GE::from_label(label, 1).first().unwrap();
+
+    let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
+
+    Self { ck, h, tau_H }
+  }
+
+  fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+    let num_gens = powers_of_tau.len();
+    let tau = powers_of_tau[1];
 
     let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
 
-    let h = E::GE::from_label(label, 1).first().unwrap().clone();
+    let h = *E::GE::from_label(label, 1).first().unwrap();
 
     let tau_H = (<<E::GE as PairingGroup>::G2 as DlogGroup>::gen() * tau).affine();
 
     Self { ck, h, tau_H }
   }
+
+  fn compute_powers_serial(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+    let mut powers_of_tau = Vec::with_capacity(n);
+    powers_of_tau.insert(0, E::Scalar::ONE);
+    for i in 1..n {
+      powers_of_tau.insert(i, powers_of_tau[i - 1] * tau);
+    }
+    powers_of_tau
+  }
+
+  fn compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+    let num_threads = rayon::current_num_threads();
+    (0..n)
+      .collect::<Vec<_>>()
+      .par_chunks(std::cmp::max(n / num_threads, 1))
+      .into_par_iter()
+      .map(|sub_list| {
+        let mut res = Vec::with_capacity(sub_list.len());
+        res.push(tau.pow([sub_list[0] as u64]));
+        for i in 1..sub_list.len() {
+          res.push(res[i - 1] * tau);
+        }
+        res
+      })
+      .flatten()
+      .collect::<Vec<_>>()
+  }
+}
+
+// * Implementation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
+fn fixed_base_exp_comb_batch<
+  const H: usize,
+  const POW_2_H: usize,
+  const A: usize,
+  const B: usize,
+  const V: usize,
+  G: DlogGroup,
+>(
+  gen: G,
+  scalars: &[G::Scalar],
+) -> Vec<G> {
+  assert_eq!(1 << H, POW_2_H);
+  assert_eq!(A, V * B);
+  assert!(A <= 64);
+
+  let zero = G::zero();
+  let one = gen;
+
+  let gi = {
+    let mut res = [one; H];
+    for i in 1..H {
+      let prod = (0..A).fold(res[i - 1], |acc, _| acc + acc);
+      res[i] = prod;
+    }
+    res
+  };
+
+  let mut precompute_res = (1..POW_2_H)
+    .into_par_iter()
+    .map(|i| {
+      let mut res = [zero; V];
+
+      // * G[0][i]
+      let mut g_0_i = zero;
+      for (j, item) in gi.iter().enumerate().take(H) {
+        if (1 << j) & i > 0 {
+          g_0_i += item;
+        }
+      }
+
+      res[0] = g_0_i;
+
+      // * G[j][i]
+      for j in 1..V {
+        res[j] = (0..B).fold(res[j - 1], |acc, _| acc + acc);
+      }
+
+      res
+    })
+    .collect::<Vec<_>>();
+
+  precompute_res.insert(0, [zero; V]);
+
+  let precomputed_g: [_; POW_2_H] = std::array::from_fn(|j| precompute_res[j]);
+
+  let zero = G::zero();
+
+  scalars
+    .par_iter()
+    .map(|e| {
+      let mut a = zero;
+      let mut bits = e.to_le_bits().into_iter().collect::<Vec<_>>();
+
+      while bits.len() % A != 0 {
+        bits.push(false);
+      }
+
+      for k in (0..B).rev() {
+        a += a;
+        for j in (0..V).rev() {
+          let i_j_k = (0..H)
+            .map(|h| {
+              let b = bits[h * A + j * B + k];
+              (1 << h) * b as usize
+            })
+            .sum::<usize>();
+
+          if i_j_k > 0 {
+            a += precomputed_g[i_j_k][j];
+          }
+        }
+      }
+
+      a
+    })
+    .collect::<Vec<_>>()
 }
 
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
@@ -261,12 +428,11 @@ where
 
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
-    // TODO: we need to decide how to generate load/store parameters
     Self::CommitmentKey::setup_from_rng(label, n, OsRng)
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
-    Self::DerandKey { h: ck.h.clone() }
+    Self::DerandKey { h: ck.h }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
@@ -307,6 +473,25 @@ where
     Commitment {
       comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
+  }
+
+  fn load_setup(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError> {
+    let num = n.next_power_of_two();
+
+    let (g1_points, g2_points) = read_ptau(reader, num + 1, 1)?;
+
+    let (h, ck) = g1_points.split_at(1);
+    let h = h[0];
+    let ck = ck.to_vec();
+
+    Ok(CommitmentKey {
+      ck,
+      h,
+      tau_H: g2_points[0],
+    })
   }
 }
 
@@ -427,7 +612,7 @@ where
     let vk = VerifierKey {
       G: E::GE::gen().affine(),
       H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().affine(),
-      tau_H: ck.tau_H.clone(),
+      tau_H: ck.tau_H,
     };
 
     (pk, vk)
@@ -723,9 +908,14 @@ where
 
 #[cfg(test)]
 mod tests {
+  use std::{
+    fs::OpenOptions,
+    io::{BufReader, BufWriter},
+  };
+
   use super::*;
   use crate::{
-    provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
+    provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
     spartan::polys::multilinear::MultilinearPolynomial,
   };
   use bincode::Options;
@@ -880,6 +1070,54 @@ mod tests {
       assert!(
         EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
       );
+    }
+  }
+
+  #[test]
+  fn test_key_gen() {
+    let n = 100;
+    let tau = Fr::random(OsRng);
+    let powers_of_tau = CommitmentKey::<E>::compute_powers_serial(tau, n);
+    let label = b"test";
+    let res1 = CommitmentKey::<E>::setup_from_tau_direct(label, &powers_of_tau);
+    let res2 = CommitmentKey::<E>::setup_from_tau_fixed_base_exp(label, &powers_of_tau);
+
+    assert_eq!(res1.ck.len(), res2.ck.len());
+    assert_eq!(res1.h, res2.h);
+    assert_eq!(res1.tau_H, res2.tau_H);
+    for i in 0..res1.ck.len() {
+      assert_eq!(res1.ck[i], res2.ck[i]);
+    }
+  }
+
+  #[test]
+  fn test_save_load_ck() {
+    let n = 4;
+    let filename = "/tmp/kzg_test.ptau";
+    const BUFFER_SIZE: usize = 64 * 1024;
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+
+    let file = OpenOptions::new()
+      .write(true)
+      .create(true)
+      .truncate(true)
+      .open(filename)
+      .unwrap();
+    let mut writer = BufWriter::with_capacity(BUFFER_SIZE, file);
+
+    ck.save_to(&mut writer).unwrap();
+
+    let file = OpenOptions::new().read(true).open(filename).unwrap();
+
+    let mut reader = BufReader::new(file);
+
+    let read_ck = hyperkzg::CommitmentEngine::<E>::load_setup(&mut reader, ck.ck.len()).unwrap();
+
+    assert_eq!(ck.ck.len(), read_ck.ck.len());
+    assert_eq!(ck.h, read_ck.h);
+    assert_eq!(ck.tau_H, read_ck.tau_H);
+    for i in 0..ck.ck.len() {
+      assert_eq!(ck.ck[i], read_ck.ck[i]);
     }
   }
 }

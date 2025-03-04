@@ -3,6 +3,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
+use halo2curves::{serde::SerdeObject, CurveAffine};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +45,9 @@ pub trait DlogGroup:
     + Sync
     + Serialize
     + for<'de> Deserialize<'de>
-    + TranscriptReprTrait<Self>;
+    + TranscriptReprTrait<Self>
+    + CurveAffine
+    + SerdeObject;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;

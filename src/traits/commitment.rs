@@ -1,6 +1,9 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::traits::{AbsorbInROTrait, Engine, TranscriptReprTrait};
+use crate::{
+  provider::ptau::PtauFileError,
+  traits::{AbsorbInROTrait, Engine, TranscriptReprTrait},
+};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
@@ -53,6 +56,12 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
 
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<E>;
+
+  /// Load keys
+  fn load_setup(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError>;
 
   /// Samples a new commitment key of a specified size
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;

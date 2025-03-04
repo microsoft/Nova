@@ -1,7 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
-  provider::traits::DlogGroup,
+  provider::{ptau::read_points, traits::DlogGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -15,6 +15,10 @@ use core::{
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use super::ptau::{write_points, PtauFileError};
+
+const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +162,19 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: DlogGroup,
+{
+  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
+    writer.write_all(&KEY_FILE_HEAD)?;
+    let mut points = Vec::with_capacity(self.ck.len() + 1);
+    points.push(self.h.unwrap());
+    points.extend(self.ck.iter().cloned());
+    write_points(writer, points)
+  }
+}
+
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroup,
@@ -173,14 +190,14 @@ where
 
     Self::CommitmentKey {
       ck: ck.to_vec(),
-      h: Some(h.clone()),
+      h: Some(*h),
     }
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
     assert!(ck.h.is_some());
     Self::DerandKey {
-      h: ck.h.as_ref().unwrap().clone(),
+      h: *ck.h.as_ref().unwrap(),
     }
   }
 
@@ -209,6 +226,29 @@ where
     Commitment {
       comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
+  }
+
+  fn load_setup(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError> {
+    let num = n.next_power_of_two();
+    {
+      let mut head = [0u8; 12];
+      reader.read_exact(&mut head)?;
+      if head != KEY_FILE_HEAD {
+        return Err(PtauFileError::InvalidHead);
+      }
+    }
+
+    let points = read_points(reader, num + 1)?;
+
+    let (first, second) = points.split_at(1);
+
+    Ok(Self::CommitmentKey {
+      ck: second.to_vec(),
+      h: Some(first[0]),
+    })
   }
 }
 
@@ -248,11 +288,11 @@ where
     (
       CommitmentKey {
         ck: self.ck[0..n].to_vec(),
-        h: self.h.clone(),
+        h: self.h,
       },
       CommitmentKey {
         ck: self.ck[n..].to_vec(),
-        h: self.h.clone(),
+        h: self.h,
       },
     )
   }
@@ -263,10 +303,7 @@ where
       c.extend(other.ck.clone());
       c
     };
-    CommitmentKey {
-      ck,
-      h: self.h.clone(),
-    }
+    CommitmentKey { ck, h: self.h }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
@@ -277,15 +314,12 @@ where
     let ck = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
-        let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
+        let bases = [L.ck[i], R.ck[i]].to_vec();
         E::GE::vartime_multiscalar_mul(&w, &bases).affine()
       })
       .collect();
 
-    CommitmentKey {
-      ck,
-      h: self.h.clone(),
-    }
+    CommitmentKey { ck, h: self.h }
   }
 
   /// Scales each element in `self` by `r`
@@ -299,7 +333,7 @@ where
 
     CommitmentKey {
       ck: ck_scaled,
-      h: self.h.clone(),
+      h: self.h,
     }
   }
 
@@ -317,5 +351,34 @@ where
                // and we only use non-blinding commits afterwards
                // bc we don't use ZK IPA
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  use crate::{provider::GrumpkinEngine, CommitmentKey};
+  use std::{fs::File, io::BufWriter};
+
+  type E = GrumpkinEngine;
+
+  #[test]
+  fn test_key_save_load() {
+    let path = "/tmp/pedersen_test.keys";
+
+    let keys = CommitmentEngine::<E>::setup(b"test", 100);
+
+    keys
+      .save_to(&mut BufWriter::new(File::create(path).unwrap()))
+      .unwrap();
+
+    let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), 100);
+
+    assert!(keys_read.is_ok());
+    let keys_read: CommitmentKey<E> = keys_read.unwrap();
+    assert_eq!(keys_read.ck.len(), keys.ck.len());
+    assert_eq!(keys_read.h, keys.h);
+    assert_eq!(keys_read.ck, keys.ck);
   }
 }
