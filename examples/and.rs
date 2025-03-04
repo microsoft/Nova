@@ -72,7 +72,7 @@ pub fn u64_into_bit_vec_le<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
       let mut tmp = Vec::with_capacity(64);
 
       for i in 0..64 {
-        tmp.push(Some(*value >> i & 1 == 1));
+        tmp.push(Some((*value >> i) & 1 == 1));
       }
 
       tmp
