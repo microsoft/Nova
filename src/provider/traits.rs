@@ -3,6 +3,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -47,6 +48,17 @@ pub trait DlogGroup:
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
+
+  /// A method to compute a batch of multiexponentations
+  fn batch_vartime_multiscalar_mul(
+    scalars: &[Vec<Self::Scalar>],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    scalars
+      .par_iter()
+      .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
+      .collect::<Vec<_>>()
+  }
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
