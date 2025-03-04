@@ -18,9 +18,6 @@ ff = { version = "0.13.0", features = [
 ], default-features = false }
 digest = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }
-# TODO -> update those 2
-# digest = { version = "0.11.0-pre.4", default-features = false }
-# sha3 = { version = "0.11.0-pre.4", default-features = false }
 
 rand_core = { version = "0.6", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
@@ -58,9 +55,10 @@ halo2curves = { version = "0.8.0", features = [
     "derive_serde",
 ], optional = true }
 
-# TODO -> will have to fix this probably
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2.15", default-features = false, features = ["js"] }
+getrandom = { version = "0.2.15", default-features = false, features = [
+    "js",
+], optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -95,6 +93,6 @@ harness = false
 
 [features]
 default = ["std"]
-std = ["halo2curves", "rayon"]
+std = ["halo2curves", "rayon", "getrandom"]
 asm = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
