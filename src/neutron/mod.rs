@@ -505,7 +505,9 @@ where
       || is_inputs_not_match
       || is_instance_has_two_outputs
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid number of steps or inputs".to_string(),
+      });
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
@@ -543,7 +545,9 @@ where
     if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid output hash in R1CS instances".to_string(),
+      });
     }
 
     // check the satisfiability of the provided instances

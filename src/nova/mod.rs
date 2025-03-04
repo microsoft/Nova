@@ -503,7 +503,9 @@ where
       || is_inputs_not_match
       || is_instance_has_two_outputs
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid number of steps or inputs".to_string(),
+      });
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
@@ -541,7 +543,9 @@ where
     if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid output hash in R1CS instances".to_string(),
+      });
     }
 
     // check the satisfiability of the provided instances
@@ -843,7 +847,9 @@ where
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
     // the number of steps cannot be zero
     if num_steps == 0 {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Number of steps cannot be zero".to_string(),
+      });
     }
 
     // check if the (relaxed) R1CS instances have two public outputs
@@ -853,7 +859,9 @@ where
       || self.l_ur_primary.X.len() != 2
       || self.l_ur_secondary.X.len() != 2
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid number of outputs in R1CS instances".to_string(),
+      });
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
@@ -891,7 +899,9 @@ where
     if hash_primary != self.l_u_secondary.X[0]
       || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid output hash in R1CS instances".to_string(),
+      });
     }
 
     // fold secondary U/W with secondary u/w to get Uf/Wf

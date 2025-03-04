@@ -28,7 +28,10 @@ pub enum NovaError {
   },
   /// returned if proof verification fails
   #[error("ProofVerifyError")]
-  ProofVerifyError,
+  ProofVerifyError {
+    /// The reason for the proof verification error
+    reason: String,
+  },
   /// returned if the provided commitment key is not of sufficient length
   #[error("InvalidCommitmentKeyLength")]
   InvalidCommitmentKeyLength,

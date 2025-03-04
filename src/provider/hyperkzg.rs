@@ -794,7 +794,9 @@ where
     let r = Self::compute_challenge(&pi.com, transcript);
 
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "r is zero or commitment is zero".to_string(),
+      });
     }
 
     let u = [r, -r, r * r];
@@ -805,7 +807,9 @@ where
       || pi.v[2].len() != ell
       || pi.com.len() != ell - 1
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid lengths of pi.v".to_string(),
+      });
     }
     let ypos = &pi.v[0];
     let yneg = &pi.v[1];
@@ -817,7 +821,9 @@ where
         != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
-        return Err(NovaError::ProofVerifyError);
+        return Err(NovaError::ProofVerifyError {
+          reason: "Inconsistent (Y, ypos, yneg)".to_string(),
+        });
       }
       // Note that we don't make any checks about Y[0] here, but our batching
       // check below requires it
@@ -899,7 +905,9 @@ where
     if (E::GE::pairing(&L, &DlogGroup::group(&vk.H)))
       != (E::GE::pairing(&R, &DlogGroup::group(&vk.tau_H)))
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Pairing check failed".to_string(),
+      });
     }
 
     Ok(())
