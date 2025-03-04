@@ -303,10 +303,7 @@ where
       c.extend(other.ck.clone());
       c
     };
-    CommitmentKey {
-      ck,
-      h: self.h,
-    }
+    CommitmentKey { ck, h: self.h }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
@@ -322,10 +319,7 @@ where
       })
       .collect();
 
-    CommitmentKey {
-      ck,
-      h: self.h
-    }
+    CommitmentKey { ck, h: self.h }
   }
 
   /// Scales each element in `self` by `r`

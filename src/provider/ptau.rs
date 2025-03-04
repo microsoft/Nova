@@ -1,13 +1,14 @@
 use std::{
-  fs::File, io::{self, Read, Seek, SeekFrom, Write}, path::Path, str::{from_utf8, Utf8Error}
+  fs::File,
+  io::{self, Read, Seek, SeekFrom, Write},
+  path::Path,
+  str::{from_utf8, Utf8Error},
 };
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use halo2curves::CurveAffine;
 use num_bigint::BigUint;
-
-
 
 #[derive(thiserror::Error, Debug)]
 pub enum PtauFileError {
@@ -184,7 +185,7 @@ fn read_meta_data(reader: &mut (impl Read + Seek)) -> Result<MetaData, PtauFileE
     };
     reader.seek(SeekFrom::Current(size))?;
   }
-  
+
   assert_ne!(pos_header, 0);
   assert_ne!(pos_tau_g1, 0);
   assert_ne!(pos_tau_g2, 0);
@@ -276,13 +277,13 @@ where
   Ok((g1_points, g2_points))
 }
 
-
 pub fn check_sanity_of_file<G1>(
   path: impl AsRef<Path>,
   num_g1: usize,
   num_g2: usize,
 ) -> Result<(), PtauFileError>
-where G1: halo2curves::serde::SerdeObject + CurveAffine,
+where
+  G1: halo2curves::serde::SerdeObject + CurveAffine,
 {
   let mut reader = File::open(path)?;
 

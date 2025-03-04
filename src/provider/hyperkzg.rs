@@ -590,7 +590,7 @@ where
     let vk = VerifierKey {
       G: E::GE::gen().affine(),
       H: <<E::GE as PairingGroup>::G2 as DlogGroup>::gen().affine(),
-      tau_H: ck.tau_H
+      tau_H: ck.tau_H,
     };
 
     (pk, vk)
