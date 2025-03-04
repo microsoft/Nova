@@ -56,6 +56,7 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<E>;
 
+  /// Load keys
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     n: usize,

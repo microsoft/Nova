@@ -9,7 +9,7 @@ pub mod poseidon;
 pub mod secp_secq;
 
 pub(crate) mod ptau;
-pub use ptau::{check_sanity_of_file, read_ptau, write_ptau};
+pub use ptau::{check_sanity_of_ptau_file, read_ptau, write_ptau};
 
 // crate-private modules
 pub(crate) mod keccak;

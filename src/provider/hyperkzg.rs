@@ -129,6 +129,7 @@ impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
+  /// Save keys
   pub fn save_to(
     &self,
     mut writer: &mut (impl std::io::Write + std::io::Seek),

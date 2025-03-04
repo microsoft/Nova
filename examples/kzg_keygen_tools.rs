@@ -6,7 +6,7 @@ use std::{
 use halo2curves::bn256;
 use nova_snark::{
   provider::{
-    check_sanity_of_file,
+    check_sanity_of_ptau_file,
     hyperkzg::{CommitmentEngine, CommitmentKey},
     Bn256EngineKZG,
   },
@@ -45,7 +45,7 @@ fn keygen_save_large() {
 
   let path = get_key_file_path(MAX_NUM_GENS);
 
-  if check_sanity_of_file::<bn256::G1Affine>(&path, MAX_NUM_GENS + 1, 1).is_err() {
+  if check_sanity_of_ptau_file::<bn256::G1Affine>(&path, MAX_NUM_GENS + 1, 1).is_err() {
     println!("Generating {} KZG keys ", MAX_NUM_GENS);
 
     let (ck, dur) = timeit!(|| { CommitmentKey::<E>::setup_from_rng(LABEL, MAX_NUM_GENS, OsRng) });

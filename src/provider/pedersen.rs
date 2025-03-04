@@ -353,3 +353,32 @@ where
     })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  use crate::{provider::GrumpkinEngine, CommitmentKey};
+  use std::{fs::File, io::BufWriter};
+
+  type E = GrumpkinEngine;
+
+  #[test]
+  fn test_key_save_load() {
+    let path = "/tmp/pedersen_test.keys";
+
+    let keys = CommitmentEngine::<E>::setup(b"test", 100);
+
+    keys
+      .save_to(&mut BufWriter::new(File::create(path).unwrap()))
+      .unwrap();
+
+    let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), 100);
+
+    assert!(keys_read.is_ok());
+    let keys_read: CommitmentKey<E> = keys_read.unwrap();
+    assert_eq!(keys_read.ck.len(), keys.ck.len());
+    assert_eq!(keys_read.h, keys.h);
+    assert_eq!(keys_read.ck, keys.ck);
+  }
+}

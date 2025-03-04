@@ -87,6 +87,7 @@ where
   Ok(())
 }
 
+/// Save Ptau File
 pub fn write_ptau<G1, G2>(
   mut writer: &mut (impl Write + Seek),
   g1_points: Vec<G1>,
@@ -254,6 +255,7 @@ where
   Ok(res)
 }
 
+/// Load Ptau File
 pub fn read_ptau<G1, G2>(
   mut reader: &mut (impl Read + Seek),
   num_g1: usize,
@@ -277,7 +279,8 @@ where
   Ok((g1_points, g2_points))
 }
 
-pub fn check_sanity_of_file<G1>(
+/// Check the sanity of the ptau file
+pub fn check_sanity_of_ptau_file<G1>(
   path: impl AsRef<Path>,
   num_g1: usize,
   num_g2: usize,
