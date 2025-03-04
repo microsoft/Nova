@@ -1,10 +1,7 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
-  provider::{
-    ptau::{load_ck_vec, read_points},
-    traits::DlogGroup,
-  },
+  provider::{ptau::read_points, traits::DlogGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -16,12 +13,10 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-use halo2curves::CurveAffine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Read};
 
-use super::ptau::{id_of, write_ck_vec, CommitmentKeyIO, PtauFileError};
+use super::ptau::{write_points, PtauFileError};
 
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
@@ -167,10 +162,22 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: DlogGroup,
+{
+  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
+    writer.write_all(&KEY_FILE_HEAD)?;
+    let mut points = Vec::with_capacity(self.ck.len() + 1);
+    points.push(self.h.clone().unwrap());
+    points.extend(self.ck.iter().cloned());
+    write_points(writer, points)
+  }
+}
+
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroup,
-  <E::GE as DlogGroup>::AffineGroupElement: CurveAffine + halo2curves::serde::SerdeObject,
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
@@ -222,7 +229,7 @@ where
   }
 
   fn load_setup(
-    reader: &mut impl std::io::Read,
+    reader: &mut (impl std::io::Read + std::io::Seek),
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError> {
     let num = n.next_power_of_two();
@@ -243,12 +250,6 @@ where
       h: Some(first[0].clone()),
     })
   }
-}
-
-pub fn write_key_file<G>(writer: &mut impl std::io::Write, ck: &Vec<E>) -> Result<(), PtauFileError>
-where
-  G: halo2curves::serde::SerdeObject + CurveAffine,
-{
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
@@ -356,101 +357,5 @@ where
                // and we only use non-blinding commits afterwards
                // bc we don't use ZK IPA
     })
-  }
-}
-
-impl<E: Engine> CommitmentKeyIO for CommitmentKey<E>
-where
-  E::GE: DlogGroup,
-{
-  fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-    // Write the Group ID
-    let group_id = id_of::<E::GE>().unwrap();
-    writer.write_all(&[group_id])?;
-
-    // Write the ck length
-    let ck_len = self.ck.len() as u64;
-    writer.write_all(&ck_len.to_le_bytes())?;
-
-    // Write h
-    let bin = bincode::serialize(&self.h).unwrap();
-    writer.write_all(&bin)?;
-
-    // Write ck
-    write_ck_vec::<E>(writer, &self.ck)?;
-
-    writer.flush()
-  }
-
-  fn load_from(
-    mut reader: &mut impl std::io::Read,
-    needed_num_ck: usize,
-  ) -> Result<Self, std::io::Error> {
-    // Read the group ID
-    let mut group_id = [0u8; 1];
-    reader.read_exact(&mut group_id)?;
-
-    // Read the ck length
-    let mut ck_len = [0u8; 8];
-    reader.read_exact(&mut ck_len)?;
-    let ck_len = u64::from_le_bytes(ck_len) as usize;
-
-    assert!(needed_num_ck <= ck_len);
-
-    // Read h
-    let h = bincode::deserialize_from(&mut reader).unwrap();
-
-    // Read ck list
-    let ck = load_ck_vec::<E>(reader, needed_num_ck);
-
-    Ok(Self { ck, h })
-  }
-
-  fn check_sanity_of_file(path: impl AsRef<std::path::Path>, required_len_ck_list: usize) -> bool {
-    let file = File::open(path);
-    if file.is_err() {
-      return false;
-    }
-    let mut reader = file.unwrap();
-
-    // Read the group ID
-    let expected_id = id_of::<E::GE>();
-    if expected_id.is_none() {
-      return false;
-    }
-
-    let expected_id = expected_id.unwrap();
-
-    let mut group_id = [0u8; 1];
-    if reader.read_exact(&mut group_id).is_err() {
-      return false;
-    }
-
-    if group_id[0] != expected_id {
-      return false;
-    }
-    // Read the ck length
-    let mut ck_len = [0u8; 8];
-    if reader.read_exact(&mut ck_len).is_err() {
-      return false;
-    }
-    let ck_len = u64::from_le_bytes(ck_len) as usize;
-
-    if required_len_ck_list > ck_len {
-      return false;
-    }
-
-    if let Some(point) = <E::GE as DlogGroup>::decode_from(&mut reader) {
-      let bin = <E::GE as DlogGroup>::encode(&point);
-      let size_point = bin.len();
-
-      let expected_size = size_point as u64 * (ck_len + 2) as u64
-        + bincode::serialized_size(&E::GE::zero()).unwrap()
-        + 1;
-
-      expected_size == reader.metadata().unwrap().len()
-    } else {
-      false
-    }
   }
 }

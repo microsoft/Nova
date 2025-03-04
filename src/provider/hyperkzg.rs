@@ -8,10 +8,7 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::{
-    ptau::load_ck_vec,
-    traits::{DlogGroup, PairingGroup},
-  },
+  provider::traits::{DlogGroup, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -28,9 +25,8 @@ use ff::{Field, PrimeFieldBits};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Read, path::Path};
 
-use super::ptau::{id_of, write_ck_vec, CommitmentKeyIO};
+use super::{ptau::PtauFileError, read_ptau, write_ptau};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -75,108 +71,6 @@ where
   /// Returns a reference to the tau_H field
   pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
     &self.tau_H
-  }
-}
-
-impl<E: Engine> CommitmentKeyIO for CommitmentKey<E>
-where
-  E::GE: PairingGroup,
-{
-  fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-    // Write the Group ID
-    let group_id = id_of::<E::GE>().unwrap();
-    writer.write_all(&[group_id])?;
-
-    // Write the ck length
-    let ck_len = self.ck.len() as u64;
-    writer.write_all(&ck_len.to_le_bytes())?;
-
-    // Write h
-    let bin = <E::GE as DlogGroup>::encode(&self.h);
-    writer.write_all(&bin)?;
-
-    // Write tau_h
-    let bin = <<E::GE as PairingGroup>::G2 as DlogGroup>::encode(&self.tau_H);
-    writer.write_all(&bin)?;
-
-    // Write ck
-    write_ck_vec::<E>(writer, &self.ck)?;
-
-    writer.flush()
-  }
-
-  fn load_from(reader: &mut impl Read, needed_num_ck: usize) -> Result<Self, std::io::Error> {
-    // Read the group ID
-    let mut group_id = [0u8; 1];
-    reader.read_exact(&mut group_id)?;
-
-    // Read the ck length
-    let mut ck_len = [0u8; 8];
-    reader.read_exact(&mut ck_len)?;
-    let ck_len = u64::from_le_bytes(ck_len) as usize;
-
-    assert!(needed_num_ck <= ck_len);
-
-    // Read h
-    let h = <E::GE as DlogGroup>::decode_from(reader).unwrap();
-
-    // Read tau_h
-    let tau_h = <<E::GE as PairingGroup>::G2 as DlogGroup>::decode_from(reader).unwrap();
-
-    // Read ck list
-    let ck = load_ck_vec::<E>(reader, needed_num_ck);
-
-    Ok(Self {
-      ck,
-      h,
-      tau_H: tau_h,
-    })
-  }
-
-  fn check_sanity_of_file(path: impl AsRef<Path>, required_len_ck_list: usize) -> bool {
-    let file = File::open(path);
-    if file.is_err() {
-      return false;
-    }
-    let mut reader = file.unwrap();
-
-    // Read the group ID
-    let expected_id = id_of::<E::GE>();
-    if expected_id.is_none() {
-      return false;
-    }
-
-    let expected_id = expected_id.unwrap();
-
-    let mut group_id = [0u8; 1];
-    if reader.read_exact(&mut group_id).is_err() {
-      return false;
-    }
-
-    if group_id[0] != expected_id {
-      return false;
-    }
-    // Read the ck length
-    let mut ck_len = [0u8; 8];
-    if reader.read_exact(&mut ck_len).is_err() {
-      return false;
-    }
-    let ck_len = u64::from_le_bytes(ck_len) as usize;
-
-    if required_len_ck_list > ck_len {
-      return false;
-    }
-
-    if let Some(point) = <E::GE as DlogGroup>::decode_from(&mut reader) {
-      let bin = <E::GE as DlogGroup>::encode(&point);
-      let size_point = bin.len();
-
-      let expected_size = size_point * (ck_len + 2) + 8 + 1;
-
-      expected_size == reader.metadata().unwrap().len() as usize
-    } else {
-      false
-    }
   }
 }
 
@@ -228,6 +122,25 @@ where
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
     self.comm.to_coordinates()
+  }
+}
+
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: PairingGroup,
+{
+  pub fn save_to(
+    &self,
+    mut writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError> {
+    let mut g1_points = Vec::with_capacity(self.ck.len() + 1);
+    g1_points.push(self.h.clone());
+    g1_points.extend(self.ck.iter().cloned());
+
+    let g2_points = vec![self.tau_H.clone()];
+    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
+
+    write_ptau(&mut writer, g1_points, g2_points, power)
   }
 }
 
@@ -538,6 +451,25 @@ where
     Commitment {
       comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
+  }
+
+  fn load_setup(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError> {
+    let num = n.next_power_of_two();
+
+    let (g1_points, g2_points) = read_ptau(reader, num + 1, 1)?;
+
+    let (h, ck) = g1_points.split_at(1);
+    let h = h[0];
+    let ck = ck.to_vec();
+
+    Ok(CommitmentKey {
+      ck,
+      h,
+      tau_H: g2_points[0],
+    })
   }
 }
 
@@ -960,7 +892,7 @@ mod tests {
 
   use super::*;
   use crate::{
-    provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
+    provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
     spartan::polys::multilinear::MultilinearPolynomial,
   };
   use bincode::Options;
@@ -1138,7 +1070,7 @@ mod tests {
   #[test]
   fn test_save_load_ck() {
     let n = 4;
-    let filename = "/tmp/kzg_test.keys";
+    let filename = "/tmp/kzg_test.ptau";
     const BUFFER_SIZE: usize = 64 * 1024;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
 
@@ -1152,16 +1084,11 @@ mod tests {
 
     ck.save_to(&mut writer).unwrap();
 
-    assert!(CommitmentKey::<E>::check_sanity_of_file(
-      filename,
-      ck.ck.len()
-    ));
-
     let file = OpenOptions::new().read(true).open(filename).unwrap();
 
     let mut reader = BufReader::new(file);
 
-    let read_ck = CommitmentKey::<E>::load_from(&mut reader, ck.ck.len()).unwrap();
+    let read_ck = hyperkzg::CommitmentEngine::<E>::load_setup(&mut reader, ck.ck.len()).unwrap();
 
     assert_eq!(ck.ck.len(), read_ck.ck.len());
     assert_eq!(ck.h, read_ck.h);

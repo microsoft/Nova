@@ -3,7 +3,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
-use halo2curves::serde::SerdeObject;
+use halo2curves::{serde::SerdeObject, CurveAffine};
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -44,7 +44,9 @@ pub trait DlogGroup:
     + Sync
     + Serialize
     + for<'de> Deserialize<'de>
-    + TranscriptReprTrait<Self>;
+    + TranscriptReprTrait<Self>
+    + CurveAffine
+    + SerdeObject;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
@@ -66,14 +68,6 @@ pub trait DlogGroup:
 
   /// Returns the affine coordinates (x, y, infinity) for the point
   fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
-
-  // * The following default methods uses bincode which is slow.
-  fn encode(point: &Self::AffineGroupElement) -> Vec<u8> {
-    bincode::serialize(point).unwrap()
-  }
-  fn decode_from(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
-    Some(bincode::deserialize_from(reader).unwrap())
-  }
 }
 
 /// A trait that defines extensions to the DlogGroup trait, to be implemented for
@@ -194,28 +188,6 @@ macro_rules! impl_traits {
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
         }
-      }
-
-      // * The following using [u8; 32] repr, which is faster
-      fn encode(point: &Self::AffineGroupElement) -> Vec<u8> {
-        let x: [u8; 32] = point.x.to_repr().into();
-        let y: [u8; 32] = point.y.to_repr().into();
-
-        let mut res = Vec::with_capacity(32 + 32);
-        res.extend(x);
-        res.extend(y);
-        res
-      }
-      fn decode_from(reader: &mut impl std::io::Read) -> Option<Self::AffineGroupElement> {
-        let mut x = [0u8; 32];
-        let mut y = [0u8; 32];
-
-        reader.read_exact(&mut x).unwrap();
-        reader.read_exact(&mut y).unwrap();
-
-        let x = Self::Base::from_repr(x.into()).unwrap();
-        let y = Self::Base::from_repr(y.into()).unwrap();
-        Some(Self::AffineGroupElement::from_xy(x, y).unwrap())
       }
     }
 
