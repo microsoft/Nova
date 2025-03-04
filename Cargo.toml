@@ -67,5 +67,5 @@ name = "ppsnark"
 harness = false
 
 [features]
-default = ["halo2curves/asm"]
+default = [] #"halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]

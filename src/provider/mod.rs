@@ -8,8 +8,8 @@ pub mod pasta;
 pub mod poseidon;
 pub mod secp_secq;
 
-pub(crate) mod commitment_key_io;
-pub use commitment_key_io::{id_of, CommitmentKeyIO};
+pub(crate) mod ptau;
+pub use ptau::{id_of, CommitmentKeyIO, read_ptau, write_ptau};
 
 // crate-private modules
 pub(crate) mod keccak;

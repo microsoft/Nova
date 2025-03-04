@@ -1,10 +1,11 @@
 use std::{
-  fs::OpenOptions,
+  fs::{File, OpenOptions},
   io::{BufReader, BufWriter},
 };
 
+use halo2curves::bn256;
 use nova_snark::{
-  provider::{hyperkzg::CommitmentKey, id_of, Bn256EngineKZG, CommitmentKeyIO},
+  provider::{hyperkzg::CommitmentKey, id_of, read_ptau, write_ptau, Bn256EngineKZG, CommitmentKeyIO},
   traits::Engine,
 };
 use rand_core::OsRng;
@@ -79,5 +80,22 @@ fn keygen_save_large() {
 }
 
 fn main() {
-  keygen_save_large();
+  // keygen_save_large();
+  let mut reader = BufReader::new(File::open("/tmp/ppot_0080_21.ptau").unwrap());
+  let ((r1, r2), dur) = timeit!(|| {
+    read_ptau::<bn256::G1Affine, bn256::G2Affine>(&mut reader, 200_0000, 20).unwrap()
+  });
+
+  dbg!(dur);
+
+  let mut writer = BufWriter::new(File::create("8.ptau").unwrap());
+  write_ptau(&mut writer, r1, r2, 22).unwrap();
+  
+  let mut reader = BufReader::new(File::open("8.ptau").unwrap());
+    let ((r1, r2), dur) = timeit!(|| {
+      read_ptau::<bn256::G1Affine, bn256::G2Affine>(&mut reader, 200_0000, 20).unwrap()
+    });
+  
+
+
 }

@@ -3,6 +3,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
+use halo2curves::serde::SerdeObject;
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.

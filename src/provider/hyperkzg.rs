@@ -9,7 +9,7 @@
 use crate::{
   errors::NovaError,
   provider::{
-    commitment_key_io::load_ck_vec,
+    ptau::load_ck_vec,
     traits::{DlogGroup, PairingGroup},
   },
   traits::{
@@ -30,7 +30,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read, path::Path};
 
-use super::commitment_key_io::{id_of, write_ck_vec, CommitmentKeyIO};
+use super::ptau::{id_of, write_ck_vec, CommitmentKeyIO};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;

@@ -1,7 +1,10 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
-  provider::{commitment_key_io::load_ck_vec, traits::DlogGroup},
+  provider::{
+    ptau::{load_ck_vec, read_points},
+    traits::DlogGroup,
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -13,11 +16,14 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
+use halo2curves::CurveAffine;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Read};
 
-use super::commitment_key_io::{id_of, write_ck_vec, CommitmentKeyIO};
+use super::ptau::{id_of, write_ck_vec, CommitmentKeyIO, PtauFileError};
+
+const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,6 +170,7 @@ pub struct CommitmentEngine<E: Engine> {
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroup,
+  <E::GE as DlogGroup>::AffineGroupElement: CurveAffine + halo2curves::serde::SerdeObject,
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
@@ -213,6 +220,35 @@ where
       comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
   }
+
+  fn load_setup(
+    reader: &mut impl std::io::Read,
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError> {
+    let num = n.next_power_of_two();
+    {
+      let mut head = [0u8; 12];
+      reader.read_exact(&mut head)?;
+      if head != KEY_FILE_HEAD {
+        return Err(PtauFileError::InvalidHead);
+      }
+    }
+
+    let points = read_points(reader, num + 1)?;
+
+    let (first, second) = points.split_at(1);
+
+    Ok(Self::CommitmentKey {
+      ck: second.to_vec(),
+      h: Some(first[0].clone()),
+    })
+  }
+}
+
+pub fn write_key_file<G>(writer: &mut impl std::io::Write, ck: &Vec<E>) -> Result<(), PtauFileError>
+where
+  G: halo2curves::serde::SerdeObject + CurveAffine,
+{
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
