@@ -1,4 +1,6 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
@@ -15,7 +17,13 @@ use crate::{
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 use once_cell::sync::OnceCell;
+#[cfg(not(feature = "std"))]
+use rand_chacha::ChaCha20Rng;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
+#[cfg(not(feature = "std"))]
+use rand_core::SeedableRng;
+
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -451,11 +459,17 @@ impl<E: Engine> R1CSShape<E> {
     #[cfg(not(feature = "std"))]
     let Z = (0..self.num_vars + self.num_io + 1)
       .into_iter()
-      .map(|_| E::Scalar::random(&mut OsRng))
+      .map(|_| E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)))
       .collect::<Vec<E::Scalar>>();
 
+    #[cfg(feature = "std")]
     let r_W = E::Scalar::random(&mut OsRng);
+    #[cfg(feature = "std")]
     let r_E = E::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    let r_W = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
+    #[cfg(not(feature = "std"))]
+    let r_E = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     let u = Z[self.num_vars];
 
@@ -513,7 +527,10 @@ impl<E: Engine> R1CSWitness<E> {
     } else {
       Ok(R1CSWitness {
         W: W.to_owned(),
+        #[cfg(feature = "std")]
         r_W: E::Scalar::random(&mut OsRng),
+        #[cfg(not(feature = "std"))]
+        r_W: E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)),
       })
     }
   }

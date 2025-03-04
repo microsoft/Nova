@@ -1,4 +1,6 @@
 //! This module provides an implementation of a commitment engine
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   provider::traits::DlogGroup,

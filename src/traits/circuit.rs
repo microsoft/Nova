@@ -1,5 +1,7 @@
 //! This module defines traits that a step function must implement
 use crate::frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use core::marker::PhantomData;
 use ff::PrimeField;
 

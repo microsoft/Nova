@@ -3,7 +3,7 @@
 
 use crate::provider::msm_no_std_impl::msm_best;
 use crate::{
-  //   prelude::*,
+  prelude::*,
   provider::traits::DlogGroup,
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -146,6 +146,16 @@ macro_rules! impl_traits {
       }
     }
   };
+}
+
+/// Re-exports that give access to the standard aliases used in the code base, for pallas
+pub mod pallas_no_std {
+  pub use pasta_curves::{Ep as Point, EpAffine as Affine, Fp as Base, Fq as Scalar};
+}
+
+/// Re-exports that give access to the standard aliases used in the code base, for vesta
+pub mod vesta_no_std {
+  pub use pasta_curves::{Eq as Point, EqAffine as Affine, Fp as Scalar, Fq as Base};
 }
 
 impl_traits!(

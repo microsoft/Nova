@@ -6,6 +6,8 @@
 //! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
 //! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   provider::traits::{DlogGroup, PairingGroup},
@@ -22,7 +24,12 @@ use core::{
   slice,
 };
 use ff::Field;
+#[cfg(not(feature = "std"))]
+use rand_chacha::ChaCha20Rng;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
+#[cfg(not(feature = "std"))]
+use rand_core::SeedableRng;
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -283,7 +290,12 @@ where
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     // TODO: we need to decide how to generate load/store parameters
-    Self::CommitmentKey::setup_from_rng(label, n, OsRng)
+    #[cfg(feature = "std")]
+    let res = Self::CommitmentKey::setup_from_rng(label, n, OsRng);
+    #[cfg(not(feature = "std"))]
+    let res = Self::CommitmentKey::setup_from_rng(label, n, ChaCha20Rng::seed_from_u64(0xDEADBEEF));
+
+    res
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {

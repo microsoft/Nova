@@ -2,6 +2,8 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 use core::ops::{Add, Index};
 use ff::PrimeField;
@@ -110,7 +112,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     .sum();
     #[cfg(not(feature = "std"))]
     let res = zip_with!(
-      (EqPolynomial::evals_from_points(r).into_iter(), Z.ter()),
+      (EqPolynomial::evals_from_points(r).into_iter(), Z.iter()),
       |a, b| a * b
     )
     .sum();

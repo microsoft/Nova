@@ -9,7 +9,12 @@ use crate::{
   Commitment, CommitmentKey,
 };
 use ff::Field;
+#[cfg(not(feature = "std"))]
+use rand_chacha::ChaCha20Rng;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
+#[cfg(not(feature = "std"))]
+use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 /// A SNARK that holds the proof of a step of an incremental computation
@@ -56,7 +61,11 @@ impl<E: Engine> NIFS<E> {
     U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
+    #[cfg(feature = "std")]
     let r_T = E::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    let r_T = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
+
     let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
@@ -150,8 +159,14 @@ impl<E: Engine> NIFSRelaxed<E> {
     U2.absorb_in_ro(&mut ro);
 
     // compute a commitment to the cross-term
+    #[cfg(feature = "std")]
     let r_T = E::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    let r_T = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
+    #[cfg(feature = "std")]
     E::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
     let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge

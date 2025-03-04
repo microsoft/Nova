@@ -3,6 +3,10 @@
 //! from Python2 to Rust for a (roughly) 256-bit prime field (e.g. BLS12-381's scalar field) and
 //! 128-bit security level.
 
+use libm::log2;
+#[cfg(not(feature = "std"))]
+use num_traits::float::FloatCore;
+
 // The number of bits of the Poseidon prime field modulus. Denoted `n` in the Poseidon paper
 // (where `n = ceil(log2(p))`). Note that BLS12-381's scalar field modulus is 255 bits, however we
 // use 256 bits for simplicity when operating on bytes as the single bit difference does not affect
@@ -79,7 +83,7 @@ fn round_numbers_are_secure(t: usize, rf: usize, rp: usize) -> bool {
   } else {
     10.0
   };
-  let rf_interp = 0.43 * m + t.log2() - rp;
+  let rf_interp = 0.43 * m + log2(t as f64) as f32 - rp;
   let rf_grob_1 = 0.21 * n - rp;
   let rf_grob_2 = (0.14 * n - 1.0 - rp) / (t - 1.0);
   let rf_max = [rf_stat, rf_interp, rf_grob_1, rf_grob_2]

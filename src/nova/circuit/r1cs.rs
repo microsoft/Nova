@@ -1,4 +1,6 @@
 //! This module implements various gadgets necessary for folding R1CS types.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},

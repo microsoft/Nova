@@ -4,6 +4,8 @@
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 //! This code includes experimental optimizations to reduce runtimes and proof sizes.
 //! We have not yet proven the security of these optimizations, so this code is subject to significant changes in the future.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -1413,68 +1415,74 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     );
 
     #[cfg(not(feature = "std"))]
-    let mut outer_sc_inst = OuterSumcheckInstance::new(
-      EqPolynomial::new(&tau.clone()).evals(),
-      Az.clone(),
-      Bz.clone(),
-      (0..Cz.len())
-        .map(|i| U.u * Cz[i] + E[i])
-        .collect::<Vec<E::Scalar>>(),
-      w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
-      &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
-    );
+    let (mut outer_sc_inst, mut inner_sc_inst) = {
+      // First sum-check instance
+      let outer_sc_inst = OuterSumcheckInstance::new(
+        EqPolynomial::new(tau.clone()).evals(),
+        Az.clone(),
+        Bz.clone(),
+        (0..Cz.len())
+          .map(|i| U.u * Cz[i] + E[i])
+          .collect::<Vec<E::Scalar>>(),
+        w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
+        &u.e,        // eval_Az_at_tau + r * eval_Az_at_tau + r^2 * eval_Cz_at_tau
+      );
 
-    // a sum-check instance to prove the second claim
-    #[cfg(not(feature = "std"))]
-    let val = zip_with!(
-      iter,
-      (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
-      |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
-    )
-    .collect::<Vec<E::Scalar>>();
+      // a sum-check instance to prove the second claim
+      let val = zip_with!(
+        iter,
+        (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
+        |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
+      )
+      .collect::<Vec<E::Scalar>>();
 
-    #[cfg(not(feature = "std"))]
-    let mut inner_sc_inst = InnerSumcheckInstance {
-      claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
-      poly_L_row: MultilinearPolynomial::new(L_row.clone()),
-      poly_L_col: MultilinearPolynomial::new(L_col.clone()),
-      poly_val: MultilinearPolynomial::new(val),
+      let inner_sc_inst = InnerSumcheckInstance {
+        claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
+        poly_L_row: MultilinearPolynomial::new(L_row.clone()),
+        poly_L_col: MultilinearPolynomial::new(L_col.clone()),
+        poly_val: MultilinearPolynomial::new(val),
+      };
+
+      (outer_sc_inst, inner_sc_inst)
     };
 
+    // Third sum-check instance for read-only memory claim
     #[cfg(not(feature = "std"))]
-    let (comm_mem_oracles, mem_oracles, mem_aux) = MemorySumcheckInstance::<E>::compute_oracles(
-      ck,
-      &r,
-      &gamma,
-      &mem_row,
-      &pk.S_repr.row,
-      &L_row,
-      &pk.S_repr.ts_row,
-      &mem_col,
-      &pk.S_repr.col,
-      &L_col,
-      &pk.S_repr.ts_col,
-    )?;
-    // absorb the commitments
-    #[cfg(not(feature = "std"))]
-    transcript.absorb(b"l", &comm_mem_oracles.as_slice());
-    #[cfg(not(feature = "std"))]
-    let rho = transcript.squeeze(b"r")?;
-    #[cfg(not(feature = "std"))]
-    let poly_eq = MultilinearPolynomial::new(EqPolynomial::new(&rho).evals());
+    let mem_res = {
+      let (comm_mem_oracles, mem_oracles, mem_aux) = MemorySumcheckInstance::<E>::compute_oracles(
+        ck,
+        &r,
+        &gamma,
+        &mem_row,
+        &pk.S_repr.row,
+        &L_row,
+        &pk.S_repr.ts_row,
+        &mem_col,
+        &pk.S_repr.col,
+        &L_col,
+        &pk.S_repr.ts_col,
+      )?;
 
-    #[cfg(not(feature = "std"))]
-    let mem_res = Ok::<_, NovaError>((
-      MemorySumcheckInstance::new(
-        mem_oracles.clone(),
-        mem_aux,
-        poly_eq.Z,
-        pk.S_repr.ts_row.clone(),
-        pk.S_repr.ts_col.clone(),
-      ),
-      comm_mem_oracles,
-      mem_oracles,
-    ));
+      // absorb the commitments
+      transcript.absorb(b"l", &comm_mem_oracles.as_slice());
+
+      let rho = (0..num_rounds_sc)
+        .map(|_| transcript.squeeze(b"r"))
+        .collect::<Result<Vec<_>, NovaError>>()?;
+      let poly_eq = MultilinearPolynomial::new(EqPolynomial::new(rho).evals());
+
+      Ok::<_, NovaError>((
+        MemorySumcheckInstance::new(
+          mem_oracles.clone(),
+          mem_aux,
+          poly_eq.Z,
+          pk.S_repr.ts_row.clone(),
+          pk.S_repr.ts_col.clone(),
+        ),
+        comm_mem_oracles,
+        mem_oracles,
+      ))
+    };
 
     let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
 

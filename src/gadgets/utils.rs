@@ -1,5 +1,7 @@
 //! This module implements various low-level gadgets
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, LinearCombination,

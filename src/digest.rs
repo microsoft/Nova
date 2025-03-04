@@ -1,8 +1,11 @@
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{constants::NUM_HASH_BITS, errors::NovaError};
 use bincode::config::legacy;
 use ff::PrimeField;
 use serde::Serialize;
 use sha3::{Digest, Sha3_256};
+#[cfg(feature = "std")]
 use std::marker::PhantomData;
 
 /// Trait for components with potentially discrete digests to be included in their container's digest.

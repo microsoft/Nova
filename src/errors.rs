@@ -1,5 +1,7 @@
 //! This module defines errors returned by the library.
 use crate::frontend::SynthesisError;
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use core::fmt::Debug;
 use thiserror::Error;
 

@@ -1,4 +1,6 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   provider::{pedersen::CommitmentKeyExtTrait, traits::DlogGroup},
@@ -14,6 +16,7 @@ use ff::Field;
 #[cfg(feature = "std")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
 use std::marker::PhantomData;
 
 /// Provides an implementation of the prover key
@@ -110,7 +113,8 @@ fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
   let res = (0..a.len())
     .into_iter()
     .map(|i| a[i] * b[i])
-    .reduce(|| T::ZERO, |x, y| x + y);
+    .fold(T::ZERO, |x, y| x + y);
+
   res
 }
 

@@ -1,3 +1,5 @@
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   spartan::polys::{

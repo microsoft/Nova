@@ -1,4 +1,6 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   frontend::{
     gadgets::poseidon::{

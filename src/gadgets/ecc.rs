@@ -1,5 +1,7 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,

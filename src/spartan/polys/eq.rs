@@ -1,4 +1,6 @@
 //! `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
 #[cfg(feature = "std")]
 use rayon::prelude::*;

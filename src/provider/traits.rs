@@ -1,3 +1,5 @@
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
 use core::{
   fmt::Debug,

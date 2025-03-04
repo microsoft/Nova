@@ -4,7 +4,10 @@ use crate::frontend::gadgets::poseidon::{
   sponge::api::{IOPattern, InnerSpongeAPI},
   PoseidonError, Strength,
 };
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
+#[cfg(feature = "std")]
 use std::collections::VecDeque;
 
 // General information on sponge construction: https://keccak.team/files/CSF-0.1.pdf

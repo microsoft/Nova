@@ -1,5 +1,7 @@
 //! `MaskedEqPolynomial`: Represents the `eq` polynomial over n variables, where the first 2^m entries are 0.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::spartan::polys::eq::EqPolynomial;
 use ff::PrimeField;
 use itertools::zip_eq;

@@ -4,6 +4,8 @@
 //! description of R1CS matrices. This is essentially optimal for the verifier when using
 //! an IPA-based polynomial commitment scheme.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,

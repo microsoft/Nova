@@ -2,13 +2,14 @@ use super::{BitAccess, OptionExt};
 use crate::frontend::{
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 // use byteorder::WriteBytesExt;
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
-use std::{
-  convert::From,
-  // io::{self, Write},
-};
+// ! TODO -> THIS LINE IS PROBLEMATIC !!!
+#[cfg(feature = "std")]
+use std::convert::From;
 
 #[derive(Clone)]
 /// A representation of a bit

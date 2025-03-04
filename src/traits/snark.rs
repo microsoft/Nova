@@ -1,4 +1,6 @@
 //! This module defines a collection of traits that define the behavior of a `zkSNARK` for `RelaxedR1CS`
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
