@@ -1,14 +1,9 @@
 //! This module defines relations used in the Neutron folding scheme
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   errors::NovaError,
-  gadgets::{
-    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
-    utils::scalar_as_base,
-  },
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness},
   spartan::math::Math,
-  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait},
+  traits::{commitment::CommitmentEngineTrait, AbsorbInRO2Trait, Engine, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -205,27 +200,16 @@ impl<E: Engine> FoldedInstance<E> {
   }
 }
 
-impl<E: Engine> AbsorbInROTrait<E> for FoldedInstance<E> {
-  fn absorb_in_ro(&self, ro: &mut E::RO) {
-    self.comm_W.absorb_in_ro(ro);
-    self.comm_E.absorb_in_ro(ro);
+impl<E: Engine> AbsorbInRO2Trait<E> for FoldedInstance<E> {
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    self.comm_W.absorb_in_ro2(ro);
+    self.comm_E.absorb_in_ro2(ro);
 
-    // absorb T in bignum format
-    let limbs: Vec<E::Scalar> =
-      nat_to_limbs(&f_to_nat(&self.T), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-    for limb in limbs {
-      ro.absorb(scalar_as_base::<E>(limb));
-    }
-
-    // absorb each element of self.X in bignum format
+    ro.absorb(self.T);
+    ro.absorb(self.u);
     for x in &self.X {
-      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-      for limb in limbs {
-        ro.absorb(scalar_as_base::<E>(limb));
-      }
+      ro.absorb(*x);
     }
-
-    ro.absorb(scalar_as_base::<E>(self.u));
   }
 }
 

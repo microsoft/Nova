@@ -789,18 +789,6 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
     Ok(Self { x, y, is_infinity })
   }
 
-  pub fn from_xy(
-    x: &BigNat<E::Scalar>,
-    y: &BigNat<E::Scalar>,
-    is_infinity: &AllocatedNum<E::Scalar>,
-  ) -> Result<Self, SynthesisError> {
-    Ok(Self {
-      x: x.clone(),
-      y: y.clone(),
-      is_infinity: is_infinity.clone(),
-    })
-  }
-
   /// Allocates a default point on the curve, set to the point at infinity.
   pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
   where
