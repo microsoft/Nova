@@ -7,7 +7,7 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
-  traits::{AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
+  traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
 };
 use core::panic;
 use ff::PrimeField;
@@ -123,6 +123,16 @@ impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
       for limb in limbs {
         ro.absorb(scalar_as_base::<E>(limb));
       }
+    }
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for UniPoly<E::Scalar> {
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    let compressed_poly = self.compress();
+
+    for x in &compressed_poly.coeffs_except_linear_term {
+      ro.absorb(*x);
     }
   }
 }

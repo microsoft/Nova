@@ -8,7 +8,8 @@ use crate::{
     utils::scalar_as_base,
   },
   traits::{
-    commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait,
+    TranscriptReprTrait,
   },
   Commitment, CommitmentKey, DerandKey, CE,
 };
@@ -486,8 +487,22 @@ impl<E: Engine> R1CSInstance<E> {
 impl<E: Engine> AbsorbInROTrait<E> for R1CSInstance<E> {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     self.comm_W.absorb_in_ro(ro);
+
+    // In Nova's folding scheme, the public IO of the R1CS instance only contains hashes
+    // These hashes have unique representations in the base field
     for x in &self.X {
       ro.absorb(scalar_as_base::<E>(*x));
+    }
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for R1CSInstance<E> {
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    // we have to absorb the commitment to W in RO2
+    self.comm_W.absorb_in_ro2(ro);
+
+    for x in &self.X {
+      ro.absorb(*x);
     }
   }
 }

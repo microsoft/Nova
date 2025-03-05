@@ -215,7 +215,7 @@ mod tests {
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::SparseMatrix,
-    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
+    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine, ROConstants},
   };
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -258,8 +258,7 @@ mod tests {
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ro_consts = ROConstants::<E>::default();
 
     // Now get the instance and assignment for one instance
     let mut cs = SatisfyingAssignment::<E>::new();
@@ -299,7 +298,7 @@ mod tests {
 
   fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &ROConstants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &R1CSInstance<E>,
@@ -353,7 +352,7 @@ mod tests {
 
   fn execute_sequence_relaxed<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &ROConstants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
@@ -502,8 +501,7 @@ mod tests {
 
     // generate generators and ro constants
     let ck = S.commitment_key(&*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {
@@ -639,8 +637,7 @@ mod tests {
 
     // generate generators and ro constants
     let ck = S.commitment_key(&*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {

@@ -3,11 +3,10 @@
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::polys::{power::PowPolynomial, univariate::UniPoly},
-  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROConstants, ROTrait},
+  traits::{commitment::CommitmentEngineTrait, AbsorbInRO2Trait, Engine, RO2Constants, ROTrait},
   Commitment, CommitmentKey, CE,
 };
 use ff::Field;
@@ -201,7 +200,7 @@ impl<E: Engine> NIFS<E> {
   /// So the code below avoids absorbing `U1` in the RO.
   pub fn prove(
     ck: &CommitmentKey<E>,
-    ro_consts: &ROConstants<E>,
+    ro_consts: &RO2Constants<E>,
     pp_digest: &E::Scalar,
     S: &Structure<E>,
     U1: &FoldedInstance<E>,
@@ -210,13 +209,13 @@ impl<E: Engine> NIFS<E> {
     W2: &R1CSWitness<E>,
   ) -> Result<(NIFS<E>, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
+    let mut ro = E::RO2::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    ro.absorb(*pp_digest);
 
     // append U2 to transcript
-    U2.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro2(&mut ro);
 
     // generate a challenge for the eq polynomial
     let tau = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -226,7 +225,7 @@ impl<E: Engine> NIFS<E> {
     let r_E = E::Scalar::random(&mut OsRng);
     let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
-    comm_E.absorb_in_ro(&mut ro); // absorb the commitment in the NIFS
+    comm_E.absorb_in_ro2(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
     let rho = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -266,7 +265,8 @@ impl<E: Engine> NIFS<E> {
     let poly = UniPoly::<E::Scalar>::from_evals(&evals);
 
     // absorb poly in the RO
-    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&poly, &mut ro);
+    // TODO: make UniPoly defined over E
+    <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&poly, &mut ro);
 
     // squeeze a challenge
     let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -298,24 +298,24 @@ impl<E: Engine> NIFS<E> {
   #[cfg(test)]
   pub fn verify(
     &self,
-    ro_consts: &ROConstants<E>,
+    ro_consts: &RO2Constants<E>,
     pp_digest: &E::Scalar,
     U1: &FoldedInstance<E>,
     U2: &R1CSInstance<E>,
   ) -> Result<FoldedInstance<E>, NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
+    let mut ro = E::RO2::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    ro.absorb(*pp_digest);
 
     // append U2 to transcript
-    U2.absorb_in_ro(&mut ro);
+    U2.absorb_in_ro2(&mut ro);
 
     // generate a challenge for the eq polynomial
     let _tau = ro.squeeze(NUM_CHALLENGE_BITS);
 
-    self.comm_E.absorb_in_ro(&mut ro); // absorb the commitment in the NIFS
+    self.comm_E.absorb_in_ro2(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
     let rho = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -329,7 +329,8 @@ impl<E: Engine> NIFS<E> {
     }
 
     // absorb poly in the RO
-    <UniPoly<E::Scalar> as AbsorbInROTrait<E>>::absorb_in_ro(&self.poly, &mut ro);
+    // TODO: make UniPoly defined over E
+    <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&self.poly, &mut ro);
 
     // squeeze a challenge
     let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -364,13 +365,13 @@ mod tests {
     },
     r1cs::R1CSShape,
     spartan::{direct::DirectCircuit, snark::RelaxedR1CSSNARK},
-    traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine},
+    traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait, Engine, RO2Constants},
   };
   use ff::Field;
 
   fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &RO2Constants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &R1CSInstance<E>,
@@ -440,8 +441,7 @@ mod tests {
   }
 
   fn test_tiny_r1cs_bellpepper_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ro_consts = RO2Constants::<E>::default();
 
     // generate a non-trivial circuit
     let num_cons: usize = 32;

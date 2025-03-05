@@ -69,6 +69,12 @@ pub trait AbsorbInROTrait<E: Engine> {
   fn absorb_in_ro(&self, ro: &mut E::RO);
 }
 
+/// A helper trait to absorb different objects in RO2
+pub trait AbsorbInRO2Trait<E: Engine> {
+  /// Absorbs the value in the provided RO2
+  fn absorb_in_ro2(&self, ro: &mut E::RO2);
+}
+
 /// A helper trait that defines the behavior of a hash function that we use as an RO
 pub trait ROTrait<Base: PrimeField> {
   /// The circuit alter ego of this trait impl - this constrains it to use the same constants
@@ -118,11 +124,11 @@ pub type ROConstantsCircuit<E> =
   <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Base>>::Constants;
 
 /// An alias for constants associated with E::RO2
-pub type RO2Constants<E> = <<E as Engine>::RO as ROTrait<<E as Engine>::Scalar>>::Constants;
+pub type RO2Constants<E> = <<E as Engine>::RO2 as ROTrait<<E as Engine>::Scalar>>::Constants;
 
 /// An alias for constants associated with `E::RO2Circuit`
 pub type RO2ConstantsCircuit<E> =
-  <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Scalar>>::Constants;
+  <<E as Engine>::RO2Circuit as ROCircuitTrait<<E as Engine>::Scalar>>::Constants;
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
 pub trait TranscriptReprTrait<G: Group>: Send + Sync {

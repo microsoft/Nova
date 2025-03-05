@@ -493,7 +493,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     })
   }
 
-  pub fn sub<CS: ConstraintSystem<Scalar>>(
+  /*  pub fn sub<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
     other: &Self,
@@ -511,7 +511,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let sum = other.add(&diff)?;
     self.equal_when_carried_regroup(cs.namespace(|| "eq"), &sum)?;
     Ok(diff)
-  }
+  }*/
 
   /// Compute a `BigNat` constrained to be equal to `self * other % modulus`.
   pub fn mult_mod<CS: ConstraintSystem<Scalar>>(

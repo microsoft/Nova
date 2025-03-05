@@ -1,5 +1,5 @@
 //! This module implements an IVC scheme based on the NeutronNova folding scheme.
-use crate::{
+/*use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_HASH_BITS},
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -21,11 +21,13 @@ use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+*/
 
-mod circuit;
-mod nifs;
-mod relation;
+//mod circuit;
+pub mod nifs;
+pub mod relation;
 
+/*
 use circuit::{
   NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs, NeutronAugmentedCircuitParams,
 };
@@ -972,3 +974,4 @@ mod tests {
     test_setup_with::<Bn256EngineKZG, GrumpkinEngine>();
   }
 }
+*/

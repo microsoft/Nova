@@ -8,11 +8,17 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::traits::{DlogGroup, PairingGroup},
+  gadgets::utils::to_bignat_repr,
+  provider::{
+    ptau::PtauFileError,
+    read_ptau,
+    traits::{DlogGroup, PairingGroup},
+    write_ptau,
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -25,8 +31,6 @@ use ff::{Field, PrimeFieldBits};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use super::{ptau::PtauFileError, read_ptau, write_ptau};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -184,6 +188,28 @@ where
       E::Base::ONE
     } else {
       E::Base::ZERO
+    });
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for Commitment<E>
+where
+  E::GE: PairingGroup,
+{
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+
+    // we have to absorb x and y in big num format
+    let limbs_x = to_bignat_repr(&x);
+    let limbs_y = to_bignat_repr(&y);
+
+    for limb in limbs_x.iter().chain(limbs_y.iter()) {
+      ro.absorb(*limb);
+    }
+    ro.absorb(if is_infinity {
+      E::Scalar::ONE
+    } else {
+      E::Scalar::ZERO
     });
   }
 }

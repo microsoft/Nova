@@ -53,6 +53,7 @@ pub struct FoldedInstance<E: Engine> {
 }
 
 impl<E: Engine> Structure<E> {
+  /// Create a new structure using the provided shape
   pub fn new(S: &R1CSShape<E>) -> Self {
     // pad to the regular shape
     let S = S.pad();
@@ -71,6 +72,7 @@ impl<E: Engine> Structure<E> {
     }
   }
 
+  /// Check if the witness is satisfying
   pub fn is_sat(
     &self,
     ck: &CommitmentKey<E>,
@@ -122,6 +124,7 @@ impl<E: Engine> Structure<E> {
 }
 
 impl<E: Engine> FoldedWitness<E> {
+  /// Create a default witness
   pub fn default(S: &Structure<E>) -> Self {
     FoldedWitness {
       W: vec![E::Scalar::ZERO; S.S.num_vars],
@@ -161,6 +164,7 @@ impl<E: Engine> FoldedWitness<E> {
 }
 
 impl<E: Engine> FoldedInstance<E> {
+  /// Create a default instance
   pub fn default(S: &Structure<E>) -> Self {
     FoldedInstance {
       comm_W: Commitment::<E>::default(),
@@ -280,8 +284,12 @@ mod tests {
       .collect::<Vec<_>>();
     let E = EqPolynomial::new(coords).evals();
 
+    // pad witness
+    let mut W = w.W.clone();
+    W.resize(S.S.num_vars, E::Scalar::ZERO);
+
     let W = FoldedWitness {
-      W: w.W.clone(),
+      W,
       r_W: w.r_W,
       E: E.clone(),
       r_E: E::Scalar::random(&mut OsRng),
