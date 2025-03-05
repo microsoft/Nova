@@ -22,7 +22,7 @@
 use ff::Field;
 use serde::{Deserialize, Serialize};*/
 
-//pub mod nifs;
+pub mod nifs;
 pub mod r1cs;
 pub mod relation;
 pub mod univariate;
