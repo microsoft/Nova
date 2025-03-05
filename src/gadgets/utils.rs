@@ -92,42 +92,12 @@ where
   })
 }
 
-/// interpret scalar as base
-/// Only to be used is the scalar fits in base!
-pub fn scalar_as_base<E: Engine>(input: E::Scalar) -> E::Base {
-  let input_bits = input.to_le_bits();
-  let mut mult = E::Base::ONE;
-  let mut val = E::Base::ZERO;
-  for bit in input_bits {
-    if bit {
-      val += mult;
-    }
-    mult = mult + mult;
-  }
-  val
-}
-
 /// interpret an element of one field in another
 /// Only to be used if elements fit in both fields!
 pub fn field_switch<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(input: F1) -> F2 {
   let input_bits = input.to_le_bits();
   let mut mult = F2::ONE;
   let mut val = F2::ZERO;
-  for bit in input_bits {
-    if bit {
-      val += mult;
-    }
-    mult += mult;
-  }
-  val
-}
-
-/// interpret base as scalar
-/// Only to be used is the scalar fits in base!
-pub fn base_as_scalar<E: Engine>(input: E::Base) -> E::Scalar {
-  let input_bits = input.to_le_bits();
-  let mut mult = E::Scalar::ONE;
-  let mut val = E::Scalar::ZERO;
   for bit in input_bits {
     if bit {
       val += mult;

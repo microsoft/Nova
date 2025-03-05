@@ -171,8 +171,7 @@ mod tests {
   use crate::{
     constants::NUM_CHALLENGE_BITS,
     frontend::solver::SatisfyingAssignment,
-    gadgets::utils::le_bits_to_num,
-    gadgets::utils::scalar_as_base,
+    gadgets::utils::{le_bits_to_num,field_switch},
     provider::{
       Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
@@ -186,12 +185,12 @@ mod tests {
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<E::Scalar, E::Base> = PoseidonRO::new(constants.clone());
+    let mut ro: PoseidonRO<E::Scalar> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROCircuit<E::Scalar> = PoseidonROCircuit::new(constants);
     let mut cs = SatisfyingAssignment::<E>::new();
     for i in 0..num_absorbs {
       let num = E::Scalar::random(&mut csprng);
-      ro.absorb(num);
+      ro.absorb(&num);
       let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| format!("data {i}")), || num);
       num_gadget
         .inputize(&mut cs.namespace(|| format!("input {i}")))
@@ -201,7 +200,7 @@ mod tests {
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
     let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
-    assert_eq!(num, scalar_as_base::<E>(num2.get_value().unwrap()));
+    assert_eq!(num, num2.get_value().unwrap());
   }
 
   #[test]

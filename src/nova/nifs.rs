@@ -3,7 +3,7 @@
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  gadgets::utils::{base_as_scalar, scalar_as_base},
+  gadgets::utils::{field_switch},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
@@ -47,7 +47,7 @@ impl<E: Engine> NIFS<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(&scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&field_switch::<E::Scalar, E::Base>(*pp_digest));
 
     // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
     ro.absorb(U2);
@@ -60,7 +60,7 @@ impl<E: Engine> NIFS<E> {
     ro.absorb(&comm_T);
 
     // compute a challenge from the RO
-    let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS));
+    let r = field_switch::<E::Base, E::Scalar>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r);
@@ -88,7 +88,7 @@ impl<E: Engine> NIFS<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(&scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&field_switch::<E::Scalar, E::Base>(*pp_digest));
 
     // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
     ro.absorb(U2);
@@ -97,10 +97,10 @@ impl<E: Engine> NIFS<E> {
     ro.absorb(&self.comm_T);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = field_switch::<E::Base, E::Scalar>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &base_as_scalar::<E>(r));
+    let U = U1.fold(U2, &self.comm_T, &r);
 
     // return the folded instance
     Ok(U)
@@ -120,7 +120,7 @@ impl<E: Engine> NIFSRelaxed<E> {
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
-    vk: &E::Scalar,
+    pp_digest: &E::Scalar,
     S: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
     W1: &RelaxedR1CSWitness<E>,
@@ -137,7 +137,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append vk to the transcript
-    ro.absorb(&scalar_as_base::<E>(*vk));
+    ro.absorb(&field_switch::<E::Scalar, E::Base>(*pp_digest));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)
@@ -155,13 +155,13 @@ impl<E: Engine> NIFSRelaxed<E> {
     ro.absorb(&comm_T);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = field_switch::<E::Base, E::Scalar>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &comm_T, &base_as_scalar::<E>(r));
+    let U = U1.fold_relaxed(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
-    let W = W1.fold_relaxed(W2, &T, &r_T, &base_as_scalar::<E>(r))?;
+    let W = W1.fold_relaxed(W2, &T, &r_T, &r)?;
 
     // return the folded instance and witness
     Ok((Self { comm_T }, (U, W)))
@@ -179,7 +179,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(&scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&field_switch::<E::Scalar, E::Base>(*pp_digest));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)
@@ -192,10 +192,10 @@ impl<E: Engine> NIFSRelaxed<E> {
     ro.absorb(&self.comm_T);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = field_switch::<E::Base, E::Scalar>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &self.comm_T, &base_as_scalar::<E>(r));
+    let U = U1.fold_relaxed(U2, &self.comm_T, &r);
 
     // return the folded instance
     Ok(U)
@@ -215,7 +215,7 @@ mod tests {
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
     r1cs::SparseMatrix,
-    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
+    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine, ROConstants},
   };
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -259,7 +259,7 @@ mod tests {
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
     let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+      ROConstants::<E>::default();
 
     // Now get the instance and assignment for one instance
     let mut cs = SatisfyingAssignment::<E>::new();
@@ -299,7 +299,7 @@ mod tests {
 
   fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &ROConstants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &R1CSInstance<E>,
@@ -353,8 +353,8 @@ mod tests {
 
   fn execute_sequence_relaxed<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
-    pp_digest: &<E as Engine>::Scalar,
+    ro_consts: &ROConstants<E>,
+    pp_digest: &E::Scalar,
     shape: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
     W1: &RelaxedR1CSWitness<E>,
@@ -503,7 +503,7 @@ mod tests {
     // generate generators and ro constants
     let ck = S.commitment_key(&*default_ck_hint());
     let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+      ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {
@@ -640,7 +640,7 @@ mod tests {
     // generate generators and ro constants
     let ck = S.commitment_key(&*default_ck_hint());
     let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+      ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {

@@ -10,7 +10,7 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  gadgets::utils::{base_as_scalar, scalar_as_base},
+  gadgets::utils::{field_switch},
   r1cs::{
     CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
     RelaxedR1CSWitness,
@@ -266,7 +266,7 @@ where
     // base case for the primary
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<E1>(pp.digest()),
+      field_switch::<E1::Scalar, E1::Base>(pp.digest()),
       E1::Scalar::ZERO,
       z0_primary.to_vec(),
       None,
@@ -374,7 +374,7 @@ where
     let (nifs_secondary, (r_U_secondary, r_W_secondary)) = NIFS::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
+      &field_switch::<E1::Scalar, E1::Base>(pp.digest()),
       &pp.r1cs_shape_secondary,
       &self.r_U_secondary,
       &self.r_W_secondary,
@@ -386,7 +386,7 @@ where
 
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<E1>(pp.digest()),
+      field_switch::<E1::Scalar, E1::Base>(pp.digest()),
       E1::Scalar::from(self.i as u64),
       self.z0_primary.to_vec(),
       Some(self.zi_primary.clone()),
@@ -523,7 +523,7 @@ where
       hasher.absorb(&self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(pp.ro_consts_primary.clone());
-      hasher2.absorb(&scalar_as_base::<E1>(pp.digest()));
+      hasher2.absorb(&field_switch::<E1::Scalar, E1::Base>(pp.digest()));
       hasher2.absorb(&E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
@@ -540,7 +540,7 @@ where
       )
     };
 
-    if hash_primary != scalar_as_base::<E2>(self.l_u_secondary.X[0])
+    if hash_primary != field_switch::<E2::Scalar, E2::Base>(self.l_u_secondary.X[0])
       || hash_secondary != self.l_u_secondary.X[1]
     {
       return Err(NovaError::ProofVerifyError {
@@ -729,7 +729,7 @@ where
     let (nifs_Uf_secondary, (r_Uf_secondary, r_Wf_secondary)) = NIFS::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
+      &field_switch::<E1::Scalar, E1::Base>(pp.digest()),
       &pp.r1cs_shape_secondary,
       &recursive_snark.r_U_secondary,
       &recursive_snark.r_W_secondary,
@@ -745,7 +745,7 @@ where
     let (nifs_Un_secondary, (r_Un_secondary, r_Wn_secondary)) = NIFSRelaxed::prove(
       &pp.ck_secondary,
       &pp.ro_consts_secondary,
-      &scalar_as_base::<E1>(pp.digest()),
+      &field_switch::<E1::Scalar, E1::Base>(pp.digest()),
       &pp.r1cs_shape_secondary,
       &r_Uf_secondary,
       &r_Wf_secondary,
@@ -879,7 +879,7 @@ where
       hasher.absorb(&self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(vk.ro_consts_primary.clone());
-      hasher2.absorb(&scalar_as_base::<E1>(vk.pp_digest));
+      hasher2.absorb(&field_switch::<E1::Scalar, E1::Base>(vk.pp_digest));
       hasher2.absorb(&E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
         hasher2.absorb(e);
@@ -896,7 +896,7 @@ where
       )
     };
 
-    if hash_primary != base_as_scalar::<E1>(self.l_u_secondary.X[0])
+    if hash_primary != field_switch::<E2::Scalar, E2::Base>(self.l_u_secondary.X[0])
       || hash_secondary != self.l_u_secondary.X[1]
     {
       return Err(NovaError::ProofVerifyError {
@@ -907,7 +907,7 @@ where
     // fold secondary U/W with secondary u/w to get Uf/Wf
     let r_Uf_secondary = self.nifs_Uf_secondary.verify(
       &vk.ro_consts_secondary,
-      &scalar_as_base::<E1>(vk.pp_digest),
+      &field_switch::<E1::Scalar, E1::Base>(vk.pp_digest),
       &self.r_U_secondary,
       &self.l_u_secondary,
     )?;
@@ -915,7 +915,7 @@ where
     // fold Uf/Wf with random inst/wit to get U1/W1
     let r_Un_secondary = self.nifs_Un_secondary.verify(
       &vk.ro_consts_secondary,
-      &scalar_as_base::<E1>(vk.pp_digest),
+      &field_switch::<E1::Scalar, E1::Base>(vk.pp_digest),
       &r_Uf_secondary,
       &self.l_ur_secondary,
     )?;

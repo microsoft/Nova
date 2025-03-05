@@ -1,11 +1,9 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   gadgets::{
-    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
-    utils::scalar_as_base,
+    utils::field_switch,
   },
   traits::{commitment::CommitmentEngineTrait, Engine, ReprTrait, TranscriptReprTrait},
   Commitment, CommitmentKey, DerandKey, CE,
@@ -484,7 +482,10 @@ impl<E: Engine> R1CSInstance<E> {
 impl<E: Engine> ReprTrait<E::Base> for R1CSInstance<E> {
   fn to_vec(&self) -> Vec<E::Base> {
     let mut v = self.comm_W.to_vec();
-    v.extend(self.X.iter().map(|x| scalar_as_base::<E>(*x)));
+
+    // In our particular context, the X vector has a unique representation as base field elements
+    // so we just do a field switch
+    v.extend(self.X.iter().map(|x| field_switch::<E::Scalar, E::Base>(*x)));
     v
   }
 }
@@ -742,11 +743,11 @@ impl<E: Engine> ReprTrait<E::Base> for RelaxedR1CSInstance<E> {
   fn to_vec(&self) -> Vec<E::Base> {
     let mut v = self.comm_W.to_vec();
     v.extend(self.comm_E.to_vec());
-    v.extend(vec![scalar_as_base::<E>(self.u)]);
+    v.extend(vec![field_switch::<E::Scalar, E::Base>(self.u)]); // safe to switch fields as u is small
 
     // absorb each element of self.X in bignum format
     for x in &self.X {
-      v.extend((x as ReprTrait<E::Base>).to_vec())      
+      v.extend::<Vec<E::Base>>(x.to_vec())      
     }
     v
   }

@@ -384,7 +384,7 @@ mod tests {
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
     },
-    gadgets::utils::scalar_as_base,
+    gadgets::utils::field_switch,
     provider::{
       poseidon::PoseidonConstantsCircuit, Bn256EngineKZG, GrumpkinEngine, PallasEngine,
       Secp256k1Engine, Secq256k1Engine, VestaEngine,
@@ -427,7 +427,7 @@ mod tests {
     let ri_1 = <<E2 as Engine>::Base as Field>::ZERO;
     let mut cs1 = SatisfyingAssignment::<E1>::new();
     let inputs1: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<E1>(zero1), // pass zero for testing
+      E2::Scalar::ZERO, // pass zero for testing
       zero1,
       vec![zero1],
       None,
@@ -449,7 +449,7 @@ mod tests {
     let ri_2 = <<E1 as Engine>::Base as Field>::ZERO;
     let mut cs2 = SatisfyingAssignment::<E2>::new();
     let inputs2: NovaAugmentedCircuitInputs<E1> = NovaAugmentedCircuitInputs::new(
-      scalar_as_base::<E2>(zero2), // pass zero for testing
+      E1::Scalar::ZERO, // pass zero for testing
       zero2,
       vec![zero2],
       None,

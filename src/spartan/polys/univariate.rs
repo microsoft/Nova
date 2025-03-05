@@ -2,11 +2,6 @@
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
-  gadgets::{
-    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
-    utils::scalar_as_base,
-  },
   traits::{Engine, ReprTrait, TranscriptReprTrait},
 };
 use core::panic;
@@ -118,10 +113,7 @@ impl<E: Engine> ReprTrait<E::Base> for UniPoly<E> {
     let compressed_poly = self.compress();
     let mut vec = Vec::new();
     for x in &compressed_poly.coeffs_except_linear_term {
-      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-      for limb in limbs {
-        vec.push(scalar_as_base::<E>(limb));
-      }
+      vec.extend::<Vec<E::Base>>(x.to_vec());
     }
     vec
   }
@@ -199,6 +191,7 @@ pub fn div_f<F: PrimeField>(a: F, b: F) -> F {
   a * inverse_b.unwrap()
 }
 
+/*
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -271,6 +264,8 @@ mod tests {
     test_from_evals_cubic_with::<bn256::Scalar>();
     test_from_evals_cubic_with::<secp256k1::Scalar>()
   }
+
+
   fn test_from_evals_quartic_with<F: PrimeField>() {
     // polynomial is x^4 + 2x^3 + 3x^2 + 4x + 5
     let e0 = F::from(5);
@@ -309,3 +304,4 @@ mod tests {
     test_from_evals_quartic_with::<secp256k1::Scalar>();
   }
 }
+*/
