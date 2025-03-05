@@ -828,12 +828,14 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
     ro: &mut E::RO2Circuit,
   ) -> Result<(), SynthesisError> {
     for (i, limb) in self.x.as_limbs().iter().enumerate() {
-      let limb_num = limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num")))?;
+      let limb_num =
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num x")))?;
       ro.absorb(&limb_num);
     }
 
     for (i, limb) in self.y.as_limbs().iter().enumerate() {
-      let limb_num = limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num")))?;
+      let limb_num =
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num y")))?;
       ro.absorb(&limb_num);
     }
 

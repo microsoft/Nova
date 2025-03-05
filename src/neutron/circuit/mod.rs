@@ -380,145 +380,62 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
 mod tests {
   use super::*;
   use crate::{
-    constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
     frontend::{
       r1cs::{NovaShape, NovaWitness},
       solver::SatisfyingAssignment,
       test_shape_cs::TestShapeCS,
     },
-    gadgets::utils::scalar_as_base,
     provider::{
-      poseidon::PoseidonConstantsCircuit, Bn256EngineKZG, GrumpkinEngine, PallasEngine,
-      Secp256k1Engine, Secq256k1Engine, VestaEngine,
+      Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
-    traits::{circuit::TrivialCircuit, snark::default_ck_hint},
+    traits::{circuit::TrivialCircuit, snark::default_ck_hint, RO2ConstantsCircuit},
   };
   use expect_test::{expect, Expect};
 
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
-  fn test_recursive_circuit_with<E1, E2>(
-    primary_params: &NeutronAugmentedCircuitParams,
-    secondary_params: &NeutronAugmentedCircuitParams,
-    ro_consts1: ROConstantsCircuit<E2>,
-    ro_consts2: ROConstantsCircuit<E1>,
-    num_constraints_primary: &Expect,
-    num_constraints_secondary: &Expect,
-  ) where
+  fn test_recursive_circuit_with<E1, E2>(num_constraints: &Expect)
+  where
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
   {
-    let tc1 = TrivialCircuit::default();
-    // Initialize the shape and ck for the primary
-    let circuit1: NeutronAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
-      NeutronAugmentedCircuit::new(primary_params, None, &tc1, ro_consts1.clone());
-    let mut cs: TestShapeCS<E1> = TestShapeCS::new();
-    let _ = circuit1.synthesize(&mut cs);
-    let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
-    num_constraints_primary.assert_eq(cs.num_constraints().to_string().as_str());
+    let ro_consts = RO2ConstantsCircuit::<E1>::default();
+    let tc = TrivialCircuit::default();
 
-    let tc2 = TrivialCircuit::default();
-    // Initialize the shape and ck for the secondary
-    let circuit2: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
-      NeutronAugmentedCircuit::new(secondary_params, None, &tc2, ro_consts2.clone());
-    let mut cs: TestShapeCS<E2> = TestShapeCS::new();
-    let _ = circuit2.synthesize(&mut cs);
-    let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
-    num_constraints_secondary.assert_eq(cs.num_constraints().to_string().as_str());
+    let circuit: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<E1::Scalar>> =
+      NeutronAugmentedCircuit::new(None, &tc, ro_consts.clone());
+    let mut cs: TestShapeCS<E1> = TestShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
+    num_constraints.assert_eq(cs.num_constraints().to_string().as_str());
 
     // Execute the base case for the primary
-    let zero1 = <<E2 as Engine>::Base as Field>::ZERO;
-    let ri_1 = <<E2 as Engine>::Base as Field>::ZERO;
-    let mut cs1 = SatisfyingAssignment::<E1>::new();
-    let inputs1: NeutronAugmentedCircuitInputs<E2> = NeutronAugmentedCircuitInputs::new(
-      scalar_as_base::<E1>(zero1), // pass zero for testing
-      zero1,
-      vec![zero1],
+    let zero = <E1::Scalar as Field>::ZERO;
+    let mut cs = SatisfyingAssignment::<E1>::new();
+    let inputs: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
+      zero, // pass zero for testing
+      zero,
+      vec![zero],
       None,
       None,
       None,
-      ri_1,
+      zero,
+      None,
+      None,
       None,
       None,
     );
-    let circuit1: NeutronAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
-      NeutronAugmentedCircuit::new(primary_params, Some(inputs1), &tc1, ro_consts1);
-    let _ = circuit1.synthesize(&mut cs1);
-    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
+    let circuit: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<E1::Scalar>> =
+      NeutronAugmentedCircuit::new(Some(inputs), &tc, ro_consts);
+    let _ = circuit.synthesize(&mut cs);
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     // Make sure that this is satisfiable
-    assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
-
-    // Execute the base case for the secondary
-    let zero2 = <<E1 as Engine>::Base as Field>::ZERO;
-    let ri_2 = <<E1 as Engine>::Base as Field>::ZERO;
-    let mut cs2 = SatisfyingAssignment::<E2>::new();
-    let inputs2: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
-      scalar_as_base::<E2>(zero2), // pass zero for testing
-      zero2,
-      vec![zero2],
-      None,
-      None,
-      None,
-      ri_2,
-      Some(inst1),
-      None,
-    );
-    let circuit2: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
-      NeutronAugmentedCircuit::new(secondary_params, Some(inputs2), &tc2, ro_consts2);
-    let _ = circuit2.synthesize(&mut cs2);
-    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
-    // Make sure that it is satisfiable
-    assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 
   #[test]
-  fn test_recursive_circuit_pasta() {
-    // this test checks against values that must be replicated in benchmarks if changed here
-    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<VestaEngine> = PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<PallasEngine> = PoseidonConstantsCircuit::default();
-
-    test_recursive_circuit_with::<PallasEngine, VestaEngine>(
-      &params1,
-      &params2,
-      ro_consts1,
-      ro_consts2,
-      &expect!["38361"],
-      &expect!["38352"],
-    );
-  }
-
-  #[test]
-  fn test_recursive_circuit_bn256_grumpkin() {
-    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<GrumpkinEngine> = PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<Bn256EngineKZG> = PoseidonConstantsCircuit::default();
-
-    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(
-      &params1,
-      &params2,
-      ro_consts1,
-      ro_consts2,
-      &expect!["38641"],
-      &expect!["38667"],
-    );
-  }
-
-  #[test]
-  fn test_recursive_circuit_secpq() {
-    let params1 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, true);
-    let params2 = NeutronAugmentedCircuitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS, false);
-    let ro_consts1: ROConstantsCircuit<Secq256k1Engine> = PoseidonConstantsCircuit::default();
-    let ro_consts2: ROConstantsCircuit<Secp256k1Engine> = PoseidonConstantsCircuit::default();
-
-    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(
-      &params1,
-      &params2,
-      ro_consts1,
-      ro_consts2,
-      &expect!["39106"],
-      &expect!["39372"],
-    );
+  fn test_neutron_recursive_circuit_pasta() {
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(&expect!["7047"]);
+    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(&expect!["7327"]);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(&expect!["7792"]);
   }
 }
