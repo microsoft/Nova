@@ -23,7 +23,7 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 */
 
-//mod circuit;
+mod circuit;
 pub mod nifs;
 pub mod relation;
 

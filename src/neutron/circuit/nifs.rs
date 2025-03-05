@@ -46,8 +46,6 @@ impl<E: Engine> AllocatedNIFS<E> {
       cs.namespace(|| "allocate poly"),
       degree,
       nifs.map(|nifs| &nifs.poly),
-      limb_width,
-      n_limbs,
     )?;
 
     // Allocate the inverse

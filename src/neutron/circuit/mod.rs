@@ -4,7 +4,7 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
-use crate::{
+/*use crate::{
   constants::NUM_HASH_BITS,
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
@@ -20,12 +20,13 @@ use crate::{
   traits::{circuit::StepCircuit, Engine, ROCircuitTrait, ROConstantsCircuit},
 };
 use ff::Field;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};*/
 
-pub mod nifs;
-pub mod relation;
+//pub mod nifs;
+//pub mod relation;
 pub mod univariate;
 
+/*
 use nifs::AllocatedNIFS;
 use relation::AllocatedFoldedInstance;
 
@@ -507,3 +508,4 @@ mod tests {
     );
   }
 }
+*/

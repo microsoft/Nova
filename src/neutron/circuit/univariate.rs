@@ -1,7 +1,6 @@
 //! Circuit representation of a univariate polynomial
 use crate::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
-  gadgets::nonnative::{bignat::BigNat, util::f_to_nat},
   spartan::polys::univariate::UniPoly,
   traits::{Engine, ROCircuitTrait},
 };
@@ -9,31 +8,22 @@ use ff::Field;
 
 /// An in-circuit representation of `UniPoly` type
 pub struct AllocatedUniPoly<E: Engine> {
-  coeffs: Vec<BigNat<E::Base>>,
+  coeffs: Vec<AllocatedNum<E::Scalar>>,
 }
 
 impl<E: Engine> AllocatedUniPoly<E> {
   /// Allocates the given `UniPoly` as a witness of the circuit
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Scalar>>(
     mut cs: CS,
     degree: usize,
     poly: Option<&UniPoly<E::Scalar>>,
-    limb_width: usize,
-    n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     // we allocate degree + 1 coefficients as BigNat
     let coeffs = (0..degree + 1)
       .map(|i| {
-        BigNat::alloc_from_nat(
-          cs.namespace(|| format!("allocate coeff[{}]", i)),
-          || {
-            Ok(f_to_nat(
-              &poly.map_or(E::Scalar::ZERO, |poly| poly.coeffs[i]),
-            ))
-          },
-          limb_width,
-          n_limbs,
-        )
+        AllocatedNum::alloc(cs.namespace(|| format!("allocate coeff[{}]", i)), || {
+          Ok(poly.map_or(E::Scalar::ZERO, |poly| poly.coeffs[i]))
+        })
       })
       .collect::<Result<Vec<_>, _>>()?;
 
@@ -41,69 +31,86 @@ impl<E: Engine> AllocatedUniPoly<E> {
   }
 
   /// Returns the evaluation of the polynomial at 0
-  pub fn eval_at_zero(&self) -> Result<BigNat<E::Base>, SynthesisError> {
+  pub fn eval_at_zero(&self) -> Result<AllocatedNum<E::Scalar>, SynthesisError> {
     Ok(self.coeffs[0].clone())
   }
 
   /// Returns the evaluation of the polynomial at 1
-  pub fn eval_at_one<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn eval_at_one<CS: ConstraintSystem<<E as Engine>::Scalar>>(
     &self,
     mut cs: CS,
-    m_bn: &BigNat<E::Base>,
-  ) -> Result<BigNat<E::Base>, SynthesisError> {
-    let mut eval = self.coeffs[0].clone();
-    for coeff in self.coeffs.iter().skip(1) {
-      eval = eval.add(&coeff)?;
-    }
-    eval = eval.red_mod(cs.namespace(|| "eval reduced"), &m_bn)?;
+  ) -> Result<AllocatedNum<E::Scalar>, SynthesisError> {
+    // eval_at_one = sum of all coefficients
+    // allocate a variable to store the sum
+    let eval = AllocatedNum::alloc(cs.namespace(|| "allocate eval at one"), || {
+      let mut eval = E::Scalar::ZERO;
+      for coeff in self.coeffs.iter() {
+        eval += coeff.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+      }
+      Ok(eval)
+    })?;
+
+    // enforce that eval_at_one = sum of all coefficients
+    cs.enforce(
+      || "eval at one = sum of all coefficients",
+      |lc| lc + eval.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| self.coeffs.iter().fold(lc, |lc, v| lc + v.get_variable()),
+    );
+
     Ok(eval)
   }
 
   /// Evaluate the polynomial at the provided point
-  /// `m_bn` is the modulus of the scalar field that is emulated by the bignat
-  pub fn evaluate<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn evaluate<CS: ConstraintSystem<<E as Engine>::Scalar>>(
     &self,
     mut cs: CS,
-    r: &BigNat<E::Base>,
-    m_bn: &BigNat<E::Base>,
-  ) -> Result<BigNat<E::Base>, SynthesisError> {
-    let mut eval = self.coeffs[0].clone();
+    r: &AllocatedNum<E::Scalar>,
+  ) -> Result<AllocatedNum<E::Scalar>, SynthesisError> {
+    let mut acc = self.coeffs[0].clone();
     let mut power = r.clone();
     for (i, coeff) in self.coeffs.iter().skip(1).enumerate() {
-      // eval = eval + power * coeff
-      let (_, power_times_coeff) =
-        power.mult_mod(cs.namespace(|| format!("{i} power * coeff")), &coeff, &m_bn)?;
-      eval = eval.add(&power_times_coeff)?;
-      eval = eval.red_mod(cs.namespace(|| format!("{i} eval reduced")), &m_bn)?;
+      // acc_new = acc_old + power * coeff
+      // allocate acc_new
+      let acc_new = AllocatedNum::alloc(cs.namespace(|| format!("{i} allocate acc_new")), || {
+        let acc_old = acc.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+        let power = power.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+        let coeff = coeff.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+        Ok(acc_old + power * coeff)
+      })?;
 
-      // power = power * r
-      let (_, new_power) = power.mult_mod(cs.namespace(|| format!("{i} power * r")), &r, &m_bn)?;
-      power = new_power.red_mod(cs.namespace(|| format!("{i} power reduced")), &m_bn)?;
+      // check that acc_new - acc_old = power * coeff
+      cs.enforce(
+        || format!("{i} enforce acc_new - acc_old = power * coeff"),
+        |lc| lc + power.get_variable(),
+        |lc| lc + coeff.get_variable(),
+        |lc| lc + acc_new.get_variable() - acc.get_variable(),
+      );
+
+      // power_new = power_old * r
+      let power_new =
+        AllocatedNum::alloc(cs.namespace(|| format!("{i} allocate power_new")), || {
+          let power_old = power.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+          let r = r.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+          Ok(power_old * r)
+        })?;
+      cs.enforce(
+        || format!("{i} enforce power_new = power_old * r"),
+        |lc| lc + power.get_variable(),
+        |lc| lc + r.get_variable(),
+        |lc| lc + power_new.get_variable(),
+      );
+
+      power = power_new;
+      acc = acc_new;
     }
-    Ok(eval)
+    Ok(acc)
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
-    &self,
-    mut cs: CS,
-    ro: &mut E::ROCircuit,
-  ) -> Result<(), SynthesisError> {
-    for (i, coeff) in self.coeffs.iter().enumerate() {
-      let coeff_bn = coeff
-        .as_limbs()
-        .iter()
-        .enumerate()
-        .map(|(j, limb)| {
-          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} {j} of coeff to num")))
-        })
-        .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
-
-      // absorb each of the limbs of T
-      for limb in coeff_bn {
-        ro.absorb(&limb);
-      }
+  pub fn absorb_in_ro(&self, ro: &mut E::RO2Circuit) {
+    for coeff in self.coeffs.iter() {
+      ro.absorb(coeff);
     }
-    Ok(())
   }
 }
