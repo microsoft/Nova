@@ -8,16 +8,51 @@ use crate::{
       bignat::BigNat,
       util::{f_to_nat, Num},
     },
-    r1cs::AllocatedR1CSInstance,
     utils::{
       alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  r1cs::RelaxedR1CSInstance,
+  r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Engine, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use ff::Field;
+
+/// An Allocated R1CS Instance
+#[derive(Clone)]
+pub struct AllocatedR1CSInstance<E: Engine> {
+  pub(crate) comm_W: AllocatedPoint<E>,
+  pub(crate) X0: AllocatedNum<E::Base>,
+  pub(crate) X1: AllocatedNum<E::Base>,
+}
+
+impl<E: Engine> AllocatedR1CSInstance<E> {
+  /// Takes the r1cs instance and creates a new allocated r1cs instance
+  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
+    mut cs: CS,
+    u: Option<&R1CSInstance<E>>,
+  ) -> Result<Self, SynthesisError> {
+    let comm_W = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate comm_W"),
+      u.map(|u| u.comm_W.to_coordinates()),
+    )?;
+    comm_W.check_on_curve(cs.namespace(|| "check comm_W on curve"))?;
+
+    let X0 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
+    let X1 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
+
+    Ok(AllocatedR1CSInstance { comm_W, X0, X1 })
+  }
+
+  /// Absorb the provided instance in the RO
+  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
+    ro.absorb(&self.comm_W.x);
+    ro.absorb(&self.comm_W.y);
+    ro.absorb(&self.comm_W.is_infinity);
+    ro.absorb(&self.X0);
+    ro.absorb(&self.X1);
+  }
+}
 
 /// An Allocated Relaxed R1CS Instance
 pub struct AllocatedRelaxedR1CSInstance<E: Engine> {
