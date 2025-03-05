@@ -746,10 +746,7 @@ impl<E: Engine> ReprTrait<E::Base> for RelaxedR1CSInstance<E> {
 
     // absorb each element of self.X in bignum format
     for x in &self.X {
-      let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-      for limb in limbs {
-        v.push(scalar_as_base::<E>(limb));
-      }
+      v.extend((x as ReprTrait<E::Base>).to_vec())      
     }
     v
   }
