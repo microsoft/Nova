@@ -8,7 +8,7 @@ use crate::{
     num::AllocatedNum,
     AllocatedBit, Boolean, ConstraintSystem, SynthesisError,
   },
-  traits::{ROCircuitTrait, ROTrait},
+  traits::{ROCircuitTrait, ROTrait, ReprTrait},
 };
 use ff::{PrimeField, PrimeFieldBits};
 use generic_array::typenum::U24;
@@ -48,8 +48,11 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb(&mut self, e: Base) {
-    self.state.push(e);
+  fn absorb<T: ReprTrait<Base>>(&mut self, o: &T) {
+    let v = o.to_vec();
+    for e in v {
+      self.state.push(e);
+    }
   }
 
   /// Compute a challenge by hashing the current state

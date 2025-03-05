@@ -45,7 +45,7 @@ pub trait DlogGroup:
     + Sync
     + Serialize
     + for<'de> Deserialize<'de>
-    + TranscriptReprTrait<Self>
+    + TranscriptReprTrait
     + CurveAffine
     + SerdeObject;
 
@@ -210,13 +210,33 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
+    impl TranscriptReprTrait for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.to_bytes().into_iter().rev().collect()
       }
     }
 
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name::Affine {
+    impl ReprTrait<$name::Scalar> for $name::Scalar {
+      fn to_vec(&self) -> Vec<$name::Scalar> {
+        vec![*self]
+      }
+    }
+
+    impl ReprTrait<$name::Base> for $name::Scalar {
+      fn to_vec(&self) -> Vec<$name::Base> {
+        let mut v = Vec::new();
+        // analyze self in bignum format
+        let limbs: Vec<$name::Scalar> =
+          nat_to_limbs(&f_to_nat(self), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+        for limb in limbs {
+          v.push(field_switch::<$name::Scalar, $name::Base>(limb));
+        }
+
+        v
+      }
+    }
+
+    impl TranscriptReprTrait for $name::Affine {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         let coords = self.coordinates().unwrap();
         let x_bytes = coords.x().to_bytes().into_iter();

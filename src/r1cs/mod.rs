@@ -7,9 +7,7 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
-  traits::{
-    commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
-  },
+  traits::{commitment::CommitmentEngineTrait, Engine, ReprTrait, TranscriptReprTrait},
   Commitment, CommitmentKey, DerandKey, CE,
 };
 use core::cmp::max;
@@ -483,12 +481,11 @@ impl<E: Engine> R1CSInstance<E> {
   }
 }
 
-impl<E: Engine> AbsorbInROTrait<E> for R1CSInstance<E> {
-  fn absorb_in_ro(&self, ro: &mut E::RO) {
-    self.comm_W.absorb_in_ro(ro);
-    for x in &self.X {
-      ro.absorb(scalar_as_base::<E>(*x));
-    }
+impl<E: Engine> ReprTrait<E::Base> for R1CSInstance<E> {
+  fn to_vec(&self) -> Vec<E::Base> {
+    let mut v = self.comm_W.to_vec();
+    v.extend(self.X.iter().map(|x| scalar_as_base::<E>(*x)));
+    v
   }
 }
 
@@ -729,7 +726,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E::GE> for RelaxedR1CSInstance<E> {
+impl<E: Engine> TranscriptReprTrait for RelaxedR1CSInstance<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_W.to_transcript_bytes(),
@@ -741,19 +738,20 @@ impl<E: Engine> TranscriptReprTrait<E::GE> for RelaxedR1CSInstance<E> {
   }
 }
 
-impl<E: Engine> AbsorbInROTrait<E> for RelaxedR1CSInstance<E> {
-  fn absorb_in_ro(&self, ro: &mut E::RO) {
-    self.comm_W.absorb_in_ro(ro);
-    self.comm_E.absorb_in_ro(ro);
-    ro.absorb(scalar_as_base::<E>(self.u));
+impl<E: Engine> ReprTrait<E::Base> for RelaxedR1CSInstance<E> {
+  fn to_vec(&self) -> Vec<E::Base> {
+    let mut v = self.comm_W.to_vec();
+    v.extend(self.comm_E.to_vec());
+    v.extend(vec![scalar_as_base::<E>(self.u)]);
 
     // absorb each element of self.X in bignum format
     for x in &self.X {
       let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
       for limb in limbs {
-        ro.absorb(scalar_as_base::<E>(limb));
+        v.push(scalar_as_base::<E>(limb));
       }
     }
+    v
   }
 }
 

@@ -2,7 +2,7 @@
 //! We require the commitment engine to provide a commitment to vectors with a single group element
 use crate::{
   provider::ptau::PtauFileError,
-  traits::{AbsorbInROTrait, Engine, TranscriptReprTrait},
+  traits::{Engine, ReprTrait, TranscriptReprTrait},
 };
 use core::{
   fmt::Debug,
@@ -27,10 +27,10 @@ pub trait CommitmentTrait<E: Engine>:
   + Eq
   + Send
   + Sync
-  + TranscriptReprTrait<E::GE>
+  + TranscriptReprTrait
   + Serialize
   + for<'de> Deserialize<'de>
-  + AbsorbInROTrait<E>
+  + ReprTrait<E::Base>
   + Add<Self, Output = Self>
   + ScalarMul<E::Scalar>
 {

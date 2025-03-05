@@ -7,7 +7,7 @@ use crate::{
   neutron::relation::{FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::polys::{power::PowPolynomial, univariate::UniPoly},
-  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROConstants, ROTrait},
+  traits::{commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, RO2Constants, ROTrait},
   Commitment, CommitmentKey, CE,
 };
 use ff::Field;
@@ -201,7 +201,7 @@ impl<E: Engine> NIFS<E> {
   /// So the code below avoids absorbing `U1` in the RO.
   pub fn prove(
     ck: &CommitmentKey<E>,
-    ro_consts: &ROConstants<E>,
+    ro_consts: &RO2Constants<E>,
     pp_digest: &E::Scalar,
     S: &Structure<E>,
     U1: &FoldedInstance<E>,
@@ -210,7 +210,7 @@ impl<E: Engine> NIFS<E> {
     W2: &R1CSWitness<E>,
   ) -> Result<(NIFS<E>, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
+    let mut ro = E::RO2::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));
@@ -298,13 +298,13 @@ impl<E: Engine> NIFS<E> {
   #[cfg(test)]
   pub fn verify(
     &self,
-    ro_consts: &ROConstants<E>,
+    ro_consts: &RO2Constants<E>,
     pp_digest: &E::Scalar,
     U1: &FoldedInstance<E>,
     U2: &R1CSInstance<E>,
   ) -> Result<FoldedInstance<E>, NovaError> {
     // initialize a new RO
-    let mut ro = E::RO::new(ro_consts.clone());
+    let mut ro = E::RO2::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<E>(*pp_digest));

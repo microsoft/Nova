@@ -5,7 +5,7 @@ use crate::{
   errors::NovaError,
   gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
+  traits::{Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -47,17 +47,17 @@ impl<E: Engine> NIFS<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&scalar_as_base::<E>(*pp_digest));
 
     // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
-    U2.absorb_in_ro(&mut ro);
+    ro.absorb(U2);
 
     // compute a commitment to the cross-term
     let r_T = E::Scalar::random(&mut OsRng);
     let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
-    comm_T.absorb_in_ro(&mut ro);
+    ro.absorb(&comm_T);
 
     // compute a challenge from the RO
     let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS));
@@ -88,13 +88,13 @@ impl<E: Engine> NIFS<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&scalar_as_base::<E>(*pp_digest));
 
     // append U2 to transcript, U1 does not need to absorbed since U2.X[0] = Hash(params, U1, i, z0, zi)
-    U2.absorb_in_ro(&mut ro);
+    ro.absorb(U2);
 
     // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.absorb_in_ro(&mut ro);
+    ro.absorb(&self.comm_T);
 
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -137,14 +137,14 @@ impl<E: Engine> NIFSRelaxed<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append vk to the transcript
-    ro.absorb(scalar_as_base::<E>(*vk));
+    ro.absorb(&scalar_as_base::<E>(*vk));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)
-    U1.absorb_in_ro(&mut ro);
+    ro.absorb(U1);
 
     // append U2 to transcript (randomized instance)
-    U2.absorb_in_ro(&mut ro);
+    ro.absorb(U2);
 
     // compute a commitment to the cross-term
     let r_T = E::Scalar::random(&mut OsRng);
@@ -152,7 +152,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
-    comm_T.absorb_in_ro(&mut ro);
+    ro.absorb(&comm_T);
 
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -179,17 +179,17 @@ impl<E: Engine> NIFSRelaxed<E> {
     let mut ro = E::RO::new(ro_consts.clone());
 
     // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    ro.absorb(&scalar_as_base::<E>(*pp_digest));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)
-    U1.absorb_in_ro(&mut ro);
+    ro.absorb(U1);
 
     // append U2 to transcript
-    U2.absorb_in_ro(&mut ro);
+    ro.absorb(U2);
 
     // append `comm_T` to the transcript and obtain a challenge
-    self.comm_T.absorb_in_ro(&mut ro);
+    ro.absorb(&self.comm_T);
 
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);

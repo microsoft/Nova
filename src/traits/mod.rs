@@ -28,16 +28,23 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 /// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldBits + TranscriptReprTrait<Self::GE> + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldBits
+    + TranscriptReprTrait
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + ReprTrait<Self::Base>
+    + ReprTrait<Self::Scalar>;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits
     + PrimeFieldExt
     + Send
     + Sync
-    + TranscriptReprTrait<Self::GE>
+    + TranscriptReprTrait
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + ReprTrait<Self::Base>
+    + ReprTrait<Self::Scalar>;
 
   /// A type that represents an element of the group
   type GE: Group<Base = Self::Base, Scalar = Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
@@ -63,16 +70,16 @@ pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   type CE: CommitmentEngineTrait<Self>;
 }
 
-/// A helper trait to absorb different objects in RO
-pub trait AbsorbInROTrait<E: Engine> {
-  /// Absorbs the value in the provided RO
-  fn absorb_in_ro(&self, ro: &mut E::RO);
+/// This trait allows types to implement how they want to be added to `RO`
+pub trait ReprTrait<F: PrimeField>: Send + Sync {
+  /// returns a representation of self as a vector of base field elements
+  fn to_vec(&self) -> Vec<F>;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base: PrimeField> {
+pub trait ROTrait<F: PrimeField> {
   /// The circuit alter ego of this trait impl - this constrains it to use the same constants
-  type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
+  type CircuitRO: ROCircuitTrait<F, Constants = Self::Constants>;
 
   /// A type representing constants/parameters associated with the hash function
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -81,16 +88,16 @@ pub trait ROTrait<Base: PrimeField> {
   fn new(constants: Self::Constants) -> Self;
 
   /// Adds a scalar to the internal state
-  fn absorb(&mut self, e: Base);
+  fn absorb<T: ReprTrait<F>>(&mut self, o: &T);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze(&mut self, num_bits: usize) -> Base;
+  fn squeeze(&mut self, num_bits: usize) -> F;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
-pub trait ROCircuitTrait<Base: PrimeField> {
+pub trait ROCircuitTrait<F: PrimeField> {
   /// the vanilla alter ego of this trait - this constrains it to use the same constants
-  type NativeRO: ROTrait<Base, Constants = Self::Constants>;
+  type NativeRO: ROTrait<F, Constants = Self::Constants>;
 
   /// A type representing constants/parameters associated with the hash function on this Base field
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -99,11 +106,10 @@ pub trait ROCircuitTrait<Base: PrimeField> {
   fn new(constants: Self::Constants) -> Self;
 
   /// Adds a scalar to the internal state
-  fn absorb(&mut self, e: &AllocatedNum<Base>);
+  fn absorb(&mut self, e: &AllocatedNum<F>);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  /// The `squeeze` method can be called only once
-  fn squeeze<CS: ConstraintSystem<Base>>(
+  fn squeeze<CS: ConstraintSystem<F>>(
     &mut self,
     cs: CS,
     num_bits: usize,
@@ -118,14 +124,14 @@ pub type ROConstantsCircuit<E> =
   <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Base>>::Constants;
 
 /// An alias for constants associated with E::RO2
-pub type RO2Constants<E> = <<E as Engine>::RO as ROTrait<<E as Engine>::Scalar>>::Constants;
+//pub type RO2Constants<E> = <<E as Engine>::RO as ROTrait<<E as Engine>::Scalar>>::Constants;
 
 /// An alias for constants associated with `E::RO2Circuit`
-pub type RO2ConstantsCircuit<E> =
-  <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Scalar>>::Constants;
+//pub type RO2ConstantsCircuit<E> =
+//  <<E as Engine>::ROCircuit as ROCircuitTrait<<E as Engine>::Scalar>>::Constants;
 
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
-pub trait TranscriptReprTrait<G: Group>: Send + Sync {
+pub trait TranscriptReprTrait: Send + Sync {
   /// returns a byte representation of self to be added to the transcript
   fn to_transcript_bytes(&self) -> Vec<u8>;
 }
@@ -139,7 +145,7 @@ pub trait TranscriptEngineTrait<E: Engine>: Send + Sync {
   fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
-  fn absorb<T: TranscriptReprTrait<E::GE>>(&mut self, label: &'static [u8], o: &T);
+  fn absorb<T: TranscriptReprTrait>(&mut self, label: &'static [u8], o: &T);
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
@@ -151,7 +157,25 @@ pub trait PrimeFieldExt: PrimeField {
   fn from_uniform(bytes: &[u8]) -> Self;
 }
 
-impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
+/*impl<E: Engine> ReprTrait<E::Base> for E::Base {
+  fn to_vec(&self) -> Vec<E::Base> {
+    vec![*self]
+  }
+}
+
+impl<E: Engine> ReprTrait<E::Scalar> for E::Base {
+  fn to_vec(&self) -> Vec<E::Scalar> {
+    let mut v = Vec::new();
+    // analyze self in bignum format
+    let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(self), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in limbs {
+      v.push(scalar_as_base::<E>(limb));
+    }
+    v
+  }
+}*/
+
+impl<T: TranscriptReprTrait> TranscriptReprTrait for &[T] {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self
       .iter()

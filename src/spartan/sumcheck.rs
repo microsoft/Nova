@@ -11,35 +11,14 @@ use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// Defines a trait for implementing sum-check in a generic manner
-pub trait SumcheckEngine<E: Engine>: Send + Sync {
-  /// returns the initial claims
-  fn initial_claims(&self) -> Vec<E::Scalar>;
-
-  /// degree of the sum-check polynomial
-  fn degree(&self) -> usize;
-
-  /// the size of the polynomials
-  fn size(&self) -> usize;
-
-  /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>>;
-
-  /// bounds a variable in the constituent polynomials
-  fn bound(&mut self, r: &E::Scalar);
-
-  /// returns the final claims
-  fn final_claims(&self) -> Vec<Vec<E::Scalar>>;
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub(crate) struct SumcheckProof<E: Engine> {
-  compressed_polys: Vec<CompressedUniPoly<E::Scalar>>,
+  compressed_polys: Vec<CompressedUniPoly<E>>,
 }
 
 impl<E: Engine> SumcheckProof<E> {
-  pub fn new(compressed_polys: Vec<CompressedUniPoly<E::Scalar>>) -> Self {
+  pub fn new(compressed_polys: Vec<CompressedUniPoly<E>>) -> Self {
     Self { compressed_polys }
   }
 
@@ -159,7 +138,7 @@ impl<E: Engine> SumcheckProof<E> {
     F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let mut r: Vec<E::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<E>> = Vec::new();
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
@@ -243,7 +222,7 @@ impl<E: Engine> SumcheckProof<E> {
     )
     .sum();
     let mut r: Vec<E::Scalar> = Vec::new();
-    let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let mut quad_polys: Vec<CompressedUniPoly<E>> = Vec::new();
 
     for current_round in 0..num_rounds_max {
       let remaining_rounds = num_rounds_max - current_round;
@@ -427,7 +406,7 @@ impl<E: Engine> SumcheckProof<E> {
     F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
   {
     let mut r: Vec<E::Scalar> = Vec::new();
-    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<E>> = Vec::new();
     let mut claim_per_round = *claim;
 
     for _ in 0..num_rounds {

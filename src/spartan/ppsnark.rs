@@ -18,7 +18,7 @@ use crate::{
       univariate::{CompressedUniPoly, UniPoly},
     },
     powers,
-    sumcheck::{SumcheckEngine, SumcheckProof},
+    sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,
   },
   traits::{
@@ -80,7 +80,7 @@ pub struct R1CSShapeSparkCommitment<E: Engine> {
   comm_ts_col: Commitment<E>,
 }
 
-impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSShapeSparkCommitment<E> {
+impl<E: Engine> TranscriptReprTrait for R1CSShapeSparkCommitment<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     [
       self.comm_row,
@@ -234,6 +234,27 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
 
     (mem_row, mem_col, L_row, L_col)
   }
+}
+
+/// Defines a trait for implementing sum-check in a generic manner
+pub trait SumcheckEngine<E: Engine>: Send + Sync {
+  /// returns the initial claims
+  fn initial_claims(&self) -> Vec<E::Scalar>;
+
+  /// degree of the sum-check polynomial
+  fn degree(&self) -> usize;
+
+  /// the size of the polynomials
+  fn size(&self) -> usize;
+
+  /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
+  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>>;
+
+  /// bounds a variable in the constituent polynomials
+  fn bound(&mut self, r: &E::Scalar);
+
+  /// returns the final claims
+  fn final_claims(&self) -> Vec<Vec<E::Scalar>>;
 }
 
 /// The [WitnessBoundSumcheck] ensures that the witness polynomial W defined over n = log(N) variables,
@@ -963,7 +984,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
 
     let mut e = claim;
     let mut r: Vec<E::Scalar> = Vec::new();
-    let mut cubic_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let mut cubic_polys: Vec<CompressedUniPoly<E>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _ in 0..num_rounds {
       let ((evals_mem, evals_outer), (evals_inner, evals_witness)) = rayon::join(

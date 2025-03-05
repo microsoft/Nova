@@ -7,37 +7,37 @@ use crate::{
     nonnative::{bignat::nat_to_limbs, util::f_to_nat},
     utils::scalar_as_base,
   },
-  traits::{AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait},
+  traits::{Engine, ReprTrait, TranscriptReprTrait},
 };
 use core::panic;
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 // ax^2 + bx + c stored as vec![c, b, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UniPoly<Scalar: PrimeField> {
-  pub(crate) coeffs: Vec<Scalar>,
+pub struct UniPoly<E: Engine> {
+  pub(crate) coeffs: Vec<E::Scalar>,
 }
 
 // ax^2 + bx + c stored as vec![c, a]
 // ax^3 + bx^2 + cx + d stored as vec![d, c, a]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CompressedUniPoly<Scalar: PrimeField> {
-  coeffs_except_linear_term: Vec<Scalar>,
+pub struct CompressedUniPoly<E: Engine> {
+  coeffs_except_linear_term: Vec<E::Scalar>,
 }
 
-impl<Scalar: PrimeField> UniPoly<Scalar> {
-  pub fn from_evals(evals: &[Scalar]) -> Self {
+impl<E: Engine> UniPoly<E> {
+  pub fn from_evals(evals: &[E::Scalar]) -> Self {
     let n = evals.len();
-    let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
+    let xs: Vec<E::Scalar> = (0..n).map(|x| E::Scalar::from(x as u64)).collect();
 
-    let mut matrix: Vec<Vec<Scalar>> = Vec::with_capacity(n);
+    let mut matrix: Vec<Vec<E::Scalar>> = Vec::with_capacity(n);
     for i in 0..n {
       let mut row = Vec::with_capacity(n);
       let x = xs[i];
-      row.push(Scalar::ONE);
+      row.push(E::Scalar::ONE);
       row.push(x);
       for j in 2..n {
         row.push(row[j - 1] * x);
@@ -54,18 +54,18 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     self.coeffs.len() - 1
   }
 
-  pub fn eval_at_zero(&self) -> Scalar {
+  pub fn eval_at_zero(&self) -> E::Scalar {
     self.coeffs[0]
   }
 
-  pub fn eval_at_one(&self) -> Scalar {
+  pub fn eval_at_one(&self) -> E::Scalar {
     (0..self.coeffs.len())
       .into_par_iter()
       .map(|i| self.coeffs[i])
       .sum()
   }
 
-  pub fn evaluate(&self, r: &Scalar) -> Scalar {
+  pub fn evaluate(&self, r: &E::Scalar) -> E::Scalar {
     let mut eval = self.coeffs[0];
     let mut power = *r;
     for coeff in self.coeffs.iter().skip(1) {
@@ -75,7 +75,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     eval
   }
 
-  pub fn compress(&self) -> CompressedUniPoly<Scalar> {
+  pub fn compress(&self) -> CompressedUniPoly<E> {
     let coeffs_except_linear_term = [&self.coeffs[0..1], &self.coeffs[2..]].concat();
     assert_eq!(coeffs_except_linear_term.len() + 1, self.coeffs.len());
     CompressedUniPoly {
@@ -84,17 +84,17 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   }
 }
 
-impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
+impl<E: Engine> CompressedUniPoly<E> {
   // we require eval(0) + eval(1) = hint, so we can solve for the linear term as:
   // linear_term = hint - 2 * constant_term - deg2 term - deg3 term
-  pub fn decompress(&self, hint: &Scalar) -> UniPoly<Scalar> {
+  pub fn decompress(&self, hint: &E::Scalar) -> UniPoly<E> {
     let mut linear_term =
       *hint - self.coeffs_except_linear_term[0] - self.coeffs_except_linear_term[0];
     for i in 1..self.coeffs_except_linear_term.len() {
       linear_term -= self.coeffs_except_linear_term[i];
     }
 
-    let mut coeffs: Vec<Scalar> = Vec::new();
+    let mut coeffs: Vec<E::Scalar> = Vec::new();
     coeffs.push(self.coeffs_except_linear_term[0]);
     coeffs.push(linear_term);
     coeffs.extend(&self.coeffs_except_linear_term[1..]);
@@ -103,7 +103,7 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
+impl<E: Engine> TranscriptReprTrait for UniPoly<E> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs
@@ -113,17 +113,17 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
   }
 }
 
-impl<E: Engine> AbsorbInROTrait<E> for UniPoly<E::Scalar> {
-  fn absorb_in_ro(&self, ro: &mut E::RO) {
+impl<E: Engine> ReprTrait<E::Base> for UniPoly<E> {
+  fn to_vec(&self) -> Vec<E::Base> {
     let compressed_poly = self.compress();
-
-    // absorb each element in bignum format
+    let mut vec = Vec::new();
     for x in &compressed_poly.coeffs_except_linear_term {
       let limbs: Vec<E::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
       for limb in limbs {
-        ro.absorb(scalar_as_base::<E>(limb));
+        vec.push(scalar_as_base::<E>(limb));
       }
     }
+    vec
   }
 }
 

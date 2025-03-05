@@ -1,8 +1,13 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::field_switch,
+  },
   impl_traits,
   provider::traits::{DlogGroup, PairingGroup},
-  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, ReprTrait, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::FromUniformBytes;
@@ -109,13 +114,13 @@ impl DlogGroup for G2 {
   }
 }
 
-impl<G: DlogGroup> TranscriptReprTrait<G> for G2Compressed {
+impl TranscriptReprTrait for G2Compressed {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.as_ref().to_vec()
   }
 }
 
-impl<G: DlogGroup> TranscriptReprTrait<G> for G2Affine {
+impl TranscriptReprTrait for G2Affine {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     unimplemented!()
   }

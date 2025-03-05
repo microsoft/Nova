@@ -16,8 +16,8 @@ use crate::{
     RelaxedR1CSWitness,
   },
   traits::{
-    circuit::StepCircuit, commitment::CommitmentEngineTrait, snark::RelaxedR1CSSNARKTrait,
-    AbsorbInROTrait, Engine, ROConstants, ROConstantsCircuit, ROTrait,
+    circuit::StepCircuit, commitment::CommitmentEngineTrait, snark::RelaxedR1CSSNARKTrait, Engine,
+    ROConstants, ROConstantsCircuit, ROTrait,
   },
   CommitmentKey, DerandKey,
 };
@@ -511,28 +511,28 @@ where
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
       let mut hasher = <E2 as Engine>::RO::new(pp.ro_consts_secondary.clone());
-      hasher.absorb(pp.digest());
-      hasher.absorb(E1::Scalar::from(num_steps as u64));
+      hasher.absorb(&pp.digest());
+      hasher.absorb(&E1::Scalar::from(num_steps as u64));
       for e in z0_primary {
-        hasher.absorb(*e);
+        hasher.absorb(e);
       }
       for e in &self.zi_primary {
-        hasher.absorb(*e);
+        hasher.absorb(e);
       }
-      self.r_U_secondary.absorb_in_ro(&mut hasher);
-      hasher.absorb(self.ri_primary);
+      hasher.absorb(&self.r_U_secondary);
+      hasher.absorb(&self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(pp.ro_consts_primary.clone());
-      hasher2.absorb(scalar_as_base::<E1>(pp.digest()));
-      hasher2.absorb(E2::Scalar::from(num_steps as u64));
+      hasher2.absorb(&scalar_as_base::<E1>(pp.digest()));
+      hasher2.absorb(&E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
-        hasher2.absorb(*e);
+        hasher2.absorb(e);
       }
       for e in &self.zi_secondary {
-        hasher2.absorb(*e);
+        hasher2.absorb(e);
       }
-      self.r_U_primary.absorb_in_ro(&mut hasher2);
-      hasher2.absorb(self.ri_secondary);
+      hasher2.absorb(&self.r_U_primary);
+      hasher2.absorb(&self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),
@@ -867,28 +867,28 @@ where
     // check if the output hashes in R1CS instances point to the right running instances
     let (hash_primary, hash_secondary) = {
       let mut hasher = <E2 as Engine>::RO::new(vk.ro_consts_secondary.clone());
-      hasher.absorb(vk.pp_digest);
-      hasher.absorb(E1::Scalar::from(num_steps as u64));
+      hasher.absorb(&vk.pp_digest);
+      hasher.absorb(&E1::Scalar::from(num_steps as u64));
       for e in z0_primary {
-        hasher.absorb(*e);
+        hasher.absorb(e);
       }
       for e in &self.zn_primary {
-        hasher.absorb(*e);
+        hasher.absorb(e);
       }
-      self.r_U_secondary.absorb_in_ro(&mut hasher);
-      hasher.absorb(self.ri_primary);
+      hasher.absorb(&self.r_U_secondary);
+      hasher.absorb(&self.ri_primary);
 
       let mut hasher2 = <E1 as Engine>::RO::new(vk.ro_consts_primary.clone());
-      hasher2.absorb(scalar_as_base::<E1>(vk.pp_digest));
-      hasher2.absorb(E2::Scalar::from(num_steps as u64));
+      hasher2.absorb(&scalar_as_base::<E1>(vk.pp_digest));
+      hasher2.absorb(&E2::Scalar::from(num_steps as u64));
       for e in z0_secondary {
-        hasher2.absorb(*e);
+        hasher2.absorb(e);
       }
       for e in &self.zn_secondary {
-        hasher2.absorb(*e);
+        hasher2.absorb(e);
       }
-      self.r_U_primary.absorb_in_ro(&mut hasher2);
-      hasher2.absorb(self.ri_secondary);
+      hasher2.absorb(&self.r_U_primary);
+      hasher2.absorb(&self.ri_secondary);
 
       (
         hasher.squeeze(NUM_HASH_BITS),

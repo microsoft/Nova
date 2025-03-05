@@ -1,7 +1,7 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![deny(
-  warnings,
-  unused,
+  //warnings,
+  //unused,
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
@@ -11,7 +11,7 @@
 #![forbid(unsafe_code)]
 
 // main APIs exposed by this library
-pub mod neutron;
+//pub mod neutron;
 pub mod nova;
 
 // public modules

@@ -1,8 +1,13 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::{
+    nonnative::{bignat::nat_to_limbs, util::f_to_nat},
+    utils::field_switch,
+  },
   impl_traits,
   provider::traits::DlogGroup,
-  traits::{Group, PrimeFieldExt, TranscriptReprTrait},
+  traits::{Group, PrimeFieldExt, ReprTrait, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::FromUniformBytes;

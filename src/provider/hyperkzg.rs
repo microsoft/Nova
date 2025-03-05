@@ -12,7 +12,7 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    Engine, ReprTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -156,7 +156,7 @@ where
   }
 }
 
-impl<E: Engine> TranscriptReprTrait<E::GE> for Commitment<E>
+impl<E: Engine> TranscriptReprTrait for Commitment<E>
 where
   E::GE: PairingGroup,
 {
@@ -172,19 +172,21 @@ where
   }
 }
 
-impl<E: Engine> AbsorbInROTrait<E> for Commitment<E>
+impl<E: Engine> ReprTrait<E::Base> for Commitment<E>
 where
   E::GE: PairingGroup,
 {
-  fn absorb_in_ro(&self, ro: &mut E::RO) {
+  fn to_vec(&self) -> Vec<E::Base> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    ro.absorb(x);
-    ro.absorb(y);
-    ro.absorb(if is_infinity {
-      E::Base::ONE
-    } else {
-      E::Base::ZERO
-    });
+    vec![
+      x,
+      y,
+      if is_infinity {
+        E::Base::ONE
+      } else {
+        E::Base::ZERO
+      },
+    ]
   }
 }
 
