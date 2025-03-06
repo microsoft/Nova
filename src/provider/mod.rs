@@ -46,8 +46,10 @@ impl Engine for Bn256EngineKZG {
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
   type GE = bn256::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = HyperKZGCommitmentEngine<Self>;
 }
@@ -56,8 +58,10 @@ impl Engine for Bn256EngineIPA {
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
   type GE = bn256::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }
@@ -66,8 +70,10 @@ impl Engine for GrumpkinEngine {
   type Base = grumpkin::Base;
   type Scalar = grumpkin::Scalar;
   type GE = grumpkin::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }
@@ -84,8 +90,10 @@ impl Engine for Secp256k1Engine {
   type Base = secp256k1::Base;
   type Scalar = secp256k1::Scalar;
   type GE = secp256k1::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }
@@ -94,8 +102,10 @@ impl Engine for Secq256k1Engine {
   type Base = secq256k1::Base;
   type Scalar = secq256k1::Scalar;
   type GE = secq256k1::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }
@@ -112,8 +122,10 @@ impl Engine for PallasEngine {
   type Base = pallas::Base;
   type Scalar = pallas::Scalar;
   type GE = pallas::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }
@@ -122,8 +134,10 @@ impl Engine for VestaEngine {
   type Base = vesta::Base;
   type Scalar = vesta::Scalar;
   type GE = vesta::Point;
-  type RO = PoseidonRO<Self::Base, Self::Scalar>;
+  type RO = PoseidonRO<Self::Base>;
   type ROCircuit = PoseidonROCircuit<Self::Base>;
+  type RO2 = PoseidonRO<Self::Scalar>;
+  type RO2Circuit = PoseidonROCircuit<Self::Scalar>;
   type TE = Keccak256Transcript<Self>;
   type CE = PedersenCommitmentEngine<Self>;
 }

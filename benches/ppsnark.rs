@@ -1,13 +1,10 @@
 #![allow(non_snake_case)]
 
-use core::marker::PhantomData;
 use criterion::*;
-use ff::PrimeField;
 use nova_snark::{
-  frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   provider::Bn256EngineKZG,
   spartan::direct::DirectSNARK,
-  traits::{circuit::StepCircuit, Engine},
+  traits::{circuit::NonTrivialCircuit, Engine},
 };
 use std::time::Duration;
 
@@ -64,7 +61,18 @@ fn bench_ppsnark(c: &mut Criterion) {
       })
     });
 
-    let output = c.output(&[<E as Engine>::Scalar::from(42)]);
+    fn output(num_cons: usize, z: &[<E as Engine>::Scalar]) -> Vec<<E as Engine>::Scalar> {
+      let mut x = z[0];
+      let mut y = x;
+      for _ in 0..num_cons {
+        y = x * x;
+        x = y;
+      }
+      vec![y]
+    }
+
+    let output = output(num_cons, &[<E as Engine>::Scalar::from(42)]);
+
     let io = input
       .clone()
       .into_iter()
@@ -79,53 +87,5 @@ fn bench_ppsnark(c: &mut Criterion) {
       });
     });
     group.finish();
-  }
-}
-
-#[derive(Clone, Debug, Default)]
-struct NonTrivialCircuit<F: PrimeField> {
-  num_cons: usize,
-  _p: PhantomData<F>,
-}
-
-impl<F: PrimeField> NonTrivialCircuit<F> {
-  pub fn new(num_cons: usize) -> Self {
-    Self {
-      num_cons,
-      _p: PhantomData,
-    }
-  }
-}
-
-impl<F: PrimeField> NonTrivialCircuit<F> {
-  fn output(&self, z: &[F]) -> Vec<F> {
-    let mut x = z[0];
-    let mut y = x;
-    for _ in 0..self.num_cons {
-      y = x * x;
-      x = y;
-    }
-    vec![y]
-  }
-}
-
-impl<F: PrimeField> StepCircuit<F> for NonTrivialCircuit<F> {
-  fn arity(&self) -> usize {
-    1
-  }
-
-  fn synthesize<CS: ConstraintSystem<F>>(
-    &self,
-    cs: &mut CS,
-    z: &[AllocatedNum<F>],
-  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
-    // Consider an equation: `x^2 = y`, where `x` and `y` are respectively the input and output.
-    let mut x = z[0].clone();
-    let mut y = z[0].clone();
-    for i in 0..self.num_cons {
-      y = x.square(cs.namespace(|| format!("x_sq_{i}")))?;
-      x = y.clone();
-    }
-    Ok(vec![y])
   }
 }

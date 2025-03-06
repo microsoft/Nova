@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 // main APIs exposed by this library
+pub mod neutron;
 pub mod nova;
 
 // public modules

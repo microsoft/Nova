@@ -21,7 +21,7 @@ use ff::Field;
 /// An Allocated R1CS Instance
 #[derive(Clone)]
 pub struct AllocatedR1CSInstance<E: Engine> {
-  pub(crate) W: AllocatedPoint<E>,
+  pub(crate) comm_W: AllocatedPoint<E>,
   pub(crate) X0: AllocatedNum<E::Base>,
   pub(crate) X1: AllocatedNum<E::Base>,
 }
@@ -32,23 +32,23 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
     mut cs: CS,
     u: Option<&R1CSInstance<E>>,
   ) -> Result<Self, SynthesisError> {
-    let W = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate W"),
+    let comm_W = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate comm_W"),
       u.map(|u| u.comm_W.to_coordinates()),
     )?;
-    W.check_on_curve(cs.namespace(|| "check W on curve"))?;
+    comm_W.check_on_curve(cs.namespace(|| "check comm_W on curve"))?;
 
     let X0 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[0]"), u.map(|u| u.X[0]))?;
     let X1 = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate X[1]"), u.map(|u| u.X[1]))?;
 
-    Ok(AllocatedR1CSInstance { W, X0, X1 })
+    Ok(AllocatedR1CSInstance { comm_W, X0, X1 })
   }
 
   /// Absorb the provided instance in the RO
   pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
-    ro.absorb(&self.W.x);
-    ro.absorb(&self.W.y);
-    ro.absorb(&self.W.is_infinity);
+    ro.absorb(&self.comm_W.x);
+    ro.absorb(&self.comm_W.y);
+    ro.absorb(&self.comm_W.is_infinity);
     ro.absorb(&self.X0);
     ro.absorb(&self.X1);
   }
@@ -165,7 +165,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance {
-      W: inst.W,
+      W: inst.comm_W,
       E,
       u,
       X0,
@@ -247,7 +247,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
+    let rW = u.comm_W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T
