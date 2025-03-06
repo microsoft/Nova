@@ -604,16 +604,16 @@ mod tests {
     let zn_primary = res.unwrap();
 
     // sanity: check the claimed output with a direct computation of the same
-    let mut zn_primary_direct = vec![<E1 as Engine>::Scalar::ZERO];
+    let mut zn_primary_direct = vec![<E1 as Engine>::Scalar::ONE];
     for _i in 0..num_steps {
       zn_primary_direct = circuit_primary.clone().output(&zn_primary_direct);
     }
     assert_eq!(zn_primary, zn_primary_direct);
-    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::from(2460515u64)]);
+    assert_eq!(zn_primary, vec![<E1 as Engine>::Scalar::from(0x2aaaaa3u64)]);
   }
 
   #[test]
-  fn test_ivc_nontrivial() {
+  fn test_ivc_nontrivial_neutron() {
     test_ivc_nontrivial_with::<PallasEngine, VestaEngine>();
     test_ivc_nontrivial_with::<Bn256EngineKZG, GrumpkinEngine>();
     test_ivc_nontrivial_with::<Secp256k1Engine, Secq256k1Engine>();

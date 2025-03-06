@@ -745,7 +745,7 @@ impl<E: Engine> AllocatedPointNonInfinity<E> {
 // `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
 // of another curve E (specified as the group G) to prove things about points on E'.
 // `AllocatedNonnativePoint`s are always represented as affine coordinates.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AllocatedNonnativePoint<E: Engine> {
   pub(crate) x: BigNat<E::Scalar>,
   pub(crate) y: BigNat<E::Scalar>,

@@ -57,7 +57,7 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigNatParams {
   pub min_bits: usize,
   pub max_word: BigInt,
@@ -79,7 +79,7 @@ impl BigNatParams {
 }
 
 /// A representation of a large natural number (a member of {0, 1, 2, ... })
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BigNat<Scalar: PrimeField> {
   /// The linear combinations which constrain the value of each limb of the number
   pub limbs: Vec<LinearCombination<Scalar>>,
@@ -492,26 +492,6 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
       },
     })
   }
-
-  /*  pub fn sub<CS: ConstraintSystem<Scalar>>(
-    &self,
-    mut cs: CS,
-    other: &Self,
-  ) -> Result<BigNat<Scalar>, SynthesisError> {
-    let diff = BigNat::alloc_from_nat(
-      cs.namespace(|| "diff"),
-      || {
-        let mut s = self.value.grab()?.clone();
-        s -= other.value.grab()?;
-        Ok(s)
-      },
-      self.params.limb_width,
-      self.params.n_limbs,
-    )?;
-    let sum = other.add(&diff)?;
-    self.equal_when_carried_regroup(cs.namespace(|| "eq"), &sum)?;
-    Ok(diff)
-  }*/
 
   /// Compute a `BigNat` constrained to be equal to `self * other % modulus`.
   pub fn mult_mod<CS: ConstraintSystem<Scalar>>(

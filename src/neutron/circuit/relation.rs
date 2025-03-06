@@ -12,6 +12,7 @@ use ff::Field;
 
 /// An in-circuit representation of NeutronNova's FoldedInstance
 /// In our context, public IO of circuits folded will have only one entry, so we have X
+#[derive(Clone, Debug)]
 pub struct AllocatedFoldedInstance<E: Engine> {
   pub(crate) comm_W: AllocatedNonnativePoint<E>,
   pub(crate) comm_E: AllocatedNonnativePoint<E>,
