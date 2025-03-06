@@ -69,3 +69,4 @@ harness = false
 [features]
 default = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
+experimental = []

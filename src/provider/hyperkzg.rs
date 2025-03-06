@@ -8,11 +8,17 @@
 #![allow(non_snake_case)]
 use crate::{
   errors::NovaError,
-  provider::traits::{DlogGroup, PairingGroup},
+  gadgets::utils::to_bignat_repr,
+  provider::{
+    ptau::PtauFileError,
+    read_ptau,
+    traits::{DlogGroup, PairingGroup},
+    write_ptau,
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -25,8 +31,6 @@ use ff::{Field, PrimeFieldBits};
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use super::{ptau::PtauFileError, read_ptau, write_ptau};
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -184,6 +188,28 @@ where
       E::Base::ONE
     } else {
       E::Base::ZERO
+    });
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for Commitment<E>
+where
+  E::GE: PairingGroup,
+{
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+
+    // we have to absorb x and y in big num format
+    let limbs_x = to_bignat_repr(&x);
+    let limbs_y = to_bignat_repr(&y);
+
+    for limb in limbs_x.iter().chain(limbs_y.iter()) {
+      ro.absorb(*limb);
+    }
+    ro.absorb(if is_infinity {
+      E::Scalar::ONE
+    } else {
+      E::Scalar::ZERO
     });
   }
 }
@@ -794,7 +820,9 @@ where
     let r = Self::compute_challenge(&pi.com, transcript);
 
     if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "r is zero or commitment is zero".to_string(),
+      });
     }
 
     let u = [r, -r, r * r];
@@ -805,7 +833,9 @@ where
       || pi.v[2].len() != ell
       || pi.com.len() != ell - 1
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid lengths of pi.v".to_string(),
+      });
     }
     let ypos = &pi.v[0];
     let yneg = &pi.v[1];
@@ -817,7 +847,9 @@ where
         != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
           + x[ell - i - 1] * (ypos[i] - yneg[i])
       {
-        return Err(NovaError::ProofVerifyError);
+        return Err(NovaError::ProofVerifyError {
+          reason: "Inconsistent (Y, ypos, yneg)".to_string(),
+        });
       }
       // Note that we don't make any checks about Y[0] here, but our batching
       // check below requires it
@@ -899,7 +931,9 @@ where
     if (E::GE::pairing(&L, &DlogGroup::group(&vk.H)))
       != (E::GE::pairing(&R, &DlogGroup::group(&vk.tau_H)))
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Pairing check failed".to_string(),
+      });
     }
 
     Ok(())

@@ -1,10 +1,11 @@
 //! This module provides an implementation of a commitment engine
 use crate::{
   errors::NovaError,
+  gadgets::utils::to_bignat_repr,
   provider::{ptau::read_points, traits::DlogGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
-    AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -103,6 +104,28 @@ where
       E::Base::ONE
     } else {
       E::Base::ZERO
+    });
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for Commitment<E>
+where
+  E::GE: DlogGroup,
+{
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    let (x, y, is_infinity) = self.comm.to_coordinates();
+
+    // we have to absorb x and y in big num format
+    let limbs_x = to_bignat_repr(&x);
+    let limbs_y = to_bignat_repr(&y);
+
+    for limb in limbs_x.iter().chain(limbs_y.iter()) {
+      ro.absorb(*limb);
+    }
+    ro.absorb(if is_infinity {
+      E::Scalar::ONE
+    } else {
+      E::Scalar::ZERO
     });
   }
 }

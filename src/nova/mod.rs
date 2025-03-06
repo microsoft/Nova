@@ -10,7 +10,7 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  gadgets::utils::scalar_as_base,
+  gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
     CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
     RelaxedR1CSWitness,
@@ -357,8 +357,7 @@ where
     })
   }
 
-  /// Create a new `RecursiveSNARK` (or updates the provided `RecursiveSNARK`)
-  /// by executing a step of the incremental computation
+  /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
   pub fn prove_step(
     &mut self,
     pp: &PublicParams<E1, E2, C1, C2>,
@@ -446,7 +445,9 @@ where
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
       .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
-      .map_err(|_e| NovaError::UnSat)?;
+      .map_err(|_e| NovaError::UnSat {
+        reason: "Unable to generate a satisfying witness on the secondary curve".to_string(),
+      })?;
 
     // update the running instances and witnesses
     self.zi_primary = zi_primary
@@ -502,7 +503,9 @@ where
       || is_inputs_not_match
       || is_instance_has_two_outputs
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid number of steps or inputs".to_string(),
+      });
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
@@ -537,10 +540,12 @@ where
       )
     };
 
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
+    if hash_primary != scalar_as_base::<E2>(self.l_u_secondary.X[0])
+      || hash_secondary != self.l_u_secondary.X[1]
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid output hash in R1CS instances".to_string(),
+      });
     }
 
     // check the satisfiability of the provided instances
@@ -842,7 +847,9 @@ where
   ) -> Result<(Vec<E1::Scalar>, Vec<E2::Scalar>), NovaError> {
     // the number of steps cannot be zero
     if num_steps == 0 {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Number of steps cannot be zero".to_string(),
+      });
     }
 
     // check if the (relaxed) R1CS instances have two public outputs
@@ -852,7 +859,9 @@ where
       || self.l_ur_primary.X.len() != 2
       || self.l_ur_secondary.X.len() != 2
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid number of outputs in R1CS instances".to_string(),
+      });
     }
 
     // check if the output hashes in R1CS instances point to the right running instances
@@ -887,10 +896,12 @@ where
       )
     };
 
-    if hash_primary != self.l_u_secondary.X[0]
-      || hash_secondary != scalar_as_base::<E2>(self.l_u_secondary.X[1])
+    if hash_primary != base_as_scalar::<E1>(self.l_u_secondary.X[0])
+      || hash_secondary != self.l_u_secondary.X[1]
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid output hash in R1CS instances".to_string(),
+      });
     }
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
