@@ -142,7 +142,7 @@ impl<E: Engine> FoldedWitness<E> {
       .W
       .par_iter()
       .zip(W2.W.par_iter())
-      .map(|(w1, w2)| (E::Scalar::ONE - r_b) * w1 + *r_b * w2)
+      .map(|(w1, w2)| *w1 + *r_b * (*w2 - *w1))
       .collect::<Vec<_>>();
     let r_W = (E::Scalar::ONE - r_b) * self.r_W + *r_b * W2.r_W;
 
@@ -150,7 +150,7 @@ impl<E: Engine> FoldedWitness<E> {
       .E
       .par_iter()
       .zip(E2.par_iter())
-      .map(|(e1, e2)| (E::Scalar::ONE - r_b) * e1 + *r_b * e2)
+      .map(|(e1, e2)| *e1 + *r_b * (*e2 - *e1))
       .collect::<Vec<_>>();
     let r_E = (E::Scalar::ONE - r_b) * self.r_E + *r_b * r_E2;
 
