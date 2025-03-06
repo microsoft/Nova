@@ -752,6 +752,7 @@ pub struct AllocatedNonnativePoint<E: Engine> {
   pub(crate) is_infinity: AllocatedNum<E::Scalar>,
 }
 
+#[allow(dead_code)]
 impl<E: Engine> AllocatedNonnativePoint<E> {
   pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,

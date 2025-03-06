@@ -9,10 +9,12 @@ use ff::PrimeField;
 /// $$
 /// \tilde{power}(x, t) = \prod_{i=1}^m(1 + (t^{2^i} - 1) * x_i)
 /// $$
+#[allow(dead_code)]
 pub struct PowPolynomial<Scalar: PrimeField> {
   t_pow: Vec<Scalar>,
 }
 
+#[allow(dead_code)]
 impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Creates a new `PowPolynomial` from a Scalars `t`.
   pub fn new(t: &Scalar, ell: usize) -> Self {

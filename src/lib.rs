@@ -11,8 +11,10 @@
 #![forbid(unsafe_code)]
 
 // main APIs exposed by this library
-pub mod neutron;
 pub mod nova;
+
+#[cfg(feature = "experimental")]
+pub mod neutron;
 
 // public modules
 pub mod errors;
