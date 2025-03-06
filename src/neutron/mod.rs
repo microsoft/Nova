@@ -1,4 +1,5 @@
 //! This module implements an IVC scheme based on the NeutronNova folding scheme.
+//! This code currently lacks certain checks, so do not use this until the experimental feature is removed.
 use crate::{
   constants::NUM_HASH_BITS,
   digest::{DigestComputer, SimpleDigestible},
