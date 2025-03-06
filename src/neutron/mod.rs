@@ -228,7 +228,7 @@ where
       cs_primary.r1cs_instance_and_witness(&pp.structure_primary.S, &pp.ck_primary)?;
 
     assert!(
-      !(zi_primary.len() != pp.F_arity_primary),
+      (zi_primary.len() == pp.F_arity_primary),
       "Invalid step length"
     );
 
@@ -287,8 +287,8 @@ where
       r_next_primary,
       Some(self.l_u_primary.clone()),
       Some(nifs),
-      Some(r_U_primary.comm_W.clone()),
-      Some(r_U_primary.comm_E.clone()),
+      Some(r_U_primary.comm_W),
+      Some(r_U_primary.comm_E),
     );
 
     let circuit_primary: NeutronAugmentedCircuit<'_, E1, C1> = NeutronAugmentedCircuit::new(
