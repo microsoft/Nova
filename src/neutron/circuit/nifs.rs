@@ -87,17 +87,9 @@ impl<E: Engine> AllocatedNIFS<E> {
       |lc| lc + T.get_variable(),
     );
 
-    let poly_at_zero = self.poly.eval_at_zero()?;
-    let poly_at_one = self.poly.eval_at_one(cs.namespace(|| "poly_at_one"))?;
-
-    // enforce that poly_at_zero + poly_at_one = T
-    // TODO: avoid doing this
-    cs.enforce(
-      || "enforce poly_at_zero + poly_at_one = T",
-      |lc| lc + poly_at_zero.get_variable() + poly_at_one.get_variable(),
-      |lc| lc + CS::one(),
-      |lc| lc + T.get_variable(),
-    );
+    self
+      .poly
+      .check_poly_zero_poly_one_with(cs.namespace(|| "poly_at_zero + poly_at_one = T"), &T)?;
 
     // absorb poly in the RO
     self.poly.absorb_in_ro(&mut ro);

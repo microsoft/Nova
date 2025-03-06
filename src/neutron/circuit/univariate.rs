@@ -30,35 +30,29 @@ impl<E: Engine> AllocatedUniPoly<E> {
     Ok(Self { coeffs })
   }
 
-  /// Returns the evaluation of the polynomial at 0
-  pub fn eval_at_zero(&self) -> Result<AllocatedNum<E::Scalar>, SynthesisError> {
-    Ok(self.coeffs[0].clone())
-  }
-
-  /// Returns the evaluation of the polynomial at 1
-  pub fn eval_at_one<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  /// checks if poly(0) + poly(1) = c
+  pub fn check_poly_zero_poly_one_with<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
-  ) -> Result<AllocatedNum<E::Scalar>, SynthesisError> {
-    // eval_at_one = sum of all coefficients
-    // allocate a variable to store the sum
-    let eval = AllocatedNum::alloc(cs.namespace(|| "allocate eval at one"), || {
-      let mut eval = E::Scalar::ZERO;
-      for coeff in self.coeffs.iter() {
-        eval += coeff.get_value().ok_or(SynthesisError::AssignmentMissing)?;
-      }
-      Ok(eval)
-    })?;
-
-    // enforce that eval_at_one = sum of all coefficients
+    c: &AllocatedNum<E::Scalar>,
+  ) -> Result<(), SynthesisError> {
+    // eval_at_0 = constant term and eval_at_1 = sum of all coefficients
+    // eval_at_0 + eval_at_1 = constant_term + sum of all coefficients including the constant term
     cs.enforce(
-      || "eval at one = sum of all coefficients",
-      |lc| lc + eval.get_variable(),
+      || "eval at 0 + eval at 1 = c",
+      |lc| lc + c.get_variable(),
       |lc| lc + CS::one(),
-      |lc| self.coeffs.iter().fold(lc, |lc, v| lc + v.get_variable()),
+      |lc| {
+        self
+          .coeffs
+          .iter()
+          .fold(lc + self.coeffs[0].get_variable(), |lc, v| {
+            lc + v.get_variable()
+          })
+      },
     );
 
-    Ok(eval)
+    Ok(())
   }
 
   /// Evaluate the polynomial at the provided point
