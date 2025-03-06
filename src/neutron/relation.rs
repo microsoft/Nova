@@ -179,7 +179,6 @@ impl<E: Engine> FoldedInstance<E> {
     T_out: &E::Scalar,
   ) -> Result<Self, NovaError> {
     // we need to compute the weighted sum using weights of (1-r_b) and r_b
-    // TODO: reduce number of ops
     let comm_W = self.comm_W * (E::Scalar::ONE - r_b) + U2.comm_W * *r_b;
     let comm_E = self.comm_E * (E::Scalar::ONE - r_b) + *comm_E * *r_b;
     let X = self

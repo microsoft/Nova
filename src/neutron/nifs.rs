@@ -21,7 +21,6 @@ use serde::{Deserialize, Serialize};
 pub struct NIFS<E: Engine> {
   pub(crate) comm_E: Commitment<E>,
   pub(crate) poly: UniPoly<E::Scalar>,
-  pub(crate) eq_rho_r_b_inv: E::Scalar, // provided as a hint for the verifier
 }
 
 impl<E: Engine> NIFS<E> {
@@ -265,7 +264,6 @@ impl<E: Engine> NIFS<E> {
     let poly = UniPoly::<E::Scalar>::from_evals(&evals);
 
     // absorb poly in the RO
-    // TODO: make UniPoly defined over E
     <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&poly, &mut ro);
 
     // squeeze a challenge
@@ -273,21 +271,13 @@ impl<E: Engine> NIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    let eq_rho_r_b_inv = eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
-    let T_out = poly.evaluate(&r_b) * eq_rho_r_b_inv;
+    let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
 
     let U = U1.fold(U2, &comm_E, &r_b, &T_out)?;
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((
-      Self {
-        comm_E,
-        poly,
-        eq_rho_r_b_inv,
-      },
-      (U, W),
-    ))
+    Ok((Self { comm_E, poly }, (U, W)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -329,7 +319,6 @@ impl<E: Engine> NIFS<E> {
     }
 
     // absorb poly in the RO
-    // TODO: make UniPoly defined over E
     <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&self.poly, &mut ro);
 
     // squeeze a challenge
@@ -337,10 +326,7 @@ impl<E: Engine> NIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    if eq_rho_r_b * self.eq_rho_r_b_inv != E::Scalar::ONE {
-      return Err(NovaError::InvalidSumcheckProof);
-    }
-    let T_out = self.poly.evaluate(&r_b) * self.eq_rho_r_b_inv;
+    let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
 
     let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
 

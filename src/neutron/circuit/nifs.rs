@@ -18,7 +18,6 @@ use ff::Field;
 pub struct AllocatedNIFS<E: Engine> {
   pub(crate) comm_E: AllocatedNonnativePoint<E>,
   pub(crate) poly: AllocatedUniPoly<E>,
-  pub(crate) eq_rho_r_b_inv: AllocatedNum<E::Scalar>,
 }
 
 impl<E: Engine> AllocatedNIFS<E> {
@@ -40,16 +39,7 @@ impl<E: Engine> AllocatedNIFS<E> {
       nifs.map(|nifs| &nifs.poly),
     )?;
 
-    // Allocate the inverse
-    let eq_rho_r_b_inv = AllocatedNum::alloc(cs.namespace(|| "allocate eq_rho_r_b_inv"), || {
-      Ok(nifs.map_or(E::Scalar::ONE, |nifs| nifs.eq_rho_r_b_inv))
-    })?;
-
-    Ok(Self {
-      comm_E,
-      poly,
-      eq_rho_r_b_inv,
-    })
+    Ok(Self { comm_E, poly })
   }
 
   /// verify the provided NIFS inside the circuit
@@ -118,30 +108,48 @@ impl<E: Engine> AllocatedNIFS<E> {
 
     // compute the sum-check polynomial's evaluations at r_b
     // let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
-    let _eq_rho_r_b = AllocatedNum::alloc(cs.namespace(|| "allocate eq_rho_r_b"), || {
+    let eq_rho_r_b_one = AllocatedNum::alloc(cs.namespace(|| "allocate eq_rho_r_b_one"), || {
+      let rho = rho.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+      let r_b = r_b.get_value().ok_or(SynthesisError::AssignmentMissing)?;
+      Ok((E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b))
+    })?;
+    cs.enforce(
+      || "check eq_rho_r_b_one = (1 - rho) * (1 - r_b)",
+      |lc| lc + CS::one() - rho.get_variable(),
+      |lc| lc + CS::one() - r_b.get_variable(),
+      |lc| lc + eq_rho_r_b_one.get_variable(),
+    );
+
+    let eq_rho_r_b = AllocatedNum::alloc(cs.namespace(|| "allocate eq_rho_r_b"), || {
       let rho = rho.get_value().ok_or(SynthesisError::AssignmentMissing)?;
       let r_b = r_b.get_value().ok_or(SynthesisError::AssignmentMissing)?;
       Ok((E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b)
-    });
+    })?;
 
-    // check eq_rho_rb = 1 - rho - r_b + 2 * rho * r_b
-    // TODO: check that eq_rho_rb-1 - rho + r_b = 2 * rho * r_b
+    // check eq_rho_r_b = (1 - rho) * (1 - r_b) + rho * r_b
+    cs.enforce(
+      || "check eq_rho_r_b = (1 - rho) * (1 - r_b) + rho * r_b",
+      |lc| lc + rho.get_variable(),
+      |lc| lc + r_b.get_variable(),
+      |lc| lc + eq_rho_r_b.get_variable() - eq_rho_r_b_one.get_variable(),
+    );
 
     // let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap();
     let eval = { self.poly.evaluate(cs.namespace(|| "eval"), &r_b)? };
     let T_out = AllocatedNum::alloc(cs.namespace(|| "allocate T_out"), || {
       let eval = eval.get_value().ok_or(SynthesisError::AssignmentMissing)?;
-      let eq_rho_r_b_inv = self
-        .eq_rho_r_b_inv
+      let eq_rho_r_b_inv = eq_rho_r_b
         .get_value()
-        .ok_or(SynthesisError::AssignmentMissing)?;
+        .ok_or(SynthesisError::AssignmentMissing)?
+        .invert()
+        .unwrap();
       Ok(eval * eq_rho_r_b_inv)
     })?;
     cs.enforce(
-      || "enforce T_out = poly(r_b) * eq_rho_r_b_inv",
-      |lc| lc + eval.get_variable(),
-      |lc| lc + self.eq_rho_r_b_inv.get_variable(),
+      || "enforce T_out * eq_rho_r_b = eval",
       |lc| lc + T_out.get_variable(),
+      |lc| lc + eq_rho_r_b.get_variable(),
+      |lc| lc + eval.get_variable(),
     );
 
     // let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
