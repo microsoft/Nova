@@ -1,6 +1,6 @@
 //! This module implements various gadgets necessary for folding R1CS types.
 use crate::{
-  constants::NUM_CHALLENGE_BITS,
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_CHALLENGE_BITS},
   frontend::{num::AllocatedNum, Assignment, Boolean, ConstraintSystem, SynthesisError},
   gadgets::{
     ecc::AllocatedPoint,
@@ -68,8 +68,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
     mut cs: CS,
     inst: Option<&RelaxedR1CSInstance<E>>,
-    limb_width: usize,
-    n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     // We do not need to check that W or E are well-formed (e.g., on the curve) as we do a hash check
     // in the Nova augmented circuit, which ensures that the relaxed instance
@@ -92,15 +90,15 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[0]"),
       || Ok(f_to_nat(&inst.map_or(E::Scalar::ZERO, |inst| inst.X[0]))),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate X[1]"),
       || Ok(f_to_nat(&inst.map_or(E::Scalar::ZERO, |inst| inst.X[1]))),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
@@ -110,8 +108,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   /// W = E = 0, u = 0, X0 = X1 = 0
   pub fn default<CS: ConstraintSystem<<E as Engine>::Base>>(
     mut cs: CS,
-    limb_width: usize,
-    n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     let W = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
     let E = W.clone();
@@ -124,15 +120,15 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let X0 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[0]"),
       || Ok(f_to_nat(&E::Scalar::ZERO)),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     let X1 = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x_default[1]"),
       || Ok(f_to_nat(&E::Scalar::ZERO)),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance { W, E, u, X0, X1 })
@@ -143,8 +139,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   pub fn from_r1cs_instance<CS: ConstraintSystem<<E as Engine>::Base>>(
     mut cs: CS,
     inst: AllocatedR1CSInstance<E>,
-    limb_width: usize,
-    n_limbs: usize,
   ) -> Result<Self, SynthesisError> {
     let E = AllocatedPoint::default(cs.namespace(|| "allocate default E"))?;
 
@@ -153,15 +147,15 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let X0 = BigNat::from_num(
       cs.namespace(|| "allocate X0 from relaxed r1cs"),
       &Num::from(inst.X0),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     let X1 = BigNat::from_num(
       cs.namespace(|| "allocate X1 from relaxed r1cs"),
       &Num::from(inst.X1),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     Ok(AllocatedRelaxedR1CSInstance {
@@ -230,8 +224,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     u: &AllocatedR1CSInstance<E>,
     T: &AllocatedPoint<E>,
     ro_consts: ROConstantsCircuit<E>,
-    limb_width: usize,
-    n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     // Compute r:
     let mut ro = E::ROCircuit::new(ro_consts);
@@ -270,24 +262,24 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let r_bn = BigNat::from_num(
       cs.namespace(|| "allocate r_bn"),
       &Num::from(r),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     // Allocate the order of the non-native field as a constant
     let m_bn = alloc_bignat_constant(
       cs.namespace(|| "alloc m"),
       &E::GE::group_params().2,
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(
       cs.namespace(|| "allocate X0_bn"),
       &Num::from(u.X0.clone()),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     // Fold self.X[0] + r * X[0]
@@ -301,8 +293,8 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let X1_bn = BigNat::from_num(
       cs.namespace(|| "allocate X1_bn"),
       &Num::from(u.X1.clone()),
-      limb_width,
-      n_limbs,
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
     )?;
 
     // Fold self.X[1] + r * X[1]
