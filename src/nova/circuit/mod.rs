@@ -367,8 +367,8 @@ mod tests {
     E1: Engine<Base = <E2 as Engine>::Scalar>,
     E2: Engine<Base = <E1 as Engine>::Scalar>,
   {
-    let ro_consts1 = ROConstantsCircuit::<E1>::default();
-    let ro_consts2 = ROConstantsCircuit::<E2>::default();
+    let ro_consts1 = ROConstantsCircuit::<E2>::default();
+    let ro_consts2 = ROConstantsCircuit::<E1>::default();
 
     let tc1 = TrivialCircuit::default();
     // Initialize the shape and ck for the primary
