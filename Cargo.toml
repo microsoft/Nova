@@ -55,10 +55,6 @@ name = "compressed-snark"
 harness = false
 
 [[bench]]
-name = "compute-digest"
-harness = false
-
-[[bench]]
 name = "sha256"
 harness = false
 

@@ -13,11 +13,7 @@ use nova_snark::{
   },
   nova::{PublicParams, RecursiveSNARK},
   provider::{Bn256EngineKZG, GrumpkinEngine},
-  traits::{
-    circuit::{StepCircuit, TrivialCircuit},
-    snark::default_ck_hint,
-    Engine,
-  },
+  traits::{circuit::StepCircuit, snark::default_ck_hint, Engine},
 };
 use sha2::{Digest, Sha256};
 
@@ -119,8 +115,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
   }
 }
 
-type C1 = Sha256Circuit<<E1 as Engine>::Scalar>;
-type C2 = TrivialCircuit<<E2 as Engine>::Scalar>;
+type C = Sha256Circuit<<E1 as Engine>::Scalar>;
 
 criterion_group! {
 name = recursive_snark;
@@ -146,45 +141,26 @@ fn bench_recursive_snark(c: &mut Criterion) {
     Sha256Circuit::new(vec![0u8; 1 << 16]),
   ];
 
-  for circuit_primary in circuits {
+  for circuit in circuits {
     let mut group = c.benchmark_group(format!(
       "NovaProve-Sha256-message-len-{}",
-      circuit_primary.preimage.len()
+      circuit.preimage.len()
     ));
     group.sample_size(10);
 
     // Produce public parameters
-    let ttc = TrivialCircuit::default();
-    let pp = PublicParams::<E1, E2, C1, C2>::setup(
-      &circuit_primary,
-      &ttc,
-      &*default_ck_hint(),
-      &*default_ck_hint(),
-    )
-    .unwrap();
+    let pp =
+      PublicParams::<E1, E2, C>::setup(&circuit, &*default_ck_hint(), &*default_ck_hint()).unwrap();
 
-    let circuit_secondary = TrivialCircuit::default();
-    let z0_primary = vec![<E1 as Engine>::Scalar::from(2u64)];
-    let z0_secondary = vec![<E2 as Engine>::Scalar::from(2u64)];
-
+    let z0 = vec![<E1 as Engine>::Scalar::from(2u64)];
     group.bench_function("Prove", |b| {
       b.iter(|| {
-        let mut recursive_snark = RecursiveSNARK::new(
-          black_box(&pp),
-          black_box(&circuit_primary),
-          black_box(&circuit_secondary),
-          black_box(&z0_primary),
-          black_box(&z0_secondary),
-        )
-        .unwrap();
+        let mut recursive_snark =
+          RecursiveSNARK::new(black_box(&pp), black_box(&circuit), black_box(&z0)).unwrap();
 
         // produce a recursive SNARK for a step of the recursion
         assert!(recursive_snark
-          .prove_step(
-            black_box(&pp),
-            black_box(&circuit_primary),
-            black_box(&circuit_secondary),
-          )
+          .prove_step(black_box(&pp), black_box(&circuit))
           .is_ok());
       })
     });
