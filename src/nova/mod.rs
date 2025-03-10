@@ -115,8 +115,7 @@ where
   /// let ck_hint1 = &*SPrime::<E1>::ck_floor();
   /// let ck_hint2 = &*SPrime::<E2>::ck_floor();
   ///
-  /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2)?;
-  /// Ok(())
+  /// PublicParams::setup(&circuit, ck_hint1, ck_hint2);
   /// ```
   pub fn setup(
     c: &C,
@@ -498,12 +497,8 @@ where
       let mut hasher2 = <E1 as Engine>::RO::new(pp.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<E1>(pp.digest()));
       hasher2.absorb(E2::Scalar::from(num_steps as u64));
-      for e in vec![E2::Scalar::ZERO].iter() {
-        hasher2.absorb(*e);
-      }
-      for e in vec![E2::Scalar::ZERO].iter() {
-        hasher2.absorb(*e);
-      }
+      hasher2.absorb(E2::Scalar::ZERO);
+      hasher2.absorb(E2::Scalar::ZERO);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
       hasher2.absorb(self.ri_secondary);
 
@@ -839,12 +834,8 @@ where
       let mut hasher2 = <E1 as Engine>::RO::new(vk.ro_consts_primary.clone());
       hasher2.absorb(scalar_as_base::<E1>(vk.pp_digest));
       hasher2.absorb(E2::Scalar::from(num_steps as u64));
-      for e in vec![E2::Scalar::ZERO].iter() {
-        hasher2.absorb(*e);
-      }
-      for e in vec![E2::Scalar::ZERO].iter() {
-        hasher2.absorb(*e);
-      }
+      hasher2.absorb(E2::Scalar::ZERO);
+      hasher2.absorb(E2::Scalar::ZERO);
       self.r_U_primary.absorb_in_ro(&mut hasher2);
       hasher2.absorb(self.ri_secondary);
 
@@ -1020,17 +1011,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["1afddb350ac5c61806e4f1e5af8fb6549e61c899482ac71b1a15a932deb7e301"],
+      &expect!["b72563ab98212b4e71d92a2c7b0e01f5b6d62f242a2963bc99e65a9aea525b00"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["1c8b4c39c360363cb51548d1d2f1e2d9d10a2dd916751498814dd5e146943000"],
+      &expect!["03cd45b654184152d573cd23c97608d69aff0225a18d78f66beb9f375d24a402"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["f6ae1dbf673fa8eb7631f569b25ddc8aa4ea939b5dcffaf31e09cbecf9c89d03"],
+      &expect!["46eac7eadf04d2cd8ced64b2ef7c3d228192e9eb98bc22ff0a05a2d166739d02"],
     );
   }
 
