@@ -173,8 +173,37 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     Ok((pp_digest, i, z_0, z_i, U, r_i, r_next, u, T))
   }
 
+  fn synthesize_hash_check<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    pp_digest: &AllocatedNum<E::Base>,
+    i: &AllocatedNum<E::Base>,
+    z_0: &[AllocatedNum<E::Base>],
+    z_i: &[AllocatedNum<E::Base>],
+    U: &AllocatedRelaxedR1CSInstance<E>,
+    r_i: &AllocatedNum<E::Base>,
+  ) -> Result<AllocatedNum<E::Base>, SynthesisError> {
+    // Check that u.x[0] = Hash(pp_digest, i, z_0, z_i, U, r_i)
+    let mut ro = E::ROCircuit::new(self.ro_consts.clone());
+    ro.absorb(pp_digest);
+    ro.absorb(i);
+    for e in z_0 {
+      ro.absorb(e);
+    }
+    for e in z_i {
+      ro.absorb(e);
+    }
+    U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+    ro.absorb(r_i);
+
+    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
+    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
+
+    Ok(hash)
+  }
+
   /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-  fn synthesize_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
+  fn synthesize_base_case<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     u: AllocatedR1CSInstance<E>,
@@ -194,46 +223,21 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
-    params: &AllocatedNum<E::Base>,
-    i: &AllocatedNum<E::Base>,
-    z_0: &[AllocatedNum<E::Base>],
-    z_i: &[AllocatedNum<E::Base>],
+    pp_digest: &AllocatedNum<E::Base>,
     U: &AllocatedRelaxedR1CSInstance<E>,
-    r_i: &AllocatedNum<E::Base>,
     u: &AllocatedR1CSInstance<E>,
     T: &AllocatedPoint<E>,
-  ) -> Result<(AllocatedRelaxedR1CSInstance<E>, AllocatedBit), SynthesisError> {
-    // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = E::ROCircuit::new(self.ro_consts.clone());
-    ro.absorb(params);
-    ro.absorb(i);
-    for e in z_0 {
-      ro.absorb(e);
-    }
-    for e in z_i {
-      ro.absorb(e);
-    }
-    U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
-    ro.absorb(r_i);
-
-    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
-    let check_pass = alloc_num_equals(
-      cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
-      &u.X0,
-      &hash,
-    )?;
-
+  ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     // Run NIFS Verifier
     let U_fold = U.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
-      params,
+      pp_digest,
       u,
       T,
       self.ro_consts.clone(),
     )?;
 
-    Ok((U_fold, check_pass))
+    Ok(U_fold)
   }
 }
 
@@ -253,19 +257,32 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
     let zero = alloc_zero(cs.namespace(|| "zero"));
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
-    // Synthesize the circuit for the base case and get the new running instance
-    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
-
-    // Synthesize the circuit for the non-base case and get the new running
-    // instance along with a boolean indicating if all checks have passed
-    let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
-      cs.namespace(|| "synthesize non base case"),
+    // compute hash of the non-deterministic inputs
+    let hash = self.synthesize_hash_check(
+      cs.namespace(|| "synthesize input hash check"),
       &pp_digest,
       &i,
       &z_0,
       &z_i,
       &U,
       &r_i,
+    )?;
+
+    let check_non_base_pass = alloc_num_equals(
+      cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
+      &u.X0,
+      &hash,
+    )?;
+
+    // Synthesize the circuit for the base case and get the new running instance
+    let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
+
+    // Synthesize the circuit for the non-base case and get the new running
+    // instance along with a boolean indicating if all checks have passed
+    let Unew_non_base = self.synthesize_non_base_case(
+      cs.namespace(|| "synthesize non base case"),
+      &pp_digest,
+      &U,
       &u,
       &T,
     )?;
@@ -320,19 +337,15 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
     }
 
     // Compute the new hash H(pp_digest, Unew, i+1, z0, z_{i+1})
-    let mut ro = E::ROCircuit::new(self.ro_consts);
-    ro.absorb(&pp_digest);
-    ro.absorb(&i_new);
-    for e in &z_0 {
-      ro.absorb(e);
-    }
-    for e in &z_next {
-      ro.absorb(e);
-    }
-    Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
-    ro.absorb(&r_next);
-    let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-    let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+    let hash = self.synthesize_hash_check(
+      cs.namespace(|| "synthesize output hash check"),
+      &pp_digest,
+      &i_new,
+      &z_0,
+      &z_next,
+      &Unew,
+      &r_next,
+    )?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
     u.X1
