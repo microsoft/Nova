@@ -46,6 +46,7 @@ pub(crate) mod prelude {
   pub use alloc::vec;
   pub use alloc::vec::Vec;
 
+  pub use core::cell::OnceCell;
   pub use core::convert::From;
 
   pub use alloc::collections::BTreeMap;

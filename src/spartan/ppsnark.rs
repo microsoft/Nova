@@ -31,8 +31,6 @@ use crate::{
   },
   zip_with, Commitment, CommitmentKey,
 };
-#[cfg(not(feature = "std"))]
-use core::cell::OnceCell;
 use core::cmp::max;
 use ff::Field;
 use itertools::Itertools as _;

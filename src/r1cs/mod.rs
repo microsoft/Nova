@@ -14,8 +14,6 @@ use crate::{
   },
   Commitment, CommitmentKey, DerandKey, CE,
 };
-#[cfg(not(feature = "std"))]
-use core::cell::OnceCell;
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 #[cfg(feature = "std")]

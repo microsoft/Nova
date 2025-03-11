@@ -22,8 +22,6 @@ use crate::{
   },
   CommitmentKey, DerandKey,
 };
-#[cfg(not(feature = "std"))]
-use core::cell::OnceCell;
 use core::marker::PhantomData;
 use ff::Field;
 #[cfg(feature = "std")]

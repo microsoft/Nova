@@ -25,8 +25,6 @@ use crate::{
   },
   zip_with, CommitmentKey,
 };
-#[cfg(not(feature = "std"))]
-use core::cell::OnceCell;
 use ff::Field;
 use itertools::Itertools as _;
 #[cfg(feature = "std")]
