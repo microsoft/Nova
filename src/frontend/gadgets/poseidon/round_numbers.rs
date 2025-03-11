@@ -4,6 +4,7 @@
 //! 128-bit security level.
 
 use libm::log2;
+#[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 

@@ -10,6 +10,7 @@ use crate::{
 use digest::{ExtendableOutput, Update, XofReader};
 use ff::{FromUniformBytes, PrimeField};
 use num_bigint::BigInt;
+#[allow(unused_imports)]
 use num_traits::float::FloatCore;
 use num_traits::Num;
 use pasta_curves::{

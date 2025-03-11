@@ -39,9 +39,7 @@ bincode = { version = "2.0.0-rc.3", default-features = false, features = [
 byteorder = { version = "1.4.3", default-features = false }
 bitvec = { version = "1.0", default-features = false }
 thiserror = { version = "2.0.11", default-features = false }
-once_cell = { version = "1.18.0", features = [
-    "critical-section",
-], default-features = false }
+once_cell = { version = "1.18.0", optional = true }
 itertools = { version = "0.14.0", default-features = false }
 pasta_curves = { version = "0.5", features = ["repr-c", "serde"] }
 libm = { version = "0.2.11", default-features = false }
@@ -93,6 +91,6 @@ harness = false
 
 [features]
 default = ["std"]
-std = ["halo2curves", "rayon", "getrandom"]
+std = ["halo2curves", "rayon", "getrandom", "once_cell"]
 asm = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]

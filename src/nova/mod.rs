@@ -22,8 +22,11 @@ use crate::{
   },
   CommitmentKey, DerandKey,
 };
+#[cfg(not(feature = "std"))]
+use core::cell::OnceCell;
 use core::marker::PhantomData;
 use ff::Field;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "std"))]
 use rand_chacha::ChaCha20Rng;
@@ -197,11 +200,20 @@ where
 
   /// Retrieve the digest of the public parameters.
   pub fn digest(&self) -> E1::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure in retrieving digest")
+      .expect("Failure in retrieving digest");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      DigestComputer::new(self)
+        .digest()
+        .expect("Failure in retrieving digest")
+    });
+
+    res
   }
 
   /// Returns the number of constraints in the primary and secondary circuits

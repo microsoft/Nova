@@ -14,8 +14,11 @@ use crate::{
   },
   Commitment, CommitmentKey, DerandKey, CE,
 };
+#[cfg(not(feature = "std"))]
+use core::cell::OnceCell;
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
 #[cfg(not(feature = "std"))]
 use rand_chacha::ChaCha20Rng;
@@ -152,11 +155,19 @@ impl<E: Engine> R1CSShape<E> {
 
   /// returned the digest of the `R1CSShape`
   pub fn digest(&self) -> E::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure retrieving digest")
+      .expect("Failure retrieving digest");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      DigestComputer::new(self)
+        .digest()
+        .expect("Failure retrieving digest")
+    });
+    res
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs

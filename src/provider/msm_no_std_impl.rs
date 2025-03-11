@@ -4,6 +4,7 @@ use crate::prelude::*;
 use core::ops::Neg;
 use ff::{Field, PrimeField};
 
+#[allow(unused_imports)]
 #[cfg(not(feature = "std"))]
 use num_traits::float::FloatCore;
 use pasta_curves::{self, arithmetic::CurveAffine, group::Group as AnotherGroup};

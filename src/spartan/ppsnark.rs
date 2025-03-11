@@ -31,9 +31,12 @@ use crate::{
   },
   zip_with, Commitment, CommitmentKey,
 };
+#[cfg(not(feature = "std"))]
+use core::cell::OnceCell;
 use core::cmp::max;
 use ff::Field;
 use itertools::Itertools as _;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "std")]
 use rayon::prelude::*;
@@ -1178,14 +1181,22 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> VerifierKey<E, EE> {
 impl<E: Engine, EE: EvaluationEngineTrait<E>> DigestHelperTrait<E> for VerifierKey<E, EE> {
   /// Returns the digest of the verifier's key
   fn digest(&self) -> E::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| {
         let dc = DigestComputer::new(self);
         dc.digest()
       })
       .cloned()
-      .expect("Failure to retrieve digest!")
+      .expect("Failure to retrieve digest!");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      let dc = DigestComputer::new(self);
+      dc.digest().expect("Failure to retrieve digest!")
+    });
+
+    res
   }
 }
 
