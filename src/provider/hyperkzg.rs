@@ -256,20 +256,6 @@ where
       .into_iter()
       .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
       .collect();
-    // TODO -> another way of doing this, maybe more readable but is it less performant?
-    // let ck: Vec<G1Affine<E>> = {
-    //   let iter = 0..num_gens;
-
-    //   #[cfg(feature = "std")]
-    //   let iter = iter.into_par_iter(); // Parallel iterator
-
-    //   #[cfg(not(feature = "std"))]
-    //   let iter = iter.into_iter(); // Sequential iterator
-
-    //   iter
-    //     .map(|i| (<E::GE as DlogGroup>::gen() * powers_of_tau[i]).affine())
-    //     .collect()
-    // };
 
     let h = E::GE::from_label(label, 1).first().unwrap().clone();
 

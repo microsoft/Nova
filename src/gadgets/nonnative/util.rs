@@ -7,7 +7,6 @@ use crate::prelude::*;
 // use byteorder::WriteBytesExt;
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
-// ! TODO -> THIS LINE IS PROBLEMATIC !!!
 #[cfg(feature = "std")]
 use std::convert::From;
 
