@@ -112,14 +112,13 @@ pub(crate) fn cpu_best_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) ->
 #[cfg(test)]
 mod tests {
   use super::cpu_best_msm;
-
   use crate::provider::{
     bn256_grumpkin::{bn256, grumpkin},
+    pasta::{pallas, vesta},
     secp_secq::{secp256k1, secq256k1},
   };
-  use group::{ff::Field, Group};
-  use halo2curves::CurveAffine;
-  use pasta_curves::{pallas, vesta};
+  use ff::Field;
+  use halo2curves::{group::Group, CurveAffine};
   use rand_core::OsRng;
 
   fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
