@@ -3,17 +3,22 @@
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
 use crate::{
+  constants::{BN_LIMB_WIDTH as LIMB_WIDTH, BN_N_LIMBS as N_LIMBS},
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
   },
-  gadgets::utils::{
-    alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
-    select_num_or_one, select_num_or_zero, select_num_or_zero2, select_one_or_diff2,
-    select_one_or_num2, select_zero_or_num2,
+  gadgets::{
+    nonnative::{bignat::BigNat, util::f_to_nat},
+    utils::{
+      alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
+      conditionally_select2, conditionally_select_bignat, select_num_or_one, select_num_or_zero,
+      select_num_or_zero2, select_one_or_diff2, select_one_or_num2, select_zero_or_num2,
+    },
   },
-  traits::{Engine, Group},
+  traits::{Engine, Group, ROCircuitTrait},
 };
 use ff::{Field, PrimeField};
+use num_bigint::BigInt;
 
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
@@ -112,17 +117,6 @@ where
       y: zero,
       is_infinity: one,
     })
-  }
-
-  /// Returns coordinates associated with the point.
-  pub const fn get_coordinates(
-    &self,
-  ) -> (
-    &AllocatedNum<E::Base>,
-    &AllocatedNum<E::Base>,
-    &AllocatedNum<E::Base>,
-  ) {
-    (&self.x, &self.y, &self.is_infinity)
   }
 
   /// Negates the provided point
@@ -596,30 +590,7 @@ pub struct AllocatedPointNonInfinity<E: Engine> {
   y: AllocatedNum<E::Base>,
 }
 
-impl<E> AllocatedPointNonInfinity<E>
-where
-  E: Engine,
-{
-  /// Creates a new `AllocatedPointNonInfinity` from the specified coordinates
-  pub const fn new(x: AllocatedNum<E::Base>, y: AllocatedNum<E::Base>) -> Self {
-    Self { x, y }
-  }
-
-  /// Allocates a new point on the curve using coordinates provided by `coords`.
-  pub fn alloc<CS: ConstraintSystem<E::Base>>(
-    mut cs: CS,
-    coords: Option<(E::Base, E::Base)>,
-  ) -> Result<Self, SynthesisError> {
-    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
-    })?;
-    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.1))
-    })?;
-
-    Ok(Self { x, y })
-  }
-
+impl<E: Engine> AllocatedPointNonInfinity<E> {
   /// Turns an `AllocatedPoint` into an `AllocatedPointNonInfinity` (assumes it is not infinity)
   pub fn from_allocated_point(p: &AllocatedPoint<E>) -> Self {
     Self {
@@ -638,11 +609,6 @@ where
       y: self.y.clone(),
       is_infinity: is_infinity.clone(),
     })
-  }
-
-  /// Returns coordinates associated with the point.
-  pub const fn get_coordinates(&self) -> (&AllocatedNum<E::Base>, &AllocatedNum<E::Base>) {
-    (&self.x, &self.y)
   }
 
   /// Add two points assuming self != +/- other
@@ -775,6 +741,117 @@ where
     let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
 
     Ok(Self { x, y })
+  }
+}
+
+// `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
+// of another curve E (specified as the group G) to prove things about points on E'.
+// `AllocatedNonnativePoint`s are always represented as affine coordinates.
+#[derive(Clone, Debug)]
+pub struct AllocatedNonnativePoint<E: Engine> {
+  pub(crate) x: BigNat<E::Scalar>,
+  pub(crate) y: BigNat<E::Scalar>,
+  pub(crate) is_infinity: AllocatedNum<E::Scalar>,
+}
+
+#[allow(dead_code)]
+impl<E: Engine> AllocatedNonnativePoint<E> {
+  pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
+    mut cs: CS,
+    coords: Option<(E::Base, E::Base, bool)>,
+  ) -> Result<Self, SynthesisError> {
+    let x = BigNat::alloc_from_nat(
+      cs.namespace(|| "x as BigNat"),
+      || Ok(coords.map_or(f_to_nat(&E::Base::ZERO), |v| f_to_nat(&v.0))),
+      LIMB_WIDTH,
+      N_LIMBS,
+    )?;
+
+    let y = BigNat::alloc_from_nat(
+      cs.namespace(|| "y as BigNat"),
+      || Ok(coords.map_or(f_to_nat(&E::Base::ZERO), |v| f_to_nat(&v.1))),
+      LIMB_WIDTH,
+      N_LIMBS,
+    )?;
+
+    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
+      Ok(if coords.map_or(true, |c| c.2) {
+        E::Scalar::ONE
+      } else {
+        E::Scalar::ZERO
+      })
+    })?;
+
+    cs.enforce(
+      || "is_infinity is bit",
+      |lc| lc + is_infinity.get_variable(),
+      |lc| lc + CS::one() - is_infinity.get_variable(),
+      |lc| lc,
+    );
+
+    Ok(Self { x, y, is_infinity })
+  }
+
+  /// Allocates a default point on the curve, set to the point at infinity.
+  pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
+  where
+    CS: ConstraintSystem<E::Scalar>,
+  {
+    let one = alloc_one(cs.namespace(|| "one"));
+    let zero = alloc_bignat_constant(
+      cs.namespace(|| "zero"),
+      &BigInt::from(0),
+      LIMB_WIDTH,
+      N_LIMBS,
+    )?;
+
+    Ok(AllocatedNonnativePoint {
+      x: zero.clone(),
+      y: zero,
+      is_infinity: one,
+    })
+  }
+
+  /// Absorb the provided instance in the RO
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::RO2Circuit,
+  ) -> Result<(), SynthesisError> {
+    for (i, limb) in self.x.as_limbs().iter().enumerate() {
+      let limb_num =
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num x")))?;
+      ro.absorb(&limb_num);
+    }
+
+    for (i, limb) in self.y.as_limbs().iter().enumerate() {
+      let limb_num =
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num y")))?;
+      ro.absorb(&limb_num);
+    }
+
+    ro.absorb(&self.is_infinity);
+
+    Ok(())
+  }
+
+  /// If condition outputs a otherwise outputs b
+  pub fn conditionally_select<CS: ConstraintSystem<E::Scalar>>(
+    mut cs: CS,
+    a: &Self,
+    b: &Self,
+    condition: &Boolean,
+  ) -> Result<Self, SynthesisError> {
+    let x = conditionally_select_bignat(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
+    let y = conditionally_select_bignat(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+    let is_infinity = conditionally_select(
+      cs.namespace(|| "select is_infinity"),
+      &a.is_infinity,
+      &b.is_infinity,
+      condition,
+    )?;
+
+    Ok(Self { x, y, is_infinity })
   }
 }
 

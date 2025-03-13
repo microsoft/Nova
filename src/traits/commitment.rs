@@ -1,10 +1,16 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::traits::{AbsorbInROTrait, Engine, TranscriptReprTrait};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+#[cfg(feature = "std")]
+use crate::provider::ptau::PtauFileError;
+use crate::traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
 };
+#[cfg(feature = "std")]
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types implementing scalar multiplication.
@@ -27,6 +33,7 @@ pub trait CommitmentTrait<E: Engine>:
   + Serialize
   + for<'de> Deserialize<'de>
   + AbsorbInROTrait<E>
+  + AbsorbInRO2Trait<E>
   + Add<Self, Output = Self>
   + ScalarMul<E::Scalar>
 {
@@ -53,6 +60,13 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Holds the type of the commitment
   type Commitment: CommitmentTrait<E>;
 
+  /// Load keys
+  #[cfg(feature = "std")]
+  fn load_setup(
+    reader: &mut (impl std::io::Read + std::io::Seek),
+    n: usize,
+  ) -> Result<Self::CommitmentKey, PtauFileError>;
+
   /// Samples a new commitment key of a specified size
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
 
@@ -61,6 +75,28 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
 
   /// Commits to the provided vector using the provided generators and random blind
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment;
+
+  /// Batch commits to the provided vectors using the provided generators and random blind
+  fn batch_commit(
+    ck: &Self::CommitmentKey,
+    v: &[Vec<E::Scalar>],
+    r: &[E::Scalar],
+  ) -> Vec<Self::Commitment> {
+    assert!(v.len() == r.len());
+    #[cfg(feature = "std")]
+    let res = v
+      .par_iter()
+      .zip(r.par_iter())
+      .map(|(v_i, r_i)| Self::commit(ck, v_i, r_i))
+      .collect();
+    #[cfg(not(feature = "std"))]
+    let res = v
+      .iter()
+      .zip(r.iter())
+      .map(|(v_i, r_i)| Self::commit(ck, v_i, r_i))
+      .collect();
+    res
+  }
 
   /// Remove given blind from commitment
   fn derandomize(

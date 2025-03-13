@@ -63,7 +63,7 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigNatParams {
   pub min_bits: usize,
   pub max_word: BigInt,
@@ -85,7 +85,7 @@ impl BigNatParams {
 }
 
 /// A representation of a large natural number (a member of {0, 1, 2, ... })
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BigNat<Scalar: PrimeField> {
   /// The linear combinations which constrain the value of each limb of the number
   pub limbs: Vec<LinearCombination<Scalar>>,

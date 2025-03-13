@@ -2,14 +2,13 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
   impl_traits,
-  provider::traits::DlogGroup,
+  provider::{msm::cpu_best_msm, traits::DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
 use ff::FromUniformBytes;
 use halo2curves::{
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
-  msm::msm_best,
   pasta::{Pallas, PallasAffine, Vesta, VestaAffine},
   CurveAffine, CurveExt,
 };

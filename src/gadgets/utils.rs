@@ -3,10 +3,12 @@ use super::nonnative::bignat::{nat_to_limbs, BigNat};
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
 use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, LinearCombination,
     SynthesisError,
   },
+  gadgets::nonnative::util::f_to_nat,
   traits::Engine,
 };
 use ff::{Field, PrimeField, PrimeFieldBits};
@@ -95,17 +97,38 @@ where
 }
 
 /// interpret scalar as base
+/// Only to be used is the scalar fits in base!
 pub fn scalar_as_base<E: Engine>(input: E::Scalar) -> E::Base {
-  let input_bits = input.to_le_bits();
-  let mut mult = E::Base::ONE;
-  let mut val = E::Base::ZERO;
+  field_switch::<E::Scalar, E::Base>(input)
+}
+
+/// interpret base as scalar
+/// Only to be used is the scalar fits in base!
+pub fn base_as_scalar<E: Engine>(input: E::Base) -> E::Scalar {
+  field_switch::<E::Base, E::Scalar>(input)
+}
+
+/// Switch between two fields
+pub fn field_switch<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(x: F1) -> F2 {
+  let input_bits = x.to_le_bits();
+  let mut mult = F2::ONE;
+  let mut val = F2::ZERO;
   for bit in input_bits {
     if bit {
       val += mult;
     }
-    mult = mult + mult;
+    mult += mult;
   }
   val
+}
+
+/// Provide a bignat representation of one field in another field
+pub fn to_bignat_repr<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(x: &F1) -> Vec<F2> {
+  let limbs: Vec<F1> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+  limbs
+    .iter()
+    .map(|limb| field_switch::<F1, F2>(*limb))
+    .collect()
 }
 
 /// Allocate bignat a constant

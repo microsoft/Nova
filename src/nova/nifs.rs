@@ -3,9 +3,9 @@
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  gadgets::utils::scalar_as_base,
+  gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  traits::{AbsorbInROTrait, Engine, ROTrait},
+  traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
 };
 use ff::Field;
@@ -17,16 +17,13 @@ use rand_core::OsRng;
 use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
-/// A SNARK that holds the proof of a step of an incremental computation
+/// An NIFS message from Nova's folding scheme
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct NIFS<E: Engine> {
   pub(crate) comm_T: Commitment<E>,
 }
-
-type ROConstants<E> =
-  <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants;
 
 impl<E: Engine> NIFS<E> {
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
@@ -72,7 +69,7 @@ impl<E: Engine> NIFS<E> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS));
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r);
@@ -112,7 +109,7 @@ impl<E: Engine> NIFS<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold(U2, &self.comm_T, &r);
+    let U = U1.fold(U2, &self.comm_T, &base_as_scalar::<E>(r));
 
     // return the folded instance
     Ok(U)
@@ -132,7 +129,7 @@ impl<E: Engine> NIFSRelaxed<E> {
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
-    pp_digest: &E::Scalar,
+    vk: &E::Scalar,
     S: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
     W1: &RelaxedR1CSWitness<E>,
@@ -148,8 +145,8 @@ impl<E: Engine> NIFSRelaxed<E> {
     // initialize a new RO
     let mut ro = E::RO::new(ro_consts.clone());
 
-    // append the digest of pp to the transcript
-    ro.absorb(scalar_as_base::<E>(*pp_digest));
+    // append vk to the transcript
+    ro.absorb(scalar_as_base::<E>(*vk));
 
     // append U1 to transcript
     // (this function is only used when folding in random instance)
@@ -176,10 +173,10 @@ impl<E: Engine> NIFSRelaxed<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &comm_T, &r);
+    let U = U1.fold_relaxed(U2, &comm_T, &base_as_scalar::<E>(r));
 
     // fold the witness using `r` and `T`
-    let W = W1.fold_relaxed(W2, &T, &r_T, &r)?;
+    let W = W1.fold_relaxed(W2, &T, &r_T, &base_as_scalar::<E>(r))?;
 
     // return the folded instance and witness
     Ok((Self { comm_T }, (U, W)))
@@ -213,7 +210,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
 
     // fold the instance using `r` and `comm_T`
-    let U = U1.fold_relaxed(U2, &self.comm_T, &r);
+    let U = U1.fold_relaxed(U2, &self.comm_T, &base_as_scalar::<E>(r));
 
     // return the folded instance
     Ok(U)
@@ -232,8 +229,8 @@ mod tests {
       ConstraintSystem, SynthesisError,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
-    r1cs::{SparseMatrix, R1CS},
-    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine},
+    r1cs::SparseMatrix,
+    traits::{commitment::CommitmentEngineTrait, snark::default_ck_hint, Engine, ROConstants},
   };
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;
@@ -276,8 +273,7 @@ mod tests {
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ro_consts = ROConstants::<E>::default();
 
     // Now get the instance and assignment for one instance
     let mut cs = SatisfyingAssignment::<E>::new();
@@ -317,7 +313,7 @@ mod tests {
 
   fn execute_sequence<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &ROConstants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &R1CSInstance<E>,
@@ -371,7 +367,7 @@ mod tests {
 
   fn execute_sequence_relaxed<E: Engine>(
     ck: &CommitmentKey<E>,
-    ro_consts: &<<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants,
+    ro_consts: &ROConstants<E>,
     pp_digest: &<E as Engine>::Scalar,
     shape: &R1CSShape<E>,
     U1: &RelaxedR1CSInstance<E>,
@@ -519,9 +515,8 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<E>::commitment_key(&S, &*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ck = S.commitment_key(&*default_ck_hint());
+    let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {
@@ -656,9 +651,8 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CS::<E>::commitment_key(&S, &*default_ck_hint());
-    let ro_consts =
-      <<E as Engine>::RO as ROTrait<<E as Engine>::Base, <E as Engine>::Scalar>>::Constants::default();
+    let ck = S.commitment_key(&*default_ck_hint());
+    let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
       |ck: &CommitmentKey<E>, I: &E::Scalar| -> (E::Scalar, R1CSInstance<E>, R1CSWitness<E>) {

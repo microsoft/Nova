@@ -36,7 +36,6 @@ bincode = { version = "2.0.0-rc.3", default-features = false, features = [
     "derive",
     "serde",
 ] }
-byteorder = { version = "1.4.3", default-features = false }
 bitvec = { version = "1.0", default-features = false }
 thiserror = { version = "2.0.11", default-features = false }
 itertools = { version = "0.14.0", default-features = false }
@@ -52,6 +51,8 @@ halo2curves = { version = "0.8.0", features = [
     "derive_serde",
 ], optional = true }
 once_cell = { version = "1.18.0", optional = true }
+byteorder = { version = "1.4.3", optional = true }
+
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.15", default-features = false, features = [
@@ -78,10 +79,6 @@ name = "compressed-snark"
 harness = false
 
 [[bench]]
-name = "compute-digest"
-harness = false
-
-[[bench]]
 name = "sha256"
 harness = false
 
@@ -91,6 +88,7 @@ harness = false
 
 [features]
 default = ["std"]
-std = ["halo2curves", "rayon", "getrandom", "once_cell"]
+std = ["halo2curves", "rayon", "getrandom", "once_cell", "byteorder"]
 asm = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
+experimental = []

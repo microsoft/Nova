@@ -10,11 +10,12 @@ use crate::{
     utils::scalar_as_base,
   },
   traits::{
-    commitment::CommitmentEngineTrait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
+    commitment::CommitmentEngineTrait, AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait,
+    TranscriptReprTrait,
   },
   Commitment, CommitmentKey, DerandKey, CE,
 };
-use core::{cmp::max, marker::PhantomData};
+use core::cmp::max;
 use ff::Field;
 #[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
@@ -31,13 +32,6 @@ use serde::{Deserialize, Serialize};
 
 mod sparse;
 pub(crate) use sparse::SparseMatrix;
-
-/// Public parameters for a given R1CS
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(bound = "")]
-pub struct R1CS<E: Engine> {
-  _p: PhantomData<E>,
-}
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,8 +51,8 @@ impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSWitness<E: Engine> {
-  W: Vec<E::Scalar>,
-  r_W: E::Scalar,
+  pub(crate) W: Vec<E::Scalar>,
+  pub(crate) r_W: E::Scalar,
 }
 
 /// A type that holds an R1CS instance
@@ -89,26 +83,6 @@ pub struct RelaxedR1CSInstance<E: Engine> {
 }
 
 pub type CommitmentKeyHint<E> = dyn Fn(&R1CSShape<E>) -> usize;
-
-impl<E: Engine> R1CS<E> {
-  /// Generates public parameters for a Rank-1 Constraint System (R1CS).
-  ///
-  /// This function takes into consideration the shape of the R1CS matrices and a hint function
-  /// for the number of generators. It returns a `CommitmentKey`.
-  ///
-  /// # Arguments
-  ///
-  /// * `S`: The shape of the R1CS matrices.
-  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
-  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
-  ///
-  pub fn commitment_key(S: &R1CSShape<E>, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
-    let num_cons = S.num_cons;
-    let num_vars = S.num_vars;
-    let ck_hint = ck_floor(S);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
-  }
-}
 
 impl<E: Engine> R1CSShape<E> {
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
@@ -149,6 +123,24 @@ impl<E: Engine> R1CSShape<E> {
       C,
       digest: OnceCell::new(),
     })
+  }
+
+  /// Generates public parameters for a Rank-1 Constraint System (R1CS).
+  ///
+  /// This function takes into consideration the shape of the R1CS matrices and a hint function
+  /// for the number of generators. It returns a `CommitmentKey`.
+  ///
+  /// # Arguments
+  ///
+  /// * `S`: The shape of the R1CS matrices.
+  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
+  ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
+  ///
+  pub fn commitment_key(&self, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
+    let num_cons = self.num_cons;
+    let num_vars = self.num_vars;
+    let ck_hint = ck_floor(self);
+    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 
   /// returned the digest of the `R1CSShape`
@@ -238,11 +230,19 @@ impl<E: Engine> R1CSShape<E> {
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
-    if res_eq && res_comm {
-      Ok(())
-    } else {
-      Err(NovaError::UnSat)
+    if !res_eq {
+      return Err(NovaError::UnSat {
+        reason: "Relaxed R1CS is unsatisfiable".to_string(),
+      });
     }
+
+    if !res_comm {
+      return Err(NovaError::UnSat {
+        reason: "Invalid commitments".to_string(),
+      });
+    }
+
+    Ok(())
   }
 
   /// Checks if the R1CS instance is satisfiable given a witness and its shape
@@ -269,11 +269,19 @@ impl<E: Engine> R1CSShape<E> {
     // verify if comm_W is a commitment to W
     let res_comm = U.comm_W == CE::<E>::commit(ck, &W.W, &W.r_W);
 
-    if res_eq && res_comm {
-      Ok(())
-    } else {
-      Err(NovaError::UnSat)
+    if !res_eq {
+      return Err(NovaError::UnSat {
+        reason: "R1CS is unsatisfiable".to_string(),
+      });
     }
+
+    if !res_comm {
+      return Err(NovaError::UnSat {
+        reason: "Invalid commitment".to_string(),
+      });
+    }
+
+    Ok(())
   }
 
   /// A method to compute a commitment to the cross-term `T` given a
@@ -531,22 +539,29 @@ impl<E: Engine> R1CSShape<E> {
 impl<E: Engine> R1CSWitness<E> {
   /// A method to create a witness object using a vector of scalars
   pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
-    if S.num_vars != W.len() {
-      Err(NovaError::InvalidWitnessLength)
-    } else {
-      Ok(R1CSWitness {
-        W: W.to_owned(),
-        #[cfg(feature = "std")]
-        r_W: E::Scalar::random(&mut OsRng),
-        #[cfg(not(feature = "std"))]
-        r_W: E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)),
-      })
-    }
+    let mut W = W.to_vec();
+    W.resize(S.num_vars, E::Scalar::ZERO);
+
+    Ok(R1CSWitness {
+      W,
+      #[cfg(feature = "std")]
+      r_W: E::Scalar::random(&mut OsRng),
+      #[cfg(not(feature = "std"))]
+      r_W: E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)),
+    })
   }
 
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)
+  }
+
+  /// Pads the provided witness to the correct length
+  pub fn pad(&self, S: &R1CSShape<E>) -> R1CSWitness<E> {
+    let mut W = self.W.clone();
+    W.extend(vec![E::Scalar::ZERO; S.num_vars - W.len()]);
+
+    Self { W, r_W: self.r_W }
   }
 }
 
@@ -571,8 +586,22 @@ impl<E: Engine> R1CSInstance<E> {
 impl<E: Engine> AbsorbInROTrait<E> for R1CSInstance<E> {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     self.comm_W.absorb_in_ro(ro);
+
+    // In Nova's folding scheme, the public IO of the R1CS instance only contains hashes
+    // These hashes have unique representations in the base field
     for x in &self.X {
       ro.absorb(scalar_as_base::<E>(*x));
+    }
+  }
+}
+
+impl<E: Engine> AbsorbInRO2Trait<E> for R1CSInstance<E> {
+  fn absorb_in_ro2(&self, ro: &mut E::RO2) {
+    // we have to absorb the commitment to W in RO2
+    self.comm_W.absorb_in_ro2(ro);
+
+    for x in &self.X {
+      ro.absorb(*x);
     }
   }
 }
@@ -981,10 +1010,10 @@ mod tests {
   }
 
   fn test_random_sample_with<E: Engine>() {
-    let r1cs = tiny_r1cs::<E>(4);
-    let ck = R1CS::<E>::commitment_key(&r1cs, &*default_ck_hint());
-    let (inst, wit) = r1cs.sample_random_instance_witness(&ck).unwrap();
-    assert!(r1cs.is_sat_relaxed(&ck, &inst, &wit).is_ok());
+    let S = tiny_r1cs::<E>(4);
+    let ck = S.commitment_key(&*default_ck_hint());
+    let (inst, wit) = S.sample_random_instance_witness(&ck).unwrap();
+    assert!(S.is_sat_relaxed(&ck, &inst, &wit).is_ok());
   }
 
   #[test]

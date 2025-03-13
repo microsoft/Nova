@@ -2,7 +2,10 @@
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
   impl_traits,
-  provider::traits::{DlogGroup, PairingGroup},
+  provider::{
+    msm::cpu_best_msm,
+    traits::{DlogGroup, PairingGroup},
+  },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
@@ -11,7 +14,6 @@ use halo2curves::{
   bn256::{Bn256, G1Affine as Bn256Affine, G2Affine, G2Compressed, Gt, G1 as Bn256Point, G2},
   group::{cofactor::CofactorCurveAffine, Curve, Group as AnotherGroup},
   grumpkin::{G1Affine as GrumpkinAffine, G1 as GrumpkinPoint},
-  msm::msm_best,
   pairing::Engine as H2CEngine,
   CurveAffine, CurveExt,
 };
@@ -82,7 +84,7 @@ impl DlogGroup for G2 {
   type AffineGroupElement = G2Affine;
 
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
-    msm_best(scalars, bases)
+    cpu_best_msm(scalars, bases)
   }
 
   fn affine(&self) -> Self::AffineGroupElement {

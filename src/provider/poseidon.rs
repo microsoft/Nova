@@ -12,7 +12,6 @@ use crate::{
   },
   traits::{ROCircuitTrait, ROTrait},
 };
-use core::marker::PhantomData;
 use ff::{PrimeField, PrimeFieldBits};
 use generic_array::typenum::U24;
 use serde::{Deserialize, Serialize};
@@ -30,22 +29,15 @@ impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
 
 /// A Poseidon-based RO to use outside circuits
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonRO<Base, Scalar>
-where
-  Base: PrimeField,
-  Scalar: PrimeField,
-{
-  // Internal State
+pub struct PoseidonRO<Base: PrimeField> {
+  // internal State
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
-  squeezed: bool,
-  _p: PhantomData<Scalar>,
 }
 
-impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
+impl<Base> ROTrait<Base> for PoseidonRO<Base>
 where
   Base: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
-  Scalar: PrimeField,
 {
   type CircuitRO = PoseidonROCircuit<Base>;
   type Constants = PoseidonConstantsCircuit<Base>;
@@ -54,23 +46,16 @@ where
     Self {
       state: Vec::new(),
       constants,
-      squeezed: false,
-      _p: PhantomData,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: Base) {
-    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e);
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze(&mut self, num_bits: usize) -> Scalar {
-    // check if we have squeezed already
-    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
-    self.squeezed = true;
-
+  fn squeeze(&mut self, num_bits: usize) -> Base {
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -83,10 +68,13 @@ where
     let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
     sponge.finish(acc).unwrap();
 
+    // reset the state to only contain the squeezed value
+    self.state = vec![hash[0]];
+
     // Only return `num_bits`
     let bits = hash[0].to_le_bits();
-    let mut res = Scalar::ZERO;
-    let mut coeff = Scalar::ONE;
+    let mut res = Base::ZERO;
+    let mut coeff = Base::ONE;
     for bit in bits[0..num_bits].into_iter() {
       if *bit {
         res += coeff;
@@ -103,14 +91,13 @@ pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
-  squeezed: bool,
 }
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
 where
   Scalar: PrimeField + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
-  type NativeRO<T: PrimeField> = PoseidonRO<Scalar, T>;
+  type NativeRO = PoseidonRO<Scalar>;
   type Constants = PoseidonConstantsCircuit<Scalar>;
 
   /// Initialize the internal state and set the poseidon constants
@@ -118,13 +105,11 @@ where
     Self {
       state: Vec::new(),
       constants,
-      squeezed: false,
     }
   }
 
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: &AllocatedNum<Scalar>) {
-    assert!(!self.squeezed, "Cannot absorb after squeezing");
     self.state.push(e.clone());
   }
 
@@ -134,9 +119,6 @@ where
     mut cs: CS,
     num_bits: usize,
   ) -> Result<Vec<AllocatedBit>, SynthesisError> {
-    // check if we have squeezed already
-    assert!(!self.squeezed, "Cannot squeeze again after squeezing");
-    self.squeezed = true;
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.state.len() as u32),
       SpongeOp::Squeeze(1u32),
@@ -164,6 +146,9 @@ where
 
     let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
 
+    // reset the state to only contain the squeezed value
+    self.state = vec![hash.clone()];
+
     // return the hash as a vector of bits, truncated
     Ok(
       hash
@@ -174,7 +159,7 @@ where
           _ => panic!("Wrong type of input. We should have never reached there"),
         })
         .collect::<Vec<AllocatedBit>>()[..num_bits]
-        .into(),
+        .to_vec(),
     )
   }
 }
@@ -186,7 +171,6 @@ mod tests {
     constants::NUM_CHALLENGE_BITS,
     frontend::solver::SatisfyingAssignment,
     gadgets::utils::le_bits_to_num,
-    gadgets::utils::scalar_as_base,
     provider::{
       Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
@@ -200,7 +184,7 @@ mod tests {
     let mut csprng: OsRng = OsRng;
     let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<E::Scalar, E::Base> = PoseidonRO::new(constants.clone());
+    let mut ro: PoseidonRO<E::Scalar> = PoseidonRO::new(constants.clone());
     let mut ro_gadget: PoseidonROCircuit<E::Scalar> = PoseidonROCircuit::new(constants);
     let mut cs = SatisfyingAssignment::<E>::new();
     for i in 0..num_absorbs {
@@ -215,7 +199,7 @@ mod tests {
     let num = ro.squeeze(NUM_CHALLENGE_BITS);
     let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
     let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
-    assert_eq!(num, scalar_as_base::<E>(num2.get_value().unwrap()));
+    assert_eq!(num, num2.get_value().unwrap());
   }
 
   #[test]

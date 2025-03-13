@@ -5,6 +5,12 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
+#[cfg(feature = "std")]
+use halo2curves::{serde::SerdeObject, CurveAffine};
+#[cfg(not(feature = "std"))]
+use pasta_curves::arithmetic::CurveAffine;
+#[cfg(feature = "std")]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -36,6 +42,7 @@ pub trait DlogGroup:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
+  #[cfg(feature = "std")]
   /// A type representing preprocessed group element
   type AffineGroupElement: Clone
     + Debug
@@ -45,10 +52,43 @@ pub trait DlogGroup:
     + Sync
     + Serialize
     + for<'de> Deserialize<'de>
-    + TranscriptReprTrait<Self>;
+    + TranscriptReprTrait<Self>
+    + CurveAffine
+    + SerdeObject;
+  #[cfg(not(feature = "std"))]
+  /// A type representing preprocessed group element
+  type AffineGroupElement: Clone
+    + Debug
+    + PartialEq
+    + Eq
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + TranscriptReprTrait<Self>
+    + CurveAffine;
 
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
+
+  /// A method to compute a batch of multiexponentations
+  fn batch_vartime_multiscalar_mul(
+    scalars: &[Vec<Self::Scalar>],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    #[cfg(feature = "std")]
+    let res = scalars
+      .par_iter()
+      .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
+      .collect::<Vec<_>>();
+    #[cfg(not(feature = "std"))]
+    let res = scalars
+      .iter()
+      .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
+      .collect::<Vec<_>>();
+
+    res
+  }
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
@@ -113,7 +153,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_best(scalars, bases)
+        cpu_best_msm(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {

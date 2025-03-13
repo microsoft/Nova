@@ -13,7 +13,7 @@ pub mod snark;
 mod macros;
 pub(crate) mod math;
 pub(crate) mod polys;
-mod sumcheck;
+pub(crate) mod sumcheck;
 
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
