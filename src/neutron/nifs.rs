@@ -503,8 +503,7 @@ mod tests {
   }
 }
 
-#[allow(dead_code)]
-#[cfg(test)] // Ensure benchmarks are only included during testing
+#[cfg(test)]
 mod benchmarks {
   use super::*;
   use crate::{
