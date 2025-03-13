@@ -398,10 +398,7 @@ mod tests {
       let coeffs: Vec<u64> = (0..n)
         .map(|_| rand::random::<u64>() % (1 << bit_width))
         .collect::<Vec<_>>();
-      let coeffs_scalar: Vec<F> = coeffs
-        .iter()
-        .map(|b| F::from(*b))
-        .collect::<Vec<_>>();
+      let coeffs_scalar: Vec<F> = coeffs.iter().map(|b| F::from(*b)).collect::<Vec<_>>();
       let general = msm_generic(&coeffs_scalar, &bases);
       let integer = msm_integer(&coeffs, &bases);
 
