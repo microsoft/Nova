@@ -8,7 +8,7 @@ use halo2curves::{
   group::Curve,
   msm::msm_best,
 };
-use nova_snark::provider::msm::msm_generic;
+use nova_snark::provider::msm::{msm_generic, msm_integer};
 use rand::Rng;
 use rayon::prelude::*;
 
@@ -108,7 +108,7 @@ fn bench_commit(c: &mut Criterion) {
 
   // random scalars in the set {0, ..., p-1}, where p is the modulus for the
   // scalar field of BN254
-  let scalars_random = (0..max)
+  let scalars_random_field = (0..max)
     .into_par_iter()
     .map(|_| {
       let mut rng = rand::thread_rng();
@@ -126,12 +126,20 @@ fn bench_commit(c: &mut Criterion) {
       b.iter(|| black_box(msm_generic(&scalars_u1_field[..size], &bases[..size])))
     });
 
+    c.bench_function(&format!("nova_specialized_commit_u1_{size}"), |b| {
+      b.iter(|| black_box(msm_integer(&scalars_u1[..size], &bases[..size])))
+    });
+
     c.bench_function(&format!("halo2curves_commit_u10_{size}"), |b| {
       b.iter(|| black_box(msm_best(&scalars_u10_field[..size], &bases[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u10_{size}"), |b| {
       b.iter(|| black_box(msm_generic(&scalars_u10_field[..size], &bases[..size])))
+    });
+
+    c.bench_function(&format!("nova_specialized_commit_u10_{size}"), |b| {
+      b.iter(|| black_box(msm_integer(&scalars_u10[..size], &bases[..size])))
     });
 
     c.bench_function(&format!("halo2curves_commit_u16_{size}"), |b| {
@@ -142,12 +150,20 @@ fn bench_commit(c: &mut Criterion) {
       b.iter(|| black_box(msm_generic(&scalars_u16_field[..size], &bases[..size])))
     });
 
+    c.bench_function(&format!("nova_specialized_commit_u16_{size}"), |b| {
+      b.iter(|| black_box(msm_integer(&scalars_u16[..size], &bases[..size])))
+    });
+
     c.bench_function(&format!("halo2curves_commit_u32_{size}"), |b| {
       b.iter(|| black_box(msm_best(&scalars_u32_field[..size], &bases[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u32_{size}"), |b| {
       b.iter(|| black_box(msm_generic(&scalars_u32_field[..size], &bases[..size])))
+    });
+
+    c.bench_function(&format!("nova_specialized_commit_u32_{size}"), |b| {
+      b.iter(|| black_box(msm_integer(&scalars_u32[..size], &bases[..size])))
     });
 
     c.bench_function(&format!("halo2curves_commit_u64_{size}"), |b| {
@@ -158,12 +174,16 @@ fn bench_commit(c: &mut Criterion) {
       b.iter(|| black_box(msm_generic(&scalars_u64_field[..size], &bases[..size])))
     });
 
+    c.bench_function(&format!("nova_specialized_commit_u64_{size}"), |b| {
+      b.iter(|| black_box(msm_integer(&scalars_u64[..size], &bases[..size])))
+    });
+
     c.bench_function(&format!("halo2curves_commit_random_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_random[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_random_field[..size], &bases[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_random_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_random[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_random_field[..size], &bases[..size])))
     });
 
     size *= 4;
