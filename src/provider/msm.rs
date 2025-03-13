@@ -154,11 +154,11 @@ fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> 
   assert_eq!(scalars.len(), bases.len());
   let num_threads = current_num_threads();
   let process_chunk = |scalars: &[T], bases: &[C]| {
-    let mut acc = C::Curve::identity().into();
+    let mut acc = C::Curve::identity();
     scalars
       .iter()
       .zip(bases.iter())
-      .filter(|(scalar, _)| (!scalar.is_zero()).into())
+      .filter(|(scalar, _)| (!scalar.is_zero()))
       .for_each(|(_, base)| {
         acc += *base;
       });
@@ -243,7 +243,7 @@ fn msm_medium<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
     let zero = C::Curve::identity();
 
     let scalars_and_bases_iter = scalars.iter().zip(bases).filter(|(s, _base)| !s.is_zero());
-    let window_starts = (0..max_num_bits).into_iter().step_by(c);
+    let window_starts = (0..max_num_bits).step_by(c);
 
     // Each window is of size `c`.
     // We divide up the bits 0..num_bits into windows of size `c`, and
@@ -400,7 +400,7 @@ mod tests {
         .collect::<Vec<_>>();
       let coeffs_scalar: Vec<F> = coeffs
         .iter()
-        .map(|b| F::from(*b as u64))
+        .map(|b| F::from(*b))
         .collect::<Vec<_>>();
       let general = msm_generic(&coeffs_scalar, &bases);
       let integer = msm_integer(&coeffs, &bases);
