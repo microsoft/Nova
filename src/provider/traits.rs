@@ -126,7 +126,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_best(scalars, bases)
+        cpu_best_msm(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {
