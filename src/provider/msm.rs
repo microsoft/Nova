@@ -1,8 +1,33 @@
 //! This module provides a multi-scalar multiplication routine
 /// Adapted from zcash/halo2
-use ff::PrimeField;
+use ff::{Field, PrimeField};
 use halo2curves::{group::Group, CurveAffine};
 use rayon::{current_num_threads, prelude::*};
+
+#[derive(Clone, Copy)]
+enum Bucket<C: CurveAffine> {
+  None,
+  Affine(C),
+  Projective(C::Curve),
+}
+
+impl<C: CurveAffine> Bucket<C> {
+  fn add_assign(&mut self, other: &C) {
+    *self = match *self {
+      Bucket::None => Bucket::Affine(*other),
+      Bucket::Affine(a) => Bucket::Projective(a + *other),
+      Bucket::Projective(a) => Bucket::Projective(a + other),
+    }
+  }
+
+  fn add(self, other: C::Curve) -> C::Curve {
+    match self {
+      Bucket::None => other,
+      Bucket::Affine(a) => other + a,
+      Bucket::Projective(a) => other + a,
+    }
+  }
+}
 
 fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   let c = if bases.len() < 4 {
@@ -33,58 +58,47 @@ fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve
     tmp as usize
   }
 
-  let segments = (256 / c) + 1;
-
-  (0..segments)
-    .rev()
-    .fold(C::Curve::identity(), |mut acc, segment| {
-      (0..c).for_each(|_| acc = acc.double());
-
-      #[derive(Clone, Copy)]
-      enum Bucket<C: CurveAffine> {
-        None,
-        Affine(C),
-        Projective(C::Curve),
-      }
-
-      impl<C: CurveAffine> Bucket<C> {
-        fn add_assign(&mut self, other: &C) {
-          *self = match *self {
-            Bucket::None => Bucket::Affine(*other),
-            Bucket::Affine(a) => Bucket::Projective(a + *other),
-            Bucket::Projective(a) => Bucket::Projective(a + other),
-          }
-        }
-
-        fn add(self, other: C::Curve) -> C::Curve {
-          match self {
-            Bucket::None => other,
-            Bucket::Affine(a) => other + a,
-            Bucket::Projective(a) => other + a,
-          }
-        }
-      }
-
-      let mut buckets = vec![Bucket::None; (1 << c) - 1];
-
-      for (coeff, base) in coeffs.iter().zip(bases.iter()) {
-        let coeff = get_at::<C::Scalar>(segment, c, &coeff.to_repr());
-        if coeff != 0 {
-          buckets[coeff - 1].add_assign(base);
-        }
-      }
-
-      // Summation by parts
-      // e.g. 3a + 2b + 1c = a +
-      //                    (a) + b +
-      //                    ((a) + b) + c
-      let mut running_sum = C::Curve::identity();
-      for exp in buckets.into_iter().rev() {
-        running_sum = exp.add(running_sum);
-        acc += &running_sum;
-      }
+  let boolean_sum = coeffs
+    .iter()
+    .zip(bases.iter())
+    .filter(|(scalar, _)| *scalar == &C::Scalar::ONE)
+    .fold(C::Curve::identity(), |mut acc, (_, base)| {
+      acc += *base;
       acc
-    })
+    });
+  let non_boolean_sum = {
+    let segments = (256 / c) + 1;
+    (0..segments)
+      .rev()
+      .fold(C::Curve::identity(), |mut acc, segment| {
+        (0..c).for_each(|_| acc = acc.double());
+
+        let mut buckets = vec![Bucket::None; (1 << c) - 1];
+
+        for (coeff, base) in coeffs.iter().zip(bases.iter()) {
+          // skip Booleans
+          if *coeff != C::Scalar::ZERO && *coeff != C::Scalar::ONE {
+            let coeff = get_at::<C::Scalar>(segment, c, &coeff.to_repr());
+            if coeff != 0 {
+              buckets[coeff - 1].add_assign(base);
+            }
+          }
+        }
+
+        // Summation by parts
+        // e.g. 3a + 2b + 1c = a +
+        //                    (a) + b +
+        //                    ((a) + b) + c
+        let mut running_sum = C::Curve::identity();
+        for exp in buckets.into_iter().rev() {
+          running_sum = exp.add(running_sum);
+          acc += &running_sum;
+        }
+        acc
+      })
+  };
+
+  boolean_sum + non_boolean_sum
 }
 
 /// Performs a multi-scalar-multiplication operation without GPU acceleration.
@@ -93,7 +107,7 @@ fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve
 ///
 /// This will use multithreading if beneficial.
 /// Adapted from zcash/halo2
-pub(crate) fn cpu_best_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+pub fn msm_generic<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   assert_eq!(coeffs.len(), bases.len());
 
   let num_threads = current_num_threads();
@@ -111,7 +125,7 @@ pub(crate) fn cpu_best_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) ->
 
 #[cfg(test)]
 mod tests {
-  use super::cpu_best_msm;
+  use super::*;
   use crate::provider::{
     bn256_grumpkin::{bn256, grumpkin},
     pasta::{pallas, vesta},
@@ -121,30 +135,32 @@ mod tests {
   use halo2curves::{group::Group, CurveAffine};
   use rand_core::OsRng;
 
-  fn test_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
+  fn test_general_msm_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
     let n = 8;
     let coeffs = (0..n).map(|_| F::random(OsRng)).collect::<Vec<_>>();
     let bases = (0..n)
       .map(|_| A::from(A::generator() * F::random(OsRng)))
       .collect::<Vec<_>>();
+
+    assert_eq!(coeffs.len(), bases.len());
     let naive = coeffs
       .iter()
       .zip(bases.iter())
       .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
         acc + *base * coeff
       });
-    let msm = cpu_best_msm(&coeffs, &bases);
+    let msm = msm_generic(&coeffs, &bases);
 
     assert_eq!(naive, msm)
   }
 
   #[test]
-  fn test_msm() {
-    test_msm_with::<pallas::Scalar, pallas::Affine>();
-    test_msm_with::<vesta::Scalar, vesta::Affine>();
-    test_msm_with::<bn256::Scalar, bn256::Affine>();
-    test_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
-    test_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
-    test_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
+  fn test_general_msm() {
+    test_general_msm_with::<pallas::Scalar, pallas::Affine>();
+    test_general_msm_with::<vesta::Scalar, vesta::Affine>();
+    test_general_msm_with::<bn256::Scalar, bn256::Affine>();
+    test_general_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
+    test_general_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
+    test_general_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
   }
 }

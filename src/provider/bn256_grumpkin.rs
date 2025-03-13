@@ -2,7 +2,7 @@
 use crate::{
   impl_traits,
   provider::{
-    msm::cpu_best_msm,
+    msm::msm_generic,
     traits::{DlogGroup, PairingGroup},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
@@ -83,7 +83,7 @@ impl DlogGroup for G2 {
   type AffineGroupElement = G2Affine;
 
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
-    cpu_best_msm(scalars, bases)
+    msm_generic(scalars, bases)
   }
 
   fn affine(&self) -> Self::AffineGroupElement {
