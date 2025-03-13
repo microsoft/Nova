@@ -1,5 +1,5 @@
 //! Benchmarking the commit times for hyperkzg over BN254 field using
-//! halo2curves library
+//! halo2curves library and the Nova-provided MSM routine, on a range of scalar bit-widths
 use core::{ops::Mul, time::Duration};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use halo2curves::{
