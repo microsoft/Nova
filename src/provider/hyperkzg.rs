@@ -758,7 +758,7 @@ where
     //////////////// begin helper closures //////////
     let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
       // On input f(x) and u compute the witness polynomial used to prove
-      // that f(u) = v. The main part of this is to compute the
+          // that f(u) = v. The main part of this is to compute the
       // division (f(x) - f(u)) / (x - u), but we don't use a general
       // division algorithm, we make use of the fact that the division
       // never has a remainder, and that the denominator is always a linear
