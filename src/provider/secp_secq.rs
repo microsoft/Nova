@@ -1,7 +1,7 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
 use crate::{
   impl_traits,
-  provider::{msm::cpu_best_msm, traits::DlogGroup},
+  provider::{msm::msm_generic, traits::DlogGroup},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
