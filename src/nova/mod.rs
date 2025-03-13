@@ -30,7 +30,7 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
-mod nifs;
+pub(crate) mod nifs;
 
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
 use nifs::{NIFSRelaxed, NIFS};

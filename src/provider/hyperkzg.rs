@@ -103,7 +103,7 @@ pub struct Commitment<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  comm: <E as Engine>::GE,
+  pub(crate) comm: <E as Engine>::GE,
 }
 
 impl<E: Engine> Commitment<E>
