@@ -10,8 +10,7 @@ use crate::{
 };
 use ff::Field;
 use itertools::Itertools as _;
-#[cfg(feature = "std")]
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// Defines a trait for implementing sum-check in a generic manner
@@ -134,10 +133,7 @@ impl<E: Engine> SumcheckProof<E> {
     let len = poly_A.len() / 2;
     let iter = 0..len;
 
-    #[cfg(feature = "std")]
     let iter = iter.into_par_iter();
-    #[cfg(not(feature = "std"))]
-    let iter = iter.into_iter();
 
     let eval_fn = |i| {
       let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
@@ -268,24 +264,8 @@ impl<E: Engine> SumcheckProof<E> {
     for current_round in 0..num_rounds_max {
       let remaining_rounds = num_rounds_max - current_round;
 
-      #[cfg(feature = "std")]
       let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
         par_iter,
-        (num_rounds, claims, poly_A_vec, poly_B_vec),
-        |num_rounds, claim, poly_A, poly_B| {
-          if remaining_rounds <= *num_rounds {
-            Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
-          } else {
-            let remaining_variables = remaining_rounds - num_rounds - 1;
-            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
-            (scaled_claim, scaled_claim)
-          }
-        }
-      )
-      .collect();
-      #[cfg(not(feature = "std"))]
-      let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
-        iter,
         (num_rounds, claims, poly_A_vec, poly_B_vec),
         |num_rounds, claim, poly_A, poly_B| {
           if remaining_rounds <= *num_rounds {
@@ -313,7 +293,6 @@ impl<E: Engine> SumcheckProof<E> {
       r.push(r_i);
 
       // bound all tables to the verifier's challenge
-      #[cfg(feature = "std")]
       zip_with_for_each!(
         (
           num_rounds.par_iter(),
@@ -322,24 +301,10 @@ impl<E: Engine> SumcheckProof<E> {
         ),
         |num_rounds, poly_A, poly_B| {
           if remaining_rounds <= *num_rounds {
-            rayon::join(
+            join(
               || poly_A.bind_poly_var_top(&r_i),
               || poly_B.bind_poly_var_top(&r_i),
             );
-          }
-        }
-      );
-      #[cfg(not(feature = "std"))]
-      zip_with_for_each!(
-        (
-          num_rounds.iter(),
-          poly_A_vec.iter_mut(),
-          poly_B_vec.iter_mut()
-        ),
-        |num_rounds, poly_A, poly_B| {
-          if remaining_rounds <= *num_rounds {
-            poly_A.bind_poly_var_top(&r_i);
-            poly_B.bind_poly_var_top(&r_i);
           }
         }
       );

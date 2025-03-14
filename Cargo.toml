@@ -46,6 +46,7 @@ hashbrown = { version = "0.15.2" }
 
 # ! OPTIONAL 
 rayon = { version = "1.10", optional = true, default-features = false }
+plonky2_maybe_rayon = { version = "1.0.0", default-features = false }
 halo2curves = { version = "0.8.0", features = [
     "bits",
     "derive_serde",
@@ -88,7 +89,14 @@ harness = false
 
 [features]
 default = ["std"]
-std = ["halo2curves", "rayon", "getrandom", "once_cell", "byteorder"]
+std = [
+    "halo2curves",
+    "getrandom",
+    "once_cell",
+    "byteorder",
+    "plonky2_maybe_rayon/parallel",
+    "rayon",
+]
 asm = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []

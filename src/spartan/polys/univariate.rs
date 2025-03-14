@@ -6,8 +6,7 @@ use crate::prelude::*;
 use crate::traits::{AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait};
 use core::panic;
 use ff::PrimeField;
-#[cfg(feature = "std")]
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 // ax^2 + bx + c stored as vec![c, b, a]
@@ -55,12 +54,10 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   }
 
   pub fn eval_at_one(&self) -> Scalar {
-    #[cfg(feature = "std")]
-    let iter = (0..self.coeffs.len()).into_par_iter();
-    #[cfg(not(feature = "std"))]
-    let iter = (0..self.coeffs.len()).into_iter();
-
-    iter.map(|i| self.coeffs[i]).sum()
+    (0..self.coeffs.len())
+      .into_par_iter()
+      .map(|i| self.coeffs[i])
+      .sum()
   }
 
   pub fn evaluate(&self, r: &Scalar) -> Scalar {

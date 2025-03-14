@@ -29,8 +29,9 @@ use ff::Field;
 use itertools::Itertools as _;
 #[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
+use plonky2_maybe_rayon::*;
 #[cfg(feature = "std")]
-use rayon::prelude::*;
+use rayon::slice::ParallelSlice;
 use serde::{Deserialize, Serialize};
 
 /// A type that represents the prover's key
@@ -209,18 +210,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       assert_eq!(evals_A.len(), evals_B.len());
       assert_eq!(evals_A.len(), evals_C.len());
 
-      #[cfg(feature = "std")]
-      let res = (0..evals_A.len())
+      (0..evals_A.len())
         .into_par_iter()
         .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
-        .collect::<Vec<E::Scalar>>();
-      #[cfg(not(feature = "std"))]
-      let res = (0..evals_A.len())
-        .into_iter()
-        .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
-        .collect::<Vec<E::Scalar>>();
-
-      res
+        .collect::<Vec<E::Scalar>>()
     };
 
     let poly_z = {
@@ -377,28 +370,15 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             .sum()
         };
 
-      #[cfg(feature = "std")]
-      let (T_x, T_y) = rayon::join(
+      let (T_x, T_y) = join(
         || EqPolynomial::evals_from_points(r_x),
         || EqPolynomial::evals_from_points(r_y),
       );
-      #[cfg(not(feature = "std"))]
-      let T_x = EqPolynomial::evals_from_points(r_x);
-      #[cfg(not(feature = "std"))]
-      let T_y = EqPolynomial::evals_from_points(r_y);
 
-      #[cfg(feature = "std")]
-      let res = (0..M_vec.len())
+      (0..M_vec.len())
         .into_par_iter()
         .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
-        .collect();
-      #[cfg(not(feature = "std"))]
-      let res = (0..M_vec.len())
-        .into_iter()
-        .map(|i| evaluate_with_table(M_vec[i], &T_x, &T_y))
-        .collect();
-
-      res
+        .collect()
     };
 
     let evals = multi_evaluate(&[&vk.S.A, &vk.S.B, &vk.S.C], &r_x, &r_y);

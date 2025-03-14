@@ -19,15 +19,13 @@ use core::cmp::max;
 use ff::Field;
 #[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
+use plonky2_maybe_rayon::*;
 #[cfg(not(feature = "std"))]
 use rand_chacha::ChaCha20Rng;
 #[cfg(feature = "std")]
 use rand_core::OsRng;
 #[cfg(not(feature = "std"))]
 use rand_core::SeedableRng;
-
-#[cfg(feature = "std")]
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod sparse;
@@ -178,17 +176,10 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    #[cfg(feature = "std")]
-    let (Az, (Bz, Cz)) = rayon::join(
+    let (Az, (Bz, Cz)) = join(
       || self.A.multiply_vec(z),
-      || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
+      || join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
     );
-    #[cfg(not(feature = "std"))]
-    let Az = self.A.multiply_vec(z);
-    #[cfg(not(feature = "std"))]
-    let Bz = self.B.multiply_vec(z);
-    #[cfg(not(feature = "std"))]
-    let Cz = self.C.multiply_vec(z);
 
     Ok((Az, Bz, Cz))
   }
@@ -217,15 +208,10 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm = {
-      #[cfg(feature = "std")]
-      let (comm_W, comm_E) = rayon::join(
+      let (comm_W, comm_E) = join(
         || CE::<E>::commit(ck, &W.W, &W.r_W),
         || CE::<E>::commit(ck, &W.E, &W.r_E),
       );
-      #[cfg(not(feature = "std"))]
-      let comm_W = CE::<E>::commit(ck, &W.W, &W.r_W);
-      #[cfg(not(feature = "std"))]
-      let comm_E = CE::<E>::commit(ck, &W.E, &W.r_E);
 
       U.comm_W == comm_W && U.comm_E == comm_E
     };
@@ -300,36 +286,20 @@ impl<E: Engine> R1CSShape<E> {
 
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    #[cfg(feature = "std")]
     let Z = Z1
       .into_par_iter()
       .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let Z = Z1
-      .into_iter()
-      .zip(Z2.into_iter())
       .map(|(z1, z2)| z1 + z2)
       .collect::<Vec<E::Scalar>>();
 
     let u = U1.u + E::Scalar::ONE; // U2.u = 1
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    #[cfg(feature = "std")]
     let T = AZ
       .par_iter()
       .zip(BZ.par_iter())
       .zip(CZ.par_iter())
       .zip(W1.E.par_iter())
-      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let T = AZ
-      .iter()
-      .zip(BZ.iter())
-      .zip(CZ.iter())
-      .zip(W1.E.iter())
       .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
       .collect::<Vec<E::Scalar>>();
 
@@ -354,38 +324,21 @@ impl<E: Engine> R1CSShape<E> {
 
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    #[cfg(feature = "std")]
     let Z = Z1
       .into_par_iter()
       .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let Z = Z1
-      .into_iter()
-      .zip(Z2.into_iter())
       .map(|(z1, z2)| z1 + z2)
       .collect::<Vec<E::Scalar>>();
 
     let u = U1.u + U2.u;
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    #[cfg(feature = "std")]
     let T = AZ
       .par_iter()
       .zip(BZ.par_iter())
       .zip(CZ.par_iter())
       .zip(W1.E.par_iter())
       .zip(W2.E.par_iter())
-      .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let T = AZ
-      .iter()
-      .zip(BZ.iter())
-      .zip(CZ.iter())
-      .zip(W1.E.iter())
-      .zip(W2.E.iter())
       .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
       .collect::<Vec<E::Scalar>>();
 
@@ -424,14 +377,7 @@ impl<E: Engine> R1CSShape<E> {
     let num_cons_padded = m;
 
     let apply_pad = |mut M: SparseMatrix<E::Scalar>| -> SparseMatrix<E::Scalar> {
-      #[cfg(feature = "std")]
       M.indices.par_iter_mut().for_each(|c| {
-        if *c >= self.num_vars {
-          *c += num_vars_padded - self.num_vars
-        }
-      });
-      #[cfg(not(feature = "std"))]
-      M.indices.iter_mut().for_each(|c| {
         if *c >= self.num_vars {
           *c += num_vars_padded - self.num_vars
         }
@@ -493,31 +439,18 @@ impl<E: Engine> R1CSShape<E> {
     // compute E <- AZ o BZ - u * CZ
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    #[cfg(feature = "std")]
     let E = AZ
       .par_iter()
       .zip(BZ.par_iter())
       .zip(CZ.par_iter())
       .map(|((az, bz), cz)| *az * *bz - u * *cz)
       .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let E = AZ
-      .iter()
-      .zip(BZ.iter())
-      .zip(CZ.iter())
-      .map(|((az, bz), cz)| *az * *bz - u * *cz)
-      .collect::<Vec<E::Scalar>>();
 
     // compute commitments to W,E in parallel
-    #[cfg(feature = "std")]
-    let (comm_W, comm_E) = rayon::join(
+    let (comm_W, comm_E) = join(
       || CE::<E>::commit(ck, &Z[..self.num_vars], &r_W),
       || CE::<E>::commit(ck, &E, &r_E),
     );
-    #[cfg(not(feature = "std"))]
-    let comm_W = CE::<E>::commit(ck, &Z[..self.num_vars], &r_W);
-    #[cfg(not(feature = "std"))]
-    let comm_E = CE::<E>::commit(ck, &E, &r_E);
 
     Ok((
       RelaxedR1CSInstance {
@@ -650,27 +583,14 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    #[cfg(feature = "std")]
     let W = W1
       .par_iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let W = W1
-      .iter()
-      .zip(W2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(feature = "std")]
+
     let E = E1
       .par_iter()
-      .zip(T)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let E = E1
-      .iter()
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
@@ -697,30 +617,16 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    #[cfg(feature = "std")]
     let W = W1
       .par_iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let W = W1
-      .iter()
-      .zip(W2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(feature = "std")]
+
     let E = E1
       .par_iter()
       .zip(T)
       .zip(E2.par_iter())
-      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let E = E1
-      .iter()
-      .zip(T)
-      .zip(E2.iter())
       .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
       .collect::<Vec<E::Scalar>>();
 
@@ -811,15 +717,8 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     let (X2, comm_W_2) = (&U2.X, &U2.comm_W);
 
     // weighted sum of X, comm_W, comm_E, and u
-    #[cfg(feature = "std")]
     let X = X1
       .par_iter()
-      .zip(X2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let X = X1
-      .iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
@@ -848,15 +747,8 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     let (X2, u2, comm_W_2, comm_E_2) = (&U2.X, &U2.u, &U2.comm_W, &U2.comm_E);
 
     // weighted sum of X, comm_W, comm_E, and u
-    #[cfg(feature = "std")]
     let X = X1
       .par_iter()
-      .zip(X2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let X = X1
-      .iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();

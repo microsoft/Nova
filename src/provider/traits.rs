@@ -9,8 +9,7 @@ use core::{
 use halo2curves::{serde::SerdeObject, CurveAffine};
 #[cfg(not(feature = "std"))]
 use pasta_curves::arithmetic::CurveAffine;
-#[cfg(feature = "std")]
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -76,18 +75,10 @@ pub trait DlogGroup:
     scalars: &[Vec<Self::Scalar>],
     bases: &[Self::AffineGroupElement],
   ) -> Vec<Self> {
-    #[cfg(feature = "std")]
-    let res = scalars
+    scalars
       .par_iter()
       .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
-      .collect::<Vec<_>>();
-    #[cfg(not(feature = "std"))]
-    let res = scalars
-      .iter()
-      .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
-      .collect::<Vec<_>>();
-
-    res
+      .collect::<Vec<_>>()
   }
 
   /// Produce a vector of group elements using a static label
@@ -174,17 +165,8 @@ macro_rules! impl_traits {
           reader.read_exact(&mut uniform_bytes).unwrap();
           uniform_bytes_vec.push(uniform_bytes);
         }
-        #[cfg(feature = "std")]
         let gens_proj: Vec<$name_curve> = (0..n)
           .into_par_iter()
-          .map(|i| {
-            let hash = $name_curve::hash_to_curve("from_uniform_bytes");
-            hash(&uniform_bytes_vec[i])
-          })
-          .collect();
-        #[cfg(not(feature = "std"))]
-        let gens_proj: Vec<$name_curve> = (0..n)
-          .into_iter()
           .map(|i| {
             let hash = $name_curve::hash_to_curve("from_uniform_bytes");
             hash(&uniform_bytes_vec[i])
@@ -198,10 +180,7 @@ macro_rules! impl_traits {
 
         if gens_proj.len() > num_threads {
           let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
-          #[cfg(feature = "std")]
           let iter = (0..num_threads).into_par_iter();
-          #[cfg(not(feature = "std"))]
-          let iter = (0..num_threads).into_iter();
 
           iter
             .flat_map(|i| {

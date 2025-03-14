@@ -24,8 +24,7 @@ use crate::{
 };
 use ff::Field;
 use itertools::Itertools as _;
-#[cfg(feature = "std")]
-use rayon::{iter::IntoParallelRefIterator, prelude::*};
+use plonky2_maybe_rayon::*;
 
 // Creates a vector of the first `n` powers of `s`.
 fn powers<E: Engine>(s: &E::Scalar, n: usize) -> Vec<E::Scalar> {
@@ -63,8 +62,7 @@ impl<E: Engine> PolyEvalWitness<E> {
     let chunk_size = size_max / num_chunks;
 
     let p = if chunk_size > 0 {
-      #[cfg(feature = "std")]
-      let res = (0..num_chunks)
+      (0..num_chunks)
         .into_par_iter()
         .flat_map_iter(|chunk_index| {
           let mut chunk = vec![E::Scalar::ZERO; chunk_size];
@@ -82,30 +80,9 @@ impl<E: Engine> PolyEvalWitness<E> {
           }
           chunk
         })
-        .collect::<Vec<_>>();
-      #[cfg(not(feature = "std"))]
-      let res = (0..num_chunks)
-        .flat_map(|chunk_index| {
-          let mut chunk = vec![E::Scalar::ZERO; chunk_size];
-          for (coeff, poly) in powers.iter().zip(W.iter()) {
-            for (rlc, poly_eval) in chunk
-              .iter_mut()
-              .zip(poly.p[chunk_index * chunk_size..].iter())
-            {
-              if *coeff == E::Scalar::ONE {
-                *rlc += *poly_eval;
-              } else {
-                *rlc += *coeff * poly_eval;
-              };
-            }
-          }
-          chunk
-        })
-        .collect::<Vec<_>>();
-      res
+        .collect::<Vec<_>>()
     } else {
-      #[cfg(feature = "std")]
-      let res = W
+      let temp = W
         .into_par_iter()
         .zip_eq(powers.par_iter())
         .map(|(mut w, s)| {
@@ -113,49 +90,42 @@ impl<E: Engine> PolyEvalWitness<E> {
             w.p.par_iter_mut().for_each(|e| *e *= s);
           }
           w.p
-        })
-        .reduce(
-          || vec![E::Scalar::ZERO; size_max],
-          |left, right| {
-            // Sum into the largest polynomial
-            let (mut big, small) = if left.len() > right.len() {
-              (left, right)
-            } else {
-              (right, left)
-            };
+        });
 
-            big
-              .par_iter_mut()
-              .zip(small.par_iter())
-              .for_each(|(b, s)| *b += s);
-
-            big
-          },
-        );
-      #[cfg(not(feature = "std"))]
-      let res = W
-        .into_iter()
-        .zip_eq(powers.iter())
-        .map(|(mut w, s)| {
-          if *s != E::Scalar::ONE {
-            w.p.iter_mut().for_each(|e| *e *= s);
-          }
-          w.p
-        })
-        .fold(vec![E::Scalar::ZERO; size_max], |left, right| {
+      #[cfg(feature = "std")]
+      let res = temp.reduce(
+        || vec![E::Scalar::ZERO; size_max],
+        |left, right| {
           // Sum into the largest polynomial
           let (mut big, small) = if left.len() > right.len() {
             (left, right)
           } else {
             (right, left)
           };
+
           big
-            .iter_mut()
-            .zip(small.into_iter())
+            .par_iter_mut()
+            .zip(small.par_iter())
             .for_each(|(b, s)| *b += s);
 
           big
-        });
+        },
+      );
+      #[cfg(not(feature = "std"))]
+      let res = temp.fold(vec![E::Scalar::ZERO; size_max], |left, right| {
+        // Sum into the largest polynomial
+        let (mut big, small) = if left.len() > right.len() {
+          (left, right)
+        } else {
+          (right, left)
+        };
+        big
+          .iter_mut()
+          .zip(small.into_iter())
+          .for_each(|(b, s)| *b += s);
+
+        big
+      });
       res
     };
 
@@ -184,8 +154,7 @@ impl<E: Engine> PolyEvalWitness<E> {
     let chunk_size = p_vec[0].len() / num_chunks;
 
     let p = if chunk_size > 0 {
-      #[cfg(feature = "std")]
-      let res = (0..num_chunks)
+      (0..num_chunks)
         .into_par_iter()
         .flat_map_iter(|chunk_index| {
           let mut chunk = vec![E::Scalar::ZERO; chunk_size];
@@ -203,35 +172,15 @@ impl<E: Engine> PolyEvalWitness<E> {
           }
           chunk
         })
-        .collect::<Vec<_>>();
-      #[cfg(not(feature = "std"))]
-      let res = (0..num_chunks)
-        .flat_map(|chunk_index| {
-          let mut chunk = vec![E::Scalar::ZERO; chunk_size];
-          for (coeff, poly) in powers_of_s.iter().zip(p_vec.iter()) {
-            for (rlc, poly_eval) in chunk
-              .iter_mut()
-              .zip(poly[chunk_index * chunk_size..].iter())
-            {
-              if *coeff == E::Scalar::ONE {
-                *rlc += *poly_eval;
-              } else {
-                *rlc += *coeff * poly_eval;
-              };
-            }
-          }
-          chunk
-        })
-        .collect::<Vec<_>>();
-
-      res
+        .collect::<Vec<_>>()
     } else {
-      #[cfg(feature = "std")]
-      let res = zip_with!(par_iter, (p_vec, powers_of_s), |v, weight| {
+      let temp = zip_with!(par_iter, (p_vec, powers_of_s), |v, weight| {
         // compute the weighted sum for each vector
         v.iter().map(|&x| x * *weight).collect::<Vec<E::Scalar>>()
-      })
-      .reduce(
+      });
+
+      #[cfg(feature = "std")]
+      let res = temp.reduce(
         || vec![E::Scalar::ZERO; p_vec[0].len()],
         |acc, v| {
           // perform vector addition to combine the weighted vectors
@@ -239,11 +188,7 @@ impl<E: Engine> PolyEvalWitness<E> {
         },
       );
       #[cfg(not(feature = "std"))]
-      let res = zip_with!(iter, (p_vec, powers_of_s), |v, weight| {
-        // compute the weighted sum for each vector
-        v.iter().map(|&x| x * *weight).collect::<Vec<E::Scalar>>()
-      })
-      .fold(vec![E::Scalar::ZERO; p_vec[0].len()], |acc, v| {
+      let res = temp.fold(vec![E::Scalar::ZERO; p_vec[0].len()], |acc, v| {
         // perform vector addition to combine the weighted vectors
         zip_with!((acc.into_iter(), v), |x, y| x + y).collect()
       });
@@ -317,10 +262,8 @@ impl<E: Engine> PolyEvalInstance<E> {
 
     let powers_of_s = powers::<E>(s, num_instances);
     // Weighted sum of evaluations
-    #[cfg(feature = "std")]
     let e = zip_with!(par_iter, (e_vec, powers_of_s), |e, p| *e * p).sum();
-    #[cfg(not(feature = "std"))]
-    let e = zip_with!(iter, (e_vec, powers_of_s), |e, p| *e * p).sum();
+
     // Weighted sum of commitments
     #[cfg(feature = "std")]
     let c = zip_with!(par_iter, (c_vec, powers_of_s), |c, p| *c * *p)

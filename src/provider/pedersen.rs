@@ -18,8 +18,7 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
-#[cfg(feature = "std")]
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
@@ -343,19 +342,10 @@ where
     let w = vec![*w1, *w2];
     let (L, R) = self.split_at(self.ck.len() / 2);
 
-    #[cfg(feature = "std")]
     let ck = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
         let bases = [L.ck[i], R.ck[i]].to_vec();
-        E::GE::vartime_multiscalar_mul(&w, &bases).affine()
-      })
-      .collect();
-    #[cfg(not(feature = "std"))]
-    let ck = (0..self.ck.len() / 2)
-      .into_iter()
-      .map(|i| {
-        let bases = [L.ck[i].clone(), R.ck[i].clone()].to_vec();
         E::GE::vartime_multiscalar_mul(&w, &bases).affine()
       })
       .collect();
@@ -365,18 +355,10 @@ where
 
   /// Scales each element in `self` by `r`
   fn scale(&self, r: &E::Scalar) -> Self {
-    #[cfg(feature = "std")]
     let ck_scaled = self
       .ck
       .clone()
       .into_par_iter()
-      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
-      .collect();
-    #[cfg(not(feature = "std"))]
-    let ck_scaled = self
-      .ck
-      .clone()
-      .into_iter()
       .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
       .collect();
 
@@ -388,16 +370,11 @@ where
 
   /// reinterprets a vector of commitments as a set of generators
   fn reinterpret_commitments_as_ck(c: &[Commitment<E>]) -> Result<Self, NovaError> {
-    #[cfg(feature = "std")]
     let ck = (0..c.len())
       .into_par_iter()
       .map(|i| c[i].comm.affine())
       .collect();
-    #[cfg(not(feature = "std"))]
-    let ck = (0..c.len())
-      .into_iter()
-      .map(|i| c[i].comm.affine())
-      .collect();
+
     // cmt is derandomized by the point that this is called
     Ok(CommitmentKey {
       ck,
