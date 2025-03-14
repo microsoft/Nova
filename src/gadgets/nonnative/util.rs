@@ -232,14 +232,6 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   }
 }
 
-// fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> io::Result<()> {
-//   for digit in f.to_repr().as_ref().iter().rev() {
-//     writer.write_u8(*digit)?;
-//   }
-
-//   Ok(())
-// }
-
 // Assuming PrimeField is a trait from some elliptic curve or cryptographic library
 pub fn write_be<F: PrimeField>(f: &F, buffer: &mut [u8]) -> Result<(), ()> {
   for (offset, digit) in f.to_repr().as_ref().iter().rev().enumerate() {

@@ -426,40 +426,6 @@ pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C
   }
 }
 
-// /// Performs a multi-scalar multiplication operation.
-// ///
-// /// This function will panic if coeffs and bases have a different length.
-// ///
-// /// This will use multithreading if beneficial.
-// pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-//   assert_eq!(coeffs.len(), bases.len());
-
-//   let num_threads = rayon::current_num_threads();
-//   if coeffs.len() > num_threads {
-//     let chunk = coeffs.len() / num_threads;
-//     let num_chunks = coeffs.chunks(chunk).len();
-//     let mut results = vec![C::Curve::identity(); num_chunks];
-//     rayon::scope(|scope| {
-//       let chunk = coeffs.len() / num_threads;
-
-//       for ((coeffs, bases), acc) in coeffs
-//         .chunks(chunk)
-//         .zip(bases.chunks(chunk))
-//         .zip(results.iter_mut())
-//       {
-//         scope.spawn(move |_| {
-//           msm_serial(coeffs, bases, acc);
-//         });
-//       }
-//     });
-//     results.iter().fold(C::Curve::identity(), |a, b| a + b)
-//   } else {
-//     let mut acc = C::Curve::identity();
-//     msm_serial(coeffs, bases, &mut acc);
-//     acc
-//   }
-// }
-
 /// This function will panic if coeffs and bases have a different length.
 ///
 /// This will use multithreading if beneficial.
