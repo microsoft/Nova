@@ -508,11 +508,13 @@ mod benchmarks {
   use super::*;
   use crate::{
     nova::nifs::NIFS as NovaNIFS,
-    provider::{msm::msm_integer, Bn256EngineKZG},
+    provider::{hyperkzg::Commitment, msm::msm_integer, Bn256EngineKZG},
     r1cs::{R1CSShape, SparseMatrix},
     traits::{snark::default_ck_hint, ROConstants},
   };
   use criterion::Criterion;
+  use num_integer::Integer;
+  use num_traits::ToPrimitive;
   use rand::Rng;
 
   /// generates a satisfying R1CS with small witness values
@@ -567,13 +569,27 @@ mod benchmarks {
     (W, w, x)
   }
 
-  fn bench_nifs_inner(c: &mut Criterion) {
-    type E = Bn256EngineKZG;
-    use crate::provider::hyperkzg::Commitment;
+  fn compute_commitment_with_fast_msm<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &CommitmentKey<Bn256EngineKZG>,
+    w: &[T],
+    r_w: &<Bn256EngineKZG as Engine>::Scalar,
+  ) -> Commitment<Bn256EngineKZG> {
+    Commitment {
+      comm: msm_integer(w, &ck.ck()) + ck.h() * r_w,
+    }
+  }
 
-    let num_cons = 1024 * 1024;
-    let (S, ck) = generate_r1cs_shape::<E>(num_cons);
-    let (W, w, x) = generate_random_witness::<E>(&S);
+  fn bench_nifs_inner<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    c: &mut Criterion,
+    S: &R1CSShape<Bn256EngineKZG>,
+    ck: &CommitmentKey<Bn256EngineKZG>,
+    W: &R1CSWitness<Bn256EngineKZG>,
+    w: &[T],
+    x: &[<Bn256EngineKZG as Engine>::Scalar],
+  ) {
+    type E = Bn256EngineKZG;
+
+    let num_cons = S.num_cons;
 
     // generate a default running instance
     let str = Structure::new(&S);
@@ -587,17 +603,15 @@ mod benchmarks {
     let ro_consts = RO2Constants::<E>::default();
 
     // produce an NIFS with (W, U) as the first incoming witness-instance pair
-    c.bench_function("neutron_nifs", |b| {
+    c.bench_function(&format!("neutron_nifs_{num_cons}"), |b| {
       b.iter(|| {
         // commit with the specialized method
-        let comm_W = Commitment {
-          comm: msm_integer(&w, &ck.ck()) + ck.h() * W.r_W,
-        };
+        let comm_W = compute_commitment_with_fast_msm(ck, &w, &W.r_W);
 
         // make an R1CS instance
         let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
 
-        let res = NIFS::prove(&ck, &ro_consts, &pp_digest, &str, &f_U, &f_W, &U, &W);
+        let res = NIFS::prove(ck, &ro_consts, &pp_digest, &str, &f_U, &f_W, &U, &W);
         assert!(res.is_ok());
       })
     });
@@ -607,15 +621,15 @@ mod benchmarks {
     let ro_consts = ROConstants::<E>::default();
 
     // produce an NIFS with (r_W, r_U) as the second incoming witness-instance pair
-    c.bench_function("nova_nifs", |b| {
+    c.bench_function(&format!("nova_nifs_{num_cons}"), |b| {
       b.iter(|| {
         // commit to R1CS witness
-        let comm_W = W.commit(&ck);
+        let comm_W = W.commit(ck);
 
         // make an R1CS instance
         let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
 
-        let res = NovaNIFS::prove(&ck, &ro_consts, &pp_digest, &S, &r_U, &r_W, &U, &W);
+        let res = NovaNIFS::prove(ck, &ro_consts, &pp_digest, &S, &r_U, &r_W, &U, &W);
         assert!(res.is_ok());
       })
     });
@@ -624,6 +638,11 @@ mod benchmarks {
   #[test]
   fn bench_nifs() {
     let mut criterion = Criterion::default();
-    bench_nifs_inner(&mut criterion);
+    type E = Bn256EngineKZG;
+
+    let num_cons = 1024 * 1024;
+    let (S, ck) = generate_r1cs_shape::<E>(num_cons);
+    let (W, w, x) = generate_random_witness::<E>(&S);
+    bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
   }
 }
