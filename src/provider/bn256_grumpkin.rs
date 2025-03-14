@@ -1,4 +1,3 @@
-#![cfg(feature = "std")]
 //! This module implements the Nova traits for `bn256::Point`, `bn256::Scalar`, `grumpkin::Point`, `grumpkin::Scalar`.
 use crate::{
   impl_traits,

@@ -1,4 +1,3 @@
-#![cfg(feature = "std")]
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
 use crate::{
   impl_traits,

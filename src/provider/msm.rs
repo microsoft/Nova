@@ -1,4 +1,3 @@
-#![cfg(feature = "std")]
 //! This module provides a multi-scalar multiplication routine
 //! The generic implementation is adapted from halo2; we add an optimization to commit to bits more efficiently
 //! The specialized implementations are adapted from jolt, with additional optimizations and parallelization.
