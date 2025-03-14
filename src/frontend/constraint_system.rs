@@ -1,9 +1,8 @@
 use super::lc::{Index, LinearCombination, Variable};
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
+use core::marker::PhantomData;
 use ff::PrimeField;
-#[cfg(feature = "std")]
-use std::marker::PhantomData;
 
 /// Computations are expressed in terms of arithmetic circuits, in particular
 /// rank-1 quadratic constraint systems. The `Circuit` trait represents a

@@ -11,13 +11,10 @@ use crate::{
   },
   Commitment, CommitmentKey, CE,
 };
-use core::iter;
+use core::{iter, marker::PhantomData};
 use ff::Field;
-
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::marker::PhantomData;
 
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
