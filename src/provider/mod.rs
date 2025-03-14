@@ -5,9 +5,10 @@
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
+#[cfg(feature = "std")]
+pub mod msm;
 #[cfg(not(feature = "std"))]
 pub mod msm_no_std_impl;
-
 #[cfg(feature = "std")]
 pub mod pasta;
 #[cfg(not(feature = "std"))]
@@ -18,8 +19,6 @@ pub mod secp_secq;
 
 // crate-private modules
 pub(crate) mod keccak;
-#[cfg(feature = "std")]
-pub(crate) mod msm;
 pub(crate) mod pedersen;
 pub(crate) mod ptau;
 pub(crate) mod traits;

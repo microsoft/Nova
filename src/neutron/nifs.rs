@@ -233,11 +233,19 @@ impl<E: Engine> NIFS<E> {
     // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
     let T = (E::Scalar::ONE - rho) * U1.T;
 
-    let z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let (Az1, Bz1, Cz1) = S.S.multiply_vec(&z1)?;
+    let (res1, res2) = rayon::join(
+      || {
+        let z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+        S.S.multiply_vec(&z1)
+      },
+      || {
+        let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+        S.S.multiply_vec(&z2)
+      },
+    );
 
-    let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-    let (Az2, Bz2, Cz2) = S.S.multiply_vec(&z2)?;
+    let (Az1, Bz1, Cz1) = res1?;
+    let (Az2, Bz2, Cz2) = res2?;
 
     // compute the sum-check polynomial's evaluations at 0, 2, 3
     let (eval_point_0, eval_point_2, eval_point_3, eval_point_4, eval_point_5) = Self::prove_helper(
@@ -492,5 +500,130 @@ mod tests {
     test_tiny_r1cs_bellpepper_with::<PallasEngine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
     test_tiny_r1cs_bellpepper_with::<Bn256EngineKZG, RelaxedR1CSSNARK<_, HyperKZGEE<_>>>();
     test_tiny_r1cs_bellpepper_with::<Secp256k1Engine, RelaxedR1CSSNARK<_, EvaluationEngine<_>>>();
+  }
+}
+
+#[cfg(test)]
+mod benchmarks {
+  use super::*;
+  use crate::{
+    nova::nifs::NIFS as NovaNIFS,
+    provider::{msm::msm_integer, Bn256EngineKZG},
+    r1cs::{R1CSShape, SparseMatrix},
+    traits::{snark::default_ck_hint, ROConstants},
+  };
+  use criterion::Criterion;
+  use rand::Rng;
+
+  /// generates a satisfying R1CS with small witness values
+  fn generate_r1cs_shape<E: Engine>(num_cons: usize) -> (R1CSShape<E>, CommitmentKey<E>) {
+    let num_vars = num_cons;
+    let num_io = 1;
+
+    // we will just generate constraints of the form x * x = x, checking Booleanity
+    // generate the constraints by creating sparse matrices
+    let A = SparseMatrix::new(
+      &(0..num_cons)
+        .map(|i| (i, i, E::Scalar::ONE))
+        .collect::<Vec<_>>(),
+      num_cons,
+      num_vars + 1 + num_io,
+    );
+    let B = A.clone();
+    let C = A.clone();
+
+    let S: R1CSShape<E> = R1CSShape::new(num_cons, num_vars, num_io, A, B, C).unwrap();
+
+    let S = S.pad();
+
+    // sample a ck
+    let ck = S.commitment_key(&*default_ck_hint());
+
+    (S, ck)
+  }
+
+  fn generate_random_witness<E: Engine>(
+    S: &R1CSShape<E>,
+  ) -> (R1CSWitness<E>, Vec<u8>, Vec<E::Scalar>) {
+    // let witness be randomly generated booleans
+    let w = (0..S.num_cons)
+      .into_par_iter()
+      .map(|_| {
+        let mut rng = rand::thread_rng();
+        rng.gen::<u8>() % 2
+      })
+      .collect::<Vec<_>>();
+
+    let W = {
+      // convert W to field elements
+      let W = (0..S.num_cons)
+        .into_par_iter()
+        .map(|i| <E as Engine>::Scalar::from(w[i] as u64))
+        .collect::<Vec<_>>();
+      R1CSWitness::new(&S, &W).unwrap()
+    };
+
+    let x = vec![E::Scalar::from(0)];
+    (W, w, x)
+  }
+
+  fn bench_nifs_inner(c: &mut Criterion) {
+    type E = Bn256EngineKZG;
+    use crate::provider::hyperkzg::Commitment;
+
+    let num_cons = 1024 * 1024;
+    let (S, ck) = generate_r1cs_shape::<E>(num_cons);
+    let (W, w, x) = generate_random_witness::<E>(&S);
+
+    // generate a default running instance
+    let str = Structure::new(&S);
+    let f_W = FoldedWitness::default(&str);
+    let f_U = FoldedInstance::default(&str);
+    let res = str.is_sat(&ck, &f_U, &f_W);
+    assert!(res.is_ok());
+
+    // generate default values
+    let pp_digest = <E as Engine>::Scalar::ZERO;
+    let ro_consts = RO2Constants::<E>::default();
+
+    // produce an NIFS with (W, U) as the first incoming witness-instance pair
+    c.bench_function("neutron_nifs", |b| {
+      b.iter(|| {
+        // commit with the specialized method
+        let comm_W = Commitment {
+          comm: msm_integer(&w, &ck.ck()) + ck.h() * W.r_W,
+        };
+
+        // make an R1CS instance
+        let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
+
+        let res = NIFS::prove(&ck, &ro_consts, &pp_digest, &str, &f_U, &f_W, &U, &W);
+        assert!(res.is_ok());
+      })
+    });
+
+    // generate a random relaxed R1CS instance-witness pair
+    let (r_U, r_W) = R1CSShape::<E>::sample_random_instance_witness(&S, &ck).unwrap();
+    let ro_consts = ROConstants::<E>::default();
+
+    // produce an NIFS with (r_W, r_U) as the second incoming witness-instance pair
+    c.bench_function("nova_nifs", |b| {
+      b.iter(|| {
+        // commit to R1CS witness
+        let comm_W = W.commit(&ck);
+
+        // make an R1CS instance
+        let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
+
+        let res = NovaNIFS::prove(&ck, &ro_consts, &pp_digest, &S, &r_U, &r_W, &U, &W);
+        assert!(res.is_ok());
+      })
+    });
+  }
+
+  #[test]
+  fn bench_nifs() {
+    let mut criterion = Criterion::default();
+    bench_nifs_inner(&mut criterion);
   }
 }
