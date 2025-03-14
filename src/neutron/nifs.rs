@@ -507,18 +507,39 @@ mod tests {
 mod benchmarks {
   use super::*;
   use crate::{
+    frontend::{
+      gadgets::{
+        boolean::{AllocatedBit, Boolean},
+        num::AllocatedNum,
+        sha256::sha256,
+      },
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+      ConstraintSystem, SynthesisError,
+    },
     nova::nifs::NIFS as NovaNIFS,
     provider::{hyperkzg::Commitment, msm::msm_integer, Bn256EngineKZG},
     r1cs::{R1CSShape, SparseMatrix},
     traits::{snark::default_ck_hint, ROConstants},
   };
+  use core::marker::PhantomData;
   use criterion::Criterion;
+  use ff::PrimeField;
   use num_integer::Integer;
   use num_traits::ToPrimitive;
   use rand::Rng;
 
   /// generates a satisfying R1CS with small witness values
-  fn generate_r1cs_shape<E: Engine>(num_cons: usize) -> (R1CSShape<E>, CommitmentKey<E>) {
+  fn generate_sample_r1cs<E: Engine>(
+    num_cons: usize,
+  ) -> (
+    R1CSShape<E>,
+    CommitmentKey<E>,
+    R1CSWitness<E>,
+    Vec<u8>,
+    Vec<E::Scalar>,
+  ) {
     let num_vars = num_cons;
     let num_io = 1;
 
@@ -541,12 +562,6 @@ mod benchmarks {
     // sample a ck
     let ck = S.commitment_key(&*default_ck_hint());
 
-    (S, ck)
-  }
-
-  fn generate_random_witness<E: Engine>(
-    S: &R1CSShape<E>,
-  ) -> (R1CSWitness<E>, Vec<u8>, Vec<E::Scalar>) {
     // let witness be randomly generated booleans
     let w = (0..S.num_cons)
       .into_par_iter()
@@ -566,7 +581,87 @@ mod benchmarks {
     };
 
     let x = vec![E::Scalar::from(0)];
-    (W, w, x)
+    (S, ck, W, w, x)
+  }
+
+  struct Sha256Circuit<E: Engine> {
+    preimage: Vec<u8>,
+    _p: PhantomData<E>,
+  }
+
+  impl<E: Engine> Sha256Circuit<E> {
+    pub fn synthesize<CS: ConstraintSystem<E::Scalar>>(
+      &self,
+      cs: &mut CS,
+    ) -> Result<(), SynthesisError> {
+      // we write a circuit that checks if the input is a SHA256 preimage
+      let bit_values: Vec<_> = self
+        .preimage
+        .clone()
+        .into_iter()
+        .flat_map(|byte| (0..8).map(move |i| (byte >> i) & 1u8 == 1u8))
+        .map(Some)
+        .collect();
+      assert_eq!(bit_values.len(), self.preimage.len() * 8);
+
+      let preimage_bits = bit_values
+        .into_iter()
+        .enumerate()
+        .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("preimage bit {i}")), b))
+        .map(|b| b.map(Boolean::from))
+        .collect::<Result<Vec<_>, _>>()?;
+
+      let _ = sha256(cs.namespace(|| "sha256"), &preimage_bits)?;
+
+      let x = AllocatedNum::alloc(cs.namespace(|| "x"), || Ok(E::Scalar::ZERO))?;
+      x.inputize(cs.namespace(|| "inputize x"))?;
+
+      Ok(())
+    }
+  }
+
+  fn generarate_sha_r1cs(
+    len: usize,
+  ) -> (
+    R1CSShape<Bn256EngineKZG>,
+    CommitmentKey<Bn256EngineKZG>,
+    R1CSWitness<Bn256EngineKZG>,
+    Vec<u8>,
+    Vec<<Bn256EngineKZG as Engine>::Scalar>,
+  ) {
+    type E = Bn256EngineKZG;
+
+    let circuit = Sha256Circuit::<E> {
+      preimage: vec![0u8; len],
+      _p: Default::default(),
+    };
+
+    let mut cs: ShapeCS<E> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (S, ck) = cs.r1cs_shape(&*default_ck_hint());
+
+    let mut cs = SatisfyingAssignment::<E>::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (U, W) = cs.r1cs_instance_and_witness(&S, &ck).unwrap();
+
+    let S = S.pad();
+    let W = W.pad(&S);
+
+    let w = W
+      .W
+      .iter()
+      .map(|e| {
+        // map field element to u8
+        e.to_repr()[0] as u8
+      })
+      .collect::<Vec<_>>();
+
+    // sanity check by recommiting to w
+    let comm_W = compute_commitment_with_fast_msm(&ck, &w, &W.r_W);
+    assert_eq!(comm_W, U.comm_W);
+
+    let X = U.X.clone();
+    (S, ck, W, w, X)
   }
 
   fn compute_commitment_with_fast_msm<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
@@ -636,13 +731,21 @@ mod benchmarks {
   }
 
   #[test]
-  fn bench_nifs() {
+  fn bench_nifs_simple() {
     let mut criterion = Criterion::default();
     type E = Bn256EngineKZG;
 
     let num_cons = 1024 * 1024;
-    let (S, ck) = generate_r1cs_shape::<E>(num_cons);
-    let (W, w, x) = generate_random_witness::<E>(&S);
+    let (S, ck, W, w, x) = generate_sample_r1cs::<E>(num_cons); // W is R1CSWitness, w is a vector of u8, x is a vector of field elements
     bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
+  }
+
+  #[test]
+  fn bench_nifs_sha256() {
+    let mut criterion = Criterion::default();
+    for len in [1024, 2048, 4096, 8192].iter() {
+      let (S, ck, W, w, x) = generarate_sha_r1cs(*len);
+      bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
+    }
   }
 }
