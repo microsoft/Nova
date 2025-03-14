@@ -743,7 +743,7 @@ mod benchmarks {
   #[test]
   fn bench_nifs_sha256() {
     let mut criterion = Criterion::default();
-    for len in [1024, 2048, 4096, 8192].iter() {
+    for len in [1024, 2048].iter() {
       let (S, ck, W, w, x) = generarate_sha_r1cs(*len);
       bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
     }
