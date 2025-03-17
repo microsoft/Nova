@@ -519,7 +519,7 @@ mod benchmarks {
       ConstraintSystem, SynthesisError,
     },
     nova::nifs::NIFS as NovaNIFS,
-    provider::{hyperkzg::Commitment, msm::msm_integer, Bn256EngineKZG},
+    provider::Bn256EngineKZG,
     r1cs::{R1CSShape, SparseMatrix},
     traits::{snark::default_ck_hint, ROConstants},
   };
@@ -657,25 +657,16 @@ mod benchmarks {
       .collect::<Vec<_>>();
 
     // sanity check by recommiting to w
-    let comm_W = compute_commitment_with_fast_msm(&ck, &w, &W.r_W);
+    let comm_W = <E as Engine>::CE::commit_small(&ck, &w, &W.r_W);
     assert_eq!(comm_W, U.comm_W);
 
     let X = U.X.clone();
     (S, ck, W, w, X)
   }
 
-  fn compute_commitment_with_fast_msm<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-    ck: &CommitmentKey<Bn256EngineKZG>,
-    w: &[T],
-    r_w: &<Bn256EngineKZG as Engine>::Scalar,
-  ) -> Commitment<Bn256EngineKZG> {
-    Commitment {
-      comm: msm_integer(w, &ck.ck()) + ck.h() * r_w,
-    }
-  }
-
   fn bench_nifs_inner<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     c: &mut Criterion,
+    name: &str,
     S: &R1CSShape<Bn256EngineKZG>,
     ck: &CommitmentKey<Bn256EngineKZG>,
     W: &R1CSWitness<Bn256EngineKZG>,
@@ -698,10 +689,10 @@ mod benchmarks {
     let ro_consts = RO2Constants::<E>::default();
 
     // produce an NIFS with (W, U) as the first incoming witness-instance pair
-    c.bench_function(&format!("neutron_nifs_{num_cons}"), |b| {
+    c.bench_function(&format!("neutron_nifs_{name}_{num_cons}"), |b| {
       b.iter(|| {
         // commit with the specialized method
-        let comm_W = compute_commitment_with_fast_msm(ck, &w, &W.r_W);
+        let comm_W = <E as Engine>::CE::commit_small(ck, &w, &W.r_W);
 
         // make an R1CS instance
         let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
@@ -716,7 +707,7 @@ mod benchmarks {
     let ro_consts = ROConstants::<E>::default();
 
     // produce an NIFS with (r_W, r_U) as the second incoming witness-instance pair
-    c.bench_function(&format!("nova_nifs_{num_cons}"), |b| {
+    c.bench_function(&format!("nova_nifs_{name}_{num_cons}"), |b| {
       b.iter(|| {
         // commit to R1CS witness
         let comm_W = W.commit(ck);
@@ -737,7 +728,7 @@ mod benchmarks {
 
     let num_cons = 1024 * 1024;
     let (S, ck, W, w, x) = generate_sample_r1cs::<E>(num_cons); // W is R1CSWitness, w is a vector of u8, x is a vector of field elements
-    bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
+    bench_nifs_inner(&mut criterion, &"simple", &S, &ck, &W, &w, &x);
   }
 
   #[test]
@@ -745,7 +736,7 @@ mod benchmarks {
     let mut criterion = Criterion::default();
     for len in [1024, 2048].iter() {
       let (S, ck, W, w, x) = generarate_sha_r1cs(*len);
-      bench_nifs_inner(&mut criterion, &S, &ck, &W, &w, &x);
+      bench_nifs_inner(&mut criterion, &"sha256", &S, &ck, &W, &w, &x);
     }
   }
 }

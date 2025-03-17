@@ -8,6 +8,8 @@ use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
 };
+use num_integer::Integer;
+use num_traits::ToPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -83,6 +85,26 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     v.par_iter()
       .zip(r.par_iter())
       .map(|(v_i, r_i)| Self::commit(ck, v_i, r_i))
+      .collect()
+  }
+
+  /// Commits to the provided vector of "small" scalars (at most 64 bits) using the provided generators and random blind
+  fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[T],
+    r: &E::Scalar,
+  ) -> Self::Commitment;
+
+  /// Batch commits to the provided vectors of "small" scalars (at most 64 bits) using the provided generators and random blind
+  fn batch_commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[Vec<T>],
+    r: &[E::Scalar],
+  ) -> Vec<Self::Commitment> {
+    assert!(v.len() == r.len());
+    v.par_iter()
+      .zip(r.par_iter())
+      .map(|(v_i, r_i)| Self::commit_small(ck, v_i, r_i))
       .collect()
   }
 

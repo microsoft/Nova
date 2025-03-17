@@ -1,7 +1,10 @@
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 use crate::{
   impl_traits,
-  provider::{msm::msm_generic, traits::DlogGroup},
+  provider::{
+    msm::{msm, msm_small},
+    traits::DlogGroup,
+  },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update};
@@ -12,7 +15,8 @@ use halo2curves::{
   CurveAffine, CurveExt,
 };
 use num_bigint::BigInt;
-use num_traits::Num;
+use num_integer::Integer;
+use num_traits::{Num, ToPrimitive};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;

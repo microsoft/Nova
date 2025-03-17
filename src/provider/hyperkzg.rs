@@ -28,6 +28,8 @@ use core::{
   slice,
 };
 use ff::{Field, PrimeFieldBits};
+use num_integer::Integer;
+use num_traits::ToPrimitive;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -103,7 +105,7 @@ pub struct Commitment<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  pub(crate) comm: <E as Engine>::GE,
+  comm: <E as Engine>::GE,
 }
 
 impl<E: Engine> Commitment<E>
@@ -483,6 +485,39 @@ where
     let h = <E::GE as DlogGroup>::group(&ck.h);
 
     E::GE::batch_vartime_multiscalar_mul(v, &ck.ck[..max])
+      .iter()
+      .zip(r.iter())
+      .map(|(commit, r_i)| Commitment {
+        comm: *commit + (h * r_i),
+      })
+      .collect()
+  }
+
+  fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[T],
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
+    }
+  }
+
+  fn batch_commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[Vec<T>],
+    r: &[E::Scalar],
+  ) -> Vec<Self::Commitment> {
+    assert!(v.len() == r.len());
+
+    let max = v.iter().map(|v| v.len()).max().unwrap_or(0);
+    assert!(ck.ck.len() >= max);
+
+    let h = <E::GE as DlogGroup>::group(&ck.h);
+
+    E::GE::batch_vartime_multiscalar_mul_small(v, &ck.ck[..max])
       .iter()
       .zip(r.iter())
       .map(|(commit, r_i)| Commitment {
