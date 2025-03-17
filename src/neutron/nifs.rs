@@ -620,17 +620,15 @@ mod benchmarks {
     }
   }
 
-  fn generarate_sha_r1cs(
+  fn generarate_sha_r1cs<E: Engine>(
     len: usize,
   ) -> (
-    R1CSShape<Bn256EngineKZG>,
-    CommitmentKey<Bn256EngineKZG>,
-    R1CSWitness<Bn256EngineKZG>,
+    R1CSShape<E>,
+    CommitmentKey<E>,
+    R1CSWitness<E>,
     Vec<u8>,
-    Vec<<Bn256EngineKZG as Engine>::Scalar>,
+    Vec<E::Scalar>,
   ) {
-    type E = Bn256EngineKZG;
-
     let circuit = Sha256Circuit::<E> {
       preimage: vec![0u8; len],
       _p: Default::default(),
@@ -652,7 +650,8 @@ mod benchmarks {
       .iter()
       .map(|e| {
         // map field element to u8
-        e.to_repr()[0] as u8
+        // this assumes little-endian representation
+        e.to_repr().as_ref()[0] as u8
       })
       .collect::<Vec<_>>();
 
@@ -664,17 +663,15 @@ mod benchmarks {
     (S, ck, W, w, X)
   }
 
-  fn bench_nifs_inner<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+  fn bench_nifs_inner<E: Engine, T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     c: &mut Criterion,
     name: &str,
-    S: &R1CSShape<Bn256EngineKZG>,
-    ck: &CommitmentKey<Bn256EngineKZG>,
-    W: &R1CSWitness<Bn256EngineKZG>,
+    S: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+    W: &R1CSWitness<E>,
     w: &[T],
-    x: &[<Bn256EngineKZG as Engine>::Scalar],
+    x: &[E::Scalar],
   ) {
-    type E = Bn256EngineKZG;
-
     let num_cons = S.num_cons;
 
     // generate a default running instance
@@ -685,14 +682,14 @@ mod benchmarks {
     assert!(res.is_ok());
 
     // generate default values
-    let pp_digest = <E as Engine>::Scalar::ZERO;
+    let pp_digest = E::Scalar::ZERO;
     let ro_consts = RO2Constants::<E>::default();
 
     // produce an NIFS with (W, U) as the first incoming witness-instance pair
     c.bench_function(&format!("neutron_nifs_{name}_{num_cons}"), |b| {
       b.iter(|| {
         // commit with the specialized method
-        let comm_W = <E as Engine>::CE::commit_small(ck, &w, &W.r_W);
+        let comm_W = E::CE::commit_small(ck, &w, &W.r_W);
 
         // make an R1CS instance
         let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
@@ -723,9 +720,9 @@ mod benchmarks {
 
   #[test]
   fn bench_nifs_simple() {
-    let mut criterion = Criterion::default();
     type E = Bn256EngineKZG;
 
+    let mut criterion = Criterion::default();
     let num_cons = 1024 * 1024;
     let (S, ck, W, w, x) = generate_sample_r1cs::<E>(num_cons); // W is R1CSWitness, w is a vector of u8, x is a vector of field elements
     bench_nifs_inner(&mut criterion, &"simple", &S, &ck, &W, &w, &x);
@@ -733,9 +730,11 @@ mod benchmarks {
 
   #[test]
   fn bench_nifs_sha256() {
+    type E = Bn256EngineKZG;
+
     let mut criterion = Criterion::default();
     for len in [1024, 2048].iter() {
-      let (S, ck, W, w, x) = generarate_sha_r1cs(*len);
+      let (S, ck, W, w, x) = generarate_sha_r1cs::<E>(*len);
       bench_nifs_inner(&mut criterion, &"sha256", &S, &ck, &W, &w, &x);
     }
   }
