@@ -2,7 +2,10 @@
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::{ptau::read_points, traits::DlogGroup},
+  provider::{
+    ptau::{read_points, write_points, PtauFileError},
+    traits::DlogGroup,
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -14,10 +17,10 @@ use core::{
   ops::{Add, Mul, MulAssign},
 };
 use ff::Field;
+use num_integer::Integer;
+use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-use super::ptau::{write_points, PtauFileError};
 
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
@@ -28,7 +31,7 @@ where
   E::GE: DlogGroup,
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
-  h: Option<<E::GE as DlogGroup>::AffineGroupElement>,
+  h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -192,7 +195,7 @@ where
   pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
     writer.write_all(&KEY_FILE_HEAD)?;
     let mut points = Vec::with_capacity(self.ck.len() + 1);
-    points.push(self.h.unwrap());
+    points.push(self.h);
     points.extend(self.ck.iter().cloned());
     write_points(writer, points)
   }
@@ -213,31 +216,33 @@ where
 
     Self::CommitmentKey {
       ck: ck.to_vec(),
-      h: Some(*h),
+      h: *h,
     }
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
-    assert!(ck.h.is_some());
-    Self::DerandKey {
-      h: *ck.h.as_ref().unwrap(),
-    }
+    Self::DerandKey { h: ck.h }
   }
 
   fn commit(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
 
-    if ck.h.is_some() {
-      Commitment {
-        comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
-          + <E::GE as DlogGroup>::group(ck.h.as_ref().unwrap()) * r,
-      }
-    } else {
-      assert_eq!(*r, E::Scalar::ZERO);
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
+    }
+  }
 
-      Commitment {
-        comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()]),
-      }
+  fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[T],
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
     }
   }
 
@@ -270,7 +275,7 @@ where
 
     Ok(Self::CommitmentKey {
       ck: second.to_vec(),
-      h: Some(first[0]),
+      h: first[0],
     })
   }
 }
@@ -370,9 +375,9 @@ where
     // cmt is derandomized by the point that this is called
     Ok(CommitmentKey {
       ck,
-      h: None, // this is okay, since this method is used in IPA only,
-               // and we only use non-blinding commits afterwards
-               // bc we don't use ZK IPA
+      h: E::GE::zero().affine(), // this is okay, since this method is used in IPA only,
+                                 // and we only use non-blinding commits afterwards
+                                 // bc we don't use ZK IPA
     })
   }
 }

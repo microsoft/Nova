@@ -4,6 +4,8 @@ use core::{
   ops::{Add, AddAssign, Sub, SubAssign},
 };
 use halo2curves::{serde::SerdeObject, CurveAffine};
+use num_integer::Integer;
+use num_traits::ToPrimitive;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +62,23 @@ pub trait DlogGroup:
     scalars
       .par_iter()
       .map(|scalar| Self::vartime_multiscalar_mul(scalar, &bases[..scalar.len()]))
+      .collect::<Vec<_>>()
+  }
+
+  /// A method to compute a multiexponentation with small scalars
+  fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[T],
+    bases: &[Self::AffineGroupElement],
+  ) -> Self;
+
+  /// A method to compute a batch of multiexponentations with small scalars
+  fn batch_vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[Vec<T>],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    scalars
+      .par_iter()
+      .map(|scalar| Self::vartime_multiscalar_mul_small(scalar, &bases[..scalar.len()]))
       .collect::<Vec<_>>()
   }
 
@@ -126,7 +145,14 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_generic(scalars, bases)
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {

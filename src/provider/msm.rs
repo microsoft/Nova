@@ -110,7 +110,7 @@ fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve
 ///
 /// This will use multithreading if beneficial.
 /// Adapted from zcash/halo2
-pub fn msm_generic<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   assert_eq!(coeffs.len(), bases.len());
 
   let num_threads = current_num_threads();
@@ -135,7 +135,7 @@ fn num_bits(n: usize) -> usize {
 }
 
 /// Multi-scalar multiplication using the best algorithm for the given scalars.
-pub fn msm_integer<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+pub fn msm_small<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
   scalars: &[T],
   bases: &[C],
 ) -> C::Curve {
@@ -145,8 +145,8 @@ pub fn msm_integer<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrim
   match max_num_bits {
     0 => C::identity().into(),
     1 => msm_binary(scalars, bases),
-    2..=10 => msm_small(scalars, bases, max_num_bits),
-    _ => msm_medium(scalars, bases, max_num_bits),
+    2..=10 => msm_10(scalars, bases, max_num_bits),
+    _ => msm_small_rest(scalars, bases, max_num_bits),
   }
 }
 
@@ -178,12 +178,12 @@ fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> 
 }
 
 /// MSM optimized for up to 10-bit scalars
-fn msm_small<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
+fn msm_10<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
   scalars: &[T],
   bases: &[C],
   max_num_bits: usize,
 ) -> C::Curve {
-  fn msm_small_serial<C: CurveAffine, T: Into<u64> + Zero + Copy>(
+  fn msm_10_serial<C: CurveAffine, T: Into<u64> + Zero + Copy>(
     scalars: &[T],
     bases: &[C],
     max_num_bits: usize,
@@ -215,21 +215,19 @@ fn msm_small<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
     scalars
       .par_chunks(chunk_size)
       .zip(bases.par_chunks(chunk_size))
-      .map(|(scalars_chunk, bases_chunk)| {
-        msm_small_serial(scalars_chunk, bases_chunk, max_num_bits)
-      })
+      .map(|(scalars_chunk, bases_chunk)| msm_10_serial(scalars_chunk, bases_chunk, max_num_bits))
       .reduce(C::Curve::identity, |sum, evl| sum + evl)
   } else {
-    msm_small_serial(scalars, bases, max_num_bits)
+    msm_10_serial(scalars, bases, max_num_bits)
   }
 }
 
-fn msm_medium<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
+fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
   scalars: &[T],
   bases: &[C],
   max_num_bits: usize,
 ) -> C::Curve {
-  fn msm_medium_serial<C: CurveAffine, T: Into<u64> + Zero + Copy>(
+  fn msm_small_rest_serial<C: CurveAffine, T: Into<u64> + Zero + Copy>(
     scalars: &[T],
     bases: &[C],
     max_num_bits: usize,
@@ -328,11 +326,11 @@ fn msm_medium<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
       .par_chunks(chunk_size)
       .zip(bases.par_chunks(chunk_size))
       .map(|(scalars_chunk, bases_chunk)| {
-        msm_medium_serial(scalars_chunk, bases_chunk, max_num_bits)
+        msm_small_rest_serial(scalars_chunk, bases_chunk, max_num_bits)
       })
       .reduce(C::Curve::identity, |sum, evl| sum + evl)
   } else {
-    msm_medium_serial(scalars, bases, max_num_bits)
+    msm_small_rest_serial(scalars, bases, max_num_bits)
   }
 }
 
@@ -371,7 +369,7 @@ mod tests {
       .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
         acc + *base * coeff
       });
-    let msm = msm_generic(&coeffs, &bases);
+    let msm = msm(&coeffs, &bases);
 
     assert_eq!(naive, msm)
   }
@@ -399,8 +397,8 @@ mod tests {
         .map(|_| rand::random::<u64>() % (1 << bit_width))
         .collect::<Vec<_>>();
       let coeffs_scalar: Vec<F> = coeffs.iter().map(|b| F::from(*b)).collect::<Vec<_>>();
-      let general = msm_generic(&coeffs_scalar, &bases);
-      let integer = msm_integer(&coeffs, &bases);
+      let general = msm(&coeffs_scalar, &bases);
+      let integer = msm_small(&coeffs, &bases);
 
       assert_eq!(general, integer);
     }

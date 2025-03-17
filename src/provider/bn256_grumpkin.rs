@@ -2,7 +2,7 @@
 use crate::{
   impl_traits,
   provider::{
-    msm::msm_generic,
+    msm::{msm, msm_small},
     traits::{DlogGroup, PairingGroup},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
@@ -17,7 +17,8 @@ use halo2curves::{
   CurveAffine, CurveExt,
 };
 use num_bigint::BigInt;
-use num_traits::Num;
+use num_integer::Integer;
+use num_traits::{Num, ToPrimitive};
 use rayon::prelude::*;
 use sha3::Shake256;
 use std::io::Read;
@@ -83,7 +84,14 @@ impl DlogGroup for G2 {
   type AffineGroupElement = G2Affine;
 
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
-    msm_generic(scalars, bases)
+    msm(scalars, bases)
+  }
+
+  fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[T],
+    bases: &[Self::AffineGroupElement],
+  ) -> Self {
+    msm_small(scalars, bases)
   }
 
   fn affine(&self) -> Self::AffineGroupElement {
