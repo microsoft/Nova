@@ -421,7 +421,6 @@ impl<E: Engine> R1CSShape<E> {
       .collect::<Vec<E::Scalar>>();
     #[cfg(not(feature = "std"))]
     let Z = (0..self.num_vars + self.num_io + 1)
-      .into_iter()
       .map(|_| E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)))
       .collect::<Vec<E::Scalar>>();
 

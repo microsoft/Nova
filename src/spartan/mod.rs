@@ -119,10 +119,7 @@ impl<E: Engine> PolyEvalWitness<E> {
         } else {
           (right, left)
         };
-        big
-          .iter_mut()
-          .zip(small.into_iter())
-          .for_each(|(b, s)| *b += s);
+        big.iter_mut().zip(small).for_each(|(b, s)| *b += s);
 
         big
       });

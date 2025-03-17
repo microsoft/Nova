@@ -93,6 +93,20 @@ jobs:
           command: clippy
           args: --all-targets -- -D warnings
 
+  clippy-no-default-features:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Check clippy warnings with --no-default-features
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --no-default-features
+
   spelling:
     runs-on: ubuntu-latest
     steps:

@@ -380,7 +380,7 @@ impl<E: Engine> SumcheckProof<E> {
       |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
     );
     #[cfg(not(feature = "std"))]
-    let res = (0..len).into_iter().map(map_func).fold(
+    let res = (0..len).map(map_func).fold(
       (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
       |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
     );
@@ -437,7 +437,7 @@ impl<E: Engine> SumcheckProof<E> {
       |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
     );
     #[cfg(not(feature = "std"))]
-    let res = (0..len).into_iter().map(map_func).fold(
+    let res = (0..len).map(map_func).fold(
       (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
       |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
     );

@@ -352,7 +352,7 @@ where
       .collect::<Vec<_>>()
       .par_chunks(max(n / num_threads, 1))
       .into_par_iter()
-      .map(|sub_list| {
+      .flat_map(|sub_list| {
         let mut res = Vec::with_capacity(sub_list.len());
         res.push(tau.pow([sub_list[0] as u64]));
         for i in 1..sub_list.len() {
@@ -360,7 +360,6 @@ where
         }
         res
       })
-      .flatten()
       .collect::<Vec<_>>()
   }
 }
