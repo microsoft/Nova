@@ -78,6 +78,9 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 
 #[cfg(test)]
 mod tests {
+  #[cfg(feature = "std")]
+  use once_cell::sync::OnceCell;
+
   use super::{DigestComputer, SimpleDigestible};
   use crate::{provider::PallasEngine, traits::Engine};
   use bincode::config::legacy;
@@ -89,20 +92,35 @@ mod tests {
   #[derive(Serialize, Deserialize)]
   struct S<E: Engine> {
     i: usize,
-    #[serde(skip)]
-    digest: Option<E::Scalar>,
+    #[serde(skip, default = "OnceCell::new")]
+    digest: OnceCell<E::Scalar>,
   }
 
   impl<E: Engine> SimpleDigestible for S<E> {}
 
   impl<E: Engine> S<E> {
     fn new(i: usize) -> Self {
-      S { i, digest: None }
+      S {
+        i,
+        digest: OnceCell::new(),
+      }
     }
 
     fn digest(&mut self) -> E::Scalar {
-      let digest: E::Scalar = DigestComputer::new(self).digest().unwrap();
-      *self.digest.get_or_insert(digest)
+      #[cfg(feature = "std")]
+      let res = self
+        .digest
+        .get_or_try_init(|| DigestComputer::new(self).digest())
+        .cloned()
+        .expect("Failure in retrieving digest");
+      #[cfg(not(feature = "std"))]
+      let res = *self.digest.get_or_init(|| {
+        DigestComputer::new(self)
+          .digest()
+          .expect("Failure in retrieving digest")
+      });
+
+      res
     }
   }
 
@@ -110,8 +128,11 @@ mod tests {
   fn test_digest_field_not_ingested_in_computation() {
     let s1 = S::<E>::new(42);
 
-    let mut s2 = S::<E>::new(42);
-    s2.digest = Some(<E as Engine>::Scalar::ONE); // Set manually for test
+    // let's set up a struct with a weird digest field to make sure the digest computation does not depend of it
+    let oc = OnceCell::new();
+    oc.set(<E as Engine>::Scalar::ONE).unwrap();
+
+    let mut s2: S<E> = S { i: 42, digest: oc };
 
     assert_eq!(
       DigestComputer::<<E as Engine>::Scalar, _>::new(&s1)
@@ -134,9 +155,13 @@ mod tests {
 
   #[test]
   fn test_digest_impervious_to_serialization() {
+    // let's set up a struct with a weird digest field to confuse deserializers
+    let oc = OnceCell::new();
+    oc.set(<E as Engine>::Scalar::ONE).unwrap();
+
     let mut good_s = S::<E>::new(42);
-    let mut bad_s = S::<E>::new(42);
-    bad_s.digest = Some(<E as Engine>::Scalar::ONE); // Set manually for test
+    let mut bad_s: S<E> = S { i: 42, digest: oc };
+    // this justifies the adjective "bad"
 
     // this justifies the adjective "bad"
     assert_ne!(good_s.digest(), bad_s.digest());
