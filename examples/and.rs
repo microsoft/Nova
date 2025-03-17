@@ -286,7 +286,6 @@ fn main() {
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
-    // let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
     let compressed_snark_encoded =
       bincode::serde::encode_to_vec(&compressed_snark, legacy()).unwrap();
     println!(

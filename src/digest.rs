@@ -161,7 +161,6 @@ mod tests {
 
     let mut good_s = S::<E>::new(42);
     let mut bad_s: S<E> = S { i: 42, digest: oc };
-    // this justifies the adjective "bad"
 
     // this justifies the adjective "bad"
     assert_ne!(good_s.digest(), bad_s.digest());
