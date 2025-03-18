@@ -5,17 +5,16 @@ use super::{
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
-use ff::PrimeField;
-use libm::log2;
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
-#[cfg(feature = "std")]
-use std::{
+use core::{
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
   iter, mem,
 };
+use ff::PrimeField;
+use libm::log2;
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 
 /// Compute the natural number represented by an array of limbs.
 /// The limbs are assumed to be based the `limb_width` power of 2.

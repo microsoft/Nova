@@ -4,7 +4,6 @@ use crate::frontend::{
 };
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
-// use byteorder::WriteBytesExt;
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 #[cfg(feature = "std")]

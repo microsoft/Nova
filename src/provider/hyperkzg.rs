@@ -1061,11 +1061,6 @@ mod tests {
 
     let proof_bytes = bincode::serde::encode_to_vec(&proof, legacy()).unwrap();
 
-    // let proof_bytes = bincode::DefaultOptions::new()
-    //   .with_big_endian()
-    //   .with_fixint_encoding()
-    //   .serialize(&proof)
-    //   .unwrap();
     assert_eq!(proof_bytes.len(), 352);
 
     // Change the proof and expect verification to fail

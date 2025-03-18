@@ -1,9 +1,8 @@
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
+use core::ops::{Add, Sub};
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "std")]
-use std::ops::{Add, Sub};
 
 /// Represents a variable in our constraint system.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
