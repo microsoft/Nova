@@ -206,7 +206,7 @@ impl<E: Engine> NIFS<E> {
     W1: &FoldedWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
-  ) -> Result<(NIFS<E>, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
+  ) -> Result<(NIFS<E>, E::Scalar, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
     // initialize a new RO
     let mut ro = E::RO2::new(ro_consts.clone());
 
@@ -285,7 +285,7 @@ impl<E: Engine> NIFS<E> {
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((Self { comm_E, poly }, (U, W)))
+    Ok((Self { comm_E, poly }, r_b, (U, W)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -389,7 +389,7 @@ mod tests {
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U1, W1,
     );
     assert!(res.is_ok());
-    let (nifs, (_U, W)) = res.unwrap();
+    let (nifs, _, (_U, W)) = res.unwrap();
 
     // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U1);
@@ -413,7 +413,7 @@ mod tests {
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U2, W2,
     );
     assert!(res.is_ok());
-    let (nifs, (_U, W)) = res.unwrap();
+    let (nifs, _, (_U, W)) = res.unwrap();
 
     // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U2);

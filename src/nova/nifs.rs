@@ -308,7 +308,7 @@ mod tests {
   ) {
     // produce a default running instance
     let mut running_W = RelaxedR1CSWitness::default(shape);
-    let mut running_U = RelaxedR1CSInstance::default(ck, shape);
+    let mut running_U = RelaxedR1CSInstance::default(shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let res = NIFS::prove(
@@ -362,7 +362,7 @@ mod tests {
   ) -> (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>) {
     // produce a default running instance
     let mut running_W = RelaxedR1CSWitness::default(shape);
-    let mut running_U = RelaxedR1CSInstance::default(ck, shape);
+    let mut running_U = RelaxedR1CSInstance::default(shape);
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let res = NIFSRelaxed::prove(
@@ -551,7 +551,7 @@ mod tests {
       &ro_consts,
       &<E as Engine>::Scalar::ZERO,
       &S,
-      &RelaxedR1CSInstance::from_r1cs_instance(&ck, &S, &U1),
+      &RelaxedR1CSInstance::from_r1cs_instance(&S, &U1),
       &RelaxedR1CSWitness::from_r1cs_witness(&S, &W1),
       &U2,
       &W2,

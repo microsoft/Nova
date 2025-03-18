@@ -14,6 +14,7 @@ use crate::{
     utils::{alloc_num_equals, alloc_zero, conditionally_select_vec, le_bits_to_num},
   },
   neutron::{nifs::NIFS, relation::FoldedInstance},
+  nova::nifs::NIFS as NovaNIFS,
   r1cs::R1CSInstance,
   traits::{
     circuit::StepCircuit, commitment::CommitmentTrait, Engine, RO2ConstantsCircuit, ROCircuitTrait,
@@ -38,34 +39,36 @@ use relation::AllocatedFoldedInstance;
 /// A type that holds the non-deterministic inputs for the augmented circuit
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct NeutronAugmentedCircuitInputs<E: Engine> {
-  pp_digest: E::Scalar,
-  i: E::Scalar,
-  z0: Vec<E::Scalar>,
-  zi: Option<Vec<E::Scalar>>,
-  U: Option<FoldedInstance<E>>,
-  ri: Option<E::Scalar>,
-  r_next: E::Scalar,
-  u: Option<R1CSInstance<E>>,
-  nifs: Option<NIFS<E>>,
-  comm_W_fold: Option<Commitment<E>>,
-  comm_E_fold: Option<Commitment<E>>,
+pub struct NeutronAugmentedCircuitInputs<E1: Engine, E2: Engine> {
+  pp_digest: Option<E1::Scalar>,
+  i: Option<E1::Scalar>,
+  z0: Option<Vec<E1::Scalar>>,
+  zi: Option<Vec<E1::Scalar>>,
+  U: Option<FoldedInstance<E1>>,
+  ri: Option<E1::Scalar>,
+  r_next: Option<E1::Scalar>,
+  u: Option<R1CSInstance<E1>>,
+  nifs: Option<NIFS<E1>>,
+  comm_W_fold: Option<Commitment<E1>>,
+  comm_E_fold: Option<Commitment<E1>>,
+  nifs_EC: Option<NovaNIFS<E2>>,
 }
 
-impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
+impl<E1: Engine, E2: Engine> NeutronAugmentedCircuitInputs<E1, E2> {
   /// Create new inputs/witness for the verification circuit
   pub fn new(
-    pp_digest: E::Scalar,
-    i: E::Scalar,
-    z0: Vec<E::Scalar>,
-    zi: Option<Vec<E::Scalar>>,
-    U: Option<FoldedInstance<E>>,
-    ri: Option<E::Scalar>,
-    r_next: E::Scalar,
-    u: Option<R1CSInstance<E>>,
-    nifs: Option<NIFS<E>>,
-    comm_W_fold: Option<Commitment<E>>,
-    comm_E_fold: Option<Commitment<E>>,
+    pp_digest: Option<E1::Scalar>,
+    i: Option<E1::Scalar>,
+    z0: Option<Vec<E1::Scalar>>,
+    zi: Option<Vec<E1::Scalar>>,
+    U: Option<FoldedInstance<E1>>,
+    ri: Option<E1::Scalar>,
+    r_next: Option<E1::Scalar>,
+    u: Option<R1CSInstance<E1>>,
+    nifs: Option<NIFS<E1>>,
+    comm_W_fold: Option<Commitment<E1>>,
+    comm_E_fold: Option<Commitment<E1>>,
+    nifs_EC: Option<NovaNIFS<E2>>,
   ) -> Self {
     Self {
       pp_digest,
@@ -79,24 +82,27 @@ impl<E: Engine> NeutronAugmentedCircuitInputs<E> {
       nifs,
       comm_W_fold,
       comm_E_fold,
+      nifs_EC,
     }
   }
 }
 
 /// The augmented circuit F' in Neutron that includes a step circuit F
 /// and the circuit for the verifier in Neutron's non-interactive folding scheme
-pub struct NeutronAugmentedCircuit<'a, E: Engine, SC: StepCircuit<E::Scalar>> {
-  ro_consts: RO2ConstantsCircuit<E>,
-  inputs: Option<NeutronAugmentedCircuitInputs<E>>,
+pub struct NeutronAugmentedCircuit<'a, E1: Engine, E2: Engine, SC: StepCircuit<E1::Scalar>> {
+  ro_consts: RO2ConstantsCircuit<E1>,
+  inputs: Option<NeutronAugmentedCircuitInputs<E1, E2>>,
   step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, SC> {
+impl<'a, E1: Engine, E2: Engine, SC: StepCircuit<E1::Scalar>>
+  NeutronAugmentedCircuit<'a, E1, E2, SC>
+{
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
-    inputs: Option<NeutronAugmentedCircuitInputs<E>>,
+    inputs: Option<NeutronAugmentedCircuitInputs<E1, E2>>,
     step_circuit: &'a SC,
-    ro_consts: RO2ConstantsCircuit<E>,
+    ro_consts: RO2ConstantsCircuit<E1>,
   ) -> Self {
     Self {
       inputs,
@@ -106,66 +112,87 @@ impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, S
   }
 
   /// Allocate all witnesses and return
-  fn alloc_witness<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  fn alloc_witness<CS: ConstraintSystem<E1::Scalar>>(
     &self,
     mut cs: CS,
     arity: usize,
   ) -> Result<
     (
-      AllocatedNum<E::Scalar>,
-      AllocatedNum<E::Scalar>,
-      Vec<AllocatedNum<E::Scalar>>,
-      Vec<AllocatedNum<E::Scalar>>,
-      AllocatedFoldedInstance<E>,
-      AllocatedNum<E::Scalar>,
-      AllocatedNum<E::Scalar>,
-      AllocatedNonnativeR1CSInstance<E>,
-      AllocatedNIFS<E>,
-      AllocatedNonnativePoint<E>,
-      AllocatedNonnativePoint<E>,
+      AllocatedNum<E1::Scalar>,
+      AllocatedNum<E1::Scalar>,
+      Vec<AllocatedNum<E1::Scalar>>,
+      Vec<AllocatedNum<E1::Scalar>>,
+      AllocatedFoldedInstance<E1>,
+      AllocatedNum<E1::Scalar>,
+      AllocatedNum<E1::Scalar>,
+      AllocatedNonnativeR1CSInstance<E1>,
+      AllocatedNIFS<E1>,
+      AllocatedNonnativePoint<E1>,
+      AllocatedNonnativePoint<E1>,
     ),
     SynthesisError,
   > {
     // Allocate the pp_digest
     let pp_digest = AllocatedNum::alloc(cs.namespace(|| "pp_digest"), || {
-      Ok(self.inputs.get()?.pp_digest)
+      self
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.pp_digest)
+        .ok_or(SynthesisError::AssignmentMissing)
     })?;
 
     // Allocate i
-    let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
+    let i = AllocatedNum::alloc(cs.namespace(|| "i"), || {
+      self
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.i)
+        .ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    let zero = vec![E1::Scalar::ZERO; arity];
 
     // Allocate z0
     let z_0 = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("z0_{i}")), || {
-          Ok(self.inputs.get()?.z0[i])
+          Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<E1::Scalar>>, _>>()?;
 
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-    let zero = vec![E::Scalar::ZERO; arity];
     let z_i = (0..arity)
       .map(|i| {
         AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
           Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<E1::Scalar>>, _>>()?;
 
     // Allocate the running instance
-    let U: AllocatedFoldedInstance<E> = AllocatedFoldedInstance::alloc(
+    let U: AllocatedFoldedInstance<E1> = AllocatedFoldedInstance::alloc(
       cs.namespace(|| "Allocate U"),
       self.inputs.as_ref().and_then(|inputs| inputs.U.as_ref()),
     )?;
 
     // Allocate ri
-    let r_i = AllocatedNum::alloc(cs.namespace(|| "ri"), || {
-      Ok(self.inputs.get()?.ri.unwrap_or(E::Scalar::ZERO))
+    let ri = AllocatedNum::alloc(cs.namespace(|| "ri"), || {
+      self
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.ri)
+        .ok_or(SynthesisError::AssignmentMissing)
     })?;
 
     // Allocate r_i+1
-    let r_next = AllocatedNum::alloc(cs.namespace(|| "r_i+1"), || Ok(self.inputs.get()?.r_next))?;
+    let r_next = AllocatedNum::alloc(cs.namespace(|| "r_next"), || {
+      self
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.r_next)
+        .ok_or(SynthesisError::AssignmentMissing)
+    })?;
 
     // Allocate the instance to be folded in
     let u = AllocatedNonnativeR1CSInstance::alloc(
@@ -204,7 +231,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, S
       z_0,
       z_i,
       U,
-      r_i,
+      ri,
       r_next,
       u,
       nifs,
@@ -213,32 +240,32 @@ impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, S
     ))
   }
 
-  fn synthesize_base_case<CS: ConstraintSystem<E::Scalar>>(
+  fn synthesize_base_case<CS: ConstraintSystem<E1::Scalar>>(
     &self,
     mut cs: CS,
-  ) -> Result<AllocatedFoldedInstance<E>, SynthesisError> {
+  ) -> Result<AllocatedFoldedInstance<E1>, SynthesisError> {
     // In the base case, we simply return the default running instance
     AllocatedFoldedInstance::default(cs.namespace(|| "Allocate U_default"))
   }
 
   /// Synthesizes non base case and returns the new relaxed `FoldedInstance`
   /// And a boolean indicating if all checks pass
-  fn synthesize_non_base_case<CS: ConstraintSystem<E::Scalar>>(
+  fn synthesize_non_base_case<CS: ConstraintSystem<E1::Scalar>>(
     &self,
     mut cs: CS,
-    pp_digest: &AllocatedNum<E::Scalar>,
-    i: &AllocatedNum<E::Scalar>,
-    z_0: &[AllocatedNum<E::Scalar>],
-    z_i: &[AllocatedNum<E::Scalar>],
-    U: &AllocatedFoldedInstance<E>,
-    r_i: &AllocatedNum<E::Scalar>,
-    u: &AllocatedNonnativeR1CSInstance<E>,
-    nifs: &AllocatedNIFS<E>,
-    comm_W_fold: &AllocatedNonnativePoint<E>,
-    comm_E_fold: &AllocatedNonnativePoint<E>,
-  ) -> Result<(AllocatedFoldedInstance<E>, AllocatedBit), SynthesisError> {
+    pp_digest: &AllocatedNum<E1::Scalar>,
+    i: &AllocatedNum<E1::Scalar>,
+    z_0: &[AllocatedNum<E1::Scalar>],
+    z_i: &[AllocatedNum<E1::Scalar>],
+    U: &AllocatedFoldedInstance<E1>,
+    r_i: &AllocatedNum<E1::Scalar>,
+    u: &AllocatedNonnativeR1CSInstance<E1>,
+    nifs: &AllocatedNIFS<E1>,
+    comm_W_fold: &AllocatedNonnativePoint<E1>,
+    comm_E_fold: &AllocatedNonnativePoint<E1>,
+  ) -> Result<(AllocatedFoldedInstance<E1>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = E::RO2Circuit::new(self.ro_consts.clone());
+    let mut ro = E1::RO2Circuit::new(self.ro_consts.clone());
     ro.absorb(pp_digest);
     ro.absorb(i);
     for e in z_0 {
@@ -273,12 +300,12 @@ impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, S
   }
 }
 
-impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
+impl<E1: Engine, E2: Engine, SC: StepCircuit<E1::Scalar>> NeutronAugmentedCircuit<'_, E1, E2, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<E::Scalar>>(
+  pub fn synthesize<CS: ConstraintSystem<E1::Scalar>>(
     self,
     cs: &mut CS,
-  ) -> Result<Vec<AllocatedNum<E::Scalar>>, SynthesisError> {
+  ) -> Result<Vec<AllocatedNum<E1::Scalar>>, SynthesisError> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
@@ -330,7 +357,7 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
 
     // Compute i + 1
     let i_new = AllocatedNum::alloc(cs.namespace(|| "i + 1"), || {
-      Ok(*i.get_value().get()? + E::Scalar::ONE)
+      Ok(*i.get_value().get()? + E1::Scalar::ONE)
     })?;
     cs.enforce(
       || "check i + 1",
@@ -358,7 +385,7 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
     }
 
     // Compute the new hash H(pp_digest, Unew, i+1, z0, z_{i+1})
-    let mut ro = E::RO2Circuit::new(self.ro_consts);
+    let mut ro = E1::RO2Circuit::new(self.ro_consts);
     ro.absorb(&pp_digest);
     ro.absorb(&i_new);
     for e in &z_0 {
@@ -404,7 +431,7 @@ mod tests {
     let ro_consts = RO2ConstantsCircuit::<E1>::default();
     let tc = TrivialCircuit::default();
 
-    let circuit: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<E1::Scalar>> =
+    let circuit: NeutronAugmentedCircuit<'_, E1, E2, TrivialCircuit<E1::Scalar>> =
       NeutronAugmentedCircuit::new(None, &tc, ro_consts.clone());
     let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
@@ -412,23 +439,9 @@ mod tests {
     num_constraints.assert_eq(cs.num_constraints().to_string().as_str());
 
     // Execute the base case for the primary
-    let zero = <E1::Scalar as Field>::ZERO;
     let mut cs = SatisfyingAssignment::<E1>::new();
-    let inputs: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
-      zero, // pass zero for testing
-      zero,
-      vec![zero],
-      None,
-      None,
-      None,
-      zero,
-      None,
-      None,
-      None,
-      None,
-    );
-    let circuit: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<E1::Scalar>> =
-      NeutronAugmentedCircuit::new(Some(inputs), &tc, ro_consts);
+    let circuit: NeutronAugmentedCircuit<'_, E1, E2, TrivialCircuit<E1::Scalar>> =
+      NeutronAugmentedCircuit::new(None, &tc, ro_consts);
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     // Make sure that this is satisfiable

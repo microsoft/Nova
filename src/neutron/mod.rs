@@ -10,7 +10,12 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness},
+  gadgets::utils::field_switch,
+  nova::nifs::NIFS as NovaNIFS,
+  r1cs::{
+    CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
+    RelaxedR1CSWitness,
+  },
   traits::{
     circuit::StepCircuit, snark::default_ck_hint, AbsorbInRO2Trait, Engine, RO2Constants,
     RO2ConstantsCircuit, ROTrait,
@@ -125,7 +130,7 @@ where
     let ro_consts_circuit: RO2ConstantsCircuit<E1> = RO2ConstantsCircuit::<E1>::default();
 
     // initialize ck and structure for the primary
-    let circuit: NeutronAugmentedCircuit<'_, E1, C> =
+    let circuit: NeutronAugmentedCircuit<'_, E1, E2, C> =
       NeutronAugmentedCircuit::new(None, c, ro_consts_circuit.clone());
     let mut cs: ShapeCS<E1> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
@@ -182,26 +187,39 @@ where
   E2: Engine<Base = <E1 as Engine>::Scalar>,
   C: StepCircuit<E1::Scalar>,
 {
-  z0: Vec<E1::Scalar>,
-
+  // instance-witness pairs on E1
   r_W: FoldedWitness<E1>,
   r_U: FoldedInstance<E1>,
-  ri: E1::Scalar,
-
   l_w: R1CSWitness<E1>,
   l_u: R1CSInstance<E1>,
 
-  i: usize,
+  // instance-witness pairs on E2
+  r_W_EC: RelaxedR1CSWitness<E2>,
+  r_U_EC: RelaxedR1CSInstance<E2>,
 
+  z0: Vec<E1::Scalar>,
+  i: usize,
   zi: Vec<E1::Scalar>,
 
-  _p: PhantomData<(C, E2)>,
+  // blind when hashing
+  ri: E1::Scalar,
+
+  _p: PhantomData<C>,
 }
 
 impl<E1, E2, C> RecursiveSNARK<E1, E2, C>
 where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
+  E1: Engine<
+    Base = <E2 as Engine>::Scalar,
+    RO = <E2 as Engine>::RO2,
+    ROCircuit = <E2 as Engine>::RO2Circuit,
+  >,
+
+  E2: Engine<
+    Base = <E1 as Engine>::Scalar,
+    RO = <E1 as Engine>::RO2,
+    ROCircuit = <E1 as Engine>::RO2Circuit,
+  >,
   C: StepCircuit<E1::Scalar>,
 {
   /// Create new instance of recursive SNARK
@@ -214,22 +232,8 @@ where
 
     // base case for the primary
     let mut cs = SatisfyingAssignment::<E1>::new();
-    let inputs: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
-      pp.digest(),
-      E1::Scalar::ZERO,
-      z0.to_vec(),
-      None,
-      None,
-      None,
-      ri, // "r next"
-      None,
-      None,
-      None,
-      None,
-    );
-
-    let circuit: NeutronAugmentedCircuit<'_, E1, C> =
-      NeutronAugmentedCircuit::new(Some(inputs), c, pp.ro_consts_circuit.clone());
+    let circuit: NeutronAugmentedCircuit<'_, E1, E2, C> =
+      NeutronAugmentedCircuit::new(None, c, pp.ro_consts_circuit.clone());
     let zi = circuit.synthesize(&mut cs)?;
     let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck)?;
 
@@ -241,14 +245,20 @@ where
       .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
 
     Ok(Self {
-      z0: z0.to_vec(),
       r_W: FoldedWitness::default(&pp.structure),
       r_U: FoldedInstance::default(&pp.structure),
-      ri,
       l_w,
       l_u,
+
+      r_W_EC: RelaxedR1CSWitness::default(&pp.r1cs_shape_ec),
+      r_U_EC: RelaxedR1CSInstance::default(&pp.r1cs_shape_ec),
+
       i: 0,
+      z0: z0.to_vec(),
       zi,
+
+      ri,
+
       _p: Default::default(),
     })
   }
@@ -262,7 +272,7 @@ where
     }
 
     // fold the last instance with the running instance
-    let (nifs, (r_U, r_W)) = NIFS::prove(
+    let (nifs, chal, (r_U, r_W)) = NIFS::prove(
       &pp.ck,
       &pp.ro_consts,
       &pp.digest(),
@@ -273,44 +283,68 @@ where
       &self.l_w,
     )?;
 
+    // we now generate circuit-sat instances for establishing the correctness of scalar muls in NIFS::verify
+    // make circuits for computing the two scalar muls
+    let circuit_ec = ScalarMulCircuit::<E1>::new(
+      Some(field_switch(chal)),
+      Some(self.r_U.comm_W),
+      Some(self.l_u.comm_W),
+    );
+    let mut cs = SatisfyingAssignment::<E2>::new();
+    let _ = circuit_ec.synthesize(&mut cs);
+    let (u, w) = cs.r1cs_instance_and_witness(&pp.r1cs_shape_ec, &pp.ck_ec)?;
+
+    // fold (u, w) with the running EC instance
+    let (nifs_ec, (r_U_EC, r_W_EC)) = NovaNIFS::<E2>::prove(
+      &pp.ck_ec,
+      &pp.ro_consts,
+      &field_switch(pp.digest()),
+      &pp.r1cs_shape_ec,
+      &self.r_U_EC,
+      &self.r_W_EC,
+      &u,
+      &w,
+    )?;
+
     let r_next = E1::Scalar::random(&mut OsRng);
 
     let mut cs = SatisfyingAssignment::<E1>::new();
-    let inputs: NeutronAugmentedCircuitInputs<E1> = NeutronAugmentedCircuitInputs::new(
-      pp.digest(),
-      E1::Scalar::from(self.i as u64),
-      self.z0.to_vec(),
+    let inputs: NeutronAugmentedCircuitInputs<E1, E2> = NeutronAugmentedCircuitInputs::new(
+      Some(pp.digest()),
+      Some(E1::Scalar::from(self.i as u64)),
+      Some(self.z0.to_vec()),
       Some(self.zi.clone()),
       Some(self.r_U.clone()),
       Some(self.ri),
-      r_next,
+      Some(r_next),
       Some(self.l_u.clone()),
       Some(nifs),
       Some(r_U.comm_W),
       Some(r_U.comm_E),
+      Some(nifs_ec),
     );
 
-    let circuit: NeutronAugmentedCircuit<'_, E1, C> =
+    let circuit: NeutronAugmentedCircuit<'_, E1, E2, C> =
       NeutronAugmentedCircuit::new(Some(inputs), c, pp.ro_consts_circuit.clone());
     let zi = circuit.synthesize(&mut cs)?;
 
     let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck)?;
 
     // update the running instances and witnesses
+    self.r_U = r_U;
+    self.r_W = r_W;
+    self.l_u = l_u;
+    self.l_w = l_w;
+    self.r_U_EC = r_U_EC;
+    self.r_W_EC = r_W_EC;
+
+    self.i += 1;
     self.zi = zi
       .iter()
       .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
       .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
 
-    self.r_U = r_U;
-    self.r_W = r_W;
-
-    self.i += 1;
-
     self.ri = r_next;
-
-    self.l_u = l_u;
-    self.l_w = l_w;
 
     Ok(())
   }
@@ -509,8 +543,16 @@ mod tests {
 
   fn test_ivc_trivial_with<E1, E2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
   {
     let test_circuit1 = TrivialCircuit::<<E1 as Engine>::Scalar>::default();
 
@@ -546,8 +588,16 @@ mod tests {
 
   fn test_ivc_nontrivial_with<E1, E2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
   {
     let circuit = CubicCircuit::default();
 
@@ -602,8 +652,16 @@ mod tests {
 
   fn test_ivc_base_with<E1, E2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
   {
     let test_circuit1 = CubicCircuit::<<E1 as Engine>::Scalar>::default();
 

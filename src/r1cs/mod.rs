@@ -634,7 +634,7 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
 
 impl<E: Engine> RelaxedR1CSInstance<E> {
   /// Produces a default `RelaxedR1CSInstance` given `R1CSGens` and `R1CSShape`
-  pub fn default(_ck: &CommitmentKey<E>, S: &R1CSShape<E>) -> RelaxedR1CSInstance<E> {
+  pub fn default(S: &R1CSShape<E>) -> RelaxedR1CSInstance<E> {
     let (comm_W, comm_E) = (Commitment::<E>::default(), Commitment::<E>::default());
     RelaxedR1CSInstance {
       comm_W,
@@ -646,11 +646,10 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
 
   /// Initializes a new `RelaxedR1CSInstance` from an `R1CSInstance`
   pub fn from_r1cs_instance(
-    ck: &CommitmentKey<E>,
     S: &R1CSShape<E>,
     instance: &R1CSInstance<E>,
   ) -> RelaxedR1CSInstance<E> {
-    let mut r_instance = RelaxedR1CSInstance::default(ck, S);
+    let mut r_instance = RelaxedR1CSInstance::default(S);
     r_instance.comm_W = instance.comm_W;
     r_instance.u = E::Scalar::ONE;
     r_instance.X.clone_from(&instance.X);

@@ -297,15 +297,13 @@ where
     let l_w_primary = w_primary;
     let l_u_primary = u_primary;
     let r_W_primary = RelaxedR1CSWitness::from_r1cs_witness(&pp.r1cs_shape_primary, &l_w_primary);
-    let r_U_primary =
-      RelaxedR1CSInstance::from_r1cs_instance(&pp.ck_primary, &pp.r1cs_shape_primary, &l_u_primary);
+    let r_U_primary = RelaxedR1CSInstance::from_r1cs_instance(&pp.r1cs_shape_primary, &l_u_primary);
 
     // IVC proof for the secondary circuit
     let l_w_secondary = w_secondary;
     let l_u_secondary = u_secondary;
     let r_W_secondary = RelaxedR1CSWitness::<E2>::default(&pp.r1cs_shape_secondary);
-    let r_U_secondary =
-      RelaxedR1CSInstance::<E2>::default(&pp.ck_secondary, &pp.r1cs_shape_secondary);
+    let r_U_secondary = RelaxedR1CSInstance::<E2>::default(&pp.r1cs_shape_secondary);
 
     if zi_primary.len() != pp.F_arity {
       return Err(NovaError::InvalidStepOutputLength);
