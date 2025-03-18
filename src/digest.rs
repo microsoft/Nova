@@ -9,8 +9,8 @@ use sha3::{Digest, Sha3_256};
 
 /// Trait for components with potentially discrete digests to be included in their container's digest.
 pub trait Digestible {
-  /// Write the byte representation of Self in a byte buffer
-  fn write_bytes(&self) -> Result<Vec<u8>, NovaError>;
+  /// Write the byte representation of Self. Returns a byte vector.
+  fn to_bytes(&self) -> Result<Vec<u8>, NovaError>;
 }
 
 /// Marker trait to be implemented for types that implement `Digestible` and `Serialize`.
@@ -18,7 +18,7 @@ pub trait Digestible {
 pub trait SimpleDigestible: Serialize {}
 
 impl<T: SimpleDigestible> Digestible for T {
-  fn write_bytes(&self) -> Result<Vec<u8>, NovaError> {
+  fn to_bytes(&self) -> Result<Vec<u8>, NovaError> {
     bincode::serde::encode_to_vec(self, legacy()).map_err(|e| NovaError::DigestError {
       reason: e.to_string(),
     })
@@ -64,7 +64,7 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
 
   /// Compute the digest of a `Digestible` instance.
   pub fn digest(&self) -> Result<F, core::fmt::Error> {
-    let bytes = self.inner.write_bytes().expect("Serialization error");
+    let bytes = self.inner.to_bytes().expect("Serialization error");
 
     let mut hasher = Self::hasher();
     hasher.update(&bytes);
