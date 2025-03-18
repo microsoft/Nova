@@ -43,15 +43,15 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
     });
 
     // turn the bit vector into a scalar
-    let mut result = F::ZERO;
+    let mut digest = F::ZERO;
     let mut coeff = F::ONE;
     for bit in bv {
       if bit {
-        result += coeff;
+        digest += coeff;
       }
       coeff += coeff;
     }
-    result
+    digest
   }
 
   /// Create a new `DigestComputer`
