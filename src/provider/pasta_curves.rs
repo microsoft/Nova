@@ -1,7 +1,7 @@
 #![cfg(not(feature = "std"))]
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 
-use crate::provider::msm_no_std_impl::msm_best;
+use crate::provider::msm::msm_generic;
 use crate::{
   prelude::*,
   provider::traits::DlogGroup,
@@ -50,7 +50,7 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_best(scalars, bases)
+        msm_generic(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {
