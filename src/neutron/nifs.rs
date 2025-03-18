@@ -647,7 +647,7 @@ mod benchmarks {
 
     let w = W
       .W
-      .iter()
+      .par_iter()
       .map(|e| {
         // map field element to u8
         // this assumes little-endian representation

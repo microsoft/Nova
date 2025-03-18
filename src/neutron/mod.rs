@@ -10,9 +10,10 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSWitness},
+  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness},
   traits::{
-    circuit::StepCircuit, AbsorbInRO2Trait, Engine, RO2Constants, RO2ConstantsCircuit, ROTrait,
+    circuit::StepCircuit, snark::default_ck_hint, AbsorbInRO2Trait, Engine, RO2Constants,
+    RO2ConstantsCircuit, ROTrait,
   },
   CommitmentKey,
 };
@@ -23,10 +24,12 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
-pub mod nifs;
-pub mod relation;
+mod nifs;
+mod relation;
 
-use circuit::{NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs};
+use circuit::{
+  scalarmul::ScalarMulCircuit, NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs,
+};
 use nifs::NIFS;
 use relation::{FoldedInstance, FoldedWitness, Structure};
 
@@ -39,16 +42,20 @@ where
   E2: Engine<Base = <E1 as Engine>::Scalar>,
   C: StepCircuit<E1::Scalar>,
 {
+  // items on the circuit defined over E1
   F_arity: usize,
-
   ro_consts: RO2Constants<E1>,
   ro_consts_circuit: RO2ConstantsCircuit<E1>,
   ck: CommitmentKey<E1>,
   structure: Structure<E1>,
 
+  // items on the circuit defined over E2
+  ck_ec: CommitmentKey<E2>,
+  r1cs_shape_ec: R1CSShape<E2>,
+
   #[serde(skip, default = "OnceCell::new")]
   digest: OnceCell<E1::Scalar>,
-  _p: PhantomData<(C, E2)>,
+  _p: PhantomData<C>,
 }
 
 impl<E1, E2, C> SimpleDigestible for PublicParams<E1, E2, C>
@@ -117,7 +124,7 @@ where
     let ro_consts: RO2Constants<E1> = RO2Constants::<E1>::default();
     let ro_consts_circuit: RO2ConstantsCircuit<E1> = RO2ConstantsCircuit::<E1>::default();
 
-    // Initialize ck for the primary
+    // initialize ck and structure for the primary
     let circuit: NeutronAugmentedCircuit<'_, E1, C> =
       NeutronAugmentedCircuit::new(None, c, ro_consts_circuit.clone());
     let mut cs: ShapeCS<E1> = ShapeCS::new();
@@ -130,13 +137,21 @@ where
 
     let structure = Structure::new(&r1cs_shape);
 
+    // initialize ck for the ec circuit
+    let circuit = ScalarMulCircuit::<E1>::new(None, None, None);
+    let mut cs: ShapeCS<E2> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let (r1cs_shape_ec, ck_ec) = cs.r1cs_shape(&*default_ck_hint());
+
     let pp = PublicParams {
       F_arity,
-
       ro_consts,
       ro_consts_circuit,
       ck,
       structure,
+
+      ck_ec,
+      r1cs_shape_ec,
 
       digest: OnceCell::new(),
       _p: Default::default(),

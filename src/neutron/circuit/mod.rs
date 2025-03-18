@@ -23,10 +23,13 @@ use crate::{
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
-pub mod nifs;
-pub mod r1cs;
-pub mod relation;
-pub mod univariate;
+mod cyclefold;
+mod nifs;
+mod r1cs;
+mod relation;
+mod univariate;
+
+pub(crate) mod scalarmul;
 
 use nifs::AllocatedNIFS;
 use r1cs::AllocatedNonnativeR1CSInstance;
