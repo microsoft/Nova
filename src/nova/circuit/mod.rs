@@ -9,22 +9,20 @@ use crate::{
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, SynthesisError,
   },
-  gadgets::{
-    ecc::AllocatedPoint,
-    utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
-    },
+  gadgets::utils::{
+    alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
   },
+  nova::nifs::NIFS,
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
-  traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit,
-  },
-  Commitment,
+  traits::{circuit::StepCircuit, Engine, ROCircuitTrait, ROConstantsCircuit},
 };
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
+mod nifs;
 mod r1cs;
+
+use nifs::AllocatedNIFS;
 use r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,7 +36,7 @@ pub struct NovaAugmentedCircuitInputs<E: Engine> {
   ri: Option<E::Base>,
   r_next: E::Base,
   u: Option<R1CSInstance<E>>,
-  T: Option<Commitment<E>>,
+  nifs: Option<NIFS<E>>,
 }
 
 impl<E: Engine> NovaAugmentedCircuitInputs<E> {
@@ -52,7 +50,7 @@ impl<E: Engine> NovaAugmentedCircuitInputs<E> {
     ri: Option<E::Base>,
     r_next: E::Base,
     u: Option<R1CSInstance<E>>,
-    T: Option<Commitment<E>>,
+    nifs: Option<NIFS<E>>,
   ) -> Self {
     Self {
       pp_digest,
@@ -63,7 +61,7 @@ impl<E: Engine> NovaAugmentedCircuitInputs<E> {
       ri,
       r_next,
       u,
-      T,
+      nifs,
     }
   }
 }
@@ -108,7 +106,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       AllocatedNum<E::Base>,
       AllocatedNum<E::Base>,
       AllocatedR1CSInstance<E>,
-      AllocatedPoint<E>,
+      AllocatedNIFS<E>,
     ),
     SynthesisError,
   > {
@@ -160,17 +158,13 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
       self.inputs.as_ref().and_then(|inputs| inputs.u.as_ref()),
     )?;
 
-    // Allocate T
-    let T = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate T"),
-      self
-        .inputs
-        .as_ref()
-        .and_then(|inputs| inputs.T.map(|T| T.to_coordinates())),
+    // Allocate NIFS
+    let nifs = AllocatedNIFS::alloc(
+      cs.namespace(|| "allocate NIFS"),
+      self.inputs.as_ref().and_then(|inputs| inputs.nifs.as_ref()),
     )?;
-    T.check_on_curve(cs.namespace(|| "check T on curve"))?;
 
-    Ok((pp_digest, i, z_0, z_i, U, r_i, r_next, u, T))
+    Ok((pp_digest, i, z_0, z_i, U, r_i, r_next, u, nifs))
   }
 
   fn synthesize_hash_check<CS: ConstraintSystem<E::Base>>(
@@ -226,14 +220,14 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     pp_digest: &AllocatedNum<E::Base>,
     U: &AllocatedRelaxedR1CSInstance<E>,
     u: &AllocatedR1CSInstance<E>,
-    T: &AllocatedPoint<E>,
+    nifs: &AllocatedNIFS<E>,
   ) -> Result<AllocatedRelaxedR1CSInstance<E>, SynthesisError> {
     // Run NIFS Verifier
-    let U_fold = U.fold_with_r1cs(
+    let U_fold = nifs.verify(
       cs.namespace(|| "compute fold of U and u"),
       pp_digest,
+      U,
       u,
-      T,
       self.ro_consts.clone(),
     )?;
 
@@ -250,7 +244,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (pp_digest, i, z_0, z_i, U, r_i, r_next, u, T) =
+    let (pp_digest, i, z_0, z_i, U, r_i, r_next, u, nifs) =
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
@@ -284,7 +278,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
       &pp_digest,
       &U,
       &u,
-      &T,
+      &nifs,
     )?;
 
     // Either check_non_base_pass=true or we are in the base case

@@ -368,7 +368,7 @@ where
       Some(self.ri_primary),
       r_next_primary,
       Some(self.l_u_secondary.clone()),
-      Some(nifs_secondary.comm_T),
+      Some(nifs_secondary),
     );
 
     let circuit_primary: NovaAugmentedCircuit<'_, E2, C> = NovaAugmentedCircuit::new(
@@ -406,7 +406,7 @@ where
       Some(self.ri_secondary),
       r_next_secondary,
       Some(l_u_primary),
-      Some(nifs_primary.comm_T),
+      Some(nifs_primary),
     );
 
     let tc = TrivialCircuit::<E2::Scalar>::default();

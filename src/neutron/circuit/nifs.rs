@@ -43,7 +43,7 @@ impl<E: Engine> AllocatedNIFS<E> {
   }
 
   /// verify the provided NIFS inside the circuit
-  pub fn verify<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn verify<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     pp_digest: &AllocatedNum<E::Scalar>, // verifier key

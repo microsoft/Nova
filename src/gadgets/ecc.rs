@@ -561,6 +561,13 @@ where
     Ok(Self { x, y, is_infinity })
   }
 
+  /// Absorb the provided instance in the RO
+  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
+    ro.absorb(&self.x);
+    ro.absorb(&self.y);
+    ro.absorb(&self.is_infinity);
+  }
+
   /// If condition outputs a otherwise infinity
   pub fn select_point_or_infinity<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
