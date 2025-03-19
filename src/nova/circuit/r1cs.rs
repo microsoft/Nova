@@ -43,9 +43,7 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
 
   /// Absorb the provided instance in the RO
   pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
-    ro.absorb(&self.comm_W.x);
-    ro.absorb(&self.comm_W.y);
-    ro.absorb(&self.comm_W.is_infinity);
+    self.comm_W.absorb_in_ro(ro);
     ro.absorb(&self.X0);
     ro.absorb(&self.X1);
   }
@@ -103,13 +101,11 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
 
   /// Allocates the hardcoded default `RelaxedR1CSInstance` in the circuit.
   /// W = E = 0, u = 0, X0 = X1 = 0
-  pub fn default<CS: ConstraintSystem<<E as Engine>::Base>>(
-    mut cs: CS,
-  ) -> Result<Self, SynthesisError> {
+  pub fn default<CS: ConstraintSystem<E::Base>>(mut cs: CS) -> Result<Self, SynthesisError> {
     let W = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
     let E = W.clone();
 
-    let u = W.x.clone(); // In the default case, W.x = u = 0
+    let u = W.x(); // In the default case, W.x = u = 0
 
     // X0 and X1 are allocated and in the honest prover case set to zero
     // If the prover is malicious, it can set to arbitrary values, but the resulting
@@ -170,12 +166,9 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     mut cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    ro.absorb(&self.W.x);
-    ro.absorb(&self.W.y);
-    ro.absorb(&self.W.is_infinity);
-    ro.absorb(&self.E.x);
-    ro.absorb(&self.E.y);
-    ro.absorb(&self.E.is_infinity);
+    self.W.absorb_in_ro(ro);
+    self.E.absorb_in_ro(ro);
+
     ro.absorb(&self.u);
 
     // Analyze X0 as limbs

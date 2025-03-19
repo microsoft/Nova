@@ -21,15 +21,12 @@ use num_bigint::BigInt;
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
 pub struct AllocatedPoint<E: Engine> {
-  pub(crate) x: AllocatedNum<E::Base>,
-  pub(crate) y: AllocatedNum<E::Base>,
-  pub(crate) is_infinity: AllocatedNum<E::Base>,
+  x: AllocatedNum<E::Base>,
+  y: AllocatedNum<E::Base>,
+  is_infinity: AllocatedNum<E::Base>,
 }
 
-impl<E> AllocatedPoint<E>
-where
-  E: Engine,
-{
+impl<E: Engine> AllocatedPoint<E> {
   /// Allocates a new point on the curve using coordinates provided by `coords`.
   /// If coords = None, it allocates the default infinity point
   pub fn alloc<CS: ConstraintSystem<E::Base>>(
@@ -57,6 +54,10 @@ where
     );
 
     Ok(AllocatedPoint { x, y, is_infinity })
+  }
+
+  pub fn x(&self) -> AllocatedNum<E::Base> {
+    self.x.clone()
   }
 
   /// checks if `self` is on the curve or if it is infinity
