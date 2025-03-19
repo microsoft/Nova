@@ -116,27 +116,9 @@ impl<E: Engine> ScalarMulCircuit<E> {
 
     // inputize scalar, r_comm, f_comm, r_comm_updated
     r.inputize(cs.namespace(|| "inputize r"))?;
-    r_comm.x.inputize(cs.namespace(|| "inputize r_comm.x"))?;
-    r_comm.y.inputize(cs.namespace(|| "inputize r_comm.y"))?;
-    f_comm.x.inputize(cs.namespace(|| "inputize f_comm.x"))?;
-    f_comm.y.inputize(cs.namespace(|| "inputize f_comm.y"))?;
-    r_comm_updated
-      .x
-      .inputize(cs.namespace(|| "inputize r_comm_updated.x"))?;
-    r_comm_updated
-      .y
-      .inputize(cs.namespace(|| "inputize r_comm_updated.y"))?;
-
-    // inputize is_infinity
-    r_comm
-      .is_infinity
-      .inputize(cs.namespace(|| "inputize r_comm.is_inf"))?;
-    f_comm
-      .is_infinity
-      .inputize(cs.namespace(|| "inputize f_comm.is_inf"))?;
-    r_comm_updated
-      .is_infinity
-      .inputize(cs.namespace(|| "inputize r_comm_updated.is_inf"))?;
+    r_comm.inputize(cs.namespace(|| "inputize r_comm"))?;
+    f_comm.inputize(cs.namespace(|| "inputize f_comm"))?;
+    r_comm_updated.inputize(cs.namespace(|| "inputize r_comm_updated"))?;
 
     Ok(())
   }

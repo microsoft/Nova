@@ -116,8 +116,7 @@ where
   /// let ck_hint1 = &*SPrime::<E1>::ck_floor();
   /// let ck_hint2 = &*SPrime::<E2>::ck_floor();
   ///
-  /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2)?;
-  /// Ok(())
+  /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2).unwrap();
   /// ```
   pub fn setup(
     c: &C,
@@ -232,8 +231,22 @@ where
 
     // base case for the primary
     let mut cs = SatisfyingAssignment::<E1>::new();
+    let inputs: NeutronAugmentedCircuitInputs<E1, E2> = NeutronAugmentedCircuitInputs::new(
+      pp.digest(),
+      E1::Scalar::ZERO,
+      z0.to_vec(),
+      None,
+      None,
+      None,
+      ri, // "r next"
+      None,
+      None,
+      None,
+      None,
+      None,
+    );
     let circuit: NeutronAugmentedCircuit<'_, E1, E2, C> =
-      NeutronAugmentedCircuit::new(None, c, pp.ro_consts_circuit.clone());
+      NeutronAugmentedCircuit::new(Some(inputs), c, pp.ro_consts_circuit.clone());
     let zi = circuit.synthesize(&mut cs)?;
     let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck)?;
 
@@ -310,13 +323,13 @@ where
 
     let mut cs = SatisfyingAssignment::<E1>::new();
     let inputs: NeutronAugmentedCircuitInputs<E1, E2> = NeutronAugmentedCircuitInputs::new(
-      Some(pp.digest()),
-      Some(E1::Scalar::from(self.i as u64)),
-      Some(self.z0.to_vec()),
+      pp.digest(),
+      E1::Scalar::from(self.i as u64),
+      self.z0.to_vec(),
       Some(self.zi.clone()),
       Some(self.r_U.clone()),
       Some(self.ri),
-      Some(r_next),
+      r_next,
       Some(self.l_u.clone()),
       Some(nifs),
       Some(r_U.comm_W),
@@ -527,17 +540,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["3521f248be19f6131fb85d5384c6310d6fe822739224afbce165e51fc6a9e803"],
+      &expect!["4588c0d7747a1c96a7496170b4ec51c0d8ad1fbe79e6c50689f689e00e0b8b00"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["fdae5c889811253af33ed2346c8de3d181704f6e47550a79e6e73e9e864ee102"],
+      &expect!["4b45f275b10d02b66e5881e1337118fb508529d4f7f296627c818a88773c2802"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["75f5f6d8d260eec927ec39147458424cd91a9c29fe47967b6bd8ecb1ceaaaa01"],
+      &expect!["28d74cd92449d5cfc8a17f38fb88a9502eaf07799a25e89c04724cc181cd2c03"],
     );
   }
 

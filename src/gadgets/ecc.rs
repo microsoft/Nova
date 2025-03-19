@@ -569,6 +569,15 @@ impl<E: Engine> AllocatedPoint<E> {
     ro.absorb(&self.is_infinity);
   }
 
+  pub fn inputize<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
+    self.x.inputize(cs.namespace(|| "inputize x"))?;
+    self.y.inputize(cs.namespace(|| "inputize y"))?;
+    self
+      .is_infinity
+      .inputize(cs.namespace(|| "inputize is_infinity"))?;
+    Ok(())
+  }
+
   /// If condition outputs a otherwise infinity
   pub fn select_point_or_infinity<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
