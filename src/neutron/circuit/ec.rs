@@ -12,13 +12,13 @@ use crate::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 
-pub struct ScalarMulCircuit<E: Engine> {
+pub struct ECCircuit<E: Engine> {
   r: Option<E::Base>, // 128-bit scalar can be uniquely represented it in both base and scalar fields
   r_comm: Option<Commitment<E>>, // running commitment
   f_comm: Option<Commitment<E>>, // fresh commitment
 }
 
-impl<E: Engine> ScalarMulCircuit<E> {
+impl<E: Engine> ECCircuit<E> {
   pub fn new(
     r: Option<E::Base>,
     r_comm: Option<Commitment<E>>,
@@ -142,7 +142,7 @@ mod tests {
   use ff::Field;
   use rand::rngs::OsRng;
 
-  fn test_scalarmul_circuit_with<E1, E2>(
+  fn test_ec_circuit_with<E1, E2>(
     num_cons: usize,
     num_vars: usize,
     num_io: usize,
@@ -174,8 +174,7 @@ mod tests {
     let r_comm = Commitment::<E1>::default();
     let f_comm = Commitment::<E1>::default();
 
-    let circuit: ScalarMulCircuit<E1> =
-      ScalarMulCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
+    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
@@ -187,8 +186,7 @@ mod tests {
     assert_eq!(shape.B.len(), nz_B);
     assert_eq!(shape.C.len(), nz_C);
 
-    let circuit: ScalarMulCircuit<E1> =
-      ScalarMulCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
+    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
     let mut cs = SatisfyingAssignment::<E2>::new();
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
@@ -196,7 +194,7 @@ mod tests {
   }
 
   #[test]
-  fn test_scalarmul_circuit() {
-    test_scalarmul_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(1360, 1350, 10, 1777, 1762, 2417);
+  fn test_ec_circuit() {
+    test_ec_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(1360, 1350, 10, 1777, 1762, 2417);
   }
 }

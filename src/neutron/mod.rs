@@ -32,9 +32,7 @@ mod circuit;
 mod nifs;
 mod relation;
 
-use circuit::{
-  scalarmul::ScalarMulCircuit, NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs,
-};
+use circuit::{ec::ECCircuit, NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs};
 use nifs::NIFS;
 use relation::{FoldedInstance, FoldedWitness, Structure};
 
@@ -142,7 +140,7 @@ where
     let structure = Structure::new(&r1cs_shape);
 
     // initialize ck for the ec circuit
-    let circuit = ScalarMulCircuit::<E1>::new(None, None, None);
+    let circuit = ECCircuit::<E1>::new(None, None, None);
     let mut cs: ShapeCS<E2> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
     let (r1cs_shape_ec, ck_ec) = cs.r1cs_shape(&*default_ck_hint());
@@ -298,7 +296,7 @@ where
 
     // we now generate circuit-sat instances for establishing the correctness of scalar muls in NIFS::verify
     // make circuits for computing the two scalar muls
-    let circuit_ec = ScalarMulCircuit::<E1>::new(
+    let circuit_ec = ECCircuit::<E1>::new(
       Some(field_switch(chal)),
       Some(self.r_U.comm_W),
       Some(self.l_u.comm_W),

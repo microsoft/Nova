@@ -27,10 +27,11 @@ use serde::{Deserialize, Serialize};
 mod cyclefold;
 mod nifs;
 mod r1cs;
+mod r1cs_ec;
 mod relation;
 mod univariate;
 
-pub(crate) mod scalarmul;
+pub(crate) mod ec;
 
 use nifs::AllocatedNIFS;
 use r1cs::AllocatedNonnativeR1CSInstance;
