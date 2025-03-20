@@ -3,7 +3,7 @@ use crate::{
   impl_traits,
   provider::{
     msm::{msm, msm_small},
-    traits::DlogGroup,
+    traits::{DlogGroup, DlogGroupExt},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };

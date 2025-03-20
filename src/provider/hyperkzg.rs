@@ -12,7 +12,7 @@ use crate::{
   provider::{
     ptau::PtauFileError,
     read_ptau,
-    traits::{DlogGroup, PairingGroup},
+    traits::{DlogGroup, DlogGroupExt, PairingGroup},
     write_ptau,
   },
   traits::{
