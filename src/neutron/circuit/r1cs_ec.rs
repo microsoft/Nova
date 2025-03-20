@@ -1,5 +1,8 @@
 //! This module implements R1CS gadgets for R1CS corresponding to the ec circuit
 use crate::{
+  frontend::{gadgets::{
+    boolean::Boolean, num::AllocatedNum, Assignment}, ConstraintSystem, SynthesisError,
+  },
   constants::NUM_CHALLENGE_BITS,
   gadgets::nonnative::{
     bignat::BigNat,
@@ -11,12 +14,9 @@ use crate::{
       alloc_scalar_as_base, conditionally_select, conditionally_select_bignat, le_bits_to_num,
     },
   },
-  traits::{commitment::CommitmentTrait, Engine, Engine, ROCircuitTrait, ROConstantsCircuit},
+  traits::{commitment::CommitmentTrait, Engine, ROCircuitTrait, ROConstantsCircuit},
 };
 use ff::Field;
-use frontend::gadgets::{
-  boolean::Boolean, num::AllocatedNum, Assignment, ConstraintSystem, SynthesisError,
-};
 
 /// An Allocated EC Instance
 #[derive(Clone)]
