@@ -7,6 +7,8 @@ use core::{
 };
 #[cfg(feature = "std")]
 use halo2curves::{serde::SerdeObject, CurveAffine};
+use num_integer::Integer;
+use num_traits::ToPrimitive;
 #[cfg(not(feature = "std"))]
 use pasta_curves::arithmetic::CurveAffine;
 use plonky2_maybe_rayon::*;
@@ -81,6 +83,23 @@ pub trait DlogGroup:
       .collect::<Vec<_>>()
   }
 
+  /// A method to compute a multiexponentation with small scalars
+  fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[T],
+    bases: &[Self::AffineGroupElement],
+  ) -> Self;
+
+  /// A method to compute a batch of multiexponentations with small scalars
+  fn batch_vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[Vec<T>],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    scalars
+      .par_iter()
+      .map(|scalar| Self::vartime_multiscalar_mul_small(scalar, &bases[..scalar.len()]))
+      .collect::<Vec<_>>()
+  }
+
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
 
@@ -144,7 +163,14 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_generic(scalars, bases)
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {

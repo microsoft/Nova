@@ -1,7 +1,7 @@
 #![cfg(not(feature = "std"))]
 //! This module implements the Nova traits for `pallas::Point`, `pallas::Scalar`, `vesta::Point`, `vesta::Scalar`.
 
-use crate::provider::msm::msm_generic;
+use crate::provider::msm::{msm, msm_small};
 use crate::{
   prelude::*,
   provider::traits::DlogGroup,
@@ -10,9 +10,11 @@ use crate::{
 use digest::{ExtendableOutput, Update, XofReader};
 use ff::{FromUniformBytes, PrimeField};
 use num_bigint::BigInt;
+use num_integer::Integer;
 #[allow(unused_imports)]
 use num_traits::float::FloatCore;
-use num_traits::Num;
+use num_traits::{Num, ToPrimitive};
+
 use pasta_curves::{
   self,
   arithmetic::{CurveAffine, CurveExt},
@@ -50,7 +52,14 @@ macro_rules! impl_traits {
         scalars: &[Self::Scalar],
         bases: &[Self::AffineGroupElement],
       ) -> Self {
-        msm_generic(scalars, bases)
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
       }
 
       fn affine(&self) -> Self::AffineGroupElement {

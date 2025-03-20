@@ -1,14 +1,12 @@
 //! Benchmarking the commit times for hyperkzg over BN254 field using
-//! halo2curves library and the Nova-provided MSM routine, on a range of scalar bit-widths
-use core::{ops::Mul, time::Duration};
+//! halo2curves library and the Nova-provided commitment engine, on a range of scalar bit-widths
+use core::time::Duration;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use halo2curves::{
-  bn256::{Fr as Scalar, G1Affine},
-  ff::Field,
-  group::Curve,
-  msm::msm_best,
+use halo2curves::{bn256::Fr as Scalar, ff::Field, msm::msm_best};
+use nova_snark::{
+  provider::Bn256EngineKZG,
+  traits::{commitment::CommitmentEngineTrait, Engine},
 };
-use nova_snark::provider::msm::{msm_generic, msm_integer};
 use rand::Rng;
 use rayon::prelude::*;
 
@@ -21,20 +19,15 @@ targets = bench_commit
 criterion_main!(commit);
 
 fn bench_commit(c: &mut Criterion) {
+  type E = Bn256EngineKZG;
+
   let min = 1 << 20;
   let max = 1 << 24;
 
   // sample bases for the purpose of testing
-  let bases: Vec<_> = (0..max)
-    .into_par_iter()
-    .map(|_| {
-      let mut rng = rand::thread_rng();
-      let scalar = Scalar::random(&mut rng);
-      G1Affine::generator().mul(scalar).to_affine()
-    })
-    .collect();
+  let ck = <E as Engine>::CE::setup(b"test_from_label", max);
 
-  assert_eq!(bases.len(), max);
+  let zero = <E as Engine>::Scalar::zero();
 
   // random scalars that are in the set {0, 1}
   let scalars_u1 = (0..max)
@@ -119,71 +112,137 @@ fn bench_commit(c: &mut Criterion) {
   let mut size = min;
   while size <= max {
     c.bench_function(&format!("halo2curves_commit_u1_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_u1_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_u1_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u1_{size}"), |b| {
-      b.iter(|| black_box(msm_generic(&scalars_u1_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_u1_field[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("nova_specialized_commit_u1_{size}"), |b| {
-      b.iter(|| black_box(msm_integer(&scalars_u1[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit_small(
+          &ck,
+          &scalars_u1[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("halo2curves_commit_u10_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_u10_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_u10_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u10_{size}"), |b| {
-      b.iter(|| black_box(msm_generic(&scalars_u10_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_u10_field[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("nova_specialized_commit_u10_{size}"), |b| {
-      b.iter(|| black_box(msm_integer(&scalars_u10[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit_small(
+          &ck,
+          &scalars_u10[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("halo2curves_commit_u16_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_u16_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_u16_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u16_{size}"), |b| {
-      b.iter(|| black_box(msm_generic(&scalars_u16_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_u16_field[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("nova_specialized_commit_u16_{size}"), |b| {
-      b.iter(|| black_box(msm_integer(&scalars_u16[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit_small(
+          &ck,
+          &scalars_u16[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("halo2curves_commit_u32_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_u32_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_u32_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u32_{size}"), |b| {
-      b.iter(|| black_box(msm_generic(&scalars_u32_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_u32_field[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("nova_specialized_commit_u32_{size}"), |b| {
-      b.iter(|| black_box(msm_integer(&scalars_u32[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit_small(
+          &ck,
+          &scalars_u32[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("halo2curves_commit_u64_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_u64_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_u64_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_u64_{size}"), |b| {
-      b.iter(|| black_box(msm_generic(&scalars_u64_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_u64_field[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("nova_specialized_commit_u64_{size}"), |b| {
-      b.iter(|| black_box(msm_integer(&scalars_u64[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit_small(
+          &ck,
+          &scalars_u64[..size],
+          &zero,
+        ))
+      })
     });
 
     c.bench_function(&format!("halo2curves_commit_random_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_random_field[..size], &bases[..size])))
+      b.iter(|| black_box(msm_best(&scalars_random_field[..size], &ck.ck()[..size])))
     });
 
     c.bench_function(&format!("nova_generic_commit_random_{size}"), |b| {
-      b.iter(|| black_box(msm_best(&scalars_random_field[..size], &bases[..size])))
+      b.iter(|| {
+        black_box(<E as Engine>::CE::commit(
+          &ck,
+          &scalars_random_field[..size],
+          &zero,
+        ))
+      })
     });
 
     size *= 4;

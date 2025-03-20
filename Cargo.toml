@@ -88,7 +88,7 @@ name = "ppsnark"
 harness = false
 
 [[bench]]
-name = "msm"
+name = "commit"
 harness = false
 
 [features]

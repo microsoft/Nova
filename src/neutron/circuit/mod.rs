@@ -272,7 +272,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'a, E, S
 
 impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn synthesize<CS: ConstraintSystem<E::Scalar>>(
     self,
     cs: &mut CS,
   ) -> Result<Vec<AllocatedNum<E::Scalar>>, SynthesisError> {
