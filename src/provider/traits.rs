@@ -33,7 +33,7 @@ impl<T, Rhs, Output> GroupOpsOwned<Rhs, Output> for T where T: for<'r> GroupOps<
 pub trait ScalarMulOwned<Rhs, Output = Self>: for<'r> ScalarMul<&'r Rhs, Output> {}
 impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMul<&'r Rhs, Output> {}
 
-/// A trait that defines extensions to the Group trait
+/// A trait that defines the core discrete logarithm group functionality
 pub trait DlogGroup:
   Group
   + Serialize
@@ -69,6 +69,27 @@ pub trait DlogGroup:
     + TranscriptReprTrait<Self>
     + CurveAffine;
 
+  /// Produce a vector of group elements using a static label
+  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
+
+  /// Produces a preprocessed element
+  fn affine(&self) -> Self::AffineGroupElement;
+
+  /// Returns a group element from a preprocessed group element
+  fn group(p: &Self::AffineGroupElement) -> Self;
+
+  /// Returns an element that is the additive identity of the group
+  fn zero() -> Self;
+
+  /// Returns the generator of the group
+  fn gen() -> Self;
+
+  /// Returns the affine coordinates (x, y, infinity) for the point
+  fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
+}
+
+/// Extension trait for DlogGroup that provides multi-scalar multiplication operations
+pub trait DlogGroupExt: DlogGroup {
   /// A method to compute a multiexponentation
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self;
 
@@ -99,29 +120,11 @@ pub trait DlogGroup:
       .map(|scalar| Self::vartime_multiscalar_mul_small(scalar, &bases[..scalar.len()]))
       .collect::<Vec<_>>()
   }
-
-  /// Produce a vector of group elements using a static label
-  fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
-
-  /// Produces a preprocessed element
-  fn affine(&self) -> Self::AffineGroupElement;
-
-  /// Returns a group element from a preprocessed group element
-  fn group(p: &Self::AffineGroupElement) -> Self;
-
-  /// Returns an element that is the additive identity of the group
-  fn zero() -> Self;
-
-  /// Returns the generator of the group
-  fn gen() -> Self;
-
-  /// Returns the affine coordinates (x, y, infinity) for the point
-  fn to_coordinates(&self) -> (<Self as Group>::Base, <Self as Group>::Base, bool);
 }
 
 /// A trait that defines extensions to the DlogGroup trait, to be implemented for
 /// elliptic curve groups that are pairing friendly
-pub trait PairingGroup: DlogGroup {
+pub trait PairingGroup: DlogGroupExt {
   /// A type representing the second group
   type G2: DlogGroup<Scalar = Self::Scalar, Base = Self::Base>;
 
@@ -158,20 +161,6 @@ macro_rules! impl_traits {
 
     impl DlogGroup for $name::Point {
       type AffineGroupElement = $name::Affine;
-
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm(scalars, bases)
-      }
-
-      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-        scalars: &[T],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm_small(scalars, bases)
-      }
 
       fn affine(&self) -> Self::AffineGroupElement {
         self.to_affine()
@@ -249,6 +238,22 @@ macro_rules! impl_traits {
         } else {
           (Self::Base::zero(), Self::Base::zero(), true)
         }
+      }
+    }
+
+    impl DlogGroupExt for $name::Point {
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
       }
     }
 

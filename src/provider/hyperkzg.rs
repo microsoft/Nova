@@ -13,7 +13,7 @@ use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::traits::{DlogGroup, PairingGroup},
+  provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,

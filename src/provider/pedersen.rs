@@ -6,12 +6,13 @@ use crate::prelude::*;
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::traits::DlogGroup,
+  provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
 };
+
 use core::{
   fmt::Debug,
   marker::PhantomData,
@@ -206,7 +207,7 @@ where
 
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
-  E::GE: DlogGroup,
+  E::GE: DlogGroupExt,
 {
   type CommitmentKey = CommitmentKey<E>;
   type Commitment = Commitment<E>;
@@ -311,10 +312,9 @@ where
     Self: Sized;
 }
 
-impl<E> CommitmentKeyExtTrait<E> for CommitmentKey<E>
+impl<E: Engine<CE = CommitmentEngine<E>>> CommitmentKeyExtTrait<E> for CommitmentKey<E>
 where
-  E: Engine<CE = CommitmentEngine<E>>,
-  E::GE: DlogGroup,
+  E::GE: DlogGroupExt,
 {
   fn split_at(&self, n: usize) -> (CommitmentKey<E>, CommitmentKey<E>) {
     (

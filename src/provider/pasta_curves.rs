@@ -4,7 +4,7 @@
 use crate::provider::msm::{msm, msm_small};
 use crate::{
   prelude::*,
-  provider::traits::DlogGroup,
+  provider::traits::{DlogGroup, DlogGroupExt},
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
 use digest::{ExtendableOutput, Update, XofReader};
@@ -47,20 +47,6 @@ macro_rules! impl_traits {
 
     impl DlogGroup for $name::Point {
       type AffineGroupElement = $name::Affine;
-
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm(scalars, bases)
-      }
-
-      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-        scalars: &[T],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm_small(scalars, bases)
-      }
 
       fn affine(&self) -> Self::AffineGroupElement {
         self.to_affine()
@@ -135,6 +121,22 @@ macro_rules! impl_traits {
       }
     }
 
+    impl DlogGroupExt for $name::Point {
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
+      }
+    }
+
     impl PrimeFieldExt for $name::Scalar {
       fn from_uniform(bytes: &[u8]) -> Self {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
@@ -148,7 +150,7 @@ macro_rules! impl_traits {
       }
     }
 
-    impl<G: DlogGroup> TranscriptReprTrait<G> for $name::Affine {
+    impl<G: DlogGroupExt> TranscriptReprTrait<G> for $name::Affine {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         let coords = self.coordinates().unwrap();
 

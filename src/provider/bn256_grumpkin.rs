@@ -3,7 +3,7 @@ use crate::{
   impl_traits,
   provider::{
     msm::{msm, msm_small},
-    traits::{DlogGroup, PairingGroup},
+    traits::{DlogGroup, DlogGroupExt, PairingGroup},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -82,17 +82,6 @@ impl Group for G2 {
 
 impl DlogGroup for G2 {
   type AffineGroupElement = G2Affine;
-
-  fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
-    msm(scalars, bases)
-  }
-
-  fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-    scalars: &[T],
-    bases: &[Self::AffineGroupElement],
-  ) -> Self {
-    msm_small(scalars, bases)
-  }
 
   fn affine(&self) -> Self::AffineGroupElement {
     self.to_affine()
