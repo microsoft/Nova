@@ -1,4 +1,6 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   provider::{pedersen::CommitmentKeyExtTrait, traits::DlogGroup},
@@ -9,11 +11,10 @@ use crate::{
   },
   Commitment, CommitmentKey, CE,
 };
-use core::iter;
+use core::{iter, marker::PhantomData};
 use ff::Field;
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
 
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,10 +101,17 @@ where
 
 fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
   assert_eq!(a.len(), b.len());
-  (0..a.len())
+  #[cfg(feature = "std")]
+  let res = (0..a.len())
     .into_par_iter()
     .map(|i| a[i] * b[i])
-    .reduce(|| T::ZERO, |x, y| x + y)
+    .reduce(|| T::ZERO, |x, y| x + y);
+  #[cfg(not(feature = "std"))]
+  let res = (0..a.len())
+    .map(|i| a[i] * b[i])
+    .fold(T::ZERO, |x, y| x + y);
+
+  res
 }
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
@@ -350,6 +358,7 @@ where
       .into_par_iter()
       .map(|i| r[i] * r[i])
       .collect();
+
     let r_inverse = batch_invert(&r)?;
     let r_inverse_square: Vec<E::Scalar> = (0..self.L_vec.len())
       .into_par_iter()

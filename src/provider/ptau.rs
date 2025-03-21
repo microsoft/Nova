@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use std::{
   fs::File,
   io::{self, Read, Seek, SeekFrom, Write},

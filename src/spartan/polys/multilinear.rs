@@ -2,11 +2,13 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$

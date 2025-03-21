@@ -1,11 +1,13 @@
 //! Gadgets representing numbers in the scalar field of the underlying curve.
 
+use crate::frontend::{
+  gadgets::boolean::{self, AllocatedBit, Boolean},
+  ConstraintSystem, LinearCombination, SynthesisError, Variable,
+};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::{PrimeField, PrimeFieldBits};
 use serde::{Deserialize, Serialize};
-
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
-
-use crate::frontend::gadgets::boolean::{self, AllocatedBit, Boolean};
 
 /// Represents an allocated number in the circuit.
 #[derive(Debug, Serialize, Deserialize)]

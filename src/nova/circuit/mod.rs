@@ -4,6 +4,8 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::NUM_HASH_BITS,
   frontend::{

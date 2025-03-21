@@ -1,4 +1,6 @@
 //! This module defines various traits required by the users of the library to implement.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   frontend::{num::AllocatedNum, AllocatedBit, ConstraintSystem, SynthesisError},

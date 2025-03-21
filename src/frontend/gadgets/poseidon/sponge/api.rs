@@ -3,8 +3,9 @@
 /// The API is defined by the `SpongeAPI` trait, which is implemented in terms of the `InnerSpongeAPI` trait.
 /// `Neptune` provides implementations of `InnerSpongeAPI` for both `sponge::Sponge` and `sponge_circuit::SpongeCircuit`.
 use crate::frontend::gadgets::poseidon::poseidon_inner::Arity;
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
-
 #[derive(Debug)]
 pub enum Error {
   ParameterUsageMismatch,

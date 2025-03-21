@@ -1,6 +1,7 @@
-use ff::PrimeField;
-
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use ff::PrimeField;
 
 #[derive(Debug)]
 pub struct MultiEq<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> {

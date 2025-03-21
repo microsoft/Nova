@@ -3,14 +3,18 @@ use super::{
   OptionExt,
 };
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-use ff::PrimeField;
-use num_bigint::BigInt;
-use num_traits::cast::ToPrimitive;
-use std::{
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use core::{
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
+  iter, mem,
 };
+use ff::PrimeField;
+use libm::log2;
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
 
 /// Compute the natural number represented by an array of limbs.
 /// The limbs are assumed to be based the `limb_width` power of 2.
@@ -52,6 +56,7 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         .collect(),
     )
   } else {
+    #[cfg(feature = "std")]
     eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
     Err(SynthesisError::Unsatisfiable)
   }
@@ -132,6 +137,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           || match values_cell {
             Ok(ref vs) => {
               if vs.len() != n_limbs {
+                #[cfg(feature = "std")]
                 eprintln!("Values do not match stated limb count");
                 return Err(SynthesisError::Unsatisfiable);
               }
@@ -144,10 +150,12 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref _e) => {
+              // print in std feature
+              #[cfg(feature = "std")]
+              eprintln!("{_e}");
+              Err(SynthesisError::AssignmentMissing)
+            }
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -196,10 +204,12 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref _e) => {
+              // print in std feature
+              #[cfg(feature = "std")]
+              eprintln!("{_e}");
+              Err(SynthesisError::AssignmentMissing)
+            }
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -318,14 +328,15 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   pub fn enforce_limb_width_agreement(
     &self,
     other: &Self,
-    location: &str,
+    _location: &str,
   ) -> Result<usize, SynthesisError> {
     if self.params.limb_width == other.params.limb_width {
       Ok(self.params.limb_width)
     } else {
+      #[cfg(feature = "std")]
       eprintln!(
         "Limb widths {}, {}, do not agree at {}",
-        self.params.limb_width, other.params.limb_width, location
+        self.params.limb_width, other.params.limb_width, _location
       );
       Err(SynthesisError::Unsatisfiable)
     }
@@ -361,7 +372,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let target_base = BigInt::from(1u8) << self.params.limb_width as u32;
     let mut accumulated_extra = BigInt::from(0usize);
     let max_word = max(&self.params.max_word, &other.params.max_word);
-    let carry_bits = (((max_word.to_f64().unwrap() * 2.0).log2() - self.params.limb_width as f64)
+    let carry_bits = ((log2(max_word.to_f64().unwrap() * 2.0) - self.params.limb_width as f64)
       .ceil()
       + 0.1) as usize;
     let mut carry_in = Num::new(Some(Scalar::ZERO), LinearCombination::zero());
@@ -440,7 +451,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   ) -> Result<(), SynthesisError> {
     self.enforce_limb_width_agreement(other, "equal_when_carried_regroup")?;
     let max_word = max(&self.params.max_word, &other.params.max_word);
-    let carry_bits = (((max_word.to_f64().unwrap() * 2.0).log2() - self.params.limb_width as f64)
+    let carry_bits = ((log2(max_word.to_f64().unwrap() * 2.0) - self.params.limb_width as f64)
       .ceil()
       + 0.1) as usize;
     let limbs_per_group = (Scalar::CAPACITY as usize - carry_bits) / self.params.limb_width;
@@ -642,8 +653,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           shift = Scalar::ONE;
         }
         limbs[i / limbs_per_group] =
-          std::mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero())
-            + (shift, limb);
+          mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero()) + (shift, limb);
         shift.mul_assign(&limb_block);
       }
       limbs
@@ -685,7 +695,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     let n_product_coeffs = self.coefficients.len() + other.coefficients.len() - 1;
     let values = self.values.as_ref().and_then(|self_vs| {
       other.values.as_ref().map(|other_vs| {
-        let mut values: Vec<Scalar> = std::iter::repeat_with(|| Scalar::ZERO)
+        let mut values: Vec<Scalar> = iter::repeat_with(|| Scalar::ZERO)
           .take(n_product_coeffs)
           .collect();
         for (self_i, self_v) in self_vs.iter().enumerate() {

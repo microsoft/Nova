@@ -1,5 +1,7 @@
 //! Support for generating R1CS shape using bellpepper.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable},
   traits::Engine,

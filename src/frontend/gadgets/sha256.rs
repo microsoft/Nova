@@ -5,10 +5,11 @@
 
 #![allow(clippy::many_single_char_names)]
 
-use ff::PrimeField;
-
 use super::{boolean::Boolean, multieq::MultiEq, uint32::UInt32};
 use crate::frontend::{ConstraintSystem, SynthesisError};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use ff::PrimeField;
 
 #[allow(clippy::unreadable_literal)]
 const ROUND_CONSTANTS: [u32; 64] = [

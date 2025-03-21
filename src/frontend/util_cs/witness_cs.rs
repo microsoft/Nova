@@ -1,8 +1,8 @@
 //! Support for efficiently generating R1CS witness using bellperson.
-
-use ff::PrimeField;
-
 use crate::frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use ff::PrimeField;
 
 /// A [`ConstraintSystem`] trait
 pub trait SizedWitness<Scalar: PrimeField> {

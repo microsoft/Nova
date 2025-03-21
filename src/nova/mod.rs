@@ -1,4 +1,6 @@
 //! This module implements Nova's IVC scheme including its folding scheme.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 
 use crate::{
   constants::NUM_HASH_BITS,
@@ -25,8 +27,15 @@ use crate::{
 };
 use core::marker::PhantomData;
 use ff::Field;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
+use plonky2_maybe_rayon::join;
+#[cfg(not(feature = "std"))]
+use rand_chacha::ChaCha20Rng;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
+#[cfg(not(feature = "std"))]
+use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
@@ -177,11 +186,20 @@ where
 
   /// Retrieve the digest of the public parameters.
   pub fn digest(&self) -> E1::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure in retrieving digest")
+      .expect("Failure in retrieving digest");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      DigestComputer::new(self)
+        .digest()
+        .expect("Failure in retrieving digest")
+    });
+
+    res
   }
 
   /// Returns the number of constraints in the primary and secondary circuits
@@ -242,8 +260,14 @@ where
       return Err(NovaError::InvalidInitialInputLength);
     }
 
+    #[cfg(feature = "std")]
     let ri_primary = E1::Scalar::random(&mut OsRng);
+    #[cfg(feature = "std")]
     let ri_secondary = E2::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    let ri_primary = E1::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
+    #[cfg(not(feature = "std"))]
+    let ri_secondary = E2::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     // base case for the primary
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
@@ -358,7 +382,10 @@ where
       &self.l_w_secondary,
     )?;
 
+    #[cfg(feature = "std")]
     let r_next_primary = E1::Scalar::random(&mut OsRng);
+    #[cfg(not(feature = "std"))]
+    let r_next_primary = E1::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
@@ -396,6 +423,9 @@ where
       &l_w_primary,
     )?;
 
+    #[cfg(not(feature = "std"))]
+    let r_next_secondary = E2::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEAEDBEEF));
+    #[cfg(feature = "std")]
     let r_next_secondary = E2::Scalar::random(&mut OsRng);
 
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
@@ -517,13 +547,13 @@ where
     }
 
     // check the satisfiability of the provided instances
-    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+    let (res_r_primary, (res_r_secondary, res_l_secondary)) = join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
       },
       || {
-        rayon::join(
+        join(
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
               &pp.ck_secondary,
@@ -742,7 +772,7 @@ where
     );
 
     // create SNARKs proving the knowledge of Wn primary/secondary
-    let (snark_primary, snark_secondary) = rayon::join(
+    let (snark_primary, snark_secondary) = join(
       || {
         S1::prove(
           &pp.ck_primary,
@@ -891,7 +921,7 @@ where
 
     // check the satisfiability of the folded instances using
     // SNARKs proving the knowledge of their satisfying witnesses
-    let (res_primary, res_secondary) = rayon::join(
+    let (res_primary, res_secondary) = join(
       || {
         self
           .snark_primary

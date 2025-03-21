@@ -1,12 +1,17 @@
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
+#[cfg(feature = "std")]
 use halo2curves::{serde::SerdeObject, CurveAffine};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+#[cfg(not(feature = "std"))]
+use pasta_curves::arithmetic::CurveAffine;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -38,6 +43,7 @@ pub trait DlogGroup:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
+  #[cfg(feature = "std")]
   /// A type representing preprocessed group element
   type AffineGroupElement: Clone
     + Debug
@@ -50,6 +56,18 @@ pub trait DlogGroup:
     + TranscriptReprTrait<Self>
     + CurveAffine
     + SerdeObject;
+  #[cfg(not(feature = "std"))]
+  /// A type representing preprocessed group element
+  type AffineGroupElement: Clone
+    + Debug
+    + PartialEq
+    + Eq
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + TranscriptReprTrait<Self>
+    + CurveAffine;
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
@@ -170,11 +188,16 @@ macro_rules! impl_traits {
           })
           .collect();
 
+        #[cfg(feature = "std")]
         let num_threads = rayon::current_num_threads();
+        #[cfg(not(feature = "std"))]
+        let num_threads = 1;
+
         if gens_proj.len() > num_threads {
           let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
-          (0..num_threads)
-            .into_par_iter()
+          let iter = (0..num_threads).into_par_iter();
+
+          iter
             .flat_map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {

@@ -1,5 +1,6 @@
-use std::ops::{Add, Sub};
-
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use core::ops::{Add, Sub};
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 

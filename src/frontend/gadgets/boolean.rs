@@ -1,8 +1,9 @@
 //! Gadgets for allocating bits in the circuit and performing boolean logic.
 
-use ff::{PrimeField, PrimeFieldBits};
-
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use ff::{PrimeField, PrimeFieldBits};
 
 /// Represents a variable in the constraint system which is guaranteed
 /// to be either zero or one.
