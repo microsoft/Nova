@@ -1139,6 +1139,48 @@ mod tests {
     }
   }
 
+  #[ignore = "only available with external ptau files"]
+  #[test]
+  fn test_hyperkzg_large_from_file() {
+    // test the hyperkzg prover and verifier with random instances (derived from a seed)
+    for ell in [4, 5, 6] {
+      let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
+
+      let n = 1 << ell; // n = 2^ell
+
+      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
+
+      let mut reader = BufReader::new(std::fs::File::open("/tmp/ppot_0080_13.ptau").unwrap());
+
+      let ck: CommitmentKey<E> = CommitmentEngine::load_setup(&mut reader, b"test", n).unwrap();
+      let (pk, vk) = EvaluationEngine::setup(&ck);
+
+      // make a commitment
+      let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
+
+      // prove an evaluation
+      let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
+      let proof: EvaluationArgument<E> =
+        EvaluationEngine::prove(&ck, &pk, &mut prover_transcript, &C, &poly, &point, &eval)
+          .unwrap();
+
+      // verify the evaluation
+      let mut verifier_tr = Keccak256Transcript::new(b"TestEval");
+      assert!(EvaluationEngine::verify(&vk, &mut verifier_tr, &C, &point, &eval, &proof).is_ok());
+
+      // Change the proof and expect verification to fail
+      let mut bad_proof = proof.clone();
+      let v1 = bad_proof.v[1].clone();
+      bad_proof.v[0].clone_from(&v1);
+      let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
+      assert!(
+        EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
+      );
+    }
+  }
+
   #[test]
   fn test_key_gen() {
     let n = 100;
