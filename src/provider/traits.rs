@@ -117,9 +117,9 @@ pub trait PairingGroup: DlogGroupExt {
   fn pairing(p: &Self, q: &Self::G2) -> Self::GT;
 }
 
-/// Implements Nova's traits
+/// Implements Nova's traits except DlogGroupExt so that the MSM can be implemented differently
 #[macro_export]
-macro_rules! impl_traits {
+macro_rules! impl_traits_no_dlog_ext {
   (
     $name:ident,
     $name_curve:ident,
@@ -218,22 +218,6 @@ macro_rules! impl_traits {
       }
     }
 
-    impl DlogGroupExt for $name::Point {
-      fn vartime_multiscalar_mul(
-        scalars: &[Self::Scalar],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm(scalars, bases)
-      }
-
-      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-        scalars: &[T],
-        bases: &[Self::AffineGroupElement],
-      ) -> Self {
-        msm_small(scalars, bases)
-      }
-    }
-
     impl PrimeFieldExt for $name::Scalar {
       fn from_uniform(bytes: &[u8]) -> Self {
         let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
@@ -253,6 +237,42 @@ macro_rules! impl_traits {
         let x_bytes = coords.x().to_bytes().into_iter();
         let y_bytes = coords.y().to_bytes().into_iter();
         x_bytes.rev().chain(y_bytes.rev()).collect()
+      }
+    }
+  };
+}
+
+/// Implements Nova's traits
+#[macro_export]
+macro_rules! impl_traits {
+  (
+    $name:ident,
+    $name_curve:ident,
+    $name_curve_affine:ident,
+    $order_str:literal,
+    $base_str:literal
+  ) => {
+    $crate::impl_traits_no_dlog_ext!(
+      $name,
+      $name_curve,
+      $name_curve_affine,
+      $order_str,
+      $base_str
+    );
+
+    impl DlogGroupExt for $name::Point {
+      fn vartime_multiscalar_mul(
+        scalars: &[Self::Scalar],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm(scalars, bases)
+      }
+
+      fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+        scalars: &[T],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_small(scalars, bases)
       }
     }
   };
