@@ -1,17 +1,12 @@
 //! This module implements Nova's traits using the following several different combinations
 
 // public modules to be used as an evaluation engine with Spartan
-#[cfg(feature = "std")]
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
 pub mod msm;
-#[cfg(feature = "std")]
 pub mod pasta;
-#[cfg(not(feature = "std"))]
-pub mod pasta_curves;
 pub mod poseidon;
-#[cfg(feature = "std")]
 pub mod secp_secq;
 
 // crate-private modules
@@ -20,16 +15,12 @@ pub(crate) mod pedersen;
 pub(crate) mod ptau;
 pub(crate) mod traits;
 
-#[cfg(feature = "std")]
 use crate::provider::{
   bn256_grumpkin::{bn256, grumpkin},
   hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
   pasta::{pallas, vesta},
   secp_secq::{secp256k1, secq256k1},
 };
-#[cfg(not(feature = "std"))]
-use pasta_curves::{pallas_no_std as pallas, vesta_no_std as vesta};
-
 use crate::{
   provider::{
     keccak::Keccak256Transcript,
@@ -43,21 +34,17 @@ pub use ptau::{check_sanity_of_ptau_file, read_ptau, write_ptau};
 use serde::{Deserialize, Serialize};
 
 /// An implementation of Nova traits with HyperKZG over the BN256 curve
-#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Bn256EngineKZG;
 
 /// An implementation of the Nova `Engine` trait with Grumpkin curve and Pedersen commitment scheme
-#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GrumpkinEngine;
 
 /// An implementation of the Nova `Engine` trait with BN254 curve and Pedersen commitment scheme
-#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Bn256EngineIPA;
 
-#[cfg(feature = "std")]
 impl Engine for Bn256EngineKZG {
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
@@ -70,7 +57,6 @@ impl Engine for Bn256EngineKZG {
   type CE = HyperKZGCommitmentEngine<Self>;
 }
 
-#[cfg(feature = "std")]
 impl Engine for Bn256EngineIPA {
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
@@ -83,7 +69,6 @@ impl Engine for Bn256EngineIPA {
   type CE = PedersenCommitmentEngine<Self>;
 }
 
-#[cfg(feature = "std")]
 impl Engine for GrumpkinEngine {
   type Base = grumpkin::Base;
   type Scalar = grumpkin::Scalar;
@@ -97,16 +82,13 @@ impl Engine for GrumpkinEngine {
 }
 
 /// An implementation of the Nova `Engine` trait with Secp256k1 curve and Pedersen commitment scheme
-#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Secp256k1Engine;
 
 /// An implementation of the Nova `Engine` trait with Secp256k1 curve and Pedersen commitment scheme
-#[cfg(feature = "std")]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Secq256k1Engine;
 
-#[cfg(feature = "std")]
 impl Engine for Secp256k1Engine {
   type Base = secp256k1::Base;
   type Scalar = secp256k1::Scalar;
@@ -119,7 +101,6 @@ impl Engine for Secp256k1Engine {
   type CE = PedersenCommitmentEngine<Self>;
 }
 
-#[cfg(feature = "std")]
 impl Engine for Secq256k1Engine {
   type Base = secq256k1::Base;
   type Scalar = secq256k1::Scalar;

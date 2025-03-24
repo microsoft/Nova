@@ -5,12 +5,9 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
-#[cfg(feature = "std")]
 use halo2curves::{serde::SerdeObject, CurveAffine};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
-#[cfg(not(feature = "std"))]
-use pasta_curves::arithmetic::CurveAffine;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +40,6 @@ pub trait DlogGroup:
   + ScalarMul<<Self as Group>::Scalar>
   + ScalarMulOwned<<Self as Group>::Scalar>
 {
-  #[cfg(feature = "std")]
   /// A type representing preprocessed group element
   type AffineGroupElement: Clone
     + Debug
@@ -56,18 +52,6 @@ pub trait DlogGroup:
     + TranscriptReprTrait<Self>
     + CurveAffine
     + SerdeObject;
-  #[cfg(not(feature = "std"))]
-  /// A type representing preprocessed group element
-  type AffineGroupElement: Clone
-    + Debug
-    + PartialEq
-    + Eq
-    + Send
-    + Sync
-    + Serialize
-    + for<'de> Deserialize<'de>
-    + TranscriptReprTrait<Self>
-    + CurveAffine;
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
@@ -177,7 +161,10 @@ macro_rules! impl_traits {
         let mut uniform_bytes_vec = Vec::new();
         for _ in 0..n {
           let mut uniform_bytes = [0u8; 32];
+          #[cfg(feature = "std")]
           reader.read_exact(&mut uniform_bytes).unwrap();
+          #[cfg(not(feature = "std"))]
+          reader.read(&mut uniform_bytes);
           uniform_bytes_vec.push(uniform_bytes);
         }
         let gens_proj: Vec<$name_curve> = (0..n)

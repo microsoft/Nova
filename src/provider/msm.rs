@@ -4,13 +4,10 @@
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
 use ff::{Field, PrimeField};
-#[cfg(feature = "std")]
 use halo2curves::{group::Group, CurveAffine};
 use libm::log;
 use num_integer::Integer;
 use num_traits::{ToPrimitive, Zero};
-#[cfg(not(feature = "std"))]
-use pasta_curves::{arithmetic::CurveAffine, group::Group};
 use plonky2_maybe_rayon::*;
 #[cfg(feature = "std")]
 use rayon::current_num_threads;
