@@ -258,6 +258,7 @@ where
 
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
+    _label: &'static [u8],
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError> {
     let num = n.next_power_of_two();
@@ -394,13 +395,15 @@ mod tests {
   fn test_key_save_load() {
     let path = "/tmp/pedersen_test.keys";
 
-    let keys = CommitmentEngine::<E>::setup(b"test", 100);
+    const LABEL: &[u8; 4] = b"test";
+
+    let keys = CommitmentEngine::<E>::setup(LABEL, 100);
 
     keys
       .save_to(&mut BufWriter::new(File::create(path).unwrap()))
       .unwrap();
 
-    let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), 100);
+    let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), LABEL, 100);
 
     assert!(keys_read.is_ok());
     let keys_read: CommitmentKey<E> = keys_read.unwrap();
