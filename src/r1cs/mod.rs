@@ -20,12 +20,8 @@ use ff::Field;
 #[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
 use plonky2_maybe_rayon::*;
-#[cfg(not(feature = "std"))]
-use rand_chacha::ChaCha20Rng;
 #[cfg(feature = "std")]
 use rand_core::OsRng;
-#[cfg(not(feature = "std"))]
-use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 mod sparse;
@@ -408,30 +404,29 @@ impl<E: Engine> R1CSShape<E> {
     }
   }
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn sample_random_instance_witness(
+    &self,
+    _ck: &CommitmentKey<E>,
+  ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
+  #[cfg(feature = "std")]
   pub fn sample_random_instance_witness(
     &self,
     ck: &CommitmentKey<E>,
   ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
     // sample Z = (W, u, X)
-    #[cfg(feature = "std")]
     let Z = (0..self.num_vars + self.num_io + 1)
       .into_par_iter()
       .map(|_| E::Scalar::random(&mut OsRng))
       .collect::<Vec<E::Scalar>>();
-    #[cfg(not(feature = "std"))]
-    let Z = (0..self.num_vars + self.num_io + 1)
-      .map(|_| E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)))
-      .collect::<Vec<E::Scalar>>();
 
-    #[cfg(feature = "std")]
     let r_W = E::Scalar::random(&mut OsRng);
-    #[cfg(feature = "std")]
     let r_E = E::Scalar::random(&mut OsRng);
-    #[cfg(not(feature = "std"))]
-    let r_W = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
-    #[cfg(not(feature = "std"))]
-    let r_E = E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     let u = Z[self.num_vars];
 
@@ -469,17 +464,21 @@ impl<E: Engine> R1CSShape<E> {
 }
 
 impl<E: Engine> R1CSWitness<E> {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn new(_S: &R1CSShape<E>, _W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// A method to create a witness object using a vector of scalars
+  #[cfg(feature = "std")]
   pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
     let mut W = W.to_vec();
     W.resize(S.num_vars, E::Scalar::ZERO);
 
     Ok(R1CSWitness {
       W,
-      #[cfg(feature = "std")]
       r_W: E::Scalar::random(&mut OsRng),
-      #[cfg(not(feature = "std"))]
-      r_W: E::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF)),
     })
   }
 

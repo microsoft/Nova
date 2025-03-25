@@ -20,7 +20,6 @@ digest = { version = "0.10", default-features = false }
 sha3 = { version = "0.10", default-features = false }
 
 rand_core = { version = "0.6", default-features = false }
-rand_chacha = { version = "0.3", default-features = false }
 subtle = { version = "2.6.1", default-features = false }
 
 generic-array = { version = "1.2.0", default-features = false }
@@ -70,6 +69,8 @@ sha2 = "0.10.7"
 proptest = "1.6.0"
 rand = "0.8.5"
 expect-test = "1.5.1"
+rand_chacha = { version = "0.3", default-features = false }
+
 
 [[bench]]
 name = "recursive-snark"

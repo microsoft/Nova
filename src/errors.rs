@@ -79,6 +79,10 @@ pub enum NovaError {
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,
+
+  /// returned when trying to use random number in no_std environment. In order to get safe random number, turn "std" feature ON.
+  #[error("UnsafeRandomNumber")]
+  UnsafeRandomNumber,
 }
 
 impl From<SynthesisError> for NovaError {

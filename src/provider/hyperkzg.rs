@@ -31,12 +31,8 @@ use ff::{Field, PrimeFieldBits};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
 use plonky2_maybe_rayon::*;
-#[cfg(not(feature = "std"))]
-use rand_chacha::ChaCha20Rng;
 #[cfg(feature = "std")]
 use rand_core::OsRng;
-#[cfg(not(feature = "std"))]
-use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 /// Alias to points on G1 that are in preprocessed form
@@ -462,14 +458,16 @@ where
   type CommitmentKey = CommitmentKey<E>;
   type DerandKey = DerandKey<E>;
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  fn setup(_label: &'static [u8], _n: usize) -> Self::CommitmentKey {
+    panic!("To use this method you need to turn on the STD feature.")
+  }
+
+  #[cfg(feature = "std")]
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
-    #[cfg(feature = "std")]
-    let res = Self::CommitmentKey::setup_from_rng(label, n, OsRng);
-    #[cfg(not(feature = "std"))]
-    let res = Self::CommitmentKey::setup_from_rng(label, n, ChaCha20Rng::seed_from_u64(0xDEADBEEF));
-
-    res
+    Self::CommitmentKey::setup_from_rng(label, n, OsRng)
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {

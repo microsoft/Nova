@@ -2,16 +2,15 @@
 #[cfg(not(feature = "std"))]
 use crate::prelude::*;
 
+#[cfg(feature = "std")]
+use crate::frontend::{
+  r1cs::NovaWitness, solver::SatisfyingAssignment, ConstraintSystem, SynthesisError,
+};
 use crate::{
   constants::NUM_HASH_BITS,
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
-  frontend::{
-    r1cs::{NovaShape, NovaWitness},
-    shape_cs::ShapeCS,
-    solver::SatisfyingAssignment,
-    ConstraintSystem, SynthesisError,
-  },
+  frontend::{r1cs::NovaShape, shape_cs::ShapeCS},
   gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
     CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
@@ -30,18 +29,16 @@ use ff::Field;
 #[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
 use plonky2_maybe_rayon::join;
-#[cfg(not(feature = "std"))]
-use rand_chacha::ChaCha20Rng;
 #[cfg(feature = "std")]
 use rand_core::OsRng;
-#[cfg(not(feature = "std"))]
-use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
 pub(crate) mod nifs;
 
-use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
+use circuit::NovaAugmentedCircuit;
+#[cfg(feature = "std")]
+use circuit::NovaAugmentedCircuitInputs;
 use nifs::{NIFSRelaxed, NIFS};
 
 /// A type that holds public parameters of Nova
@@ -254,20 +251,21 @@ where
   E2: Engine<Base = <E1 as Engine>::Scalar>,
   C: StepCircuit<E1::Scalar>,
 {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn new(_pp: &PublicParams<E1, E2, C>, _c: &C, _z0: &[E1::Scalar]) -> Result<Self, NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Create new instance of recursive SNARK
+  #[cfg(feature = "std")]
   pub fn new(pp: &PublicParams<E1, E2, C>, c: &C, z0: &[E1::Scalar]) -> Result<Self, NovaError> {
     if z0.len() != pp.F_arity {
       return Err(NovaError::InvalidInitialInputLength);
     }
 
-    #[cfg(feature = "std")]
     let ri_primary = E1::Scalar::random(&mut OsRng);
-    #[cfg(feature = "std")]
     let ri_secondary = E2::Scalar::random(&mut OsRng);
-    #[cfg(not(feature = "std"))]
-    let ri_primary = E1::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
-    #[cfg(not(feature = "std"))]
-    let ri_secondary = E2::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     // base case for the primary
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
@@ -362,7 +360,14 @@ where
     })
   }
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn prove_step(&mut self, _pp: &PublicParams<E1, E2, C>, _c: &C) -> Result<(), NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
+  #[cfg(feature = "std")]
   pub fn prove_step(&mut self, pp: &PublicParams<E1, E2, C>, c: &C) -> Result<(), NovaError> {
     // first step was already done in the constructor
     if self.i == 0 {
@@ -382,10 +387,7 @@ where
       &self.l_w_secondary,
     )?;
 
-    #[cfg(feature = "std")]
     let r_next_primary = E1::Scalar::random(&mut OsRng);
-    #[cfg(not(feature = "std"))]
-    let r_next_primary = E1::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEADBEEF));
 
     let mut cs_primary = SatisfyingAssignment::<E1>::new();
     let inputs_primary: NovaAugmentedCircuitInputs<E2> = NovaAugmentedCircuitInputs::new(
@@ -423,9 +425,6 @@ where
       &l_w_primary,
     )?;
 
-    #[cfg(not(feature = "std"))]
-    let r_next_secondary = E2::Scalar::random(&mut ChaCha20Rng::seed_from_u64(0xDEAEDBEEF));
-    #[cfg(feature = "std")]
     let r_next_secondary = E2::Scalar::random(&mut OsRng);
 
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();

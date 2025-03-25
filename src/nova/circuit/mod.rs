@@ -45,6 +45,7 @@ pub struct NovaAugmentedCircuitInputs<E: Engine> {
 
 impl<E: Engine> NovaAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
+  #[allow(unused)] // allowing unused because in no_std mode it is never called
   pub fn new(
     pp_digest: E::Scalar,
     i: E::Base,
