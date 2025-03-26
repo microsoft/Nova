@@ -78,7 +78,7 @@ fn keygen_save_large() {
   let (res, dur) = timeit!(|| {
     let file = OpenOptions::new().read(true).open(&path).unwrap();
     let mut reader = BufReader::new(file);
-    CommitmentEngine::<E>::load_setup(&mut reader, MAX_NUM_GENS)
+    CommitmentEngine::<E>::load_setup(&mut reader, LABEL, MAX_NUM_GENS)
   });
 
   assert!(res.is_ok());

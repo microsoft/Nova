@@ -142,11 +142,9 @@ where
     &self,
     mut writer: &mut (impl std::io::Write + std::io::Seek),
   ) -> Result<(), PtauFileError> {
-    let mut g1_points = Vec::with_capacity(self.ck.len() + 1);
-    g1_points.push(self.h);
-    g1_points.extend(self.ck.iter().cloned());
+    let g1_points = self.ck.clone();
 
-    let g2_points = vec![self.tau_H];
+    let g2_points = vec![self.tau_H, self.tau_H];
     let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
 
     write_ptau(&mut writer, g1_points, g2_points, power)
@@ -550,21 +548,20 @@ where
   #[cfg(feature = "std")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
+    label: &'static [u8],
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError> {
     let num = n.next_power_of_two();
 
-    let (g1_points, g2_points) = read_ptau(reader, num + 1, 1)?;
+    let (g1_points, g2_points) = read_ptau(reader, num, 2)?;
 
-    let (h, ck) = g1_points.split_at(1);
-    let h = h[0];
-    let ck = ck.to_vec();
+    let ck = g1_points.to_vec();
 
-    Ok(CommitmentKey {
-      ck,
-      h,
-      tau_H: g2_points[0],
-    })
+    let tau_H = *g2_points.last().unwrap();
+
+    let h = *E::GE::from_label(label, 1).first().unwrap();
+
+    Ok(CommitmentKey { ck, h, tau_H })
   }
 }
 
@@ -1151,6 +1148,48 @@ mod tests {
     }
   }
 
+  #[ignore = "only available with external ptau files"]
+  #[test]
+  fn test_hyperkzg_large_from_file() {
+    // test the hyperkzg prover and verifier with random instances (derived from a seed)
+    for ell in [4, 5, 6] {
+      let mut rng = rand::rngs::StdRng::seed_from_u64(ell as u64);
+
+      let n = 1 << ell; // n = 2^ell
+
+      let poly = (0..n).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
+      let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
+
+      let mut reader = BufReader::new(std::fs::File::open("/tmp/ppot_0080_13.ptau").unwrap());
+
+      let ck: CommitmentKey<E> = CommitmentEngine::load_setup(&mut reader, b"test", n).unwrap();
+      let (pk, vk) = EvaluationEngine::setup(&ck);
+
+      // make a commitment
+      let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
+
+      // prove an evaluation
+      let mut prover_transcript = Keccak256Transcript::new(b"TestEval");
+      let proof: EvaluationArgument<E> =
+        EvaluationEngine::prove(&ck, &pk, &mut prover_transcript, &C, &poly, &point, &eval)
+          .unwrap();
+
+      // verify the evaluation
+      let mut verifier_tr = Keccak256Transcript::new(b"TestEval");
+      assert!(EvaluationEngine::verify(&vk, &mut verifier_tr, &C, &point, &eval, &proof).is_ok());
+
+      // Change the proof and expect verification to fail
+      let mut bad_proof = proof.clone();
+      let v1 = bad_proof.v[1].clone();
+      bad_proof.v[0].clone_from(&v1);
+      let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
+      assert!(
+        EvaluationEngine::verify(&vk, &mut verifier_tr2, &C, &point, &eval, &bad_proof).is_err()
+      );
+    }
+  }
+
   #[test]
   fn test_key_gen() {
     let n = 100;
@@ -1170,10 +1209,13 @@ mod tests {
 
   #[test]
   fn test_save_load_ck() {
+    const BUFFER_SIZE: usize = 64 * 1024;
+    const LABEL: &[u8] = b"test";
+
     let n = 4;
     let filename = "/tmp/kzg_test.ptau";
-    const BUFFER_SIZE: usize = 64 * 1024;
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(LABEL, n);
 
     let file = OpenOptions::new()
       .write(true)
@@ -1189,13 +1231,40 @@ mod tests {
 
     let mut reader = BufReader::new(file);
 
-    let read_ck = hyperkzg::CommitmentEngine::<E>::load_setup(&mut reader, ck.ck.len()).unwrap();
+    let read_ck =
+      hyperkzg::CommitmentEngine::<E>::load_setup(&mut reader, LABEL, ck.ck.len()).unwrap();
 
     assert_eq!(ck.ck.len(), read_ck.ck.len());
     assert_eq!(ck.h, read_ck.h);
     assert_eq!(ck.tau_H, read_ck.tau_H);
     for i in 0..ck.ck.len() {
       assert_eq!(ck.ck[i], read_ck.ck[i]);
+    }
+  }
+
+  #[ignore = "only available with external ptau files"]
+  #[test]
+  fn test_load_ptau() {
+    let filename = "/tmp/ppot_0080_13.ptau";
+    let file = OpenOptions::new().read(true).open(filename).unwrap();
+
+    let mut reader = BufReader::new(file);
+
+    let ck = hyperkzg::CommitmentEngine::<E>::load_setup(&mut reader, b"test", 1).unwrap();
+
+    let mut rng = rand::thread_rng();
+
+    let gen_g1 = ck.ck[0];
+    let t_g2 = ck.tau_H;
+
+    for _ in 0..1000 {
+      let x = Fr::from(<rand::rngs::ThreadRng as rand::Rng>::gen::<u64>(&mut rng));
+      let x = x * x * x * x;
+
+      let left = halo2curves::bn256::G1::pairing(&(gen_g1 * x), &t_g2.into());
+      let right = halo2curves::bn256::G1::pairing(&gen_g1.into(), &t_g2.into()) * x;
+
+      assert_eq!(left, right);
     }
   }
 }

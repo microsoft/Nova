@@ -65,6 +65,7 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   #[cfg(feature = "std")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
+    label: &'static [u8],
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError>;
 
