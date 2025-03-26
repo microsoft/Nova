@@ -1,10 +1,12 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::traits::{AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait};
 use core::panic;
 use ff::PrimeField;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 // ax^2 + bx + c stored as vec![c, b, a]
@@ -133,6 +135,7 @@ pub fn gaussian_elimination<F: PrimeField>(matrix: &mut [Vec<F>]) -> Vec<F> {
   // Disable cargo clippy warnings about needless range loops.
   // Checking the diagonal like this is simpler than any alternative.
   #[allow(clippy::needless_range_loop)]
+  #[cfg(feature = "std")]
   for i in 0..size {
     if matrix[i][i] == F::ZERO {
       println!("Infinitely many solutions");

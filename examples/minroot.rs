@@ -1,8 +1,8 @@
 //! Demonstrates how to use Nova to produce a recursive proof of the correct execution of
 //! iterations of the `MinRoot` function, thereby realizing a Nova-based verifiable delay function (VDF).
 //! We execute a configurable number of iterations of the `MinRoot` function per step of Nova's recursion.
+use bincode::config::legacy;
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   frontend::{num::AllocatedNum, ConstraintSystem, SynthesisError},
   nova::{CompressedSNARK, PublicParams, RecursiveSNARK},
@@ -248,9 +248,8 @@ fn main() {
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
-    let compressed_snark_encoded = encoder.finish().unwrap();
+    let compressed_snark_encoded =
+      bincode::serde::encode_to_vec(&compressed_snark, legacy()).unwrap();
     println!(
       "CompressedSNARK::len {:?} bytes",
       compressed_snark_encoded.len()

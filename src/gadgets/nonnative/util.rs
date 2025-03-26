@@ -2,13 +2,12 @@ use super::{BitAccess, OptionExt};
 use crate::frontend::{
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
-use byteorder::WriteBytesExt;
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
-use std::{
-  convert::From,
-  io::{self, Write},
-};
+#[cfg(feature = "std")]
+use std::convert::From;
 
 #[derive(Clone)]
 /// A representation of a bit
@@ -232,18 +231,21 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   }
 }
 
-fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> io::Result<()> {
-  for digit in f.to_repr().as_ref().iter().rev() {
-    writer.write_u8(*digit)?;
+// Assuming PrimeField is a trait from some elliptic curve or cryptographic library
+pub fn write_be<F: PrimeField>(f: &F, buffer: &mut [u8]) -> Result<(), ()> {
+  for (offset, digit) in f.to_repr().as_ref().iter().rev().enumerate() {
+    if offset >= buffer.len() {
+      return Err(()); // Overflow: not enough space in buffer
+    }
+    buffer[offset] = *digit;
   }
-
   Ok(())
 }
 
 /// Convert a field element to a natural number
 pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
-  let mut s = Vec::new();
-  write_be(f, &mut s).unwrap(); // f.to_repr().write_be(&mut s).unwrap();
+  let mut buffer = [0u8; 256]; // Fixed-size buffer for the serialized representation of the field element
+  write_be(f, &mut buffer).unwrap();
   BigInt::from_bytes_le(Sign::Plus, f.to_repr().as_ref())
 }
 

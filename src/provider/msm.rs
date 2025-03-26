@@ -1,11 +1,16 @@
 //! This module provides a multi-scalar multiplication routine
 //! The generic implementation is adapted from halo2; we add an optimization to commit to bits more efficiently
 //! The specialized implementations are adapted from jolt, with additional optimizations and parallelization.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::{Field, PrimeField};
 use halo2curves::{group::Group, CurveAffine};
+use libm::log;
 use num_integer::Integer;
 use num_traits::{ToPrimitive, Zero};
-use rayon::{current_num_threads, prelude::*};
+use plonky2_maybe_rayon::*;
+#[cfg(feature = "std")]
+use rayon::current_num_threads;
 
 #[derive(Clone, Copy)]
 enum Bucket<C: CurveAffine> {
@@ -38,7 +43,7 @@ fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve
   } else if bases.len() < 32 {
     3
   } else {
-    (f64::from(bases.len() as u32)).ln().ceil() as usize
+    log(f64::from(bases.len() as u32)).ceil() as usize
   };
 
   fn get_at<F: PrimeField>(segment: usize, c: usize, bytes: &F::Repr) -> usize {
@@ -113,14 +118,27 @@ fn cpu_msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve
 pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   assert_eq!(coeffs.len(), bases.len());
 
+  #[cfg(feature = "std")]
   let num_threads = current_num_threads();
+  #[cfg(not(feature = "std"))]
+  let num_threads = 1;
+
   if coeffs.len() > num_threads {
     let chunk = coeffs.len() / num_threads;
-    coeffs
+    #[cfg(feature = "std")]
+    let res = coeffs
       .par_chunks(chunk)
       .zip(bases.par_chunks(chunk))
       .map(|(coeffs, bases)| cpu_msm_serial(coeffs, bases))
-      .reduce(C::Curve::identity, |sum, evl| sum + evl)
+      .reduce(C::Curve::identity, |sum, evl| sum + evl);
+    #[cfg(not(feature = "std"))]
+    let res = coeffs
+      .par_chunks(chunk)
+      .zip(bases.par_chunks(chunk))
+      .map(|(coeffs, bases)| cpu_msm_serial(coeffs, bases))
+      .fold(C::Curve::identity(), |sum, evl| sum + evl);
+
+    res
   } else {
     cpu_msm_serial(coeffs, bases)
   }
@@ -152,7 +170,10 @@ pub fn msm_small<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrimit
 
 fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> C::Curve {
   assert_eq!(scalars.len(), bases.len());
+  #[cfg(feature = "std")]
   let num_threads = current_num_threads();
+  #[cfg(not(feature = "std"))]
+  let num_threads = 1;
   let process_chunk = |scalars: &[T], bases: &[C]| {
     let mut acc = C::Curve::identity();
     scalars
@@ -167,11 +188,20 @@ fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> 
 
   if scalars.len() > num_threads {
     let chunk = scalars.len() / num_threads;
-    scalars
+    #[cfg(feature = "std")]
+    let res = scalars
       .par_chunks(chunk)
       .zip(bases.par_chunks(chunk))
       .map(|(scalars, bases)| process_chunk(scalars, bases))
-      .reduce(C::Curve::identity, |sum, evl| sum + evl)
+      .reduce(C::Curve::identity, |sum, evl| sum + evl);
+    #[cfg(not(feature = "std"))]
+    let res = scalars
+      .par_chunks(chunk)
+      .zip(bases.par_chunks(chunk))
+      .map(|(scalars, bases)| process_chunk(scalars, bases))
+      .fold(C::Curve::identity(), |sum, evl| sum + evl);
+
+    res
   } else {
     process_chunk(scalars, bases)
   }
@@ -209,14 +239,27 @@ fn msm_10<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
     result
   }
 
+  #[cfg(feature = "std")]
   let num_threads = current_num_threads();
+  #[cfg(not(feature = "std"))]
+  let num_threads = 1;
+
   if scalars.len() > num_threads {
     let chunk_size = scalars.len() / num_threads;
-    scalars
+    #[cfg(feature = "std")]
+    let res = scalars
       .par_chunks(chunk_size)
       .zip(bases.par_chunks(chunk_size))
       .map(|(scalars_chunk, bases_chunk)| msm_10_serial(scalars_chunk, bases_chunk, max_num_bits))
-      .reduce(C::Curve::identity, |sum, evl| sum + evl)
+      .reduce(C::Curve::identity, |sum, evl| sum + evl);
+    #[cfg(not(feature = "std"))]
+    let res = scalars
+      .par_chunks(chunk_size)
+      .zip(bases.par_chunks(chunk_size))
+      .map(|(scalars_chunk, bases_chunk)| msm_10_serial(scalars_chunk, bases_chunk, max_num_bits))
+      .fold(C::Curve::identity(), |sum, evl| sum + evl);
+
+    res
   } else {
     msm_10_serial(scalars, bases, max_num_bits)
   }
@@ -319,16 +362,32 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
         })
   }
 
+  #[cfg(feature = "std")]
   let num_threads = current_num_threads();
+  #[cfg(not(feature = "std"))]
+  let num_threads = 1;
+
   if scalars.len() > num_threads {
     let chunk_size = scalars.len() / num_threads;
-    scalars
+    #[cfg(feature = "std")]
+    let res = scalars
       .par_chunks(chunk_size)
       .zip(bases.par_chunks(chunk_size))
       .map(|(scalars_chunk, bases_chunk)| {
         msm_small_rest_serial(scalars_chunk, bases_chunk, max_num_bits)
       })
-      .reduce(C::Curve::identity, |sum, evl| sum + evl)
+      .reduce(C::Curve::identity, |sum, evl| sum + evl);
+
+    #[cfg(not(feature = "std"))]
+    let res = scalars
+      .par_chunks(chunk_size)
+      .zip(bases.par_chunks(chunk_size))
+      .map(|(scalars_chunk, bases_chunk)| {
+        msm_small_rest_serial(scalars_chunk, bases_chunk, max_num_bits)
+      })
+      .fold(C::Curve::identity(), |sum, evl| sum + evl);
+
+    res
   } else {
     msm_small_rest_serial(scalars, bases, max_num_bits)
   }

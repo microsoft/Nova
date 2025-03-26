@@ -1,9 +1,6 @@
 // Allow `&Matrix` in function signatures.
 #![allow(clippy::ptr_arg)]
 
-use ff::PrimeField;
-use serde::{Deserialize, Serialize};
-
 use super::{
   matrix,
   matrix::{
@@ -11,6 +8,10 @@ use super::{
     Matrix,
   },
 };
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use ff::PrimeField;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MdsMatrices<F: PrimeField> {

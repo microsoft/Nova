@@ -1,5 +1,7 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::{BN_LIMB_WIDTH as LIMB_WIDTH, BN_N_LIMBS as N_LIMBS},
   frontend::{

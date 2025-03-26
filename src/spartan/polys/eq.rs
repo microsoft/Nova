@@ -1,6 +1,8 @@
 //! `EqPolynomial`: Represents multilinear extension of equality polynomials, evaluated based on binary input values.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 
 /// Represents the multilinear extension polynomial (MLE) of the equality polynomial $eq(x,e)$, denoted as $\tilde{eq}(x, e)$.
 ///

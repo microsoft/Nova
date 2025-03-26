@@ -1,5 +1,7 @@
 //! This module implements various low-level gadgets
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   frontend::{

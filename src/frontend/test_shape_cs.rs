@@ -1,6 +1,9 @@
 //! Support for generating R1CS shape using bellpepper.
 //! `TestShapeCS` implements a superset of `ShapeCS`, adding non-trivial namespace support for use in testing.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+#[cfg(feature = "std")]
 use std::{
   cmp::Ordering,
   collections::{BTreeMap, HashMap},

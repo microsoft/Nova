@@ -8,7 +8,9 @@ use crate::{
   traits::{AbsorbInROTrait, Engine, ROConstants, ROTrait},
   Commitment, CommitmentKey,
 };
+#[cfg(feature = "std")]
 use ff::Field;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +23,21 @@ pub struct NIFS<E: Engine> {
 }
 
 impl<E: Engine> NIFS<E> {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn prove(
+    _ck: &CommitmentKey<E>,
+    _ro_consts: &ROConstants<E>,
+    _pp_digest: &E::Scalar,
+    _S: &R1CSShape<E>,
+    _U1: &RelaxedR1CSInstance<E>,
+    _W1: &RelaxedR1CSWitness<E>,
+    _U2: &R1CSInstance<E>,
+    _W2: &R1CSWitness<E>,
+  ) -> Result<(NIFS<E>, (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>)), NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Takes as input a Relaxed R1CS instance-witness tuple `(U1, W1)` and
   /// an R1CS instance-witness tuple `(U2, W2)` with the same structure `shape`
   /// and defined with respect to the same `ck`, and outputs
@@ -33,6 +50,7 @@ impl<E: Engine> NIFS<E> {
   /// In particular, it requires that `U1` and `U2` are such that the hash of `U1` is stored in the public IO of `U2`.
   /// In this particular setting, this means that if `U2` is absorbed in the RO, it implicitly absorbs `U1` as well.
   /// So the code below avoids absorbing `U1` in the RO.
+  #[cfg(feature = "std")]
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
@@ -54,6 +72,7 @@ impl<E: Engine> NIFS<E> {
 
     // compute a commitment to the cross-term
     let r_T = E::Scalar::random(&mut OsRng);
+
     let (T, comm_T) = S.commit_T(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
@@ -116,7 +135,29 @@ pub struct NIFSRelaxed<E: Engine> {
 }
 
 impl<E: Engine> NIFSRelaxed<E> {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn prove(
+    _ck: &CommitmentKey<E>,
+    _ro_consts: &ROConstants<E>,
+    _vk: &E::Scalar,
+    _S: &R1CSShape<E>,
+    _U1: &RelaxedR1CSInstance<E>,
+    _W1: &RelaxedR1CSWitness<E>,
+    _U2: &RelaxedR1CSInstance<E>,
+    _W2: &RelaxedR1CSWitness<E>,
+  ) -> Result<
+    (
+      NIFSRelaxed<E>,
+      (RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>),
+    ),
+    NovaError,
+  > {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Same as `prove`, but takes two Relaxed R1CS Instance/Witness pairs
+  #[cfg(feature = "std")]
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,

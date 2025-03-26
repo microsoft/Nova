@@ -4,6 +4,7 @@
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
+pub mod msm;
 pub mod pasta;
 pub mod poseidon;
 pub mod secp_secq;
@@ -16,20 +17,21 @@ pub(crate) mod pedersen;
 pub(crate) mod ptau;
 pub(crate) mod traits;
 
-mod msm;
-
+use crate::provider::{
+  bn256_grumpkin::{bn256, grumpkin},
+  hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
+  pasta::{pallas, vesta},
+  secp_secq::{secp256k1, secq256k1},
+};
 use crate::{
   provider::{
-    bn256_grumpkin::{bn256, grumpkin},
-    hyperkzg::CommitmentEngine as HyperKZGCommitmentEngine,
     keccak::Keccak256Transcript,
-    pasta::{pallas, vesta},
     pedersen::CommitmentEngine as PedersenCommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit},
-    secp_secq::{secp256k1, secq256k1},
   },
   traits::Engine,
 };
+#[cfg(feature = "std")]
 pub use ptau::{check_sanity_of_ptau_file, read_ptau, write_ptau};
 use serde::{Deserialize, Serialize};
 

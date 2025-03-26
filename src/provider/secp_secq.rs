@@ -1,4 +1,6 @@
 //! This module implements the Nova traits for `secp::Point`, `secp::Scalar`, `secq::Point`, `secq::Scalar`.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   impl_traits,
   provider::{
@@ -7,6 +9,8 @@ use crate::{
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
 };
+#[cfg(not(feature = "std"))]
+use digest::XofReader;
 use digest::{ExtendableOutput, Update};
 use ff::FromUniformBytes;
 use halo2curves::{
@@ -18,8 +22,9 @@ use halo2curves::{
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{Num, ToPrimitive};
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use sha3::Shake256;
+#[cfg(feature = "std")]
 use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for secp

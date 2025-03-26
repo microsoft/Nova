@@ -4,6 +4,8 @@
 //! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
 //! Each circuit folds the last invocation of the other into the running instance
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::NUM_HASH_BITS,
   frontend::{
@@ -43,6 +45,7 @@ pub struct NovaAugmentedCircuitInputs<E: Engine> {
 
 impl<E: Engine> NovaAugmentedCircuitInputs<E> {
   /// Create new inputs/witness for the verification circuit
+  #[allow(unused)] // allowing unused because in no_std mode it is never called
   pub fn new(
     pp_digest: E::Scalar,
     i: E::Base,

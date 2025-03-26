@@ -1,4 +1,6 @@
 //! The underlying Poseidon sponge code is ported from https://github.com/argumentcomputer/neptune.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 
