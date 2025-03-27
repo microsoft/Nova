@@ -581,13 +581,17 @@ where
 {
   com: Vec<G1Affine<E>>,
   w: [G1Affine<E>; 3],
-  v: [Vec<E::Scalar>; 3],
+  v: Vec<[E::Scalar; 3]>,
 }
 
 impl<E: Engine> EvaluationArgument<E>
 where
   E::GE: PairingGroup,
 {
+  /// Create a new evaluation argument
+  pub fn new(com: Vec<G1Affine<E>>, w: [G1Affine<E>; 3], v: Vec<[E::Scalar; 3]>) -> Self {
+    Self { com, w, v }
+  }
   /// The KZG commitments to intermediate polynomials
   pub fn com(&self) -> &[G1Affine<E>] {
     &self.com
@@ -597,7 +601,7 @@ where
     &self.w
   }
   /// The evaluations of the polynomials at challenge points
-  pub fn v(&self) -> &[Vec<E::Scalar>] {
+  pub fn v(&self) -> &[[E::Scalar; 3]] {
     &self.v
   }
 }
@@ -622,7 +626,7 @@ where
 
   // Compute challenge q = Hash(vk, C0, ..., C_{k-1}, u0, ...., u_{t-1},
   // (f_i(u_j))_{i=0..k-1,j=0..t-1})
-  fn get_batch_challenge(v: &[Vec<E::Scalar>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
+  fn get_batch_challenge(v: &[[E::Scalar; 3]], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(
       b"v",
       &v.iter()
@@ -721,9 +725,9 @@ where
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
-                          u: &[E::Scalar],
+                          u: &[E::Scalar; 3],
                           transcript: &mut <E as Engine>::TE|
-     -> (Vec<G1Affine<E>>, Vec<Vec<E::Scalar>>) {
+     -> (Vec<G1Affine<E>>, Vec<[E::Scalar; 3]>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
         let mut v = f[0];
         let mut u_power = E::Scalar::ONE;
@@ -759,16 +763,16 @@ where
       ///////// END kzg_open_batch closure helpers
 
       let k = f.len();
-      let t = u.len();
+      // Note: u.len() is always 3.
 
       // The verifier needs f_i(u_j), so we compute them here
       // (V will compute B(u_j) itself)
-      let mut v = vec![vec!(E::Scalar::ZERO; k); t];
-      v.par_iter_mut().enumerate().for_each(|(i, v_i)| {
-        // for each point u
-        v_i.par_iter_mut().zip_eq(f).for_each(|(v_ij, f)| {
-          // for each poly f
-          // for each poly f (except the last one - since it is constant)
+      let mut v = vec![[E::Scalar::ZERO; 3]; k];
+      v.par_iter_mut().zip_eq(f).for_each(|(v_j, f)| {
+        // for each poly f
+        // for each poly f (except the last one - since it is constant)
+        v_j.par_iter_mut().enumerate().for_each(|(i, v_ij)| {
+          // for each point u
           *v_ij = poly_eval(f, u[i]);
         });
       });
@@ -824,7 +828,7 @@ where
     // We do not need to add x to the transcript, because in our context x was obtained from the transcript.
     // We also do not need to absorb `C` and `eval` as they are already absorbed by the transcript by the caller
     let r = Self::compute_challenge(&com, transcript);
-    let u = vec![r, -r, r * r];
+    let u = [r, -r, r * r];
 
     // Phase 3 -- create response
     let (w, v) = kzg_open_batch(&polys, &u, transcript);
@@ -832,7 +836,7 @@ where
     Ok(EvaluationArgument {
       com,
       w: w.try_into().expect("w should have length 3"),
-      v: v.try_into().expect("v should have length 3"),
+      v,
     })
   }
 
@@ -860,24 +864,19 @@ where
     let u = [r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
-    if pi.v[0].len() != ell
-      || pi.v[1].len() != ell
-      || pi.v[2].len() != ell
-      || pi.com.len() != ell - 1
-    {
+    if pi.v.len() != ell || pi.com.len() != ell - 1 {
       return Err(NovaError::ProofVerifyError {
         reason: "Invalid lengths of pi.v".to_string(),
       });
     }
-    let ypos = &pi.v[0];
-    let yneg = &pi.v[1];
-    let Y = &pi.v[2];
 
     // Check consistency of (Y, ypos, yneg)
     for i in 0..ell {
-      if r.double() * Y.get(i + 1).unwrap_or(y)
-        != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos[i] + yneg[i])
-          + x[ell - i - 1] * (ypos[i] - yneg[i])
+      let ypos = pi.v[i][0];
+      let yneg = pi.v[i][1];
+      let Y = pi.v.get(i + 1).map_or(*y, |v| v[2]);
+      if r.double() * Y
+        != r * (E::Scalar::ONE - x[ell - i - 1]) * (ypos + yneg) + x[ell - i - 1] * (ypos - yneg)
       {
         return Err(NovaError::ProofVerifyError {
           reason: "Inconsistent (Y, ypos, yneg)".to_string(),
@@ -923,14 +922,13 @@ where
 
     // Compute the batched openings
     // compute B(u_i) = v[i][0] + q*v[i][1] + ... + q^(t-1) * v[i][t-1]
-    let B_u = pi
-      .v
-      .par_iter()
-      .map(|v_i| {
-        v_i
+    let B_u = (0..3)
+      .into_par_iter()
+      .map(|i| {
+        pi.v
           .iter()
           .rev()
-          .fold(E::Scalar::ZERO, |acc, v_ij| acc * q + v_ij)
+          .fold(E::Scalar::ZERO, |acc, v_j| acc * q + v_j[i])
       })
       .collect::<Vec<E::Scalar>>();
 
@@ -1082,11 +1080,11 @@ mod tests {
       .with_fixint_encoding()
       .serialize(&proof)
       .unwrap();
-    assert_eq!(proof_bytes.len(), 352);
+    assert_eq!(proof_bytes.len(), 336);
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
-    let v1 = bad_proof.v[1].clone();
+    let v1 = bad_proof.v[1];
     bad_proof.v[0].clone_from(&v1);
     let mut verifier_transcript2 = Keccak256Transcript::new(b"TestEval");
     assert!(EvaluationEngine::verify(
@@ -1130,7 +1128,7 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
-      let v1 = bad_proof.v[1].clone();
+      let v1 = bad_proof.v[1];
       bad_proof.v[0].clone_from(&v1);
       let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
       assert!(
@@ -1172,7 +1170,7 @@ mod tests {
 
       // Change the proof and expect verification to fail
       let mut bad_proof = proof.clone();
-      let v1 = bad_proof.v[1].clone();
+      let v1 = bad_proof.v[1];
       bad_proof.v[0].clone_from(&v1);
       let mut verifier_tr2 = Keccak256Transcript::new(b"TestEval");
       assert!(
