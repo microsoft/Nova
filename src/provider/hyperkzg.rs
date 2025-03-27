@@ -290,7 +290,7 @@ where
     };
 
     if num_gens < T2 {
-      Self::setup_from_tau_direct(label, &powers_of_tau)
+      Self::setup_from_tau_direct(label, &powers_of_tau, tau)
     } else {
       Self::setup_from_tau_fixed_base_exp(label, &powers_of_tau)
     }
@@ -311,9 +311,12 @@ where
     Self { ck, h, tau_H }
   }
 
-  fn setup_from_tau_direct(label: &'static [u8], powers_of_tau: &[E::Scalar]) -> Self {
+  fn setup_from_tau_direct(
+    label: &'static [u8],
+    powers_of_tau: &[E::Scalar],
+    tau: E::Scalar,
+  ) -> Self {
     let num_gens = powers_of_tau.len();
-    let tau = powers_of_tau[1];
 
     let ck: Vec<G1Affine<E>> = (0..num_gens)
       .into_par_iter()
@@ -1187,7 +1190,7 @@ mod tests {
     let tau = Fr::random(OsRng);
     let powers_of_tau = CommitmentKey::<E>::compute_powers_serial(tau, n);
     let label = b"test";
-    let res1 = CommitmentKey::<E>::setup_from_tau_direct(label, &powers_of_tau);
+    let res1 = CommitmentKey::<E>::setup_from_tau_direct(label, &powers_of_tau, tau);
     let res2 = CommitmentKey::<E>::setup_from_tau_fixed_base_exp(label, &powers_of_tau);
 
     assert_eq!(res1.ck.len(), res2.ck.len());
