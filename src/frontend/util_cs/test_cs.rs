@@ -90,6 +90,11 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
     Default::default()
   }
 
+  /// Get the number of constraints
+  pub fn num_constraints(&self) -> usize {
+    self.constraints.len()
+  }
+
   /// Get path which is unsatisfied
   pub fn which_is_unsatisfied(&self) -> Option<&str> {
     for (a, b, c, path) in &self.constraints {
