@@ -1,9 +1,7 @@
-//! There are two augmented circuits: the primary and the secondary.
-//! Each of them is over a curve in a 2-cycle of elliptic curves.
-//! We have two running instances. Each circuit takes as input 2 hashes: one for each
-//! of the running instances. Each of these hashes is H(params = H(shape, ck), i, z0, zi, U).
-//! Each circuit folds the last invocation of the other into the running instance
-
+//! This module implements the augmented circuit for Neutron.
+//! This circuit includes an invocation of the step circuit F as well as a folding verifier circuit
+//! for the non-interactive folding scheme.
+//! The folding verifier cirucit uses cyclefold technique to fold claims about scalar multiplication operations
 use crate::{
   constants::NUM_HASH_BITS,
   frontend::{
@@ -11,17 +9,21 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedNonnativePoint,
-    utils::{alloc_num_equals, alloc_zero, conditionally_select_vec, le_bits_to_num},
+    utils::{
+      alloc_bignat_constant, alloc_num_equals, alloc_zero, conditionally_select_vec, le_bits_to_num,
+    },
   },
   neutron::{nifs::NIFS, relation::FoldedInstance},
   nova::nifs::NIFS as NovaNIFS,
-  r1cs::R1CSInstance,
+  r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
-    circuit::StepCircuit, commitment::CommitmentTrait, Engine, RO2ConstantsCircuit, ROCircuitTrait,
+    circuit::StepCircuit, commitment::CommitmentTrait, Engine, Group, RO2ConstantsCircuit,
+    ROCircuitTrait,
   },
   Commitment,
 };
 use ff::Field;
+use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 mod cyclefold;
@@ -37,6 +39,7 @@ pub(crate) mod ec;
 use nifs::AllocatedNIFS;
 use nifs_ec::AllocatedNIFSEC;
 use r1cs::AllocatedNonnativeR1CSInstance;
+use r1cs_ec::{AllocatedECInstance, AllocatedRelaxedECInstance};
 use relation::AllocatedFoldedInstance;
 
 /// A type that holds the non-deterministic inputs for the augmented circuit
@@ -48,12 +51,14 @@ pub struct NeutronAugmentedCircuitInputs<E1: Engine, E2: Engine> {
   z0: Vec<E1::Scalar>,
   zi: Option<Vec<E1::Scalar>>,
   U: Option<FoldedInstance<E1>>,
+  U_EC: Option<RelaxedR1CSInstance<E2>>,
   ri: Option<E1::Scalar>,
   r_next: E1::Scalar,
   u: Option<R1CSInstance<E1>>,
   nifs: Option<NIFS<E1>>,
   comm_W_fold: Option<Commitment<E1>>,
   comm_E_fold: Option<Commitment<E1>>,
+  u_EC_W: Option<R1CSInstance<E2>>,
   nifs_EC: Option<NovaNIFS<E2>>,
 }
 
@@ -141,12 +146,15 @@ where
       Vec<AllocatedNum<E1::Scalar>>,
       Vec<AllocatedNum<E1::Scalar>>,
       AllocatedFoldedInstance<E1>,
+      AllocatedRelaxedECInstance<E2>,
       AllocatedNum<E1::Scalar>,
       AllocatedNum<E1::Scalar>,
       AllocatedNonnativeR1CSInstance<E1>,
       AllocatedNIFS<E1>,
       AllocatedNonnativePoint<E1>,
       AllocatedNonnativePoint<E1>,
+      AllocatedECInstance<E2>,
+      AllocatedNIFSEC<E2>,
     ),
     SynthesisError,
   > {
@@ -229,9 +237,12 @@ where
     // Allocate u_EC that contains checks the provided comm_W_fold and comm_E_fold
     let u_EC_W = AllocatedECInstance::alloc(
       cs.namespace(|| "allocate u_EC_W"),
-      self.inputs.as_ref().and_then(|inputs| inputs.u_EC_W.as_ref()),
-      (&U.W.x, &U.W.y, &U.W.is_infinity),
-      (&u.W.x, &u.W.y, &u.W.is_infinity),
+      self
+        .inputs
+        .as_ref()
+        .and_then(|inputs| inputs.u_EC_W.as_ref()),
+      (&U.comm_W.x, &U.comm_W.y, &U.comm_W.is_infinity),
+      (&u.comm_W.x, &u.comm_W.y, &u.comm_W.is_infinity),
     )?;
 
     // Allocate nifs_EC
@@ -249,6 +260,7 @@ where
       z_0,
       z_i,
       U,
+      U_EC,
       r_i,
       r_next,
       u,
@@ -264,11 +276,13 @@ where
     &self,
     mut cs: CS,
   ) -> Result<(AllocatedFoldedInstance<E1>, AllocatedRelaxedECInstance<E2>), SynthesisError> {
+    let zero = alloc_bignat_constant(cs.namespace(|| "zero"), &BigInt::from(0))?;
+
     // In the base case, we simply return the default running instance
-    (
-      AllocatedFoldedInstance::default(cs.namespace(|| "Allocate U_default")),
-      AllocatedRelaxedECInstance::default(cs.namespace(|| "Allocate U_EC_default")),
-    )
+    Ok((
+      AllocatedFoldedInstance::default(cs.namespace(|| "Allocate U_default"))?,
+      AllocatedRelaxedECInstance::default(cs.namespace(|| "Allocate U_EC_default"), &zero)?,
+    ))
   }
 
   /// Synthesizes non base case and returns the new relaxed `FoldedInstance`
@@ -281,14 +295,22 @@ where
     z_0: &[AllocatedNum<E1::Scalar>],
     z_i: &[AllocatedNum<E1::Scalar>],
     U: &AllocatedFoldedInstance<E1>,
+    U_EC: &AllocatedRelaxedECInstance<E2>,
     r_i: &AllocatedNum<E1::Scalar>,
     u: &AllocatedNonnativeR1CSInstance<E1>,
     nifs: &AllocatedNIFS<E1>,
     comm_W_fold: &AllocatedNonnativePoint<E1>,
     comm_E_fold: &AllocatedNonnativePoint<E1>,
+    u_EC_W: &AllocatedECInstance<E2>,
     nifs_EC: &AllocatedNIFSEC<E2>,
-    U_EC: &AllocatedRelaxedECInstance<E2>,
-  ) -> Result<(AllocatedFoldedInstance<E1>, AllocatedBit), SynthesisError> {
+  ) -> Result<
+    (
+      AllocatedFoldedInstance<E1>,
+      AllocatedRelaxedECInstance<E2>,
+      AllocatedBit,
+    ),
+    SynthesisError,
+  > {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
     let mut ro = E1::RO2Circuit::new(self.ro_consts.clone());
     ro.absorb(pp_digest);
@@ -300,7 +322,7 @@ where
       ro.absorb(e);
     }
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
-    U_EC.absorb_in_ro(cs.namespace(|| "absorb U_EC"), &mut ro)?;
+    //U_EC.absorb_in_ro(cs.namespace(|| "absorb U_EC"), &mut ro)?; // TODO: bring this back
     ro.absorb(r_i);
 
     let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
@@ -324,12 +346,15 @@ where
 
     // Run NIFS_EC Verifier
     // we first formulate the "fresh" instance to be folded into u_EC
-    let u_EC_fold = nifs_EC.verify(
+    // allocate modulus as a constant
+    let m_bn = alloc_bignat_constant(cs.namespace(|| "alloc modulus"), &E1::GE::group_params().3)?;
+    let (U_EC_fold, _r) = nifs_EC.verify(
       cs.namespace(|| "compute fold of U_EC and u_EC"),
       pp_digest,
       U_EC,
-      u,
+      u_EC_W,
       self.ro_consts.clone(),
+      &m_bn,
     )?;
 
     Ok((U_fold, U_EC_fold, check_pass))
@@ -357,15 +382,30 @@ where
     let arity = self.step_circuit.arity();
 
     // Allocate all witnesses
-    let (pp_digest, i, z_0, z_i, U, r_i, r_next, u, nifs, comm_W_fold, comm_E_fold, nifs_EC) =
-      self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
+    let (
+      pp_digest,
+      i,
+      z_0,
+      z_i,
+      U,
+      U_EC,
+      r_i,
+      r_next,
+      u,
+      nifs,
+      comm_W_fold,
+      comm_E_fold,
+      u_EC_W,
+      nifs_EC,
+    ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"));
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // synthesize base case
-    let (Unew_base, Unew_base_EC) = self.synthesize_base_case(cs.namespace(|| "synthesize base case"))?;
+    let (Unew_base, Unew_base_EC) =
+      self.synthesize_base_case(cs.namespace(|| "synthesize base case"))?;
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
@@ -376,11 +416,13 @@ where
       &z_0,
       &z_i,
       &U,
+      &U_EC,
       &r_i,
       &u,
       &nifs,
       &comm_W_fold,
       &comm_E_fold,
+      &u_EC_W,
       &nifs_EC,
     )?;
 
@@ -397,17 +439,19 @@ where
       |lc| lc,
     );
 
+    let is_base_case_boolean = Boolean::from(is_base_case);
+
     // we pick between the base case output and the non-base case output
     let Unew = Unew_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
       &Unew_non_base,
-      &Boolean::from(is_base_case.clone()),
+      &is_base_case_boolean,
     )?;
 
-    let Unew_EC = Unew_base_EC.conditionally_select(
+    let _Unew_EC = Unew_base_EC.conditionally_select(
       cs.namespace(|| "compute U_new_EC"),
       &Unew_non_base_EC,
-      &Boolean::from(is_base_case),
+      &is_base_case_boolean,
     )?;
 
     // Compute i + 1
@@ -426,7 +470,7 @@ where
       cs.namespace(|| "select input to F"),
       &z_0,
       &z_i,
-      &Boolean::from(is_base_case),
+      &is_base_case_boolean,
     )?;
 
     let z_next = self
@@ -450,7 +494,7 @@ where
       ro.absorb(e);
     }
     Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
-    Unew_EC.absorb_in_ro(cs.namespace(|| "absorb U_new_EC"), &mut ro)?;
+    //Unew_EC.absorb_in_ro(cs.namespace(|| "absorb U_new_EC"), &mut ro)?;
     ro.absorb(&r_next);
     let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
@@ -481,8 +525,16 @@ mod tests {
   // In the following we use 1 to refer to the primary, and 2 to refer to the secondary circuit
   fn test_recursive_circuit_with<E1, E2>(num_constraints: &Expect)
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
   {
     let ro_consts = RO2ConstantsCircuit::<E1>::default();
     let tc = TrivialCircuit::default();
@@ -503,7 +555,9 @@ mod tests {
       None,
       None,
       None,
+      None,
       E1::Scalar::ZERO,
+      None,
       None,
       None,
       None,
@@ -520,8 +574,8 @@ mod tests {
 
   #[test]
   fn test_neutron_recursive_circuit_pasta() {
-    test_recursive_circuit_with::<PallasEngine, VestaEngine>(&expect!["7048"]);
-    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(&expect!["7328"]);
-    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(&expect!["7793"]);
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(&expect!["22709"]);
+    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(&expect!["23045"]);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(&expect!["23603"]);
   }
 }

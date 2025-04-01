@@ -813,12 +813,7 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
     CS: ConstraintSystem<E::Scalar>,
   {
     let one = alloc_one(cs.namespace(|| "one"));
-    let zero = alloc_bignat_constant(
-      cs.namespace(|| "zero"),
-      &BigInt::from(0),
-      LIMB_WIDTH,
-      N_LIMBS,
-    )?;
+    let zero = alloc_bignat_constant(cs.namespace(|| "zero"), &BigInt::from(0))?;
 
     Ok(AllocatedNonnativePoint {
       x: zero.clone(),

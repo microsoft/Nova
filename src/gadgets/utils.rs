@@ -132,19 +132,17 @@ pub fn to_bignat_repr<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(x: &F1) -
 pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   val: &BigInt,
-  limb_width: usize,
-  n_limbs: usize,
 ) -> Result<BigNat<F>, SynthesisError> {
-  let limbs = nat_to_limbs(val, limb_width, n_limbs).unwrap();
+  let limbs = nat_to_limbs(val, BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
   let bignat = BigNat::alloc_from_limbs(
     cs.namespace(|| "alloc bignat"),
     || Ok(limbs.clone()),
     None,
-    limb_width,
-    n_limbs,
+    BN_LIMB_WIDTH,
+    BN_N_LIMBS,
   )?;
   // Now enforce that the limbs are all equal to the constants
-  (0..n_limbs).for_each(|i| {
+  (0..BN_N_LIMBS).for_each(|i| {
     cs.enforce(
       || format!("check limb {i}"),
       |lc| lc + &bignat.limbs[i],

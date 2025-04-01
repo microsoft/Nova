@@ -83,12 +83,7 @@ impl<E: Engine> AllocatedNIFS<E> {
     )?;
 
     // Allocate the order of the non-native field as a constant
-    let m_bn = alloc_bignat_constant(
-      cs.namespace(|| "alloc m"),
-      &E::GE::group_params().2,
-      BN_LIMB_WIDTH,
-      BN_N_LIMBS,
-    )?;
+    let m_bn = alloc_bignat_constant(cs.namespace(|| "alloc m"), &E::GE::group_params().2)?;
 
     // Analyze X0 to bignat
     let X0_bn = BigNat::from_num(

@@ -59,7 +59,6 @@ impl<E: Engine> AllocatedNIFSEC<E> {
     pp_digest: &AllocatedNum<E::Base>, // hash of R1CSShape of F'
     U: &AllocatedRelaxedECInstance<E>, // folded instance
     u: &AllocatedECInstance<E>,
-    T: &AllocatedPoint<E>,
     ro_consts: ROConstantsCircuit<E>,
     m_bn: &BigNat<E::Base>,
   ) -> Result<(AllocatedRelaxedECInstance<E>, AllocatedNum<E::Base>), SynthesisError> {
@@ -69,7 +68,7 @@ impl<E: Engine> AllocatedNIFSEC<E> {
 
     u.absorb_in_ro(cs.namespace(|| "u"), &mut ro)?;
 
-    T.absorb_in_ro(&mut ro);
+    self.comm_T.absorb_in_ro(&mut ro);
 
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;

@@ -243,7 +243,9 @@ where
       None,
       None,
       None,
+      None,
       ri, // "r next"
+      None,
       None,
       None,
       None,
@@ -310,7 +312,7 @@ where
     );
     let mut cs = SatisfyingAssignment::<E2>::new();
     let _ = circuit_ec.synthesize(&mut cs);
-    let (u, w) = cs.r1cs_instance_and_witness(&pp.r1cs_shape_ec, &pp.ck_ec)?;
+    let (l_u_EC, l_w_EC) = cs.r1cs_instance_and_witness(&pp.r1cs_shape_ec, &pp.ck_ec)?;
 
     // fold (u, w) with the running EC instance
     let (nifs_ec, (r_U_EC, r_W_EC)) = NovaNIFS::<E2>::prove(
@@ -320,8 +322,8 @@ where
       &pp.r1cs_shape_ec,
       &self.r_U_EC,
       &self.r_W_EC,
-      &u,
-      &w,
+      &l_u_EC,
+      &l_w_EC,
     )?;
 
     let r_next = E1::Scalar::random(&mut OsRng);
@@ -333,12 +335,14 @@ where
       self.z0.to_vec(),
       Some(self.zi.clone()),
       Some(self.r_U.clone()),
+      Some(self.r_U_EC.clone()),
       Some(self.ri),
       r_next,
       Some(self.l_u.clone()),
       Some(nifs),
       Some(r_U.comm_W),
       Some(r_U.comm_E),
+      Some(l_u_EC),
       Some(nifs_ec),
     );
 
@@ -408,6 +412,7 @@ where
         hasher.absorb(*e);
       }
       self.r_U.absorb_in_ro2(&mut hasher);
+      //self.r_U_EC.absorb_in_ro2(&mut hasher);
       hasher.absorb(self.ri);
 
       hasher.squeeze(NUM_HASH_BITS)
@@ -424,6 +429,9 @@ where
       || pp.structure.is_sat(&pp.ck, &self.r_U, &self.r_W),
       || pp.structure.S.is_sat(&pp.ck, &self.l_u, &self.l_w),
     );
+
+    pp.r1cs_shape_ec
+      .is_sat(&pp.ck_ec, &self.r_U_EC, &self.r_W_EC)?;
 
     // check the returned res objects
     res_r?;
@@ -515,8 +523,16 @@ mod tests {
 
   fn test_pp_digest_with<E1, E2, C>(circuit: &C, expected: &Expect)
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
     E1::GE: DlogGroup,
     E2::GE: DlogGroup,
     C: StepCircuit<E1::Scalar>,
@@ -545,17 +561,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["4588c0d7747a1c96a7496170b4ec51c0d8ad1fbe79e6c50689f689e00e0b8b00"],
+      &expect!["3fe7888107b791ba164c64a903c34380f5e127e14d71bbf901cee7c37f0d0c00"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["4b45f275b10d02b66e5881e1337118fb508529d4f7f296627c818a88773c2802"],
+      &expect!["2e236010c50d5bb7d7c1ee168f880aec75fd6b5862a76782c9e4b9d08e0da801"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["28d74cd92449d5cfc8a17f38fb88a9502eaf07799a25e89c04724cc181cd2c03"],
+      &expect!["fb473e1757d2424d55a22964a7523e0cbc482616b2d8e8a3de60eb58dcb22301"],
     );
   }
 
@@ -708,6 +724,7 @@ mod tests {
 
     // verify the recursive SNARK
     let res = recursive_snark.verify(&pp, num_steps, &[<E1 as Engine>::Scalar::ONE]);
+    println!("res: {:?}", res);
     assert!(res.is_ok());
 
     let zn = res.unwrap();
@@ -724,8 +741,16 @@ mod tests {
 
   fn test_setup_with<E1, E2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<
+      Base = <E2 as Engine>::Scalar,
+      RO = <E2 as Engine>::RO2,
+      ROCircuit = <E2 as Engine>::RO2Circuit,
+    >,
+    E2: Engine<
+      Base = <E1 as Engine>::Scalar,
+      RO = <E1 as Engine>::RO2,
+      ROCircuit = <E1 as Engine>::RO2Circuit,
+    >,
   {
     #[derive(Clone, Debug, Default)]
     struct CircuitWithInputize<F: PrimeField> {

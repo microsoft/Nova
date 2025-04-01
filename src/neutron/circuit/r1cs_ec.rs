@@ -212,6 +212,29 @@ impl<E: Engine> AllocatedRelaxedECInstance<E> {
     })
   }
 
+  #[allow(dead_code)]
+  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::ROCircuit,
+  ) -> Result<(), SynthesisError> {
+    self.W.absorb_in_ro(ro);
+    self.E.absorb_in_ro(ro);
+    ro.absorb(&self.u);
+
+    absorb_bignat_in_ro::<E, _>(&self.r, cs.namespace(|| "r"), ro)?;
+
+    for (i, e) in self.coords.iter().enumerate() {
+      absorb_bignat_in_ro::<E, _>(e, cs.namespace(|| format!("coords {i}")), ro)?;
+    }
+
+    for e in self.is_inf.iter() {
+      ro.absorb(e);
+    }
+
+    Ok(())
+  }
+
   /// If the condition is true then returns this otherwise it returns the other
   pub fn conditionally_select<CS: ConstraintSystem<E::Base>>(
     &self,
