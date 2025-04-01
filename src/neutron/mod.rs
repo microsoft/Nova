@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 mod circuit;
 mod nifs;
 mod relation;
+mod ec;
 
 use circuit::{ec::ECCircuit, NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs};
 use nifs::NIFS;
@@ -431,7 +432,7 @@ where
     );
 
     pp.r1cs_shape_ec
-      .is_sat(&pp.ck_ec, &self.r_U_EC, &self.r_W_EC)?;
+      .is_sat_relaxed(&pp.ck_ec, &self.r_U_EC, &self.r_W_EC)?;
 
     // check the returned res objects
     res_r?;
