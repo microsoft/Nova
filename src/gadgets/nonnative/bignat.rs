@@ -260,6 +260,20 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     limbs
   }
 
+  pub fn fold_bn<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    r: &Self,
+    modulus: &Self,
+  ) -> Result<Self, SynthesisError> {
+    // Fold self + r * other
+    let (_, r_0) = r.mult_mod(cs.namespace(|| "r*other"), other, modulus)?;
+    let r_new_0 = self.add(&r_0)?;
+    // Now reduce
+    r_new_0.red_mod(cs.namespace(|| "reduce folded"), modulus)
+  }
+
   pub fn assert_well_formed<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,

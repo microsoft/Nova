@@ -71,14 +71,13 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> Allocate
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
-pub fn alloc_scalar_as_base<E, CS>(
+pub fn alloc_scalar_as_base<E: Engine, CS>(
   mut cs: CS,
   input: Option<E::Scalar>,
 ) -> Result<AllocatedNum<E::Base>, SynthesisError>
 where
-  E: Engine,
-  <E as Engine>::Scalar: PrimeFieldBits,
-  CS: ConstraintSystem<<E as Engine>::Base>,
+  E::Scalar: PrimeFieldBits,
+  CS: ConstraintSystem<E::Base>,
 {
   AllocatedNum::alloc(cs.namespace(|| "allocate scalar as base"), || {
     let input_bits = input.unwrap_or(E::Scalar::ZERO).clone().to_le_bits();

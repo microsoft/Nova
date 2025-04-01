@@ -13,7 +13,7 @@ pub struct AllocatedUniPoly<E: Engine> {
 
 impl<E: Engine> AllocatedUniPoly<E> {
   /// Allocates the given `UniPoly` as a witness of the circuit
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     degree: usize,
     poly: Option<&UniPoly<E::Scalar>>,
@@ -56,7 +56,7 @@ impl<E: Engine> AllocatedUniPoly<E> {
   }
 
   /// Evaluate the polynomial at the provided point
-  pub fn evaluate<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn evaluate<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     r: &AllocatedNum<E::Scalar>,

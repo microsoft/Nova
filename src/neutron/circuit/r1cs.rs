@@ -16,7 +16,7 @@ pub struct AllocatedNonnativeR1CSInstance<E: Engine> {
 
 impl<E: Engine> AllocatedNonnativeR1CSInstance<E> {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     u: Option<&R1CSInstance<E>>,
   ) -> Result<Self, SynthesisError> {
@@ -33,7 +33,7 @@ impl<E: Engine> AllocatedNonnativeR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     ro: &mut E::RO2Circuit,

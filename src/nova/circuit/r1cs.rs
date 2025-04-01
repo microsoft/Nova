@@ -25,7 +25,7 @@ pub struct AllocatedR1CSInstance<E: Engine> {
 
 impl<E: Engine> AllocatedR1CSInstance<E> {
   /// Takes the r1cs instance and creates a new allocated r1cs instance
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn alloc<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
     u: Option<&R1CSInstance<E>>,
   ) -> Result<Self, SynthesisError> {
@@ -60,7 +60,7 @@ pub struct AllocatedRelaxedR1CSInstance<E: Engine> {
 
 impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   /// Allocates the given `RelaxedR1CSInstance` as a witness of the circuit
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn alloc<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
     inst: Option<&RelaxedR1CSInstance<E>>,
   ) -> Result<Self, SynthesisError> {
@@ -129,7 +129,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
 
   /// Allocates the R1CS Instance as a `RelaxedR1CSInstance` in the circuit.
   /// E = 0, u = 1
-  pub fn from_r1cs_instance<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn from_r1cs_instance<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
     inst: AllocatedR1CSInstance<E>,
   ) -> Result<Self, SynthesisError> {
@@ -161,7 +161,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     ro: &mut E::ROCircuit,
@@ -207,7 +207,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   }
 
   /// If the condition is true then returns this otherwise it returns the other
-  pub fn conditionally_select<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn conditionally_select<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     other: &AllocatedRelaxedR1CSInstance<E>,

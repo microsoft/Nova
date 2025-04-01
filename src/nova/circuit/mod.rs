@@ -92,7 +92,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
   }
 
   /// Allocate all witnesses and return
-  fn alloc_witness<CS: ConstraintSystem<<E as Engine>::Base>>(
+  fn alloc_witness<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     arity: usize,
@@ -214,7 +214,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
   /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
-  fn synthesize_non_base_case<CS: ConstraintSystem<<E as Engine>::Base>>(
+  fn synthesize_non_base_case<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     pp_digest: &AllocatedNum<E::Base>,
@@ -237,7 +237,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
 
 impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<E as Engine>::Base>>(
+  pub fn synthesize<CS: ConstraintSystem<E::Base>>(
     self,
     cs: &mut CS,
   ) -> Result<Vec<AllocatedNum<E::Base>>, SynthesisError> {

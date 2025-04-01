@@ -23,7 +23,7 @@ pub struct AllocatedFoldedInstance<E: Engine> {
 
 impl<E: Engine> AllocatedFoldedInstance<E> {
   /// Allocates the given `FoldedInstance` as a witness of the circuit
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     inst: Option<&FoldedInstance<E>>,
   ) -> Result<Self, SynthesisError> {
@@ -64,9 +64,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
 
   /// Allocates the hardcoded default `RelaxedR1CSInstance` in the circuit.
   /// W = E = 0, T = 0, u = 0, X = 0
-  pub fn default<CS: ConstraintSystem<<E as Engine>::Scalar>>(
-    mut cs: CS,
-  ) -> Result<Self, SynthesisError> {
+  pub fn default<CS: ConstraintSystem<E::Scalar>>(mut cs: CS) -> Result<Self, SynthesisError> {
     let comm_W = AllocatedNonnativePoint::default(cs.namespace(|| "allocate W"))?;
     let comm_E = comm_W.clone();
 
@@ -88,7 +86,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     ro: &mut E::RO2Circuit,
@@ -106,7 +104,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
   }
 
   /// Folds self with an r1cs instance and returns the result
-  pub fn fold<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn fold<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     U2: &AllocatedNonnativeR1CSInstance<E>,
@@ -164,7 +162,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
   }
 
   /// If the condition is true then returns this otherwise it returns the other
-  pub fn conditionally_select<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn conditionally_select<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
     other: &Self,

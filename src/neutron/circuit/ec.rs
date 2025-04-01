@@ -14,17 +14,13 @@ use ff::{PrimeField, PrimeFieldBits};
 
 pub struct ECCircuit<E: Engine> {
   r: Option<E::Base>, // 128-bit scalar can be uniquely represented it in both base and scalar fields
-  r_comm: Option<Commitment<E>>, // running commitment
-  f_comm: Option<Commitment<E>>, // fresh commitment
+  P: Option<Commitment<E>>, // running commitment
+  Q: Option<Commitment<E>>, // fresh commitment
 }
 
 impl<E: Engine> ECCircuit<E> {
-  pub fn new(
-    r: Option<E::Base>,
-    r_comm: Option<Commitment<E>>,
-    f_comm: Option<Commitment<E>>,
-  ) -> Self {
-    Self { r, r_comm, f_comm }
+  pub fn new(r: Option<E::Base>, P: Option<Commitment<E>>, Q: Option<Commitment<E>>) -> Self {
+    Self { r, P, Q }
   }
 
   fn alloc_witness<CS: ConstraintSystem<E::Base>>(
@@ -47,19 +43,19 @@ impl<E: Engine> ECCircuit<E> {
     )?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
-    // allocate r_comm
-    let r_comm = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate r_comm"),
-      self.r_comm.map(|c| c.to_coordinates()),
+    // allocate P
+    let P = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate P"),
+      self.P.map(|c| c.to_coordinates()),
     )?;
 
-    // allocate f_comm
-    let f_comm = AllocatedPoint::alloc(
-      cs.namespace(|| "allocate f_comm"),
-      self.f_comm.map(|c| c.to_coordinates()),
+    // allocate Q
+    let Q = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate Q"),
+      self.Q.map(|c| c.to_coordinates()),
     )?;
 
-    Ok((r, r_bits, r_comm, f_comm))
+    Ok((r, r_bits, P, Q))
   }
 
   fn small_field_into_allocated_bits_le<CS>(
@@ -108,17 +104,17 @@ impl<E: Engine> ECCircuit<E> {
 
   pub fn synthesize<CS: ConstraintSystem<E::Base>>(self, mut cs: CS) -> Result<(), SynthesisError> {
     // allocate witness
-    let (r, r_bits, r_comm, f_comm) = self.alloc_witness(cs.namespace(|| "allocate witness"))?;
+    let (r, r_bits, P, Q) = self.alloc_witness(cs.namespace(|| "allocate witness"))?;
 
-    // compute r_updated = r_comm + r * f_comm
-    let r_times_f_comm = f_comm.scalar_mul(cs.namespace(|| "r_times_f_comm"), &r_bits)?;
-    let r_comm_updated = r_comm.add(cs.namespace(|| "r_comm_updated"), &r_times_f_comm)?;
+    // compute r_updated = P + r * Q
+    let r_times_Q = Q.scalar_mul(cs.namespace(|| "r_times_Q"), &r_bits)?;
+    let R = P.add(cs.namespace(|| "R"), &r_times_Q)?;
 
-    // inputize scalar, r_comm, f_comm, r_comm_updated
+    // inputize scalar, P, Q, R
     r.inputize(cs.namespace(|| "inputize r"))?;
-    r_comm.inputize(cs.namespace(|| "inputize r_comm"))?;
-    f_comm.inputize(cs.namespace(|| "inputize f_comm"))?;
-    r_comm_updated.inputize(cs.namespace(|| "inputize r_comm_updated"))?;
+    P.inputize(cs.namespace(|| "inputize P"))?;
+    Q.inputize(cs.namespace(|| "inputize Q"))?;
+    R.inputize(cs.namespace(|| "inputize R"))?;
 
     Ok(())
   }
@@ -171,10 +167,10 @@ mod tests {
       .get_value()
       .unwrap();
 
-    let r_comm = Commitment::<E1>::default();
-    let f_comm = Commitment::<E1>::default();
+    let P = Commitment::<E1>::default();
+    let Q = Commitment::<E1>::default();
 
-    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
+    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(P), Some(Q));
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
@@ -186,7 +182,7 @@ mod tests {
     assert_eq!(shape.B.len(), nz_B);
     assert_eq!(shape.C.len(), nz_C);
 
-    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(r_comm), Some(f_comm));
+    let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(P), Some(Q));
     let mut cs = SatisfyingAssignment::<E2>::new();
     let _ = circuit.synthesize(&mut cs);
     let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();

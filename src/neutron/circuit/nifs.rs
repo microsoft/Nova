@@ -22,7 +22,7 @@ pub struct AllocatedNIFS<E: Engine> {
 
 impl<E: Engine> AllocatedNIFS<E> {
   /// Allocates the given `NIFS` as a witness of the circuit
-  pub fn alloc<CS: ConstraintSystem<<E as Engine>::Scalar>>(
+  pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     nifs: Option<&NIFS<E>>,
     degree: usize,

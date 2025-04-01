@@ -1,6 +1,8 @@
 use super::{BitAccess, OptionExt};
-use crate::frontend::{
-  num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
+use crate::{
+  frontend::{num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable},
+  gadgets::nonnative::bignat::BigNat,
+  traits::{Engine, ROCircuitTrait},
 };
 use byteorder::WriteBytesExt;
 use ff::PrimeField;
@@ -251,4 +253,23 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
   Scalar::from_str_vartime(&format!("{n}"))
+}
+
+pub fn absorb_bignat_in_ro<E: Engine, CS: ConstraintSystem<E::Base>>(
+  n: &BigNat<E::Base>,
+  mut cs: CS,
+  ro: &mut E::ROCircuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  for limb in limbs {
+    ro.absorb(&limb);
+  }
+
+  Ok(())
 }

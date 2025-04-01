@@ -71,8 +71,16 @@ where
 
 impl<E1, E2, C> PublicParams<E1, E2, C>
 where
-  E1: Engine<Base = <E2 as Engine>::Scalar>,
-  E2: Engine<Base = <E1 as Engine>::Scalar>,
+  E1: Engine<
+    Base = <E2 as Engine>::Scalar,
+    RO = <E2 as Engine>::RO2,
+    ROCircuit = <E2 as Engine>::RO2Circuit,
+  >,
+  E2: Engine<
+    Base = <E1 as Engine>::Scalar,
+    RO = <E1 as Engine>::RO2,
+    ROCircuit = <E1 as Engine>::RO2Circuit,
+  >,
   C: StepCircuit<E1::Scalar>,
 {
   /// Creates a new `PublicParams` for a circuit `C`.
@@ -211,7 +219,6 @@ where
     RO = <E2 as Engine>::RO2,
     ROCircuit = <E2 as Engine>::RO2Circuit,
   >,
-
   E2: Engine<
     Base = <E1 as Engine>::Scalar,
     RO = <E1 as Engine>::RO2,
