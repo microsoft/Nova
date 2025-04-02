@@ -106,10 +106,13 @@ impl<E: Engine> ECCircuit<E> {
     // allocate witness
     let (r, r_bits, P, Q) = self.alloc_witness(cs.namespace(|| "allocate witness"))?;
 
-    // compute r_updated = P + r * Q
-    let r_times_Q = Q.scalar_mul(cs.namespace(|| "r_times_Q"), &r_bits)?;
-    let R = P.add(cs.namespace(|| "R"), &r_times_Q)?;
-
+    // compute R = (1-r) * P + r * Q
+    // compute R = P + r * (Q - P)
+    let neg_P = P.negate(cs.namespace(|| "neg P"))?;
+    let Q_minus_P = Q.add(cs.namespace(|| "Q - P"), &neg_P)?;
+    let r_times_Q_minus_P = Q_minus_P.scalar_mul(cs.namespace(|| "r * (Q - P)"), &r_bits)?;
+    let R = P.add(cs.namespace(|| "R"), &r_times_Q_minus_P)?;    
+    
     // inputize scalar, P, Q, R
     r.inputize(cs.namespace(|| "inputize r"))?;
     P.inputize(cs.namespace(|| "inputize P"))?;
@@ -137,14 +140,15 @@ mod tests {
   };
   use ff::Field;
   use rand::rngs::OsRng;
+use expect_test::{expect, Expect};
 
   fn test_ec_circuit_with<E1, E2>(
-    num_cons: usize,
-    num_vars: usize,
-    num_io: usize,
-    nz_A: usize,
-    nz_B: usize,
-    nz_C: usize,
+    expected_num_cons: &Expect,
+    expected_num_vars: &Expect,
+    expected_num_io: &Expect,
+    expected_nz_A: &Expect,
+    expected_nz_B: &Expect,
+    expected_nz_C: &Expect,
   ) where
     E1: Engine<Scalar = <E2 as Engine>::Base>,
     E2: Engine<Scalar = <E1 as Engine>::Base>,
@@ -175,12 +179,20 @@ mod tests {
     let _ = circuit.synthesize(&mut cs);
     let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
 
-    assert_eq!(cs.num_constraints(), num_cons);
-    assert_eq!(shape.num_vars, num_vars);
-    assert_eq!(shape.num_io, num_io);
-    assert_eq!(shape.A.len(), nz_A);
-    assert_eq!(shape.B.len(), nz_B);
-    assert_eq!(shape.C.len(), nz_C);
+    let num_cons = cs.num_constraints();
+    let num_vars = shape.num_vars;
+    let num_io = shape.num_io;
+    let nz_A = shape.A.len();
+    let nz_B = shape.B.len();
+    let nz_C = shape.C.len();
+
+    // Check expected values
+    expected_num_cons.assert_eq(&num_cons.to_string());
+    expected_num_vars.assert_eq(&num_vars.to_string());
+    expected_num_io.assert_eq(&num_io.to_string());
+    expected_nz_A.assert_eq(&nz_A.to_string());
+    expected_nz_B.assert_eq(&nz_B.to_string());
+    expected_nz_C.assert_eq(&nz_C.to_string());
 
     let circuit: ECCircuit<E1> = ECCircuit::<E1>::new(Some(r), Some(P), Some(Q));
     let mut cs = SatisfyingAssignment::<E2>::new();
@@ -191,6 +203,13 @@ mod tests {
 
   #[test]
   fn test_ec_circuit() {
-    test_ec_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(1360, 1350, 10, 1777, 1762, 2417);
+    test_ec_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(
+      &expect!["1393"], // num_cons
+      &expect!["1381"], // num_vars
+      &expect!["10"],   // num_io
+      &expect!["1826"], // nz_A
+      &expect!["1805"], // nz_B
+      &expect!["2468"]  // nz_C
+    );
   }
 }
