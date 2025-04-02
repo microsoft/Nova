@@ -47,6 +47,14 @@ pub struct FoldedInstance<E: Engine> {
   pub(crate) X: Vec<E::Scalar>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct CycleFoldInstance<E: Engine> {
+  pub(crate) r: E::Scalar,
+  pub(crate) P: Commitment<E>,
+  pub(crate) Q: Commitment<E>,
+}
+
 impl<E: Engine> Structure<E> {
   /// Create a new structure using the provided shape
   pub fn new(S: &R1CSShape<E>) -> Self {
@@ -177,10 +185,24 @@ impl<E: Engine> FoldedInstance<E> {
     comm_E: &Commitment<E>,
     r_b: &E::Scalar,
     T_out: &E::Scalar,
-  ) -> Result<Self, NovaError> {
+  ) -> Result<(Self, Vec<CycleFoldInstance<E>>), NovaError> {
     // we need to compute the weighted sum using weights of (1-r_b) and r_b
     let comm_W = self.comm_W * (E::Scalar::ONE - r_b) + U2.comm_W * *r_b;
-    let comm_E = self.comm_E * (E::Scalar::ONE - r_b) + *comm_E * *r_b;
+    let comm_E_out = self.comm_E * (E::Scalar::ONE - r_b) + *comm_E * *r_b;
+
+    // CycleFold instances
+    let cf_1 = CycleFoldInstance {
+      r: *r_b,
+      P: self.comm_W,
+      Q: U2.comm_W,
+    };
+
+    let cf_2 = CycleFoldInstance {
+      r: *r_b,
+      P: self.comm_E,
+      Q: *comm_E,
+    };
+
     let X = self
       .X
       .par_iter()
@@ -189,13 +211,16 @@ impl<E: Engine> FoldedInstance<E> {
       .collect::<Vec<_>>();
     let u = (E::Scalar::ONE - r_b) * self.u + r_b;
 
-    Ok(Self {
-      comm_W,
-      comm_E,
-      T: *T_out,
-      u,
-      X,
-    })
+    Ok((
+      Self {
+        comm_W,
+        comm_E: comm_E_out,
+        T: *T_out,
+        u,
+        X,
+      },
+      vec![cf_1, cf_2],
+    ))
   }
 }
 

@@ -3,7 +3,7 @@
 use crate::{
   constants::NUM_CHALLENGE_BITS,
   errors::NovaError,
-  neutron::relation::{FoldedInstance, FoldedWitness, Structure},
+  neutron::relation::{CycleFoldInstance, FoldedInstance, FoldedWitness, Structure},
   r1cs::{R1CSInstance, R1CSWitness},
   spartan::polys::{power::PowPolynomial, univariate::UniPoly},
   traits::{commitment::CommitmentEngineTrait, AbsorbInRO2Trait, Engine, RO2Constants, ROTrait},
@@ -206,7 +206,16 @@ impl<E: Engine> NIFS<E> {
     W1: &FoldedWitness<E>,
     U2: &R1CSInstance<E>,
     W2: &R1CSWitness<E>,
-  ) -> Result<(NIFS<E>, E::Scalar, (FoldedInstance<E>, FoldedWitness<E>)), NovaError> {
+  ) -> Result<
+    (
+      NIFS<E>,
+      (
+        (FoldedInstance<E>, Vec<CycleFoldInstance<E>>),
+        FoldedWitness<E>,
+      ),
+    ),
+    NovaError,
+  > {
     // initialize a new RO
     let mut ro = E::RO2::new(ro_consts.clone());
 
@@ -281,11 +290,12 @@ impl<E: Engine> NIFS<E> {
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
     let T_out = poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
 
+    // receive folded instance a list of cyclefold instances to check
     let U = U1.fold(U2, &comm_E, &r_b, &T_out)?;
     let W = W1.fold(W2, &E, &r_E, &r_b)?;
 
     // return the folded instance and witness
-    Ok((Self { comm_E, poly }, r_b, (U, W)))
+    Ok((Self { comm_E, poly }, (U, W)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -336,7 +346,7 @@ impl<E: Engine> NIFS<E> {
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
     let T_out = self.poly.evaluate(&r_b) * eq_rho_r_b.invert().unwrap(); // TODO: remove unwrap
 
-    let U = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
+    let (U, _) = U1.fold(U2, &self.comm_E, &r_b, &T_out)?;
 
     // return the folded instance and witness
     Ok(U)
@@ -389,7 +399,7 @@ mod tests {
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U1, W1,
     );
     assert!(res.is_ok());
-    let (nifs, _, (_U, W)) = res.unwrap();
+    let (nifs, ((_U, _), W)) = res.unwrap();
 
     // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U1);
@@ -413,7 +423,7 @@ mod tests {
       ck, ro_consts, pp_digest, &str, &running_U, &running_W, U2, W2,
     );
     assert!(res.is_ok());
-    let (nifs, _, (_U, W)) = res.unwrap();
+    let (nifs, ((_U, _), W)) = res.unwrap();
 
     // verify an NIFS with U1 as the first incoming instance
     let res = nifs.verify(ro_consts, pp_digest, &running_U, U2);

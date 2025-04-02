@@ -31,7 +31,6 @@ use serde::{Deserialize, Serialize};
 mod circuit;
 mod nifs;
 mod relation;
-mod ec;
 
 use circuit::{ec::ECCircuit, NeutronAugmentedCircuit, NeutronAugmentedCircuitInputs};
 use nifs::NIFS;
@@ -293,7 +292,7 @@ where
     }
 
     // fold the last instance with the running instance
-    let (nifs, chal, (r_U, r_W)) = NIFS::prove(
+    let (nifs, ((r_U, cf), r_W)) = NIFS::prove(
       &pp.ck,
       &pp.ro_consts,
       &pp.digest(),
@@ -306,11 +305,8 @@ where
 
     // we now generate circuit-sat instances for establishing the correctness of scalar muls in NIFS::verify
     // make circuits for computing the two scalar muls
-    let circuit_ec = ECCircuit::<E1>::new(
-      Some(field_switch(chal)),
-      Some(self.r_U.comm_W),
-      Some(self.l_u.comm_W),
-    );
+    let circuit_ec =
+      ECCircuit::<E1>::new(Some(field_switch(cf[0].r)), Some(cf[0].P), Some(cf[0].Q));
     let mut cs = SatisfyingAssignment::<E2>::new();
     let _ = circuit_ec.synthesize(&mut cs);
     let (l_u_EC, l_w_EC) = cs.r1cs_instance_and_witness(&pp.r1cs_shape_ec, &pp.ck_ec)?;

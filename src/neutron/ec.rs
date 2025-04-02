@@ -37,8 +37,7 @@ pub struct RelaxedECInstance<E: Engine> {
   r: E::Scalar,
   coords: [E::Scalar; 6],
   is_inf: [E::Scalar; 3],
-} 
-
+}
 
 impl<E: Engine> From<R1CSShape<E>> for ECShape<E> {
   fn from(shape: R1CSShape<E>) -> Self {
@@ -110,5 +109,20 @@ impl<E: Engine> ECShape<E> {
     let W = R1CSWitness::new(&self.S, &W.W)?;
 
     self.S.is_sat(ck, &U, &W)
+  }
+
+  fn commit_T(
+    &self,
+    ck: &CommitmentKey<E>,
+    U1: &RelaxedECInstance<E>,
+    W1: &RelaxedECWitness<E>,
+    U2: &ECInstance<E>,
+    W2: &ECWitness<E>,
+    r_T: &E::Scalar,
+  ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
+    // Compute the commitment to the cross-term
+    let (T, comm_T) = self.S.commit_T(ck, &U1.U, W1, U2, W2, r_T)?;
+
+    Ok((T, comm_T))
   }
 }
