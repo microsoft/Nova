@@ -1,5 +1,7 @@
 //! This module defines errors returned by the library.
 use crate::frontend::SynthesisError;
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use core::fmt::Debug;
 use thiserror::Error;
 
@@ -70,10 +72,17 @@ pub enum NovaError {
   },
   /// returned when there is an error creating a digest
   #[error("DigestError")]
-  DigestError,
+  DigestError {
+    /// The reason for digest creation failure
+    reason: String,
+  },
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,
+
+  /// returned when trying to use random number in no_std environment. In order to get safe random number, turn "std" feature ON.
+  #[error("UnsafeRandomNumber")]
+  UnsafeRandomNumber,
 }
 
 impl From<SynthesisError> for NovaError {

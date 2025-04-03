@@ -1,5 +1,7 @@
 //! `PowPolynomial`: Represents multilinear extension of power polynomials
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use core::iter::successors;
 use ff::PrimeField;
 

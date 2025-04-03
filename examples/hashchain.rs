@@ -1,7 +1,7 @@
 //! This example proves the knowledge of preimage to a hash chain tail, with a configurable number of elements per hash chain node.
 //! The output of each step tracks the current tail of the hash chain
+use bincode::config::legacy;
 use ff::Field;
-use flate2::{write::ZlibEncoder, Compression};
 use generic_array::typenum::U24;
 use nova_snark::{
   frontend::{
@@ -179,9 +179,8 @@ fn main() {
     assert!(res.is_ok());
     let compressed_snark = res.unwrap();
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
-    let compressed_snark_encoded = encoder.finish().unwrap();
+    let compressed_snark_encoded =
+      bincode::serde::encode_to_vec(&compressed_snark, legacy()).unwrap();
     println!(
       "CompressedSNARK::len {:?} bytes",
       compressed_snark_encoded.len()

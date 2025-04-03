@@ -4,6 +4,8 @@
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 //! This code includes experimental optimizations to reduce runtimes and proof sizes.
 //! We have not yet proven the security of these optimizations, so this code is subject to significant changes in the future.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -32,8 +34,9 @@ use crate::{
 use core::cmp::max;
 use ff::Field;
 use itertools::Itertools as _;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
-use rayon::prelude::*;
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar> {
@@ -147,8 +150,7 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     };
 
     // timestamp polynomials for row
-    let (ts_row, ts_col) =
-      rayon::join(|| timestamp_calc(N, N, &row), || timestamp_calc(N, N, &col));
+    let (ts_row, ts_col) = join(|| timestamp_calc(N, N, &row), || timestamp_calc(N, N, &col));
 
     // a routine to turn a vector of usize into a vector scalars
     let to_vec_scalar = |v: &[usize]| -> Vec<E::Scalar> {
@@ -376,7 +378,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
      -> (Vec<E::Scalar>, Vec<E::Scalar>) {
       let hash_func = |addr: &E::Scalar, val: &E::Scalar| -> E::Scalar { *val * gamma + *addr };
       assert_eq!(addr.len(), lookups.len());
-      rayon::join(
+      let (result_1, result_2) = join(
         || {
           (0..mem.len())
             .map(|i| hash_func(&E::Scalar::from(i as u64), &mem[i]))
@@ -387,10 +389,12 @@ impl<E: Engine> MemorySumcheckInstance<E> {
             .map(|i| hash_func(&addr[i], &lookups[i]))
             .collect::<Vec<E::Scalar>>()
         },
-      )
+      );
+
+      (result_1, result_2)
     };
 
-    let ((T_row, W_row), (T_col, W_col)) = rayon::join(
+    let ((T_row, W_row), (T_col, W_col)) = join(
       || hash_func_vec(mem_row, addr_row, L_row),
       || hash_func_vec(mem_col, addr_col, L_col),
     );
@@ -437,9 +441,9 @@ impl<E: Engine> MemorySumcheckInstance<E> {
         Result<Vec<E::Scalar>, NovaError>,
       ),
     ) {
-      rayon::join(
+      let ((inv_T_plus_r, inv_W_plus_r), (T_plus_r, W_plus_r)) = join(
         || {
-          rayon::join(
+          join(
             || {
               let inv = batch_invert(&T.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>())?;
 
@@ -453,18 +457,20 @@ impl<E: Engine> MemorySumcheckInstance<E> {
           )
         },
         || {
-          rayon::join(
+          join(
             || Ok(T.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
             || Ok(W.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
           )
         },
-      )
+      );
+
+      ((inv_T_plus_r, inv_W_plus_r), (T_plus_r, W_plus_r))
     };
 
     let (
       ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)),
       ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)),
-    ) = rayon::join(
+    ) = join(
       || helper(&T_row, &W_row, ts_row, r),
       || helper(&T_col, &W_col, ts_col, r),
     );
@@ -477,15 +483,15 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     let (
       (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
       (comm_t_plus_r_inv_col, comm_w_plus_r_inv_col),
-    ) = rayon::join(
+    ) = join(
       || {
-        rayon::join(
+        join(
           || E::CE::commit(ck, &t_plus_r_inv_row, &E::Scalar::ZERO),
           || E::CE::commit(ck, &w_plus_r_inv_row, &E::Scalar::ZERO),
         )
       },
       || {
-        rayon::join(
+        join(
           || E::CE::commit(ck, &t_plus_r_inv_col, &E::Scalar::ZERO),
           || E::CE::commit(ck, &w_plus_r_inv_col, &E::Scalar::ZERO),
         )
@@ -966,9 +972,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
     let mut cubic_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let num_rounds = mem.size().log_2();
     for _ in 0..num_rounds {
-      let ((evals_mem, evals_outer), (evals_inner, evals_witness)) = rayon::join(
-        || rayon::join(|| mem.evaluation_points(), || outer.evaluation_points()),
-        || rayon::join(|| inner.evaluation_points(), || witness.evaluation_points()),
+      let ((evals_mem, evals_outer), (evals_inner, evals_witness)) = join(
+        || join(|| mem.evaluation_points(), || outer.evaluation_points()),
+        || join(|| inner.evaluation_points(), || witness.evaluation_points()),
       );
 
       let evals: Vec<Vec<E::Scalar>> = evals_mem
@@ -998,9 +1004,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
-      let _ = rayon::join(
-        || rayon::join(|| mem.bound(&r_i), || outer.bound(&r_i)),
-        || rayon::join(|| inner.bound(&r_i), || witness.bound(&r_i)),
+      let _ = join(
+        || join(|| mem.bound(&r_i), || outer.bound(&r_i)),
+        || join(|| inner.bound(&r_i), || witness.bound(&r_i)),
       );
 
       e = poly.evaluate(&r_i);
@@ -1042,14 +1048,22 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> VerifierKey<E, EE> {
 impl<E: Engine, EE: EvaluationEngineTrait<E>> DigestHelperTrait<E> for VerifierKey<E, EE> {
   /// Returns the digest of the verifier's key
   fn digest(&self) -> E::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| {
         let dc = DigestComputer::new(self);
         dc.digest()
       })
       .cloned()
-      .expect("Failure to retrieve digest!")
+      .expect("Failure to retrieve digest!");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      let dc = DigestComputer::new(self);
+      dc.digest().expect("Failure to retrieve digest!")
+    });
+
+    res
   }
 }
 
@@ -1119,10 +1133,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
 
     // commit to Az, Bz, Cz
-    let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
+    let (comm_Az, (comm_Bz, comm_Cz)) = join(
       || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
       || {
-        rayon::join(
+        join(
           || E::CE::commit(ck, &Bz, &E::Scalar::ZERO),
           || E::CE::commit(ck, &Cz, &E::Scalar::ZERO),
         )
@@ -1152,6 +1166,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         .into_par_iter()
         .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
         .collect::<Vec<E::Scalar>>();
+
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
 
@@ -1159,7 +1174,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // L_row(i) = eq(tau, row(i)) for all i
     // L_col(i) = z(col(i)) for all i
     let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
-    let (comm_L_row, comm_L_col) = rayon::join(
+    let (comm_L_row, comm_L_col) = join(
       || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
       || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
     );
@@ -1186,7 +1201,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let gamma = transcript.squeeze(b"g")?;
     let r = transcript.squeeze(b"r")?;
 
-    let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
+    let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = join(
       || {
         // a sum-check instance to prove the first claim
         let outer_sc_inst = OuterSumcheckInstance::new(
@@ -1287,6 +1302,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_W = claims_witness[0][0];
 
     // compute the remaining claims that did not come for free from the sum-check prover
+
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
       let e = [
         &Cz,
@@ -1300,6 +1316,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .into_par_iter()
       .map(|p| MultilinearPolynomial::evaluate_with(p, &rand_sc))
       .collect::<Vec<E::Scalar>>();
+
       (e[0], e[1], e[2], e[3], e[4], e[5], e[6])
     };
 

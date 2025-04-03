@@ -1,8 +1,8 @@
-use std::{io, marker::PhantomData};
-
-use ff::PrimeField;
-
 use super::lc::{Index, LinearCombination, Variable};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+use core::marker::PhantomData;
+use ff::PrimeField;
 
 /// Computations are expressed in terms of arithmetic circuits, in particular
 /// rank-1 quadratic constraint systems. The `Circuit` trait represents a
@@ -33,9 +33,6 @@ pub enum SynthesisError {
   /// During proof generation, we encountered an identity in the CRS
   #[error("encountered an identity element in the CRS")]
   UnexpectedIdentity,
-  /// During proof generation, we encountered an I/O error with the CRS
-  #[error("encountered an I/O error: {0}")]
-  IoError(#[from] io::Error),
   /// During verification, our verifying key was malformed.
   #[error("malformed verifying key")]
   MalformedVerifyingKey,

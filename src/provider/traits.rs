@@ -1,3 +1,5 @@
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::traits::{commitment::ScalarMul, Group, TranscriptReprTrait};
 use core::{
   fmt::Debug,
@@ -6,7 +8,7 @@ use core::{
 use halo2curves::{serde::SerdeObject, CurveAffine};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types with a group operation.
@@ -159,7 +161,10 @@ macro_rules! impl_traits_no_dlog_ext {
         let mut uniform_bytes_vec = Vec::new();
         for _ in 0..n {
           let mut uniform_bytes = [0u8; 32];
+          #[cfg(feature = "std")]
           reader.read_exact(&mut uniform_bytes).unwrap();
+          #[cfg(not(feature = "std"))]
+          reader.read(&mut uniform_bytes);
           uniform_bytes_vec.push(uniform_bytes);
         }
         let gens_proj: Vec<$name_curve> = (0..n)
@@ -170,11 +175,16 @@ macro_rules! impl_traits_no_dlog_ext {
           })
           .collect();
 
+        #[cfg(feature = "std")]
         let num_threads = rayon::current_num_threads();
+        #[cfg(not(feature = "std"))]
+        let num_threads = 1;
+
         if gens_proj.len() > num_threads {
           let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
-          (0..num_threads)
-            .into_par_iter()
+          let iter = (0..num_threads).into_par_iter();
+
+          iter
             .flat_map(|i| {
               let start = i * chunk;
               let end = if i == num_threads - 1 {

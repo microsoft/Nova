@@ -10,8 +10,11 @@ use crate::frontend::{
   util_cs::witness_cs::SizedWitness,
   ConstraintSystem, Namespace, SynthesisError,
 };
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 
 use ff::PrimeField;
+#[cfg(feature = "std")]
 use std::{collections::VecDeque, marker::PhantomData};
 
 /// The Poseidon sponge circuit

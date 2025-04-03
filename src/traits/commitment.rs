@@ -1,16 +1,17 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::{
-  provider::ptau::PtauFileError,
-  traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait},
-};
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+#[cfg(feature = "std")]
+use crate::provider::ptau::PtauFileError;
+use crate::traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign},
 };
 use num_integer::Integer;
 use num_traits::ToPrimitive;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 /// A helper trait for types implementing scalar multiplication.
@@ -61,6 +62,7 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   type Commitment: CommitmentTrait<E>;
 
   /// Load keys
+  #[cfg(feature = "std")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     label: &'static [u8],

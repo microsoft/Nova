@@ -1,4 +1,6 @@
 //! This module defines a collection of traits that define the behavior of a `zkSNARK` for `RelaxedR1CS`
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
@@ -24,7 +26,11 @@ pub trait RelaxedR1CSSNARKTrait<E: Engine>:
   type ProverKey: Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// A type that represents the verifier's key
+  #[cfg(feature = "std")]
   type VerifierKey: Send + Sync + Serialize + for<'de> Deserialize<'de> + DigestHelperTrait<E>;
+  /// A type that represents the verifier's key
+  #[cfg(not(feature = "std"))]
+  type VerifierKey: Send + Serialize + for<'de> Deserialize<'de> + DigestHelperTrait<E>;
 
   /// This associated function (not a method) provides a hint that offers
   /// a minimum sizing cue for the commitment key used by this SNARK

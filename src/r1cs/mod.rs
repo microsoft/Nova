@@ -1,4 +1,6 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
@@ -15,9 +17,11 @@ use crate::{
 };
 use core::cmp::max;
 use ff::Field;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
+use plonky2_maybe_rayon::*;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod sparse;
@@ -135,11 +139,19 @@ impl<E: Engine> R1CSShape<E> {
 
   /// returned the digest of the `R1CSShape`
   pub fn digest(&self) -> E::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure retrieving digest")
+      .expect("Failure retrieving digest");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      DigestComputer::new(self)
+        .digest()
+        .expect("Failure retrieving digest")
+    });
+    res
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
@@ -160,9 +172,9 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    let (Az, (Bz, Cz)) = rayon::join(
+    let (Az, (Bz, Cz)) = join(
       || self.A.multiply_vec(z),
-      || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
+      || join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
     );
 
     Ok((Az, Bz, Cz))
@@ -192,10 +204,11 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if comm_E and comm_W are commitments to E and W
     let res_comm = {
-      let (comm_W, comm_E) = rayon::join(
+      let (comm_W, comm_E) = join(
         || CE::<E>::commit(ck, &W.W, &W.r_W),
         || CE::<E>::commit(ck, &W.E, &W.r_E),
       );
+
       U.comm_W == comm_W && U.comm_E == comm_E
     };
 
@@ -274,8 +287,8 @@ impl<E: Engine> R1CSShape<E> {
       .zip(Z2.into_par_iter())
       .map(|(z1, z2)| z1 + z2)
       .collect::<Vec<E::Scalar>>();
-    let u = U1.u + E::Scalar::ONE; // U2.u = 1
 
+    let u = U1.u + E::Scalar::ONE; // U2.u = 1
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
     let T = AZ
@@ -312,8 +325,8 @@ impl<E: Engine> R1CSShape<E> {
       .zip(Z2.into_par_iter())
       .map(|(z1, z2)| z1 + z2)
       .collect::<Vec<E::Scalar>>();
-    let u = U1.u + U2.u;
 
+    let u = U1.u + U2.u;
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
     let T = AZ
@@ -391,7 +404,17 @@ impl<E: Engine> R1CSShape<E> {
     }
   }
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn sample_random_instance_witness(
+    &self,
+    _ck: &CommitmentKey<E>,
+  ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
+  #[cfg(feature = "std")]
   pub fn sample_random_instance_witness(
     &self,
     ck: &CommitmentKey<E>,
@@ -418,7 +441,7 @@ impl<E: Engine> R1CSShape<E> {
       .collect::<Vec<E::Scalar>>();
 
     // compute commitments to W,E in parallel
-    let (comm_W, comm_E) = rayon::join(
+    let (comm_W, comm_E) = join(
       || CE::<E>::commit(ck, &Z[..self.num_vars], &r_W),
       || CE::<E>::commit(ck, &E, &r_E),
     );
@@ -441,7 +464,14 @@ impl<E: Engine> R1CSShape<E> {
 }
 
 impl<E: Engine> R1CSWitness<E> {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn new(_S: &R1CSShape<E>, _W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// A method to create a witness object using a vector of scalars
+  #[cfg(feature = "std")]
   pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
     let mut W = W.to_vec();
     W.resize(S.num_vars, E::Scalar::ZERO);
@@ -556,6 +586,7 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
+
     let E = E1
       .par_iter()
       .zip(T)
@@ -589,6 +620,7 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
+
     let E = E1
       .par_iter()
       .zip(T)
@@ -688,6 +720,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
+
     let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
@@ -717,6 +750,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
+
     let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r + *comm_E_2 * *r * *r;
     let u = *u1 + *r * *u2;

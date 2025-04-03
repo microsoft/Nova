@@ -1,5 +1,8 @@
 //! Test constraint system for use in tests.
 
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+#[cfg(feature = "std")]
 use std::collections::HashMap;
 
 use crate::frontend::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
@@ -115,8 +118,9 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   /// Check if the constraint system is satisfied.
   pub fn is_satisfied(&self) -> bool {
     match self.which_is_unsatisfied() {
-      Some(b) => {
-        println!("fail: {:?}", b);
+      Some(_b) => {
+        #[cfg(feature = "std")]
+        println!("fail: {:?}", _b);
         false
       }
       None => true,

@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use halo2curves::CurveAffine;

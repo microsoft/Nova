@@ -1,15 +1,16 @@
 //! This module implements Nova's IVC scheme including its folding scheme.
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
 
+#[cfg(feature = "std")]
+use crate::frontend::{
+  r1cs::NovaWitness, solver::SatisfyingAssignment, ConstraintSystem, SynthesisError,
+};
 use crate::{
   constants::NUM_HASH_BITS,
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
-  frontend::{
-    r1cs::{NovaShape, NovaWitness},
-    shape_cs::ShapeCS,
-    solver::SatisfyingAssignment,
-    ConstraintSystem, SynthesisError,
-  },
+  frontend::{r1cs::NovaShape, shape_cs::ShapeCS},
   gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
     CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance,
@@ -25,14 +26,19 @@ use crate::{
 };
 use core::marker::PhantomData;
 use ff::Field;
+#[cfg(feature = "std")]
 use once_cell::sync::OnceCell;
+use plonky2_maybe_rayon::join;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
 pub(crate) mod nifs;
 
-use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
+use circuit::NovaAugmentedCircuit;
+#[cfg(feature = "std")]
+use circuit::NovaAugmentedCircuitInputs;
 use nifs::{NIFSRelaxed, NIFS};
 
 /// A type that holds public parameters of Nova
@@ -177,11 +183,20 @@ where
 
   /// Retrieve the digest of the public parameters.
   pub fn digest(&self) -> E1::Scalar {
-    self
+    #[cfg(feature = "std")]
+    let res = self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure in retrieving digest")
+      .expect("Failure in retrieving digest");
+    #[cfg(not(feature = "std"))]
+    let res = *self.digest.get_or_init(|| {
+      DigestComputer::new(self)
+        .digest()
+        .expect("Failure in retrieving digest")
+    });
+
+    res
   }
 
   /// Returns the number of constraints in the primary and secondary circuits
@@ -236,7 +251,14 @@ where
   E2: Engine<Base = <E1 as Engine>::Scalar>,
   C: StepCircuit<E1::Scalar>,
 {
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn new(_pp: &PublicParams<E1, E2, C>, _c: &C, _z0: &[E1::Scalar]) -> Result<Self, NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Create new instance of recursive SNARK
+  #[cfg(feature = "std")]
   pub fn new(pp: &PublicParams<E1, E2, C>, c: &C, z0: &[E1::Scalar]) -> Result<Self, NovaError> {
     if z0.len() != pp.F_arity {
       return Err(NovaError::InvalidInitialInputLength);
@@ -338,7 +360,14 @@ where
     })
   }
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  pub fn prove_step(&mut self, _pp: &PublicParams<E1, E2, C>, _c: &C) -> Result<(), NovaError> {
+    Err(NovaError::UnsafeRandomNumber)
+  }
+
   /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
+  #[cfg(feature = "std")]
   pub fn prove_step(&mut self, pp: &PublicParams<E1, E2, C>, c: &C) -> Result<(), NovaError> {
     // first step was already done in the constructor
     if self.i == 0 {
@@ -517,13 +546,13 @@ where
     }
 
     // check the satisfiability of the provided instances
-    let (res_r_primary, (res_r_secondary, res_l_secondary)) = rayon::join(
+    let (res_r_primary, (res_r_secondary, res_l_secondary)) = join(
       || {
         pp.r1cs_shape_primary
           .is_sat_relaxed(&pp.ck_primary, &self.r_U_primary, &self.r_W_primary)
       },
       || {
-        rayon::join(
+        join(
           || {
             pp.r1cs_shape_secondary.is_sat_relaxed(
               &pp.ck_secondary,
@@ -742,7 +771,7 @@ where
     );
 
     // create SNARKs proving the knowledge of Wn primary/secondary
-    let (snark_primary, snark_secondary) = rayon::join(
+    let (snark_primary, snark_secondary) = join(
       || {
         S1::prove(
           &pp.ck_primary,
@@ -891,7 +920,7 @@ where
 
     // check the satisfiability of the folded instances using
     // SNARKs proving the knowledge of their satisfying witnesses
-    let (res_primary, res_secondary) = rayon::join(
+    let (res_primary, res_secondary) = join(
       || {
         self
           .snark_primary

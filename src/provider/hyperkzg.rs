@@ -6,23 +6,23 @@
 //! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
 //! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
+#[cfg(not(feature = "std"))]
+use crate::prelude::*;
+#[cfg(feature = "std")]
+use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::{
-    ptau::PtauFileError,
-    read_ptau,
-    traits::{DlogGroup, DlogGroupExt, PairingGroup},
-    write_ptau,
-  },
+  provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
+use core::cmp::max;
 use core::{
-  iter,
+  array, iter,
   marker::PhantomData,
   ops::{Add, Mul, MulAssign},
   slice,
@@ -30,8 +30,9 @@ use core::{
 use ff::{Field, PrimeFieldBits};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
+use plonky2_maybe_rayon::*;
+#[cfg(feature = "std")]
 use rand_core::OsRng;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Alias to points on G1 that are in preprocessed form
@@ -135,6 +136,7 @@ impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
+  #[cfg(feature = "std")]
   /// Save keys
   pub fn save_to(
     &self,
@@ -340,12 +342,16 @@ where
   }
 
   fn compute_powers_par(tau: E::Scalar, n: usize) -> Vec<E::Scalar> {
+    #[cfg(feature = "std")]
     let num_threads = rayon::current_num_threads();
+    #[cfg(not(feature = "std"))]
+    let num_threads = 1;
+
     (0..n)
       .collect::<Vec<_>>()
-      .par_chunks(std::cmp::max(n / num_threads, 1))
+      .par_chunks(max(n / num_threads, 1))
       .into_par_iter()
-      .map(|sub_list| {
+      .flat_map(|sub_list| {
         let mut res = Vec::with_capacity(sub_list.len());
         res.push(tau.pow([sub_list[0] as u64]));
         for i in 1..sub_list.len() {
@@ -353,7 +359,6 @@ where
         }
         res
       })
-      .flatten()
       .collect::<Vec<_>>()
   }
 }
@@ -412,10 +417,9 @@ fn fixed_base_exp_comb_batch<
 
   precompute_res.insert(0, [zero; V]);
 
-  let precomputed_g: [_; POW_2_H] = std::array::from_fn(|j| precompute_res[j]);
+  let precomputed_g: [_; POW_2_H] = array::from_fn(|j| precompute_res[j]);
 
   let zero = G::zero();
-
   scalars
     .par_iter()
     .map(|e| {
@@ -455,6 +459,13 @@ where
   type CommitmentKey = CommitmentKey<E>;
   type DerandKey = DerandKey<E>;
 
+  /// This method is using Random Number Generator, so it is only allowed when `STD` feature is turned ON. Calling this method without `STD` feature is unsafe.
+  #[cfg(not(feature = "std"))]
+  fn setup(_label: &'static [u8], _n: usize) -> Self::CommitmentKey {
+    panic!("To use this method you need to turn on the STD feature.")
+  }
+
+  #[cfg(feature = "std")]
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
     // NOTE: this is for testing purposes and should not be used in production
     Self::CommitmentKey::setup_from_rng(label, n, OsRng)
@@ -537,6 +548,7 @@ where
     }
   }
 
+  #[cfg(feature = "std")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     label: &'static [u8],
@@ -985,7 +997,7 @@ mod tests {
     provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
     spartan::polys::multilinear::MultilinearPolynomial,
   };
-  use bincode::Options;
+  use bincode::config::legacy;
   use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
@@ -1078,11 +1090,8 @@ mod tests {
     // check if the prover transcript and verifier transcript are kept in the same state
     assert_eq!(post_c_p, post_c_v);
 
-    let proof_bytes = bincode::DefaultOptions::new()
-      .with_big_endian()
-      .with_fixint_encoding()
-      .serialize(&proof)
-      .unwrap();
+    let proof_bytes = bincode::serde::encode_to_vec(&proof, legacy()).unwrap();
+
     assert_eq!(proof_bytes.len(), 336);
 
     // Change the proof and expect verification to fail
