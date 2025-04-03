@@ -1,15 +1,14 @@
 #![cfg(feature = "std")]
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+use ff::PrimeField;
+use halo2curves::CurveAffine;
+use num_bigint::BigUint;
 use std::{
   fs::File,
   io::{self, Read, Seek, SeekFrom, Write},
   path::Path,
   str::{from_utf8, Utf8Error},
 };
-
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use ff::PrimeField;
-use halo2curves::CurveAffine;
-use num_bigint::BigUint;
 
 #[derive(thiserror::Error, Debug)]
 pub enum PtauFileError {
@@ -77,7 +76,6 @@ fn write_header<Base: PrimeField>(
 pub(crate) fn write_points<G>(
   mut writer: &mut impl Write,
   points: Vec<G>,
-  // section_id: u32,
 ) -> Result<(), PtauFileError>
 where
   G: halo2curves::serde::SerdeObject + CurveAffine,
