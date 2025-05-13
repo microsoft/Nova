@@ -1,12 +1,13 @@
 //! This module implements variable time multi-scalar multiplication using Blitzar's GPU acceleration
 use blitzar;
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// A trait that provides the ability to perform multi-scalar multiplication in variable time
 pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
   let mut blitzar_commitments = vec![Point::default(); 1];
 
-  let scalar_bytes: Vec<[u8; 32]> = scalars.iter().map(|s| s.to_bytes()).collect();
+  let scalar_bytes: Vec<[u8; 32]> = scalars.par_iter().map(|s| s.to_bytes()).collect();
 
   blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
     &mut blitzar_commitments,
@@ -22,12 +23,12 @@ pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) 
   let mut blitzar_commitments = vec![Point::default(); scalars.len()];
 
   let scalar_bytes: Vec<Vec<[u8; 32]>> = scalars
-    .iter()
-    .map(|s| s.iter().map(|v| v.to_bytes()).collect())
+    .par_iter()
+    .map(|s| s.par_iter().map(|v| v.to_bytes()).collect())
     .collect();
 
   let scalars_table: Vec<blitzar::sequence::Sequence<'_>> =
-    scalar_bytes.iter().map(|s| s.into()).collect();
+    scalar_bytes.par_iter().map(|s| s.into()).collect();
 
   blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
     &mut blitzar_commitments,
