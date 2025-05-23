@@ -315,7 +315,7 @@ where
     .into_iter()
     .rev()
     .enumerate()
-    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("bit {}", i)), b))
+    .map(|(i, b)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), b))
     .collect::<Result<Vec<_>, SynthesisError>>()?;
 
   Ok(bits)

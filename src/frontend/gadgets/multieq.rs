@@ -27,7 +27,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     let lhs = self.lhs.clone();
     let rhs = self.rhs.clone();
     self.cs.enforce(
-      || format!("multieq {}", ops),
+      || format!("multieq {ops}"),
       |_| lhs,
       |lc| lc + CS::one(),
       |_| rhs,

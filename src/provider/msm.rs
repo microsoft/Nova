@@ -391,7 +391,7 @@ mod tests {
       .collect::<Vec<_>>();
 
     for bit_width in [1, 4, 8, 10, 16, 20, 32, 40, 64] {
-      println!("bit_width: {}", bit_width);
+      println!("bit_width: {bit_width}");
       assert!(bit_width <= 64); // Ensure we don't overflow F::from
       let coeffs: Vec<u64> = (0..n)
         .map(|_| rand::random::<u64>() % (1 << bit_width))

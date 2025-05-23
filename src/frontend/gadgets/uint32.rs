@@ -165,7 +165,7 @@ impl UInt32 {
       b,
       c,
       |a, b, c| (a & b) ^ (a & c) ^ (b & c),
-      |cs, i, a, b, c| Boolean::sha256_maj(cs.namespace(|| format!("maj {}", i)), a, b, c),
+      |cs, i, a, b, c| Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c),
     )
   }
 
@@ -182,7 +182,7 @@ impl UInt32 {
       b,
       c,
       |a, b, c| (a & b) ^ ((!a) & c),
-      |cs, i, a, b, c| Boolean::sha256_ch(cs.namespace(|| format!("ch {}", i)), a, b, c),
+      |cs, i, a, b, c| Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c),
     )
   }
 
@@ -202,7 +202,7 @@ impl UInt32 {
       .iter()
       .zip(other.bits.iter())
       .enumerate()
-      .map(|(i, (a, b))| Boolean::xor(cs.namespace(|| format!("xor of bit {}", i)), a, b))
+      .map(|(i, (a, b))| Boolean::xor(cs.namespace(|| format!("xor of bit {i}")), a, b))
       .collect::<Result<_, _>>()?;
 
     Ok(UInt32 {
@@ -289,7 +289,7 @@ impl UInt32 {
     while max_value != 0 {
       // Allocate the bit
       let b = AllocatedBit::alloc(
-        cs.namespace(|| format!("result bit {}", i)),
+        cs.namespace(|| format!("result bit {i}")),
         result_value.map(|v| (v >> i) & 1 == 1),
       )?;
 

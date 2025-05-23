@@ -116,7 +116,7 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   pub fn is_satisfied(&self) -> bool {
     match self.which_is_unsatisfied() {
       Some(b) => {
-        println!("fail: {:?}", b);
+        println!("fail: {b:?}");
         false
       }
       None => true,
@@ -126,8 +126,7 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
     assert!(
       !self.named_objects.contains_key(&path),
-      "tried to create object at existing path: {}",
-      path
+      "tried to create object at existing path: {path}"
     );
 
     self.named_objects.insert(path, to);
@@ -145,7 +144,7 @@ fn compute_path(ns: &[String], this: &str) -> String {
   }
 
   let name = ns.join("/");
-  format!("{}/{}", name, this)
+  format!("{name}/{this}")
 }
 
 impl<Scalar: PrimeField> ConstraintSystem<Scalar> for TestConstraintSystem<Scalar> {

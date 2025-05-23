@@ -60,7 +60,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
 
     // allocate x_i
     let x_i = (0..self.num_elts_per_step)
-      .map(|i| AllocatedNum::alloc(cs.namespace(|| format!("x_{}", i)), || Ok(self.x_i[i])))
+      .map(|i| AllocatedNum::alloc(cs.namespace(|| format!("x_{i}")), || Ok(self.x_i[i])))
       .collect::<Result<Vec<_>, _>>()?;
 
     // concatenate z_in and x_i

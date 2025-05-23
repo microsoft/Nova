@@ -24,7 +24,7 @@ pub fn get_key_file_path(num_gens: usize) -> String {
         .collect::<String>();
 
   let base_dir = KZG_KEY_DIR.trim_end_matches("/");
-  format!("{}/kzg_{}_{}.keys", base_dir, id, num_gens)
+  format!("{base_dir}/kzg_{id}_{num_gens}.keys")
 }
 
 const LABEL: &[u8; 4] = b"test";
@@ -46,11 +46,11 @@ fn keygen_save_large() {
   let path = get_key_file_path(MAX_NUM_GENS);
 
   if check_sanity_of_ptau_file::<bn256::G1Affine>(&path, MAX_NUM_GENS + 1, 1).is_err() {
-    println!("Generating {} KZG keys ", MAX_NUM_GENS);
+    println!("Generating {MAX_NUM_GENS} KZG keys ");
 
     let (ck, dur) = timeit!(|| { CommitmentKey::<E>::setup_from_rng(LABEL, MAX_NUM_GENS, OsRng) });
 
-    println!("Generated {} keys in {:?}", MAX_NUM_GENS, dur);
+    println!("Generated {MAX_NUM_GENS} keys in {dur:?}");
 
     let file = OpenOptions::new()
       .write(true)
