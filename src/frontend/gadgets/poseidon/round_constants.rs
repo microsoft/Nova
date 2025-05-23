@@ -4,24 +4,24 @@ use ff::PrimeField;
 /// The round constants are generated using the Grain LFSR [23] in a self-shrinking
 /// mode:
 /// 1. Initialize the state with 80 bits b0, b1, . . . , b79, where
-///     (a) b0, b1 describe the field,
-///     (b) bi for 2 ≤ i ≤ 5 describe the S-Box,
-///     (c) bi for 6 ≤ i ≤ 17 are the binary representation of n,
-///     (d) bi for 18 ≤ i ≤ 29 are the binary representation of t,
-///     (e) bi for 30 ≤ i ≤ 39 are the binary representation of RF ,
-///     (f) bi for 40 ≤ i ≤ 49 are the binary representation of RP , and
-///     (g) bi for 50 ≤ i ≤ 79 are set to 1.
+///    (a) b0, b1 describe the field,
+///    (b) bi for 2 ≤ i ≤ 5 describe the S-Box,
+///    (c) bi for 6 ≤ i ≤ 17 are the binary representation of n,
+///    (d) bi for 18 ≤ i ≤ 29 are the binary representation of t,
+///    (e) bi for 30 ≤ i ≤ 39 are the binary representation of RF ,
+///    (f) bi for 40 ≤ i ≤ 49 are the binary representation of RP , and
+///    (g) bi for 50 ≤ i ≤ 79 are set to 1.
 /// 2. Update the bits using bi+80 = bi+62 ⊕ bi+51 ⊕ bi+38 ⊕ bi+23 ⊕ bi+13 ⊕ bi
 ///
 /// 3. Discard the first 160 bits.
 /// 4. Evaluate bits in pairs: If the first bit is a 1, output the second bit. If it is a
-///     0, discard the second bit.
-///     Using this method, the generation of round constants depends on the specific
-///     instance, and thus different round constants are used even if some of the chosen
-///     parameters (e.g., n and t) are the same.
-///     If a randomly sampled integer is not in Fp, we discard this value and take the
-///     next one. Note that cryptographically strong randomness is not needed for the
-///     round constants, and other methods can also be used.
+///    0, discard the second bit.
+///    Using this method, the generation of round constants depends on the specific
+///    instance, and thus different round constants are used even if some of the chosen
+///    parameters (e.g., n and t) are the same.
+///    If a randomly sampled integer is not in Fp, we discard this value and take the
+///    next one. Note that cryptographically strong randomness is not needed for the
+///    round constants, and other methods can also be used.
 ///
 /// Following https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/scripts/create_rcs_grain.sage
 /// The script was updated and can currently be found at:

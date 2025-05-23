@@ -13,9 +13,9 @@ At its core, Nova relies on a commitment scheme for vectors. Compressing IVC pro
 1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
 2. HyperKZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
     
-For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants), but the library does not currently do so (please see [this](https://github.com/microsoft/Nova/issues/270) issue). 
+For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants). We have facility to load an existing setup, but the top-level APIs do not currently support this. 
 
-We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit.
+We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit. The preprocessing variant of Spartan is called MicroSpartan and is described in the [MicroNova](https://eprint.iacr.org/2024/2099) paper.
 
 Prior to compression, the IVC proof is folded with a random instance, which makes the proof zero-knowledge. The details of this technique are described in the HyperNova paper.
 
@@ -57,6 +57,12 @@ The zero-knowledge property is achieved using an idea described in the following
 [HyperNova: Recursive arguments for customizable constraint systems](https://eprint.iacr.org/2023/573) \
 Abhiram Kothapalli and Srinath Setty \
 CRYPTO 2024
+
+The following paper describes an on-chain efficient version of Nova. We have open-sourced components of MicroNova including the HyperKZG polynomial commitment scheme and the MicroSpartan SNARK (which is provided in [ppsnark.rs](https://github.com/microsoft/Nova/blob/main/src/spartan/ppsnark.rs)):
+
+[MicroNova: Folding-based arguments with efficient (on-chain) verification](https://eprint.iacr.org/2024/2099) \
+Jiaxing Zhao, Srinath Setty, Weidong Cui, and Greg Zaverucha \
+IEEE S&P 2025
 
 ## Contributing
 

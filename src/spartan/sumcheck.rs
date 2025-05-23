@@ -226,8 +226,7 @@ impl<E: Engine> SumcheckProof<E> {
       for (l, polyname) in [(a.len(), "poly_A_vec"), (b.len(), "poly_B_vec")].iter() {
         assert_eq!(
           *l, expected_size,
-          "Mismatch in size for {} at index {}",
-          polyname, i
+          "Mismatch in size for {polyname} at index {i}"
         );
       }
     }

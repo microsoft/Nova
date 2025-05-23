@@ -51,7 +51,7 @@ where
 
   let mut cur = get_sha256_iv();
   for (i, block) in padded.chunks(512).enumerate() {
-    cur = sha256_compression_function(cs.namespace(|| format!("block {}", i)), block, &cur)?;
+    cur = sha256_compression_function(cs.namespace(|| format!("block {i}")), block, &cur)?;
   }
 
   Ok(cur.into_iter().flat_map(|e| e.into_bits_be()).collect())
@@ -84,7 +84,7 @@ where
   let mut cs = MultiEq::new(cs);
 
   for i in 16..64 {
-    let cs = &mut cs.namespace(|| format!("w extension {}", i));
+    let cs = &mut cs.namespace(|| format!("w extension {i}"));
 
     // s0 := (w[i-15] rightrotate 7) xor (w[i-15] rightrotate 18) xor (w[i-15] rightshift 3)
     let mut s0 = w[i - 15].rotr(7);
@@ -139,7 +139,7 @@ where
   let mut h = current_hash_value[7].clone();
 
   for i in 0..64 {
-    let cs = &mut cs.namespace(|| format!("compression round {}", i));
+    let cs = &mut cs.namespace(|| format!("compression round {i}"));
 
     // S1 := (e rightrotate 6) xor (e rightrotate 11) xor (e rightrotate 25)
     let new_e = e.compute(cs.namespace(|| "deferred e computation"), &[])?;
