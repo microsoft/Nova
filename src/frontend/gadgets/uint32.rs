@@ -41,12 +41,14 @@ impl UInt32 {
     }
   }
 
+  /// Returns the bits of this `UInt32` in big-endian order
   pub fn into_bits_be(self) -> Vec<Boolean> {
     let mut ret = self.bits;
     ret.reverse();
     ret
   }
 
+  /// Constructs a `UInt32` from a slice of 32 `Boolean` bits in big-endian order.
   pub fn from_bits_be(bits: &[Boolean]) -> Self {
     assert_eq!(bits.len(), 32);
 
@@ -75,6 +77,7 @@ impl UInt32 {
     }
   }
 
+  /// Returns a new `UInt32` with its bits rotated right by `by` positions.
   pub fn rotr(&self, by: usize) -> Self {
     let by = by % 32;
 
@@ -93,6 +96,7 @@ impl UInt32 {
     }
   }
 
+  /// Returns a new `UInt32` with its bits shifted right by `by` positions, filling with zeros.
   pub fn shr(&self, by: usize) -> Self {
     let by = by % 32;
 
