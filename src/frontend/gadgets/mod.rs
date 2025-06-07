@@ -2,8 +2,8 @@
 
 use super::SynthesisError;
 
-mod multieq;
-mod uint32;
+pub mod multieq;
+pub mod uint32;
 
 pub mod boolean;
 pub mod num;
