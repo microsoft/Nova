@@ -732,15 +732,13 @@ where
                           transcript: &mut <E as Engine>::TE|
      -> (Vec<G1Affine<E>>, Vec<[E::Scalar; 3]>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
-        let mut v = f[0];
-        let mut u_power = E::Scalar::ONE;
-
-        for fi in f.iter().skip(1) {
-          u_power *= u;
-          v += u_power * fi;
+        // Horner's method
+        let mut acc = E::Scalar::ZERO;
+        for &fi in f.iter().rev() {
+          acc = acc * u + fi;
         }
 
-        v
+        acc
       };
 
       let scalar_vector_muladd = |a: &mut Vec<E::Scalar>, v: &Vec<E::Scalar>, s: E::Scalar| {
