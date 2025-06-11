@@ -745,9 +745,9 @@ where
 
       let scalar_vector_muladd = |a: &mut Vec<E::Scalar>, v: &Vec<E::Scalar>, s: E::Scalar| {
         assert!(a.len() >= v.len());
-        for i in 0..v.len() {
-          a[i] += s * v[i];
-        }
+        a.par_iter_mut().zip(v.par_iter()).for_each(|(a_i, v_i)| {
+          *a_i += s * *v_i;
+        });
       };
 
       let kzg_compute_batch_polynomial = |f: &[Vec<E::Scalar>], q: E::Scalar| -> Vec<E::Scalar> {
