@@ -856,12 +856,6 @@ where
     // obtained from the transcript
     let r = Self::compute_challenge(&pi.com, transcript);
 
-    if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
-      return Err(NovaError::ProofVerifyError {
-        reason: "r is zero or commitment is zero".to_string(),
-      });
-    }
-
     let u = [r, -r, r * r];
 
     // Setup vectors (Y, ypos, yneg) from pi.v
