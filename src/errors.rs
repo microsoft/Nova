@@ -41,7 +41,7 @@ pub enum NovaError {
   /// returned when an invalid PCS evaluation argument is provided
   #[error("InvalidPCS")]
   InvalidPCS,
-  /// returned when an invalid sumcheck proof is provided
+  /// returned when an invalid sum-check proof is provided
   #[error("InvalidSumcheckProof")]
   InvalidSumcheckProof,
   /// returned when the initial input to an incremental computation differs from a previously declared arity
