@@ -41,7 +41,7 @@ pub enum NovaError {
   /// returned when an invalid PCS evaluation argument is provided
   #[error("InvalidPCS")]
   InvalidPCS,
-  /// returned when an invalid sum-check proof is provided
+  /// returned when an invalid sumcheck proof is provided
   #[error("InvalidSumcheckProof")]
   InvalidSumcheckProof,
   /// returned when the initial input to an incremental computation differs from a previously declared arity
@@ -62,7 +62,7 @@ pub enum NovaError {
   /// returned when the consistency with public IO and assignment used fails
   #[error("IncorrectWitness")]
   IncorrectWitness,
-  /// return when error during synthesis
+  /// returned when error during synthesis
   #[error("SynthesisError: {reason}")]
   SynthesisError {
     /// The reason for circuit synthesis failure

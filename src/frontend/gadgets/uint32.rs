@@ -1,4 +1,4 @@
-//! Circuit representation of a [`u32`], with helpers for the [`sha256`]
+//! Circuit representation of a [`u32`], with helpers for the sha256
 //! gadgets.
 
 use ff::PrimeField;

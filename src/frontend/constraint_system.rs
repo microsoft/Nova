@@ -326,7 +326,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> Drop for Namespace<'_, Sc
   }
 }
 
-/// Convenience implementation of ConstraintSystem<Scalar> for mutable references to
+/// Convenience implementation of `ConstraintSystem<Scalar>` for mutable references to
 /// constraint systems.
 impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> for &'_ mut CS {
   type Root = CS::Root;
