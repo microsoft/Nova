@@ -491,7 +491,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     }
   }
 
-  /// Get [`Scalar`] value of the [`Num`].
+  /// Get the scalar value of the [`Num`].
   pub fn get_value(&self) -> Option<Scalar> {
     self.value
   }

@@ -1,5 +1,5 @@
 //! A port of `calc_round_numbers.py`
-//! https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/9d80ec0473ad7cde5a12f3aac46439ad0da68c0a/code/scripts/calc_round_numbers.py
+//! <https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/9d80ec0473ad7cde5a12f3aac46439ad0da68c0a/code/scripts/calc_round_numbers.py>
 //! from Python2 to Rust for a (roughly) 256-bit prime field (e.g. BLS12-381's scalar field) and
 //! 128-bit security level.
 

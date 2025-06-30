@@ -92,8 +92,9 @@ where
   /// # Arguments
   ///
   /// * `c`: The primary circuit of type `C`.
-  /// * `ck_hint`: A `CommitmentKeyHint` for `S1`, which is a function that provides a hint
+  /// * `ck_hint1`: A `CommitmentKeyHint` for `S1`, which is a function that provides a hint
   ///   for the number of generators required in the commitment scheme for the primary circuit.
+  /// * `ck_hint2`: A `CommitmentKeyHint` for `S2`, similar to `ck_hint1`, but for the secondary circuit.
   ///
   /// # Example
   ///
@@ -103,6 +104,8 @@ where
   /// # use nova_snark::provider::{PallasEngine, VestaEngine};
   /// # use nova_snark::traits::{circuit::TrivialCircuit, Engine, snark::RelaxedR1CSSNARKTrait};
   /// # use nova_snark::nova::PublicParams;
+  /// # use nova_snark::errors::NovaError;
+  /// # fn main() -> Result<(), NovaError> {
   ///
   /// type E1 = PallasEngine;
   /// type E2 = VestaEngine;
@@ -115,7 +118,9 @@ where
   /// let ck_hint1 = &*SPrime::<E1>::ck_floor();
   /// let ck_hint2 = &*SPrime::<E2>::ck_floor();
   ///
-  /// PublicParams::setup(&circuit, ck_hint1, ck_hint2);
+  /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2)?;
+  /// Ok(())
+  /// # }
   /// ```
   pub fn setup(
     c: &C,

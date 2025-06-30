@@ -133,13 +133,13 @@ impl<E: Engine> R1CSShape<E> {
     E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
   }
 
-  /// returned the digest of the `R1CSShape`
+  /// Returns the digest of the `R1CSShape`
   pub fn digest(&self) -> E::Scalar {
     self
       .digest
       .get_or_try_init(|| DigestComputer::new(self).digest())
       .cloned()
-      .expect("Failure retrieving digest")
+      .expect("Failure in retrieving digest")
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs

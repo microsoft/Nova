@@ -30,7 +30,7 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Elt<Scalar> {
 }
 
 impl<Scalar: PrimeField> Elt<Scalar> {
-  /// Create an Elt from a [`Scalar`].
+  /// Create an Elt from a scalar value.
   pub fn num_from_fr<CS: ConstraintSystem<Scalar>>(fr: Scalar) -> Self {
     let num = num::Num::<Scalar>::zero();
     Self::Num(num.add_bool_with_coeff(CS::one(), &Boolean::Constant(true), fr))

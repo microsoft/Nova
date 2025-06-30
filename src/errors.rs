@@ -62,7 +62,7 @@ pub enum NovaError {
   /// returned when the consistency with public IO and assignment used fails
   #[error("IncorrectWitness")]
   IncorrectWitness,
-  /// return when error during synthesis
+  /// returned when error during synthesis
   #[error("SynthesisError: {reason}")]
   SynthesisError {
     /// The reason for circuit synthesis failure
