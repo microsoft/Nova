@@ -4,6 +4,7 @@ use super::{
   quintic_s_box,
 };
 use ff::PrimeField;
+use crate::errors::NovaError;
 
 // - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
 // - As a result, constants need only be added after each S-box.
@@ -15,7 +16,7 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   round_constants: &Vec<F>,
   mds_matrices: &MdsMatrices<F>,
   partial_preprocessed: usize,
-) -> Vec<F> {
+) -> Result<Vec<F>, NovaError> {
   let mds_matrix = &mds_matrices.m;
   let inverse_matrix = &mds_matrices.m_inv;
 
@@ -39,7 +40,7 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   };
   for i in 0..end {
     let next_round = round_keys(i + 1); // First round was added before any S-boxes.
-    let inverted = left_apply_matrix(inverse_matrix, next_round);
+    let inverted = left_apply_matrix(inverse_matrix, next_round)?;
     res.extend(inverted);
   }
 
@@ -62,14 +63,14 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   // `round_acc` holds the accumulated result of inverting and adding subsequent round constants (in reverse).
   let round_acc = (0..partial_preprocessed)
     .map(|i| round_keys(final_round - i - 1))
-    .fold(final_round_key, |acc, previous_round_keys| {
-      let mut inverted = left_apply_matrix(inverse_matrix, &acc);
+    .try_fold(final_round_key, |acc, previous_round_keys| -> Result<Vec<F>, NovaError> {
+      let mut inverted = left_apply_matrix(inverse_matrix, &acc)?;
 
       partial_keys.push(inverted[0]);
       inverted[0] = F::ZERO;
 
-      vec_add(previous_round_keys, &inverted)
-    });
+      Ok(vec_add(previous_round_keys, &inverted))
+    })?;
 
   // Everything in here is dev-driven testing.
   // Dev test case only checks one deep.
@@ -88,7 +89,7 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
     let initial_round_keys = round_keys(terminal_constants_round - 1);
 
     // M^-1(T)
-    let mut inv = left_apply_matrix(inverse_matrix, terminal_round_keys);
+    let mut inv = left_apply_matrix(inverse_matrix, terminal_round_keys)?;
 
     // M^-1(T)[0]
     let pk = inv[0];
@@ -99,13 +100,15 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
     // (M^-1(T) - pk) - I
     let result_key = vec_add(initial_round_keys, &inv);
 
-    assert_eq!(&result_key, &round_acc, "Acc assumption failed.");
-    assert_eq!(pk, partial_keys[0], "Partial-key assumption failed.");
-    assert_eq!(
-      1,
-      partial_keys.len(),
-      "Partial-keys length assumption failed."
-    );
+    if result_key != round_acc {
+      return Err(NovaError::InternalError);
+    }
+    if pk != partial_keys[0] {
+      return Err(NovaError::InternalError);
+    }
+    if partial_keys.len() != 1 {
+      return Err(NovaError::InternalError);
+    }
 
     ////////////////////////////////////////////////////////////////////////////////
     // Shared between branches, arbitrary initial state representing the output of a previous round's S-Box layer.
@@ -124,7 +127,7 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
     quintic_s_box(&mut q_state[0], None, None);
 
     // Mix with mds_matrix
-    let mixed = left_apply_matrix(mds_matrix, &q_state);
+    let mixed = left_apply_matrix(mds_matrix, &q_state)?;
 
     // Ark
     let plain_result = vec_add(terminal_round_keys, &mixed);
@@ -135,29 +138,23 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
     //let initial_state1 = apply_matrix::<E>(&m_prime, &initial_state);
     let mut p_state = vec_add(&result_key, &initial_state);
 
-    // In order for the S-box result to be correct, it must have the same input as in the plain path.
-    // That means its input (the first component of the state) must have been constructed by
-    // adding the same single round constant in that position.
-    // NOTE: this assertion uncovered a bug which was causing failure.
-    assert_eq!(
-      &result_key[0], &initial_round_keys[0],
-      "S-box inputs did not match."
-    );
+    if result_key[0] != initial_round_keys[0] {
+      return Err(NovaError::InternalError);
+    }
 
     quintic_s_box(&mut p_state[0], None, Some(&pk));
 
-    let preprocessed_result = left_apply_matrix(mds_matrix, &p_state);
+    let preprocessed_result = left_apply_matrix(mds_matrix, &p_state)?;
 
-    assert_eq!(
-      plain_result, preprocessed_result,
-      "Single preprocessing step couldn't be verified."
-    );
+    if plain_result != preprocessed_result {
+      return Err(NovaError::InternalError);
+    }
   }
 
   for i in 1..unpreprocessed {
     res.extend(round_keys(half_full_rounds + i));
   }
-  res.extend(left_apply_matrix(inverse_matrix, &round_acc));
+  res.extend(left_apply_matrix(inverse_matrix, &round_acc)?);
 
   while let Some(x) = partial_keys.pop() {
     res.push(x)
@@ -167,9 +164,9 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   for i in 1..(half_full_rounds) {
     let start = half_full_rounds + partial_rounds;
     let next_round = round_keys(i + start);
-    let inverted = left_apply_matrix(inverse_matrix, next_round);
+    let inverted = left_apply_matrix(inverse_matrix, next_round)?;
     res.extend(inverted);
   }
 
-  res
+  Ok(res)
 }

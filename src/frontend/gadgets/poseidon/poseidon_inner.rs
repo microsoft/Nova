@@ -16,6 +16,7 @@ use super::{
   mds::{MdsMatrices, SparseMatrix},
   quintic_s_box, round_constants, round_numbers, Strength, DEFAULT_STRENGTH,
 };
+use crate::errors::NovaError;
 
 /// Available arities for the Poseidon hasher.
 pub trait Arity<T>: ArrayLength {
@@ -129,20 +130,22 @@ where
   /// with following default parameters:
   /// - 128 bit of security;
   /// - Merkle Tree (where all leaves are presented) domain separation ([`HashType`]).
-  pub fn new() -> Self {
+  pub fn new() -> Result<Self, NovaError> {
     Self::new_with_strength(DEFAULT_STRENGTH)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with Merkle Tree (where all leaves are presented) domain separation ([`HashType`]) custom security level ([`Strength`]).
-  pub fn new_with_strength(strength: Strength) -> Self {
+  pub fn new_with_strength(strength: Strength) -> Result<Self, NovaError> {
     Self::new_with_strength_and_type(strength, HashType::MerkleTree)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with custom domain separation ([`HashType`]) and custom security level ([`Strength`]).
-  pub fn new_with_strength_and_type(strength: Strength, hash_type: HashType<F, A>) -> Self {
-    assert!(hash_type.is_supported());
+  pub fn new_with_strength_and_type(strength: Strength, hash_type: HashType<F, A>) -> Result<Self, NovaError> {
+    if !hash_type.is_supported() {
+      return Err(NovaError::InvalidInputLength);
+    }
     let arity = A::to_usize();
     let width = arity + 1;
     let mds = generate_mds(width);
@@ -171,8 +174,8 @@ where
     partial_rounds: usize,
     hash_type: HashType<F, A>,
     strength: Strength,
-  ) -> Self {
-    let mds_matrices = derive_mds_matrices(m);
+  ) -> Result<Self, NovaError> {
+    let mds_matrices = derive_mds_matrices(m)?;
     let half_full_rounds = full_rounds / 2;
     let compressed_round_constants = compress_round_constants(
       width,
@@ -181,23 +184,21 @@ where
       &round_constants,
       &mds_matrices,
       partial_rounds,
-    );
+    )?;
 
     let (pre_sparse_matrix, sparse_matrixes) =
-      factor_to_sparse_matrixes(&transpose(&mds_matrices.m), partial_rounds);
+      factor_to_sparse_matrixes(&transpose(&mds_matrices.m), partial_rounds)?;
 
     // Ensure we have enough constants for the sbox rounds
-    assert!(
-      width * (full_rounds + partial_rounds) <= round_constants.len(),
-      "Not enough round constants"
-    );
+    if width * (full_rounds + partial_rounds) > round_constants.len() {
+      return Err(NovaError::InvalidInputLength);
+    }
 
-    assert_eq!(
-      full_rounds * width + partial_rounds,
-      compressed_round_constants.len()
-    );
+    if full_rounds * width + partial_rounds != compressed_round_constants.len() {
+      return Err(NovaError::InvalidInputLength);
+    }
 
-    Self {
+    Ok(Self {
       mds_matrices,
       round_constants: Some(round_constants),
       compressed_round_constants,
@@ -210,7 +211,7 @@ where
       partial_rounds,
       hash_type,
       _a: PhantomData::<A>,
-    }
+    })
   }
 
   /// Returns the [`Arity`] value represented as `usize`.
@@ -431,8 +432,8 @@ where
 
   /// Set the provided elements with the result of the product between the elements and the constant
   /// MDS matrix.
-  pub(crate) fn product_mds(&mut self) {
-    self.product_mds_with_matrix_left(&self.constants.mds_matrices.m);
+  pub(crate) fn product_mds(&mut self) -> Result<(), NovaError> {
+    self.product_mds_with_matrix_left(&self.constants.mds_matrices.m)
   }
 
   /// NOTE: This calculates a vector-matrix product (`elements * matrix`) rather than the
@@ -453,12 +454,13 @@ where
     let _ = std::mem::replace(&mut self.elements, result);
   }
 
-  pub(crate) fn product_mds_with_matrix_left(&mut self, matrix: &Matrix<F>) {
-    let result = left_apply_matrix(matrix, &self.elements);
+  pub(crate) fn product_mds_with_matrix_left(&mut self, matrix: &Matrix<F>) -> Result<(), NovaError> {
+    let result = left_apply_matrix(matrix, &self.elements)?;
     let _ = std::mem::replace(
       &mut self.elements,
       GenericArray::<F, A::ConstantsSize>::generate(|i| result[i]),
     );
+    Ok(())
   }
 
   // Sparse matrix in this context means one of the form, M''.

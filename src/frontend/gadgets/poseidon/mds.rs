@@ -11,6 +11,7 @@ use super::{
     Matrix,
   },
 };
+use crate::errors::NovaError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MdsMatrices<F: PrimeField> {
@@ -22,21 +23,25 @@ pub struct MdsMatrices<F: PrimeField> {
   pub m_double_prime: Matrix<F>,
 }
 
-pub(crate) fn derive_mds_matrices<F: PrimeField>(m: Matrix<F>) -> MdsMatrices<F> {
-  let m_inv = invert(&m).unwrap(); // m is MDS so invertible.
-  let m_hat = minor(&m, 0, 0);
-  let m_hat_inv = invert(&m_hat).unwrap(); // If this returns None, then `mds_matrix` was not correctly generated.
-  let m_prime = make_prime(&m);
-  let m_double_prime = make_double_prime(&m, &m_hat_inv);
+pub(crate) fn derive_mds_matrices<F: PrimeField>(m: Matrix<F>) -> Result<MdsMatrices<F>, NovaError> {
+  let m_inv = invert(&m).ok_or_else(|| NovaError::InvalidMatrix {
+    reason: "MDS matrix is not invertible".to_string(),
+  })?;
+  let m_hat = minor(&m, 0, 0)?;
+  let m_hat_inv = invert(&m_hat).ok_or_else(|| NovaError::InvalidMatrix {
+    reason: "MDS minor matrix is not invertible".to_string(),
+  })?;
+  let m_prime = make_prime(&m)?;
+  let m_double_prime = make_double_prime(&m, &m_hat_inv)?;
 
-  MdsMatrices {
+  Ok(MdsMatrices {
     m,
     m_inv,
     m_hat,
     m_hat_inv,
     m_prime,
     m_double_prime,
-  }
+  })
 }
 
 /// A `SparseMatrix` is specifically one of the form of M''.
@@ -52,18 +57,26 @@ pub struct SparseMatrix<F: PrimeField> {
 }
 
 impl<F: PrimeField> SparseMatrix<F> {
-  pub fn new_from_ref(m_double_prime: &Matrix<F>) -> Self {
-    assert!(Self::is_sparse_matrix(m_double_prime));
+  pub fn new_from_ref(m_double_prime: &Matrix<F>) -> Result<Self, NovaError> {
+    if !Self::is_sparse_matrix(m_double_prime) {
+      return Err(NovaError::InvalidMatrix {
+        reason: "Matrix is not a valid sparse matrix".to_string(),
+      });
+    }
+    
     let size = matrix::rows(m_double_prime);
 
     let w_hat = (0..size).map(|i| m_double_prime[i][0]).collect::<Vec<_>>();
     let v_rest = m_double_prime[0][1..].to_vec();
 
-    Self { w_hat, v_rest }
+    Ok(Self { w_hat, v_rest })
   }
 
   pub fn is_sparse_matrix(m: &Matrix<F>) -> bool {
-    is_square(m) && is_identity(&minor(m, 0, 0))
+    match minor(m, 0, 0) {
+      Ok(minor_matrix) => is_square(m) && is_identity(&minor_matrix),
+      Err(_) => false,
+    }
   }
 }
 
@@ -76,29 +89,31 @@ impl<F: PrimeField> SparseMatrix<F> {
 pub(crate) fn factor_to_sparse_matrixes<F: PrimeField>(
   base_matrix: &Matrix<F>,
   n: usize,
-) -> (Matrix<F>, Vec<SparseMatrix<F>>) {
-  let (pre_sparse, sparse_matrices) = factor_to_sparse_matrices(base_matrix, n);
+) -> Result<(Matrix<F>, Vec<SparseMatrix<F>>), NovaError> {
+  let (pre_sparse, sparse_matrices) = factor_to_sparse_matrices(base_matrix, n)?;
   let sparse_matrixes = sparse_matrices
     .iter()
     .map(|m| SparseMatrix::<F>::new_from_ref(m))
-    .collect::<Vec<_>>();
+    .collect::<Result<Vec<_>, _>>()?;
 
-  (pre_sparse, sparse_matrixes)
+  Ok((pre_sparse, sparse_matrixes))
 }
 
 pub(crate) fn factor_to_sparse_matrices<F: PrimeField>(
   base_matrix: &Matrix<F>,
   n: usize,
-) -> (Matrix<F>, Vec<Matrix<F>>) {
+) -> Result<(Matrix<F>, Vec<Matrix<F>>), NovaError> {
   let (pre_sparse, mut all) =
-    (0..n).fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| {
-      let derived = derive_mds_matrices(curr);
+    (0..n).try_fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| -> Result<_, NovaError> {
+      let derived = derive_mds_matrices(curr)?;
       acc.push(derived.m_double_prime);
-      let new = mat_mul(base_matrix, &derived.m_prime).unwrap();
-      (new, acc)
-    });
+      let new = mat_mul(base_matrix, &derived.m_prime).ok_or_else(|| NovaError::InvalidMatrix {
+        reason: "Matrix multiplication failed in sparse matrix factorization".to_string(),
+      })?;
+      Ok((new, acc))
+    })?;
   all.reverse();
-  (pre_sparse, all)
+  Ok((pre_sparse, all))
 }
 
 pub(crate) fn generate_mds<F: PrimeField>(t: usize) -> Matrix<F> {
@@ -135,8 +150,8 @@ pub(crate) fn generate_mds<F: PrimeField>(t: usize) -> Matrix<F> {
   matrix
 }
 
-fn make_prime<F: PrimeField>(m: &Matrix<F>) -> Matrix<F> {
-  m.iter()
+fn make_prime<F: PrimeField>(m: &Matrix<F>) -> Result<Matrix<F>, NovaError> {
+  let result = m.iter()
     .enumerate()
     .map(|(i, row)| match i {
       0 => {
@@ -150,14 +165,15 @@ fn make_prime<F: PrimeField>(m: &Matrix<F>) -> Matrix<F> {
         new_row
       }
     })
-    .collect()
+    .collect();
+  Ok(result)
 }
 
-fn make_double_prime<F: PrimeField>(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Matrix<F> {
+fn make_double_prime<F: PrimeField>(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Result<Matrix<F>, NovaError> {
   let (v, w) = make_v_w(m);
-  let w_hat = left_apply_matrix(m_hat_inv, &w);
+  let w_hat = left_apply_matrix(m_hat_inv, &w)?;
 
-  m.iter()
+  let result = m.iter()
     .enumerate()
     .map(|(i, row)| match i {
       0 => {
@@ -173,7 +189,8 @@ fn make_double_prime<F: PrimeField>(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Mat
         new_row
       }
     })
-    .collect()
+    .collect();
+  Ok(result)
 }
 
 fn make_v_w<F: PrimeField>(m: &Matrix<F>) -> (Vec<F>, Vec<F>) {
