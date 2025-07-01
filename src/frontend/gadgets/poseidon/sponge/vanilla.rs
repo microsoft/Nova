@@ -1,8 +1,11 @@
-use crate::frontend::gadgets::poseidon::{
-  hash_type::HashType,
-  poseidon_inner::{Arity, Poseidon, PoseidonConstants},
-  sponge::api::{IOPattern, InnerSpongeAPI},
-  PoseidonError, Strength,
+use crate::{
+  errors::NovaError,
+  frontend::gadgets::poseidon::{
+    hash_type::HashType,
+    poseidon_inner::{Arity, Poseidon, PoseidonConstants},
+    sponge::api::{IOPattern, InnerSpongeAPI},
+    PoseidonError, Strength,
+  },
 };
 use ff::PrimeField;
 use std::collections::VecDeque;
@@ -74,7 +77,7 @@ where
   fn new_with_constants(constants: &'a PoseidonConstants<F, A>, mode: Mode) -> Self;
 
   /// Return API constants
-  fn api_constants(strength: Strength) -> PoseidonConstants<F, A> {
+  fn api_constants(strength: Strength) -> Result<PoseidonConstants<F, A>, NovaError> {
     PoseidonConstants::new_with_strength_and_type(strength, HashType::Sponge)
   }
 
@@ -174,7 +177,7 @@ where
             final_permutation,
             "Simplex sponge may only pad before final permutation"
           );
-          self.pad();
+          self.pad()?;
         }
       }
     }
@@ -186,7 +189,7 @@ where
   }
 
   /// permutate the sponge state
-  fn pad(&mut self);
+  fn pad(&mut self) -> Result<(), Self::Error>;
 
   /// Permute the sponge state
   fn permute_state(&mut self, acc: &mut Self::Acc) -> Result<(), Self::Error>;
@@ -319,13 +322,19 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
     self.state.constants
   }
 
-  fn pad(&mut self) {
-    self.state.apply_padding();
+  fn pad(&mut self) -> Result<(), Self::Error> {
+    self
+      .state
+      .apply_padding()
+      .map_err(PoseidonError::OperationError)
   }
 
   fn permute_state(&mut self, _acc: &mut Self::Acc) -> Result<(), Self::Error> {
-    self.state.hash();
-    Ok(())
+    self
+      .state
+      .hash()
+      .map(|_| ())
+      .map_err(PoseidonError::OperationError)
   }
 
   fn dequeue(&mut self) -> Option<Self::Elt> {
