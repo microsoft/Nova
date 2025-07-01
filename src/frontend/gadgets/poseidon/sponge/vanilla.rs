@@ -323,12 +323,16 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
   }
 
   fn pad(&mut self) -> Result<(), Self::Error> {
-    self.state.apply_padding()
+    self
+      .state
+      .apply_padding()
       .map_err(PoseidonError::OperationError)
   }
 
   fn permute_state(&mut self, _acc: &mut Self::Acc) -> Result<(), Self::Error> {
-    self.state.hash()
+    self
+      .state
+      .hash()
       .map(|_| ())
       .map_err(PoseidonError::OperationError)
   }
