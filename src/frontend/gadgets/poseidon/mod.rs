@@ -1,4 +1,5 @@
 //! The underlying Poseidon sponge code is ported from <https://github.com/argumentcomputer/neptune>.
+use crate::errors::NovaError;
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 
@@ -79,4 +80,7 @@ pub(crate) fn quintic_s_box<F: PrimeField>(l: &mut F, pre_add: Option<&F>, post_
 
 #[derive(Debug, Clone)]
 /// Possible error states for the hashing.
-pub enum PoseidonError {}
+pub enum PoseidonError {
+  /// Error occurred during Poseidon operation
+  OperationError(NovaError),
+}

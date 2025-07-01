@@ -108,7 +108,11 @@ where
   A: Arity<F>,
 {
   fn default() -> Self {
-    Self::new().expect("Failed to create default PoseidonConstants")
+    // Default parameters (DEFAULT_STRENGTH + HashType::MerkleTree) should always be valid
+    // If this fails, there's a serious configuration or implementation issue
+    Self::new().expect(
+      "Failed to create default PoseidonConstants with DEFAULT_STRENGTH and MerkleTree - this indicates a serious implementation bug"
+    )
   }
 }
 

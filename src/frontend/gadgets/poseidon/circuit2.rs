@@ -216,14 +216,13 @@ where
     Ok(elt)
   }
 
-  pub fn apply_padding<CS: ConstraintSystem<Scalar>>(&mut self) {
+  pub fn apply_padding<CS: ConstraintSystem<Scalar>>(&mut self) -> Result<(), SynthesisError> {
     if let HashType::ConstantLength(l) = self.constants.hash_type {
       let final_pos = 1 + (l % self.constants.arity());
 
-      assert_eq!(
-        self.pos, final_pos,
-        "preimage length does not match constant length required for hash"
-      );
+      if self.pos != final_pos {
+        return Err(SynthesisError::Unsatisfiable);
+      }
     };
     match self.constants.hash_type {
       HashType::ConstantLength(_) | HashType::Encryption => {
@@ -235,6 +234,7 @@ where
       HashType::VariableLength => todo!(),
       _ => (), // incl HashType::Sponge
     }
+    Ok(())
   }
 
   fn full_round<CS: ConstraintSystem<Scalar>>(

@@ -118,8 +118,8 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
     self.constants
   }
 
-  fn pad(&mut self) {
-    self.state.apply_padding::<CS>();
+  fn pad(&mut self) -> Result<(), Self::Error> {
+    self.state.apply_padding::<CS>()
   }
 
   fn permute_state(&mut self, ns: &mut Self::Acc) -> Result<(), Self::Error> {
