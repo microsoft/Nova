@@ -696,35 +696,72 @@ where
 
     //////////////// begin helper closures //////////
     let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
-      // On input f(x) and u compute the witness polynomial used to prove
-      // that f(u) = v. The main part of this is to compute the
-      // division (f(x) - f(u)) / (x - u), but we don't use a general
-      // division algorithm, we make use of the fact that the division
-      // never has a remainder, and that the denominator is always a linear
-      // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
-      // d is the degree of f.
+      // Divides polynomial f(x) by (x - u) to obtain the witness polynomial h(x) = f(x)/(x - u)
+      // for KZG opening.
       //
-      // We use the fact that if we compute the quotient of f(x)/(x-u),
-      // there will be a remainder, but it'll be v = f(u).  Put another way
-      // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
-      // same.  One advantage is that computing f(u) could be decoupled
-      // from kzg_open, it could be done later or separate from computing W.
+      // This implementation uses a chunking strategy to enable parallelization:
+      // - Divides the polynomial into chunks
+      // - Processes chunks in parallel using Rayon's par_chunks_exact_mut
+      // - Within each chunk, maintains a "running" partial result
+      // - Combines results across chunk boundaries
+      //
+      // While this adds more total computation than the standard Horner's method,
+      // the parallel execution provides significant speedup for large polynomials.
+      //
+      // Original sequential algorithm using Horner's method:
+      // ```
+      // let mut h = vec![E::Scalar::ZERO; d];
+      // for i in (1..d).rev() {
+      //   h[i - 1] = f[i] + h[i] * u;
+      // }
+      // ```
+      //
+      // The resulting polynomial h(x) satisfies: f(x) = h(x) * (x - u)
+      // The degree of h(x) is one less than the degree of f(x).
+      let div_by_monomial =
+        |f: &[E::Scalar], u: E::Scalar, target_chunks: usize| -> Vec<E::Scalar> {
+          assert!(!f.is_empty());
+          let target_chunk_size = f.len() / target_chunks;
+          let nu = target_chunk_size.max(1).ilog2();
+          let chunk_size = 1 << nu;
 
-      let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
-        let d = f.len();
+          let u_to_the_chunk_size = (0..nu).fold(u, |u_pow, _| u_pow * u_pow);
+          let mut result = f.to_vec();
+          result
+            .par_chunks_mut(chunk_size)
+            .zip(f.par_chunks(chunk_size))
+            .for_each(|(chunk, f_chunk)| {
+              for i in (0..chunk.len() - 1).rev() {
+                chunk[i] = f_chunk[i] + u * chunk[i + 1];
+              }
+            });
 
-        // Compute h(x) = f(x)/(x - u)
-        let mut h = vec![E::Scalar::ZERO; d];
-        for i in (1..d).rev() {
-          h[i - 1] = f[i] + h[i] * u;
-        }
+          let mut iter = result.chunks_mut(chunk_size).rev();
+          if let Some(last_chunk) = iter.next() {
+            let mut prev_partial = last_chunk[0];
+            for chunk in iter {
+              prev_partial = chunk[0] + u_to_the_chunk_size * prev_partial;
+              chunk[0] = prev_partial;
+            }
+          }
 
-        h
-      };
+          result[1..]
+            .par_chunks_exact_mut(chunk_size)
+            .rev()
+            .for_each(|chunk| {
+              let mut prev_partial = chunk[chunk_size - 1];
+              for e in chunk.iter_mut().rev().skip(1) {
+                prev_partial *= u;
+                *e += prev_partial;
+              }
+            });
+          result
+        };
 
-      let h = compute_witness_polynomial(f, u);
+      let target_chunks = 1 << 10;
+      let h = &div_by_monomial(f, u, target_chunks)[1..];
 
-      E::CE::commit(ck, &h, &E::Scalar::ZERO).comm.affine()
+      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
