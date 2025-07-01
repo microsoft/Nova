@@ -200,8 +200,8 @@ where
     let (x, y, is_infinity) = self.comm.to_coordinates();
 
     // we have to absorb x and y in big num format
-    let limbs_x = to_bignat_repr(&x);
-    let limbs_y = to_bignat_repr(&y);
+    let limbs_x = to_bignat_repr(&x).expect("Failed to convert x coordinate to bignat");
+    let limbs_y = to_bignat_repr(&y).expect("Failed to convert y coordinate to bignat");
 
     for limb in limbs_x.iter().chain(limbs_y.iter()) {
       ro.absorb(*limb);

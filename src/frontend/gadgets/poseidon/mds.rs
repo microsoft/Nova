@@ -23,7 +23,9 @@ pub struct MdsMatrices<F: PrimeField> {
   pub m_double_prime: Matrix<F>,
 }
 
-pub(crate) fn derive_mds_matrices<F: PrimeField>(m: Matrix<F>) -> Result<MdsMatrices<F>, NovaError> {
+pub(crate) fn derive_mds_matrices<F: PrimeField>(
+  m: Matrix<F>,
+) -> Result<MdsMatrices<F>, NovaError> {
   let m_inv = invert(&m).ok_or_else(|| NovaError::InvalidMatrix {
     reason: "MDS matrix is not invertible".to_string(),
   })?;
@@ -63,7 +65,7 @@ impl<F: PrimeField> SparseMatrix<F> {
         reason: "Matrix is not a valid sparse matrix".to_string(),
       });
     }
-    
+
     let size = matrix::rows(m_double_prime);
 
     let w_hat = (0..size).map(|i| m_double_prime[i][0]).collect::<Vec<_>>();
@@ -103,15 +105,17 @@ pub(crate) fn factor_to_sparse_matrices<F: PrimeField>(
   base_matrix: &Matrix<F>,
   n: usize,
 ) -> Result<(Matrix<F>, Vec<Matrix<F>>), NovaError> {
-  let (pre_sparse, mut all) =
-    (0..n).try_fold((base_matrix.clone(), Vec::new()), |(curr, mut acc), _| -> Result<_, NovaError> {
+  let (pre_sparse, mut all) = (0..n).try_fold(
+    (base_matrix.clone(), Vec::new()),
+    |(curr, mut acc), _| -> Result<_, NovaError> {
       let derived = derive_mds_matrices(curr)?;
       acc.push(derived.m_double_prime);
       let new = mat_mul(base_matrix, &derived.m_prime).ok_or_else(|| NovaError::InvalidMatrix {
         reason: "Matrix multiplication failed in sparse matrix factorization".to_string(),
       })?;
       Ok((new, acc))
-    })?;
+    },
+  )?;
   all.reverse();
   Ok((pre_sparse, all))
 }
@@ -151,7 +155,8 @@ pub(crate) fn generate_mds<F: PrimeField>(t: usize) -> Matrix<F> {
 }
 
 fn make_prime<F: PrimeField>(m: &Matrix<F>) -> Result<Matrix<F>, NovaError> {
-  let result = m.iter()
+  let result = m
+    .iter()
     .enumerate()
     .map(|(i, row)| match i {
       0 => {
@@ -169,11 +174,15 @@ fn make_prime<F: PrimeField>(m: &Matrix<F>) -> Result<Matrix<F>, NovaError> {
   Ok(result)
 }
 
-fn make_double_prime<F: PrimeField>(m: &Matrix<F>, m_hat_inv: &Matrix<F>) -> Result<Matrix<F>, NovaError> {
+fn make_double_prime<F: PrimeField>(
+  m: &Matrix<F>,
+  m_hat_inv: &Matrix<F>,
+) -> Result<Matrix<F>, NovaError> {
   let (v, w) = make_v_w(m);
   let w_hat = left_apply_matrix(m_hat_inv, &w)?;
 
-  let result = m.iter()
+  let result = m
+    .iter()
     .enumerate()
     .map(|(i, row)| match i {
       0 => {

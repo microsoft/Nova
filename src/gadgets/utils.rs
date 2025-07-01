@@ -2,6 +2,7 @@
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  errors::NovaError,
   frontend::{
     num::AllocatedNum, AllocatedBit, Assignment, Boolean, ConstraintSystem, LinearCombination,
     SynthesisError,
@@ -28,13 +29,16 @@ where
   let mut fe = Some(Scalar::ZERO);
   for bit in bits.iter() {
     lc = lc + (coeff, bit.get_variable());
-    fe = bit.get_value().map(|val| {
-      if val {
-        fe.unwrap() + coeff
-      } else {
-        fe.unwrap()
+    fe = match (fe, bit.get_value()) {
+      (Some(current_fe), Some(val)) => {
+        if val {
+          Some(current_fe + coeff)
+        } else {
+          Some(current_fe)
+        }
       }
-    });
+      _ => None,
+    };
     coeff = coeff.double();
   }
   let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
@@ -121,12 +125,20 @@ pub fn field_switch<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(x: F1) -> F
 }
 
 /// Provide a bignat representation of one field in another field
-pub fn to_bignat_repr<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(x: &F1) -> Vec<F2> {
-  let limbs: Vec<F1> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-  limbs
-    .iter()
-    .map(|limb| field_switch::<F1, F2>(*limb))
-    .collect()
+pub fn to_bignat_repr<F1: PrimeField + PrimeFieldBits, F2: PrimeField>(
+  x: &F1,
+) -> Result<Vec<F2>, NovaError> {
+  let limbs: Vec<F1> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).map_err(|_| {
+    NovaError::SynthesisError {
+      reason: "Failed to convert to limbs".to_string(),
+    }
+  })?;
+  Ok(
+    limbs
+      .iter()
+      .map(|limb| field_switch::<F1, F2>(*limb))
+      .collect(),
+  )
 }
 
 /// Allocate bignat a constant
@@ -136,7 +148,7 @@ pub fn alloc_bignat_constant<F: PrimeField, CS: ConstraintSystem<F>>(
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<BigNat<F>, SynthesisError> {
-  let limbs = nat_to_limbs(val, limb_width, n_limbs).unwrap();
+  let limbs = nat_to_limbs(val, limb_width, n_limbs)?;
   let bignat = BigNat::alloc_from_limbs(
     cs.namespace(|| "alloc bignat"),
     || Ok(limbs.clone()),
@@ -177,9 +189,13 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
     Ok(if *a.get_value().get()? == *b.get_value().get()? {
       F::ONE
     } else {
-      (*a.get_value().get()? - *b.get_value().get()?)
-        .invert()
-        .unwrap()
+      let diff = *a.get_value().get()? - *b.get_value().get()?;
+      let inv = diff.invert();
+      if inv.is_some().into() {
+        inv.unwrap()
+      } else {
+        return Err(SynthesisError::DivisionByZero);
+      }
     })
   })?;
 
@@ -250,7 +266,9 @@ pub fn conditionally_select_bignat<F: PrimeField, CS: ConstraintSystem<F>>(
   b: &BigNat<F>,
   condition: &Boolean,
 ) -> Result<BigNat<F>, SynthesisError> {
-  assert!(a.limbs.len() == b.limbs.len());
+  if a.limbs.len() != b.limbs.len() {
+    return Err(SynthesisError::Unsatisfiable);
+  }
   let c = BigNat::alloc_from_nat(
     cs.namespace(|| "conditional select result"),
     || {

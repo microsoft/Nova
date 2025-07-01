@@ -76,6 +76,7 @@ where
   /// Return API constants
   fn api_constants(strength: Strength) -> PoseidonConstants<F, A> {
     PoseidonConstants::new_with_strength_and_type(strength, HashType::Sponge)
+      .expect("Failed to create Poseidon constants for sponge API")
   }
 
   /// Return the mode of the sponge
@@ -320,11 +321,15 @@ impl<'a, F: PrimeField, A: Arity<F>> SpongeTrait<'a, F, A> for Sponge<'a, F, A> 
   }
 
   fn pad(&mut self) {
-    self.state.apply_padding();
+    // If apply_padding fails, we have an invalid state which should not happen
+    // in a correctly implemented sponge, so we can panic here as it's a programming error
+    self.state.apply_padding().expect("Poseidon padding failed");
   }
 
   fn permute_state(&mut self, _acc: &mut Self::Acc) -> Result<(), Self::Error> {
-    self.state.hash();
+    // Since PoseidonError is an empty enum, we can't actually create one
+    // If hash fails, we'll just panic for now since we can't return a PoseidonError
+    let _ = self.state.hash().expect("Poseidon hash failed");
     Ok(())
   }
 

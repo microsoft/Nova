@@ -3,8 +3,8 @@ use super::{
   mds::MdsMatrices,
   quintic_s_box,
 };
-use ff::PrimeField;
 use crate::errors::NovaError;
+use ff::PrimeField;
 
 // - Compress constants by pushing them back through linear layers and through the identity components of partial layers.
 // - As a result, constants need only be added after each S-box.
@@ -63,14 +63,17 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   // `round_acc` holds the accumulated result of inverting and adding subsequent round constants (in reverse).
   let round_acc = (0..partial_preprocessed)
     .map(|i| round_keys(final_round - i - 1))
-    .try_fold(final_round_key, |acc, previous_round_keys| -> Result<Vec<F>, NovaError> {
-      let mut inverted = left_apply_matrix(inverse_matrix, &acc)?;
+    .try_fold(
+      final_round_key,
+      |acc, previous_round_keys| -> Result<Vec<F>, NovaError> {
+        let mut inverted = left_apply_matrix(inverse_matrix, &acc)?;
 
-      partial_keys.push(inverted[0]);
-      inverted[0] = F::ZERO;
+        partial_keys.push(inverted[0]);
+        inverted[0] = F::ZERO;
 
-      Ok(vec_add(previous_round_keys, &inverted))
-    })?;
+        Ok(vec_add(previous_round_keys, &inverted))
+      },
+    )?;
 
   // Everything in here is dev-driven testing.
   // Dev test case only checks one deep.

@@ -1,8 +1,8 @@
 // Allow `&Matrix` in function signatures.
 #![allow(clippy::ptr_arg)]
 
-use ff::PrimeField;
 use crate::errors::NovaError;
+use ff::PrimeField;
 
 /// Matrix functions here are, at least for now, quick and dirty — intended only to support precomputation of poseidon optimization.
 ///
@@ -52,7 +52,7 @@ pub(crate) fn mat_mul<F: PrimeField>(a: &Matrix<F>, b: &Matrix<F>) -> Option<Mat
     Ok(cols) => cols,
     Err(_) => return None,
   };
-  
+
   if rows(a) != b_columns {
     return None;
   };
@@ -104,13 +104,16 @@ pub(crate) fn vec_sub<F: PrimeField>(a: &[F], b: &[F]) -> Vec<F> {
 }
 
 /// Left-multiply a vector by a square matrix of same size: MV where V is considered a column vector.
-pub(crate) fn left_apply_matrix<F: PrimeField>(m: &Matrix<F>, v: &[F]) -> Result<Vec<F>, NovaError> {
+pub(crate) fn left_apply_matrix<F: PrimeField>(
+  m: &Matrix<F>,
+  v: &[F],
+) -> Result<Vec<F>, NovaError> {
   if !is_square(m) {
     return Err(NovaError::InvalidMatrix {
       reason: "Only square matrix can be applied to vector".to_string(),
     });
   }
-  
+
   if rows(m) != v.len() {
     return Err(NovaError::InvalidMatrix {
       reason: "Matrix can only be applied to vector of same size".to_string(),
@@ -165,10 +168,10 @@ pub(crate) fn is_identity<F: PrimeField>(matrix: &Matrix<F>) -> bool {
     Ok(cols) => cols,
     Err(_) => return false,
   };
-  
-  for i in 0..rows(matrix) {
-    for j in 0..cols {
-      if matrix[i][j] != kronecker_delta(i, j) {
+
+  for (i, row) in matrix.iter().enumerate() {
+    for (j, &element) in row.iter().enumerate().take(cols) {
+      if element != kronecker_delta(i, j) {
         return false;
       }
     }
@@ -183,20 +186,24 @@ pub(crate) fn is_square<T>(matrix: &Matrix<T>) -> bool {
   }
 }
 
-pub(crate) fn minor<F: PrimeField>(matrix: &Matrix<F>, i: usize, j: usize) -> Result<Matrix<F>, NovaError> {
+pub(crate) fn minor<F: PrimeField>(
+  matrix: &Matrix<F>,
+  i: usize,
+  j: usize,
+) -> Result<Matrix<F>, NovaError> {
   if !is_square(matrix) {
     return Err(NovaError::InvalidMatrix {
       reason: "Matrix must be square for minor operation".to_string(),
     });
   }
-  
+
   let size = rows(matrix);
   if size == 0 {
     return Err(NovaError::InvalidMatrix {
       reason: "Matrix must be non-empty for minor operation".to_string(),
     });
   }
-  
+
   let new = matrix
     .iter()
     .enumerate()
@@ -210,13 +217,13 @@ pub(crate) fn minor<F: PrimeField>(matrix: &Matrix<F>, i: usize, j: usize) -> Re
       }
     })
     .collect();
-    
+
   if !is_square(&new) {
     return Err(NovaError::InvalidMatrix {
       reason: "Resulting minor matrix is not square".to_string(),
     });
   }
-  
+
   Ok(new)
 }
 
@@ -278,7 +285,7 @@ fn upper_triangular<F: PrimeField>(
   if !is_square(matrix) {
     return None;
   }
-  
+
   let mut result = Vec::with_capacity(matrix.len());
   let mut shadow_result = Vec::with_capacity(matrix.len());
 
@@ -321,10 +328,8 @@ fn reduce_to_identity<F: PrimeField>(
     let shadow_row = &shadow[idx];
 
     let val = row[idx];
-    let inv = match val.invert().into() {
-      Some(inv) => inv,
-      None => return None,
-    };
+    let inv_option: Option<F> = val.invert().into();
+    let inv = inv_option?;
 
     let mut normalized = scalar_vec_mul(inv, row);
     let mut shadow_normalized = scalar_vec_mul(inv, shadow_row);
