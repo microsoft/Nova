@@ -23,9 +23,9 @@ use ff::PrimeField;
 ///    next one. Note that cryptographically strong randomness is not needed for the
 ///    round constants, and other methods can also be used.
 ///
-/// Following https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/scripts/create_rcs_grain.sage
+/// Following https://extgit.isec.tugraz.at/krypto/hadeshash/blob/master/code/scripts/create_rcs_grain.sage
 /// The script was updated and can currently be found at:
-/// https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/generate_parameters_grain.sage
+/// https://extgit.isec.tugraz.at/krypto/hadeshash/blob/master/code/generate_parameters_grain.sage
 pub(crate) fn generate_constants<F: PrimeField>(
   field: u8,
   sbox: u8,
