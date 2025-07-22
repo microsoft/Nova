@@ -135,7 +135,7 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
       .sum();
 
     let common = (0..self.num_vars - 1 - num_vars_z)
-      .map(|i| (Scalar::ONE - r[i]))
+      .map(|i| Scalar::ONE - r[i])
       .product::<Scalar>();
 
     common * eval_partial
