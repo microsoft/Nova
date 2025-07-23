@@ -6,7 +6,7 @@ use crate::{
 };
 use core::{
   fmt::Debug,
-  ops::{Add, Mul, MulAssign},
+  ops::{Add, Mul, MulAssign, Range},
 };
 use num_integer::Integer;
 use num_traits::ToPrimitive;
@@ -94,6 +94,15 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     ck: &Self::CommitmentKey,
     v: &[T],
     r: &E::Scalar,
+  ) -> Self::Commitment;
+
+  /// Commits to the provided vector of "small" scalars (at most 64 bits) using the provided generators and random blind (range)
+  fn commit_small_range<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[T],
+    r: &E::Scalar,
+    range: Range<usize>,
+    max_num_bits: usize,
   ) -> Self::Commitment;
 
   /// Batch commits to the provided vectors of "small" scalars (at most 64 bits) using the provided generators and random blind

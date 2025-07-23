@@ -2,7 +2,7 @@
 use crate::{
   impl_traits,
   provider::{
-    msm::{msm, msm_small},
+    msm::{msm, msm_small, msm_small_with_max_num_bits},
     traits::{DlogGroup, DlogGroupExt, PairingGroup},
   },
   traits::{Group, PrimeFieldExt, TranscriptReprTrait},
@@ -52,6 +52,16 @@ impl DlogGroupExt for bn256::Point {
     bases: &[Self::AffineGroupElement],
   ) -> Self {
     msm_small(scalars, bases)
+  }
+
+  fn vartime_multiscalar_mul_small_with_max_num_bits<
+    T: Integer + Into<u64> + Copy + Sync + ToPrimitive,
+  >(
+    scalars: &[T],
+    bases: &[Self::AffineGroupElement],
+    max_num_bits: usize,
+  ) -> Self {
+    msm_small_with_max_num_bits(scalars, bases, max_num_bits)
   }
 
   #[cfg(feature = "blitzar")]

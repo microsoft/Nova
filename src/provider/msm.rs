@@ -139,9 +139,21 @@ pub fn msm_small<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrimit
   scalars: &[T],
   bases: &[C],
 ) -> C::Curve {
+  let max_num_bits = num_bits(scalars.iter().max().unwrap().to_usize().unwrap());
+  msm_small_with_max_num_bits(scalars, bases, max_num_bits)
+}
+
+/// Multi-scalar multiplication using the best algorithm for the given scalars.
+pub fn msm_small_with_max_num_bits<
+  C: CurveAffine,
+  T: Integer + Into<u64> + Copy + Sync + ToPrimitive,
+>(
+  scalars: &[T],
+  bases: &[C],
+  max_num_bits: usize,
+) -> C::Curve {
   assert_eq!(bases.len(), scalars.len());
 
-  let max_num_bits = num_bits(scalars.iter().max().unwrap().to_usize().unwrap());
   match max_num_bits {
     0 => C::identity().into(),
     1 => msm_binary(scalars, bases),
@@ -158,7 +170,7 @@ fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> 
     scalars
       .iter()
       .zip(bases.iter())
-      .filter(|(scalar, _)| (!scalar.is_zero()))
+      .filter(|(scalar, _)| !scalar.is_zero())
       .for_each(|(_, base)| {
         acc += *base;
       });
@@ -232,11 +244,15 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
     bases: &[C],
     max_num_bits: usize,
   ) -> C::Curve {
-    let c = if bases.len() < 32 {
+    let mut c = if bases.len() < 32 {
       3
     } else {
       compute_ln(bases.len()) + 2
     };
+
+    if max_num_bits == 32 || max_num_bits == 64 {
+      c = 8;
+    }
 
     let zero = C::Curve::identity();
 
