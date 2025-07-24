@@ -758,11 +758,11 @@ where
                 *e += prev_partial;
               }
             });
-          result
+          result[1..].to_vec()
         };
 
       let target_chunks = DEFAULT_TARGET_CHUNKS;
-      let h = &div_by_monomial(f, u, target_chunks)[1..];
+      let h = &div_by_monomial(f, u, target_chunks);
 
       E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
     };
