@@ -40,6 +40,9 @@ type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
 /// Alias to points on G1 that are in preprocessed form
 type G2Affine<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement;
 
+/// Default number of target chunks used in splitting up polynomial division in the kzg_open closure
+const DEFAULT_TARGET_CHUNKS: usize = 1 << 10;
+
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentKey<E: Engine>
@@ -758,7 +761,7 @@ where
           result
         };
 
-      let target_chunks = 1 << 10;
+      let target_chunks = DEFAULT_TARGET_CHUNKS;
       let h = &div_by_monomial(f, u, target_chunks)[1..];
 
       E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
