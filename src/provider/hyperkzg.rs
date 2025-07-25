@@ -728,7 +728,7 @@ where
           let log2_chunk_size = target_chunk_size.max(1).ilog2();
           let chunk_size = 1 << log2_chunk_size;
 
-          let u_to_the_chunk_size = (0..log2_chunk_size).fold(u, |u_pow, _| u_pow * u_pow);
+          let u_to_the_chunk_size = (0..log2_chunk_size).fold(u, |u_pow, _| u_pow.square());
           let mut result = f.to_vec();
           result
             .par_chunks_mut(chunk_size)
