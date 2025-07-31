@@ -74,6 +74,18 @@ pub enum NovaError {
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,
+  /// returned when matrix operations fail due to invalid dimensions or properties
+  #[error("InvalidMatrix: {reason}")]
+  InvalidMatrix {
+    /// The reason for the matrix operation failure
+    reason: String,
+  },
+  /// returned when attempting to invert a non-invertible element
+  #[error("InversionError: {reason}")]
+  InversionError {
+    /// The reason for the inversion failure
+    reason: String,
+  },
 }
 
 impl From<SynthesisError> for NovaError {
