@@ -1,6 +1,6 @@
 //! Support for generating R1CS
 //!
-//! Most of the code is ported from https://github.com/argumentcomputer/bellpepper.
+//! Most of the code is ported from <https://github.com/argumentcomputer/bellpepper>.
 
 pub mod gadgets;
 

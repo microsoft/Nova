@@ -2,8 +2,7 @@
 //! sparse multilinear polynomials involved in Spartan's sum-check protocol, thereby providing a preprocessing SNARK
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
-//! This code includes experimental optimizations to reduce runtimes and proof sizes.
-//! We have not yet proven the security of these optimizations, so this code is subject to significant changes in the future.
+//! The SNARK implemented here is described in the MicroNova paper.
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,

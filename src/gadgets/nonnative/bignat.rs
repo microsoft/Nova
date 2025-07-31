@@ -144,10 +144,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -196,10 +193,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               Ok(vs[limb_i])
             }
             // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::new(
-              std::io::ErrorKind::Other,
-              format!("{e}"),
-            ))),
+            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -642,8 +636,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           shift = Scalar::ONE;
         }
         limbs[i / limbs_per_group] =
-          std::mem::replace(&mut limbs[i / limbs_per_group], LinearCombination::zero())
-            + (shift, limb);
+          std::mem::take(&mut limbs[i / limbs_per_group]) + (shift, limb);
         shift.mul_assign(&limb_block);
       }
       limbs
@@ -834,7 +827,7 @@ mod tests {
     circuit.synthesize(&mut cs).expect("synthesis failed");
 
     if let Some(token) = cs.which_is_unsatisfied() {
-      eprintln!("Error: {} is unsatisfied", token);
+      eprintln!("Error: {token} is unsatisfied");
     }
   }
 

@@ -62,7 +62,7 @@ fn write_header<Base: PrimeField>(
 
   writer.write_u32::<LittleEndian>(N8 as u32)?;
 
-  let modulus = BigUint::parse_bytes(Base::MODULUS[2..].as_bytes(), 16).unwrap();
+  let modulus = BigUint::parse_bytes(&Base::MODULUS.as_bytes()[2..], 16).unwrap();
   let mut bytes = [0u8; N8];
   bytes.copy_from_slice(&modulus.to_bytes_le());
   writer.write_all(&bytes)?;
@@ -211,7 +211,7 @@ fn read_header<Base: PrimeField>(
 
     let modulus = BigUint::from_bytes_le(&buf);
 
-    let modulus_expected = BigUint::parse_bytes(Base::MODULUS[2..].as_bytes(), 16).unwrap();
+    let modulus_expected = BigUint::parse_bytes(&Base::MODULUS.as_bytes()[2..], 16).unwrap();
 
     if modulus != modulus_expected {
       return Err(PtauFileError::InvalidPrime(modulus));

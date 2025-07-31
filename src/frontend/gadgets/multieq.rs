@@ -1,7 +1,10 @@
+//! Gadgets for enforcing multiple equalities in a single constraint.
+
 use ff::PrimeField;
 
 use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
 
+/// A gadget for efficiently enforcing multiple equalities in a single constraint system.
 #[derive(Debug)]
 pub struct MultiEq<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> {
   cs: CS,
@@ -12,6 +15,7 @@ pub struct MultiEq<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> {
 }
 
 impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
+  /// Creates a new `MultiEq` gadget with the given constraint system.
   pub fn new(cs: CS) -> Self {
     MultiEq {
       cs,
@@ -27,7 +31,7 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     let lhs = self.lhs.clone();
     let rhs = self.rhs.clone();
     self.cs.enforce(
-      || format!("multieq {}", ops),
+      || format!("multieq {ops}"),
       |_| lhs,
       |lc| lc + CS::one(),
       |_| rhs,
@@ -38,6 +42,8 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     self.ops += 1;
   }
 
+  /// Enforces that the given left-hand side and right-hand side linear combinations
+  /// are equal for the specified number of bits.
   pub fn enforce_equal(
     &mut self,
     num_bits: usize,

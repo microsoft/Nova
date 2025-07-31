@@ -1,4 +1,4 @@
-//! The underlying Poseidon sponge code is ported from https://github.com/argumentcomputer/neptune.
+//! The underlying Poseidon sponge code is ported from <https://github.com/argumentcomputer/neptune>.
 use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 

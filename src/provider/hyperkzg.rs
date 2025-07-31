@@ -41,6 +41,9 @@ type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
 /// Alias to points on G1 that are in preprocessed form
 type G2Affine<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement;
 
+/// Default number of target chunks used in splitting up polynomial division in the kzg_open closure
+const DEFAULT_TARGET_CHUNKS: usize = 1 << 10;
+
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentKey<E: Engine>
@@ -487,8 +490,8 @@ where
     let h = <E::GE as DlogGroup>::group(&ck.h);
 
     E::GE::batch_vartime_multiscalar_mul(v, &ck.ck[..max])
-      .iter()
-      .zip(r.iter())
+      .par_iter()
+      .zip(r.par_iter())
       .map(|(commit, r_i)| Commitment {
         comm: *commit + (h * r_i),
       })
@@ -719,35 +722,72 @@ where
 
     //////////////// begin helper closures //////////
     let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
-      // On input f(x) and u compute the witness polynomial used to prove
-      // that f(u) = v. The main part of this is to compute the
-      // division (f(x) - f(u)) / (x - u), but we don't use a general
-      // division algorithm, we make use of the fact that the division
-      // never has a remainder, and that the denominator is always a linear
-      // polynomial. The cost is (d-1) mults + (d-1) adds in E::Scalar, where
-      // d is the degree of f.
+      // Divides polynomial f(x) by (x - u) to obtain the witness polynomial h(x) = f(x)/(x - u)
+      // for KZG opening.
       //
-      // We use the fact that if we compute the quotient of f(x)/(x-u),
-      // there will be a remainder, but it'll be v = f(u).  Put another way
-      // the quotient of f(x)/(x-u) and (f(x) - f(v))/(x-u) is the
-      // same.  One advantage is that computing f(u) could be decoupled
-      // from kzg_open, it could be done later or separate from computing W.
+      // This implementation uses a chunking strategy to enable parallelization:
+      // - Divides the polynomial into chunks
+      // - Processes chunks in parallel using Rayon's par_chunks_exact_mut
+      // - Within each chunk, maintains a "running" partial result
+      // - Combines results across chunk boundaries
+      //
+      // While this adds more total computation than the standard Horner's method,
+      // the parallel execution provides significant speedup for large polynomials.
+      //
+      // Original sequential algorithm using Horner's method:
+      // ```
+      // let mut h = vec![E::Scalar::ZERO; d];
+      // for i in (1..d).rev() {
+      //   h[i - 1] = f[i] + h[i] * u;
+      // }
+      // ```
+      //
+      // The resulting polynomial h(x) satisfies: f(x) = h(x) * (x - u)
+      // The degree of h(x) is one less than the degree of f(x).
+      let div_by_monomial =
+        |f: &[E::Scalar], u: E::Scalar, target_chunks: usize| -> Vec<E::Scalar> {
+          assert!(!f.is_empty());
+          let target_chunk_size = f.len() / target_chunks;
+          let log2_chunk_size = target_chunk_size.max(1).ilog2();
+          let chunk_size = 1 << log2_chunk_size;
 
-      let compute_witness_polynomial = |f: &[E::Scalar], u: E::Scalar| -> Vec<E::Scalar> {
-        let d = f.len();
+          let u_to_the_chunk_size = (0..log2_chunk_size).fold(u, |u_pow, _| u_pow.square());
+          let mut result = f.to_vec();
+          result
+            .par_chunks_mut(chunk_size)
+            .zip(f.par_chunks(chunk_size))
+            .for_each(|(chunk, f_chunk)| {
+              for i in (0..chunk.len() - 1).rev() {
+                chunk[i] = f_chunk[i] + u * chunk[i + 1];
+              }
+            });
 
-        // Compute h(x) = f(x)/(x - u)
-        let mut h = vec![E::Scalar::ZERO; d];
-        for i in (1..d).rev() {
-          h[i - 1] = f[i] + h[i] * u;
-        }
+          let mut iter = result.chunks_mut(chunk_size).rev();
+          if let Some(last_chunk) = iter.next() {
+            let mut prev_partial = last_chunk[0];
+            for chunk in iter {
+              prev_partial = chunk[0] + u_to_the_chunk_size * prev_partial;
+              chunk[0] = prev_partial;
+            }
+          }
 
-        h
-      };
+          result[1..]
+            .par_chunks_exact_mut(chunk_size)
+            .rev()
+            .for_each(|chunk| {
+              let mut prev_partial = chunk[chunk_size - 1];
+              for e in chunk.iter_mut().rev().skip(1) {
+                prev_partial *= u;
+                *e += prev_partial;
+              }
+            });
+          result[1..].to_vec()
+        };
 
-      let h = compute_witness_polynomial(f, u);
+      let target_chunks = DEFAULT_TARGET_CHUNKS;
+      let h = &div_by_monomial(f, u, target_chunks);
 
-      E::CE::commit(ck, &h, &E::Scalar::ZERO).comm.affine()
+      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -755,22 +795,20 @@ where
                           transcript: &mut <E as Engine>::TE|
      -> (Vec<G1Affine<E>>, Vec<[E::Scalar; 3]>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
-        let mut v = f[0];
-        let mut u_power = E::Scalar::ONE;
-
-        for fi in f.iter().skip(1) {
-          u_power *= u;
-          v += u_power * fi;
+        // Horner's method
+        let mut acc = E::Scalar::ZERO;
+        for &fi in f.iter().rev() {
+          acc = acc * u + fi;
         }
 
-        v
+        acc
       };
 
       let scalar_vector_muladd = |a: &mut Vec<E::Scalar>, v: &Vec<E::Scalar>, s: E::Scalar| {
         assert!(a.len() >= v.len());
-        for i in 0..v.len() {
-          a[i] += s * v[i];
-        }
+        a.par_iter_mut().zip(v.par_iter()).for_each(|(a_i, v_i)| {
+          *a_i += s * *v_i;
+        });
       };
 
       let kzg_compute_batch_polynomial = |f: &[Vec<E::Scalar>], q: E::Scalar| -> Vec<E::Scalar> {
@@ -846,7 +884,7 @@ where
     // Compute commitments in parallel
     let r = vec![E::Scalar::ZERO; ell - 1];
     let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
-      .iter()
+      .par_iter()
       .map(|i| i.comm.affine())
       .collect();
 
@@ -880,12 +918,6 @@ where
     // we do not need to add x to the transcript, because in our context x was
     // obtained from the transcript
     let r = Self::compute_challenge(&pi.com, transcript);
-
-    if r == E::Scalar::ZERO || C.comm == E::GE::zero() {
-      return Err(NovaError::ProofVerifyError {
-        reason: "r is zero or commitment is zero".to_string(),
-      });
-    }
 
     let u = [r, -r, r * r];
 

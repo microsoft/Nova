@@ -1,4 +1,4 @@
-//! Circuit representation of a [`u32`], with helpers for the [`sha256`]
+//! Circuit representation of a [`u32`], with helpers for the sha256
 //! gadgets.
 
 use ff::PrimeField;
@@ -41,12 +41,14 @@ impl UInt32 {
     }
   }
 
+  /// Returns the bits of this `UInt32` in big-endian order
   pub fn into_bits_be(self) -> Vec<Boolean> {
     let mut ret = self.bits;
     ret.reverse();
     ret
   }
 
+  /// Constructs a `UInt32` from a slice of 32 `Boolean` bits in big-endian order.
   pub fn from_bits_be(bits: &[Boolean]) -> Self {
     assert_eq!(bits.len(), 32);
 
@@ -75,6 +77,7 @@ impl UInt32 {
     }
   }
 
+  /// Returns a new `UInt32` with its bits rotated right by `by` positions.
   pub fn rotr(&self, by: usize) -> Self {
     let by = by % 32;
 
@@ -93,6 +96,7 @@ impl UInt32 {
     }
   }
 
+  /// Returns a new `UInt32` with its bits shifted right by `by` positions, filling with zeros.
   pub fn shr(&self, by: usize) -> Self {
     let by = by % 32;
 
@@ -165,7 +169,7 @@ impl UInt32 {
       b,
       c,
       |a, b, c| (a & b) ^ (a & c) ^ (b & c),
-      |cs, i, a, b, c| Boolean::sha256_maj(cs.namespace(|| format!("maj {}", i)), a, b, c),
+      |cs, i, a, b, c| Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c),
     )
   }
 
@@ -182,7 +186,7 @@ impl UInt32 {
       b,
       c,
       |a, b, c| (a & b) ^ ((!a) & c),
-      |cs, i, a, b, c| Boolean::sha256_ch(cs.namespace(|| format!("ch {}", i)), a, b, c),
+      |cs, i, a, b, c| Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c),
     )
   }
 
@@ -202,7 +206,7 @@ impl UInt32 {
       .iter()
       .zip(other.bits.iter())
       .enumerate()
-      .map(|(i, (a, b))| Boolean::xor(cs.namespace(|| format!("xor of bit {}", i)), a, b))
+      .map(|(i, (a, b))| Boolean::xor(cs.namespace(|| format!("xor of bit {i}")), a, b))
       .collect::<Result<_, _>>()?;
 
     Ok(UInt32 {
@@ -289,7 +293,7 @@ impl UInt32 {
     while max_value != 0 {
       // Allocate the bit
       let b = AllocatedBit::alloc(
-        cs.namespace(|| format!("result bit {}", i)),
+        cs.namespace(|| format!("result bit {i}")),
         result_value.map(|v| (v >> i) & 1 == 1),
       )?;
 
