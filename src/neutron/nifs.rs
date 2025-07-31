@@ -620,7 +620,7 @@ mod benchmarks {
     }
   }
 
-  fn generarate_sha_r1cs<E: Engine>(
+  fn generate_sha_r1cs<E: Engine>(
     len: usize,
   ) -> (
     R1CSShape<E>,
@@ -655,7 +655,7 @@ mod benchmarks {
       })
       .collect::<Vec<_>>();
 
-    // sanity check by recommiting to w
+    // sanity check by recommitting to w
     let comm_W = <E as Engine>::CE::commit_small(&ck, &w, &W.r_W);
     assert_eq!(comm_W, U.comm_W);
 
@@ -734,7 +734,7 @@ mod benchmarks {
 
     let mut criterion = Criterion::default();
     for len in [1024, 2048].iter() {
-      let (S, ck, W, w, x) = generarate_sha_r1cs::<E>(*len);
+      let (S, ck, W, w, x) = generate_sha_r1cs::<E>(*len);
       bench_nifs_inner(&mut criterion, &"sha256", &S, &ck, &W, &w, &x);
     }
   }
