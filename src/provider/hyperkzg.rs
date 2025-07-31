@@ -24,6 +24,7 @@ use crate::{
 use core::{
   iter,
   marker::PhantomData,
+  ops::Range,
   ops::{Add, Mul, MulAssign},
   slice,
 };
@@ -556,6 +557,28 @@ where
     let h = *E::GE::from_label(label, 1).first().unwrap();
 
     Ok(CommitmentKey { ck, h, tau_H })
+  }
+
+  fn commit_small_range<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    ck: &Self::CommitmentKey,
+    v: &[T],
+    r: &<E as Engine>::Scalar,
+    range: Range<usize>,
+    max_num_bits: usize,
+  ) -> Self::Commitment {
+    let bases = &ck.ck[range.clone()];
+    let scalars = &v[range];
+
+    assert!(bases.len() == scalars.len());
+
+    let mut res =
+      E::GE::vartime_multiscalar_mul_small_with_max_num_bits(scalars, bases, max_num_bits);
+
+    if r != &E::Scalar::ZERO {
+      res += <E::GE as DlogGroup>::group(&ck.h) * r;
+    }
+
+    Commitment { comm: res }
   }
 }
 
