@@ -1040,7 +1040,6 @@ mod tests {
     provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
     spartan::polys::multilinear::MultilinearPolynomial,
   };
-  use bincode::Options;
   use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
@@ -1133,11 +1132,11 @@ mod tests {
     // check if the prover transcript and verifier transcript are kept in the same state
     assert_eq!(post_c_p, post_c_v);
 
-    let proof_bytes = bincode::DefaultOptions::new()
+    let config = bincode::config::legacy()
       .with_big_endian()
-      .with_fixint_encoding()
-      .serialize(&proof)
-      .unwrap();
+      .with_fixed_int_encoding();
+    let proof_bytes =
+      bincode::serde::encode_to_vec(&proof, config).expect("Failed to serialize proof");
     assert_eq!(proof_bytes.len(), 336);
 
     // Change the proof and expect verification to fail
