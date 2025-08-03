@@ -37,15 +37,26 @@ use crate::{
 
 // Transcript absorb/squeeze labels used by both prover and verifier
 mod transcript_labels {
-  pub const LABEL_F_H: &[u8] = b"f";
-  pub const LABEL_G_Q: &[u8] = b"g";
-  pub const LABEL_H_ALPHA: &[u8] = b"h";
-  pub const LABEL_S_D: &[u8] = b"d";
-  pub const LABEL_QUOT_F: &[u8] = b"qf";
+  pub const LABEL_F: &[u8] = b"f";
+  pub const LABEL_U: &[u8] = b"u";
+  pub const LABEL_E: &[u8] = b"e";
+  pub const LABEL_H: &[u8] = b"h";
+  pub const LABEL_Q: &[u8] = b"q";
+  pub const LABEL_G: &[u8] = b"g";
+  pub const LABEL_S: &[u8] = b"s";
+  pub const LABEL_D: &[u8] = b"d";
+  pub const LABEL_QUOT_F: &[u8] = b"t";
+  pub const LABEL_GZ: &[u8] = b"gz";
+  pub const LABEL_GZI: &[u8] = b"gzi";
+  pub const LABEL_HZ: &[u8] = b"hz";
+  pub const LABEL_HZI: &[u8] = b"hzi";
+  pub const LABEL_SZ: &[u8] = b"sz";
+  pub const LABEL_SZI: &[u8] = b"szi";
+  pub const LABEL_DZ: &[u8] = b"db";
   pub const LABEL_QUOT_M: &[u8] = b"qm";
 
   pub const LABEL_ALPHA: &[u8] = b"a";
-  pub const LABEL_GAMMA: &[u8] = b"g";
+  pub const LABEL_GAMMA: &[u8] = b"gm";
   pub const LABEL_ZETA: &[u8] = b"zt";
   pub const LABEL_BETA: &[u8] = b"b";
   pub const LABEL_Z: &[u8] = b"z";
@@ -399,11 +410,15 @@ where
     comm: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
     poly: &[E::Scalar],
     point: &[E::Scalar],
-    _eval: &E::Scalar,
+    eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
     use transcript_labels::*;
 
     let comm_f = comm;
+
+    transcript.absorb(LABEL_F, &[*comm_f].to_vec().as_slice());
+    transcript.absorb(LABEL_U, &point.to_vec().as_slice());
+    transcript.absorb(LABEL_E, &[*eval].to_vec().as_slice());
 
     let original_size = poly.len();
 
@@ -470,17 +485,13 @@ where
         .map(|(a, b)| *a * *b)
         .sum::<E::Scalar>();
 
-      assert_eq!(inner_product, *_eval);
+      assert_eq!(inner_product, *eval);
     }
 
     let comm_h = E::CE::commit(ck, &h_poly.coeffs, &E::Scalar::ZERO);
-    transcript.absorb(LABEL_F_H, &[*comm_f, comm_h].to_vec().as_slice());
+    transcript.absorb(LABEL_H, &[comm_h].to_vec().as_slice());
 
     let alpha = transcript.squeeze(LABEL_ALPHA)?;
-
-    let h_alpha = h_poly.evaluate(&alpha);
-
-    transcript.absorb(LABEL_H_ALPHA, &h_alpha);
 
     // Get q(X) and g(X)
     let (mut q_poly, g_poly) = divide_by_binomial(&f_poly, b, b, &alpha);
@@ -537,11 +548,14 @@ where
       || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
     );
 
-    transcript.absorb(LABEL_G_Q, &[comm_g, comm_q].to_vec().as_slice());
+    transcript.absorb(LABEL_Q, &[comm_q].to_vec().as_slice());
+    transcript.absorb(LABEL_G, &[comm_g].to_vec().as_slice());
 
     #[cfg(debug_assertions)]
     {
       // Check g eq_evals_col ipa vs h_alpha
+      let h_alpha = h_poly.evaluate(&alpha);
+
       let ip = eq_col
         .iter()
         .zip(g_poly.coeffs.iter())
@@ -576,13 +590,15 @@ where
       let pu_row_r = eval_pu_poly(&u_row, &r);
       let pu_row_r_inv = eval_pu_poly(&u_row, &r_inv);
 
+      let h_alpha = h_poly.evaluate(&alpha);
+
       let s_r = s_poly.evaluate(&r);
       let s_r_inv = s_poly.evaluate(&r_inv);
 
       let mut lhs = g_r * pu_col_r_inv + g_r_inv * pu_col_r;
       lhs += gamma * (h_r * pu_row_r_inv + h_r_inv * pu_row_r);
 
-      let mut rhs = h_alpha + gamma * _eval;
+      let mut rhs = h_alpha + gamma * eval;
       rhs += rhs;
       rhs += r * s_r + r_inv * s_r_inv;
 
@@ -606,7 +622,8 @@ where
       || E::CE::commit(ck, &d_poly.coeffs, &E::Scalar::ZERO),
     );
 
-    transcript.absorb(LABEL_S_D, &[comm_s, comm_d].to_vec().as_slice());
+    transcript.absorb(LABEL_S, &[comm_s].to_vec().as_slice());
+    transcript.absorb(LABEL_D, &[comm_d].to_vec().as_slice());
 
     let zeta = transcript.squeeze(LABEL_ZETA)?;
 
@@ -713,6 +730,13 @@ where
     };
 
     transcript.absorb(LABEL_QUOT_F, &[comm_quot_f].to_vec().as_slice());
+    transcript.absorb(LABEL_GZ, &[g_zeta].to_vec().as_slice());
+    transcript.absorb(LABEL_GZI, &[g_zeta_inv].to_vec().as_slice());
+    transcript.absorb(LABEL_HZ, &[h_zeta].to_vec().as_slice());
+    transcript.absorb(LABEL_HZI, &[h_zeta_inv].to_vec().as_slice());
+    transcript.absorb(LABEL_SZ, &[s_zeta].to_vec().as_slice());
+    transcript.absorb(LABEL_SZI, &[s_zeta_inv].to_vec().as_slice());
+    transcript.absorb(LABEL_DZ, &[d_zeta].to_vec().as_slice());
 
     let beta = transcript.squeeze(LABEL_BETA)?;
     let beta_2 = beta * beta;
@@ -895,6 +919,47 @@ where
 
     let comm_f = comm;
 
+    let (alpha, gamma, zeta, beta, z) = {
+      transcript.absorb(LABEL_F, &[*comm_f].to_vec().as_slice());
+
+      transcript.absorb(LABEL_U, &point.to_vec().as_slice());
+
+      transcript.absorb(LABEL_E, &[*eval].to_vec().as_slice());
+
+      transcript.absorb(LABEL_H, &[arg.comm_h].to_vec().as_slice());
+
+      let alpha = transcript.squeeze(LABEL_ALPHA)?;
+
+      transcript.absorb(LABEL_Q, &[arg.comm_q].to_vec().as_slice());
+
+      transcript.absorb(LABEL_G, &[arg.comm_g].to_vec().as_slice());
+
+      let gamma = transcript.squeeze(LABEL_GAMMA)?;
+
+      transcript.absorb(LABEL_S, &[arg.comm_s].to_vec().as_slice());
+
+      transcript.absorb(LABEL_D, &[arg.comm_d].to_vec().as_slice());
+
+      let zeta = transcript.squeeze(LABEL_ZETA)?;
+
+      transcript.absorb(LABEL_QUOT_F, &[arg.comm_quot_f].to_vec().as_slice());
+      transcript.absorb(LABEL_GZ, &[arg.g_zeta].to_vec().as_slice());
+      transcript.absorb(LABEL_GZI, &[arg.g_zeta_inv].to_vec().as_slice());
+      transcript.absorb(LABEL_HZ, &[arg.h_zeta].to_vec().as_slice());
+      transcript.absorb(LABEL_HZI, &[arg.h_zeta_inv].to_vec().as_slice());
+      transcript.absorb(LABEL_SZ, &[arg.s_zeta].to_vec().as_slice());
+      transcript.absorb(LABEL_SZI, &[arg.s_zeta_inv].to_vec().as_slice());
+      transcript.absorb(LABEL_DZ, &[arg.d_zeta].to_vec().as_slice());
+
+      let beta = transcript.squeeze(LABEL_BETA)?;
+
+      transcript.absorb(LABEL_QUOT_M, &[arg.comm_quot_m].to_vec().as_slice());
+
+      let z = transcript.squeeze(LABEL_Z)?;
+
+      (alpha, gamma, zeta, beta, z)
+    };
+
     let point = {
       let log_n = point.len();
       let mut point = point.to_vec();
@@ -904,31 +969,6 @@ where
       }
 
       point
-    };
-
-    let (alpha, gamma, zeta, beta, z) = {
-      transcript.absorb(LABEL_F_H, &[*comm_f, arg.comm_h].to_vec().as_slice());
-
-      let alpha = transcript.squeeze(LABEL_ALPHA)?;
-
-      transcript.absorb(LABEL_H_ALPHA, &arg.h_alpha);
-      transcript.absorb(LABEL_G_Q, &[arg.comm_g, arg.comm_q].to_vec().as_slice());
-
-      let gamma = transcript.squeeze(LABEL_GAMMA)?;
-
-      transcript.absorb(LABEL_S_D, &[arg.comm_s, arg.comm_d].to_vec().as_slice());
-
-      let zeta = transcript.squeeze(LABEL_ZETA)?;
-
-      transcript.absorb(LABEL_QUOT_F, &[arg.comm_quot_f].to_vec().as_slice());
-
-      let beta = transcript.squeeze(LABEL_BETA)?;
-
-      transcript.absorb(LABEL_QUOT_M, &[arg.comm_quot_m].to_vec().as_slice());
-
-      let z = transcript.squeeze(LABEL_Z)?;
-
-      (alpha, gamma, zeta, beta, z)
     };
 
     let log_n = point.len();
@@ -1055,7 +1095,7 @@ where
     };
 
     // Check Pairing
-    let d = transcript.squeeze(LABEL_S_D)?;
+    let d = E::Scalar::random(rand_core::OsRng);
 
     let ll = ll1 + ll2 * d;
     let rl = rl1 + rl2 * d;
@@ -1076,9 +1116,11 @@ where
 #[cfg(test)]
 mod tests {
   use ff::Field;
+  use halo2curves::bn256::{G1Affine, G2Affine};
   use rand_core::OsRng;
   use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
+  use crate::provider::traits::DlogGroup;
   use crate::spartan::polys::multilinear::MultilinearPolynomial;
   use crate::traits::commitment::CommitmentEngineTrait;
   use crate::traits::evaluation::EvaluationEngineTrait;
@@ -1111,6 +1153,8 @@ mod tests {
 
     let comm = <E as Engine>::CE::commit(&ck, &poly.coeffs, &F::ZERO);
 
+    let start = std::time::Instant::now();
+
     let arg = EE::prove(
       &ck,
       &pk,
@@ -1122,9 +1166,45 @@ mod tests {
     )
     .unwrap();
 
+    let dur = start.elapsed();
+    println!("MC Prove time: {:?}", dur);
+
     let mut transcript = <E as Engine>::TE::new(b"test");
 
     assert!(EE::verify(&vk, &mut transcript, &comm, &point, &eval, &arg).is_ok());
+
+    {
+      let mut transcript = <E as Engine>::TE::new(b"test");
+
+      let (pk, vk) = crate::provider::hyperkzg::EvaluationEngine::setup(&ck);
+
+      let start = std::time::Instant::now();
+      let arg = crate::provider::hyperkzg::EvaluationEngine::<E>::prove(
+        &ck,
+        &pk,
+        &mut transcript,
+        &comm,
+        &poly.coeffs,
+        &point,
+        &eval,
+      )
+      .unwrap();
+
+      let dur = start.elapsed();
+      println!("HyperKZG Prove time: {:?}", dur);
+
+      let mut transcript = <E as Engine>::TE::new(b"test");
+
+      assert!(crate::provider::hyperkzg::EvaluationEngine::verify(
+        &vk,
+        &mut transcript,
+        &comm,
+        &point,
+        &eval,
+        &arg
+      )
+      .is_ok());
+    }
 
     arg
   }
@@ -1137,5 +1217,154 @@ mod tests {
   #[test]
   fn test_mercury_evaluation_engine_16() {
     prove_and_verify::<EE>(16);
+  }
+
+  #[test]
+  fn test_mercury_speed() {
+    for log_n in 2..=23 {
+      println!("log_n: {}", log_n);
+      prove_and_verify::<EE>(log_n);
+    }
+  }
+
+  #[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+  pub struct Bn256EngineKZG2;
+
+  impl Engine for Bn256EngineKZG2 {
+    type Base = crate::provider::bn256::Base;
+    type Scalar = crate::provider::bn256::Scalar;
+    type GE = crate::provider::bn256::Point;
+    type RO = crate::provider::PoseidonRO<Self::Base>;
+    type ROCircuit = crate::provider::PoseidonROCircuit<Self::Base>;
+    type RO2 = crate::provider::PoseidonRO<Self::Scalar>;
+    type RO2Circuit = crate::provider::PoseidonROCircuit<Self::Scalar>;
+    type TE = MockedTranscript;
+    type CE = crate::provider::HyperKZGCommitmentEngine<Self>;
+  }
+
+  #[derive(Debug, Clone)]
+  pub struct MockedTranscript {
+    next: u64,
+  }
+
+  impl<E: Engine> TranscriptEngineTrait<E> for MockedTranscript {
+    fn new(_label: &'static [u8]) -> Self {
+      Self { next: 12 }
+    }
+
+    fn squeeze(
+      &mut self,
+      _label: &'static [u8],
+    ) -> Result<E::Scalar, crate::provider::mercury::NovaError> {
+      self.next += 1;
+      Ok(E::Scalar::from(self.next))
+    }
+
+    fn absorb<T: crate::traits::TranscriptReprTrait<E::GE>>(
+      &mut self,
+      _label: &'static [u8],
+      _o: &T,
+    ) {
+    }
+
+    fn dom_sep(&mut self, _bytes: &'static [u8]) {}
+  }
+
+  #[test]
+  fn test_mercury_with_fixed_transcript_and_key() {
+    type E = Bn256EngineKZG2;
+    type EE = super::EvaluationEngine<E>;
+
+    // log_n = 4, so n = 16
+    let log_n = 4;
+    let n = 1 << log_n;
+
+    // Create polynomial with evals [12..=27]
+    let poly_coeffs: Vec<F> = (12u64..=27u64).map(F::from).collect();
+    assert_eq!(poly_coeffs.len(), 16);
+
+    // Evaluation point [22, 23, 24, 25] (converted to field elements)
+    let point: Vec<F> = [22u64, 23u64, 24u64, 25u64]
+      .iter()
+      .map(|&x| F::from(x))
+      .collect();
+    assert_eq!(point.len(), log_n);
+
+    // Create commitment key with fixed seed for deterministic tau values
+    let ck = {
+      let tau = F::from(2);
+
+      let powers_of_tau = (0..n)
+        .into_par_iter()
+        .map(|i| tau.pow([i as u64]))
+        .collect::<Vec<_>>();
+
+      let ck: Vec<G1Affine> = (0..n)
+        .into_par_iter()
+        .map(|i| (G1Affine::generator() * powers_of_tau[i]).affine())
+        .collect();
+
+      let h = G1Affine::generator();
+
+      let tau_h = (G2Affine::generator() * tau).affine();
+
+      crate::provider::hyperkzg::CommitmentKey::new(ck, h, tau_h)
+    };
+
+    let (pk, vk) = EE::setup(&ck);
+
+    // Calculate the expected evaluation
+    let eval = MultilinearPolynomial::new(poly_coeffs.clone()).evaluate(&point);
+
+    let comm = <E as Engine>::CE::commit(&ck, &poly_coeffs, &F::ZERO);
+
+    println!("=== Fixed Test Results ===");
+    println!("Polynomial coeffs: {:?}", poly_coeffs);
+    println!("Evaluation point: {:?}", point);
+    println!("Expected evaluation: {:?}", eval);
+    println!("Commitment: {:?}", comm);
+
+    // Use deterministic transcript with fixed label for reproducible results
+    let mut transcript = MockedTranscript { next: 12 };
+
+    match EE::prove(
+      &ck,
+      &pk,
+      &mut transcript,
+      &comm,
+      &poly_coeffs,
+      &point,
+      &eval,
+    ) {
+      Ok(arg) => {
+        println!("Evaluation argument created successfully:");
+        println!("  comm_h: {:?}", arg.comm_h);
+        println!("  comm_g: {:?}", arg.comm_g);
+        println!("  comm_q: {:?}", arg.comm_q);
+        println!("  comm_s: {:?}", arg.comm_s);
+        println!("  comm_d: {:?}", arg.comm_d);
+        println!("  comm_quot_m: {:?}", arg.comm_quot_m);
+        println!("  comm_quot_l: {:?}", arg.comm_quot_l);
+        println!("  comm_quot_f: {:?}", arg.comm_quot_f);
+        println!("  g_zeta: {:?}", arg.g_zeta);
+        println!("  g_zeta_inv: {:?}", arg.g_zeta_inv);
+        println!("  h_zeta: {:?}", arg.h_zeta);
+        println!("  h_zeta_inv: {:?}", arg.h_zeta_inv);
+        println!("  h_alpha: {:?}", arg.h_alpha);
+        println!("  s_zeta: {:?}", arg.s_zeta);
+        println!("  s_zeta_inv: {:?}", arg.s_zeta_inv);
+        println!("  d_zeta: {:?}", arg.d_zeta);
+
+        // Now verify the argument
+        let mut verify_transcript = MockedTranscript { next: 12 };
+        match EE::verify(&vk, &mut verify_transcript, &comm, &point, &eval, &arg) {
+          Ok(()) => println!("Verification succeeded!"),
+          Err(e) => println!("Verification failed: {:?}", e),
+        }
+      }
+      Err(e) => {
+        println!("Failed to create evaluation argument: {:?}", e);
+      }
+    }
   }
 }
