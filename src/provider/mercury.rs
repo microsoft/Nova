@@ -35,6 +35,22 @@ use crate::{
   },
 };
 
+// Transcript absorb/squeeze labels used by both prover and verifier
+mod transcript_labels {
+  pub const LABEL_F_H: &[u8] = b"f";
+  pub const LABEL_G_Q: &[u8] = b"g";
+  pub const LABEL_H_ALPHA: &[u8] = b"h";
+  pub const LABEL_S_D: &[u8] = b"d";
+  pub const LABEL_QUOT_F: &[u8] = b"qf";
+  pub const LABEL_QUOT_M: &[u8] = b"qm";
+
+  pub const LABEL_ALPHA: &[u8] = b"a";
+  pub const LABEL_GAMMA: &[u8] = b"g";
+  pub const LABEL_ZETA: &[u8] = b"zt";
+  pub const LABEL_BETA: &[u8] = b"b";
+  pub const LABEL_Z: &[u8] = b"z";
+}
+
 type ProverKey<E> = hyperkzg::ProverKey<E>;
 type VerifierKey<E> = hyperkzg::VerifierKey<E>;
 type Commitment<E> = hyperkzg::Commitment<E>;
@@ -385,6 +401,8 @@ where
     point: &[E::Scalar],
     _eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
+    use transcript_labels::*;
+
     let comm_f = comm;
 
     let original_size = poly.len();
@@ -456,11 +474,13 @@ where
     }
 
     let comm_h = E::CE::commit(ck, &h_poly.coeffs, &E::Scalar::ZERO);
-    transcript.absorb(b"f", &[*comm_f, comm_h].to_vec().as_slice());
+    transcript.absorb(LABEL_F_H, &[*comm_f, comm_h].to_vec().as_slice());
 
-    let alpha = transcript.squeeze(b"a")?;
+    let alpha = transcript.squeeze(LABEL_ALPHA)?;
 
     let h_alpha = h_poly.evaluate(&alpha);
+
+    transcript.absorb(LABEL_H_ALPHA, &h_alpha);
 
     // Get q(X) and g(X)
     let (mut q_poly, g_poly) = divide_by_binomial(&f_poly, b, b, &alpha);
@@ -512,10 +532,12 @@ where
       assert_eq!(f_r, (r.pow([b as u64]) - alpha) * q_r + g_r);
     }
 
-    let comm_q = E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO);
-    let comm_g = E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO);
+    let (comm_q, comm_g) = rayon::join(
+      || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
+      || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
+    );
 
-    transcript.absorb(b"g", &[comm_g, comm_q].to_vec().as_slice());
+    transcript.absorb(LABEL_G_Q, &[comm_g, comm_q].to_vec().as_slice());
 
     #[cfg(debug_assertions)]
     {
@@ -528,9 +550,7 @@ where
 
       assert_eq!(ip, h_alpha);
     }
-
-    transcript.absorb(b"h", &h_alpha);
-    let gamma = transcript.squeeze(b"gamma")?;
+    let gamma = transcript.squeeze(LABEL_GAMMA)?;
 
     let s_poly = make_s_polynomial(
       (&eq_col, &eq_row),
@@ -581,12 +601,14 @@ where
       }
     };
 
-    let comm_s = E::CE::commit(ck, &s_poly.coeffs, &E::Scalar::ZERO);
-    let comm_d = E::CE::commit(ck, &d_poly.coeffs, &E::Scalar::ZERO);
+    let (comm_s, comm_d) = rayon::join(
+      || E::CE::commit(ck, &s_poly.coeffs, &E::Scalar::ZERO),
+      || E::CE::commit(ck, &d_poly.coeffs, &E::Scalar::ZERO),
+    );
 
-    transcript.absorb(b"d", &[comm_s, comm_d].to_vec().as_slice());
+    transcript.absorb(LABEL_S_D, &[comm_s, comm_d].to_vec().as_slice());
 
-    let zeta = transcript.squeeze(b"zeta")?;
+    let zeta = transcript.squeeze(LABEL_ZETA)?;
 
     let zeta_inv = &zeta.invert().unwrap();
 
@@ -690,9 +712,9 @@ where
       E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
     };
 
-    transcript.absorb(b"qf", &[comm_quot_f].to_vec().as_slice());
+    transcript.absorb(LABEL_QUOT_F, &[comm_quot_f].to_vec().as_slice());
 
-    let beta = transcript.squeeze(b"beta")?;
+    let beta = transcript.squeeze(LABEL_BETA)?;
     let beta_2 = beta * beta;
     let beta_3 = beta_2 * beta;
 
@@ -761,9 +783,9 @@ where
     }
 
     let comm_quot_m = E::CE::commit(ck, &quot_m_poly.coeffs, &E::Scalar::ZERO);
-    transcript.absorb(b"qm", &[comm_quot_m].to_vec().as_slice());
+    transcript.absorb(LABEL_QUOT_M, &[comm_quot_m].to_vec().as_slice());
 
-    let z = transcript.squeeze(b"z")?;
+    let z = transcript.squeeze(LABEL_Z)?;
 
     let quot_l_poly = {
       // L(X) = m_z(X) - Z_T(z) \cdot q_m(X)
@@ -869,6 +891,8 @@ where
     eval: &E::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
+    use transcript_labels::*;
+
     let comm_f = comm;
 
     let point = {
@@ -883,26 +907,26 @@ where
     };
 
     let (alpha, gamma, zeta, beta, z) = {
-      transcript.absorb(b"f", &[*comm_f, arg.comm_h].to_vec().as_slice());
+      transcript.absorb(LABEL_F_H, &[*comm_f, arg.comm_h].to_vec().as_slice());
 
-      let alpha = transcript.squeeze(b"alpha")?;
+      let alpha = transcript.squeeze(LABEL_ALPHA)?;
 
-      transcript.absorb(b"g", &[arg.comm_g, arg.comm_q].to_vec().as_slice());
-      transcript.absorb(b"h", &arg.h_alpha);
+      transcript.absorb(LABEL_H_ALPHA, &arg.h_alpha);
+      transcript.absorb(LABEL_G_Q, &[arg.comm_g, arg.comm_q].to_vec().as_slice());
 
-      let gamma = transcript.squeeze(b"gamma")?;
+      let gamma = transcript.squeeze(LABEL_GAMMA)?;
 
-      transcript.absorb(b"d", &[arg.comm_s, arg.comm_d].to_vec().as_slice());
+      transcript.absorb(LABEL_S_D, &[arg.comm_s, arg.comm_d].to_vec().as_slice());
 
-      let zeta = transcript.squeeze(b"zeta")?;
+      let zeta = transcript.squeeze(LABEL_ZETA)?;
 
-      transcript.absorb(b"q", &[arg.comm_quot_f].to_vec().as_slice());
+      transcript.absorb(LABEL_QUOT_F, &[arg.comm_quot_f].to_vec().as_slice());
 
-      let beta = transcript.squeeze(b"beta")?;
+      let beta = transcript.squeeze(LABEL_BETA)?;
 
-      transcript.absorb(b"qm", &[arg.comm_quot_m].to_vec().as_slice());
+      transcript.absorb(LABEL_QUOT_M, &[arg.comm_quot_m].to_vec().as_slice());
 
-      let z = transcript.squeeze(b"z")?;
+      let z = transcript.squeeze(LABEL_Z)?;
 
       (alpha, gamma, zeta, beta, z)
     };
@@ -1031,7 +1055,7 @@ where
     };
 
     // Check Pairing
-    let d = transcript.squeeze(b"d")?;
+    let d = transcript.squeeze(LABEL_S_D)?;
 
     let ll = ll1 + ll2 * d;
     let rl = rl1 + rl2 * d;
