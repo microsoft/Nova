@@ -1213,7 +1213,7 @@ where
       denom * (E::Scalar::ONE + E::Scalar::ONE).invert().unwrap()
     };
 
-    // #[cfg(debug_assertions)]
+    #[cfg(debug_assertions)]
     {
       let mut lhs = arg.g_zeta * pu_col_zeta_inv + arg.g_zeta_inv * pu_col_zeta;
       lhs += gamma * (arg.h_zeta * pu_row_zeta_inv + arg.h_zeta_inv * pu_row_zeta);
