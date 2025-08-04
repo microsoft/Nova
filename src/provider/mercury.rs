@@ -607,14 +607,12 @@ where
 
     // Get d(X) for degree check
     let d_poly = {
-      let mut d_poly = g_poly.clone();
+      let mut coeffs = Vec::with_capacity(g_poly.coeffs.len());
+      coeffs.extend(g_poly.coeffs.iter().rev());
 
-      assert_eq!(d_poly.coeffs.len(), b);
+      assert_eq!(coeffs.len(), b);
 
-      d_poly.coeffs.reverse();
-      UniPoly {
-        coeffs: d_poly.coeffs,
-      }
+      UniPoly { coeffs }
     };
 
     let (comm_s, comm_d) = rayon::join(
@@ -726,6 +724,7 @@ where
     let comm_quot_f = {
       let mut quot_f = quot_f;
       quot_f.coeffs.truncate(original_size);
+      quot_f.trim();
       E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
     };
 
