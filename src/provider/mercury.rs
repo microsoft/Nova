@@ -1280,7 +1280,7 @@ where
     // Pairing 2 LHS: comm_quot_f
     // Pairing 2 RHS: [tau]_2
     //
-    // Then the above pairing check and the KZG pairing check are batched
+    // The verifier's checks are batched as follows:
     // Denote the above as LHS_1, RHS_1=g1, LHS_2, RHS_2=[tau]_2.
     // Denote the KZG pairing of BDFH20 (Step 4. (g)) as LHS_1', RHS_1'=g1, LHS_2', RHS_2'=[tau]_2.
     // The verifier samples a random d and checks
