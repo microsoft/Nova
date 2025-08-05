@@ -450,7 +450,7 @@ mod batch_evaluation {
     pub comm_w_prime: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
   }
 
-  /// Open procedure in BDFG20 4.1
+  /// Implementation of the opening procedure from BDFG20 Section 4.1
   #[inline]
   pub fn generate_batch_evaluate_arg<E: Engine>(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
