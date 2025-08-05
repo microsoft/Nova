@@ -5,7 +5,7 @@
 //! The opening proof size is constant.
 //! The verification consists of O(log n) field operations and O(1) scalar multiplications, along with 2 pairings.
 //!
-//! The batch KZG evaluation tech is from BDFG20<https://eprint.iacr.org/2020/081.pdf>
+//! The batch KZG evaluation tech is from BDFG20 <https://eprint.iacr.org/2020/081.pdf>
 //!
 //! Mercury and HyperKZG shares the same types of commitment key and engine.
 //!
