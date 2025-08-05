@@ -749,6 +749,8 @@ mod batch_evaluation {
     // pairing 1 rhs is g1
     // pairing 2 lhs = comm_W_prime
     // pairing 2 rhs is [tau]_2
+
+    // * Main Cost II: MSM of 7
     let lhs1 = Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
     let lhs2 = cm.comm_w_prime;
 
@@ -920,6 +922,7 @@ where
     }
 
     // * 5. Mercury Section 6. Step 2. (c)
+    // * Main Cost I: MSM of O(N)
     let (comm_q, comm_g) = rayon::join(
       || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
       || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
@@ -1084,6 +1087,7 @@ where
     transcript.absorb(LABEL_SZI, &[s_zeta_inv].to_vec().as_slice());
 
     // * 11. Mercury Section 6. Step 4. (d)
+    // * Main Cost II: MSM of O(N)
     let comm_quot_f = {
       let mut quot_f = quot_f;
       quot_f.coeffs.truncate(original_size);
@@ -1279,6 +1283,7 @@ where
         .map(|b| b.into_inner().affine())
         .collect::<Vec<_>>();
 
+      // * Main Cost I: MSM of 3
       let ll = *comm_f + Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
       let rl = arg.comm_quot_f;
 
