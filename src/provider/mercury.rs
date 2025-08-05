@@ -76,7 +76,8 @@ pub struct EvaluationEngine<E: Engine> {
 }
 
 /// Provides an implementation of a polynomial evaluation argument
-/// 8 F + 6 F
+/// The proof consists of 8 field elements (F) for committed values and 6 field elements (F) for evaluation values,
+/// corresponding to the structure of the EvaluationArgument. This reflects the number of field elements included in the proof.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
