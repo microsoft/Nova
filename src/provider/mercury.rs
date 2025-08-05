@@ -657,7 +657,7 @@ mod batch_evaluation {
   }
 
   /// BDFG20 4.1 - 5
-  pub fn extract_pairing_to_verify_batch_evaluation<E: Engine>(
+  pub fn extract_pairing_to_verify_batch_evaluation<E>(
     evals: BatchEvaluations<E::Scalar>,
     cm: BatchEvaluationCommitments<E>,
     g1: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
@@ -745,12 +745,12 @@ mod batch_evaluation {
     .map(|b| b.into_inner().affine())
     .collect::<Vec<_>>();
 
-    // pairing 1 lhs is F + [z] comm_W_prime
-    // pairing 1 rhs is g1
-    // pairing 2 lhs = comm_W_prime
-    // pairing 2 rhs is [tau]_2
+    // Pairing 1 lhs is F + [z] comm_W_prime
+    // Pairing 1 rhs is g1
+    // Pairing 2 lhs = comm_W_prime
+    // Pairing 2 rhs is [tau]_2
 
-    // * Main Cost II: MSM of 7
+    // * Main Cost (Verifier) II: MSM of 7
     let lhs1 = Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
     let lhs2 = cm.comm_w_prime;
 
@@ -922,7 +922,7 @@ where
     }
 
     // * 5. Mercury Section 6. Step 2. (c)
-    // * Main Cost I: MSM of O(N)
+    // * Main Cost (Prover) I: MSM of O(N)
     let (comm_q, comm_g) = rayon::join(
       || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
       || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
@@ -1087,7 +1087,7 @@ where
     transcript.absorb(LABEL_SZI, &[s_zeta_inv].to_vec().as_slice());
 
     // * 11. Mercury Section 6. Step 4. (d)
-    // * Main Cost II: MSM of O(N)
+    // * Main Cost (Prover) II: MSM of O(N)
     let comm_quot_f = {
       let mut quot_f = quot_f;
       quot_f.coeffs.truncate(original_size);
@@ -1268,10 +1268,23 @@ where
 
     // * Check f(X) / (X^b - alpha) = (q(X), g(x))
     // * 5. Adapted from Mercury Section 6. Step 4. (f)
-    // Pairing 1 LHS: comm_f - comm_g + [alpha] comm_q
+    // The pairing check in Step 4. (f) is
+    // Pairing 1 LHS = comm_f - [zeta^b - alpha] comm_q - [g(zeta)]_1
+    // Pairing 1 RHS = [1]_2
+    // Pairing 2 LHS = comm_quot_f
+    // Pairing 2 RHS = [tau - zeta]_2
+    //
+    // It is adapted into the following pairing checks:
+    // Pairing 1 LHS: comm_f + [zeta^b - alpha] comm_q - [g(zeta)]_1 + [zeta] * comm_quot_f
     // Pairing 1 RHS: g1
-    // Pairing 2 LHS: comm_q
+    // Pairing 2 LHS: comm_quot_f
     // Pairing 2 RHS: [tau]_2
+    //
+    // Then the above pairing check and the KZG pairing check are batched
+    // Denote the above as LHS_1, RHS_1=g1, LHS_2, RHS_2=[tau]_2.
+    // Denote the KZG pairing of BDFH20 (Step 4. (g)) as LHS_1', RHS_1'=g1, LHS_2', RHS_2'=[tau]_2.
+    // The verifier samples a random d and checks
+    // e(LHS_1 + LHS_1' * d, g1) = e(LHS_2 + LHS_2' * d, [tau]_2)
     let (lhs_1_1, lhs_2_1) = {
       let zeta_b = zeta_b_one * zeta;
       let zeta_b_alpha = zeta_b - alpha;
@@ -1283,7 +1296,7 @@ where
         .map(|b| b.into_inner().affine())
         .collect::<Vec<_>>();
 
-      // * Main Cost I: MSM of 3
+      // * Main Cost (Verifier) I: MSM of 3
       let ll = *comm_f + Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
       let rl = arg.comm_quot_f;
 
@@ -1329,6 +1342,7 @@ where
     // Check Pairing of 3. and 4.
     let d = E::Scalar::random(rand_core::OsRng);
 
+    // * Main Cost (Verifier) III: MSM of 2
     let ll = lhs_1_1 + lhs_1_2 * d;
     let rl = lhs_2_1 + lhs_2_2 * d;
 
