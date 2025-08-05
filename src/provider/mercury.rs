@@ -76,7 +76,7 @@ pub struct EvaluationEngine<E: Engine> {
 }
 
 /// Provides an implementation of a polynomial evaluation argument
-/// 8 G + 6 F
+/// 8 F + 6 F
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
