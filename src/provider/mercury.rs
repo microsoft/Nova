@@ -21,6 +21,7 @@ use rayon::iter::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::provider::traits::DlogGroupExt;
 use crate::{
   errors::NovaError,
   provider::{
@@ -396,9 +397,12 @@ mod batch_evaluation {
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
   };
 
+  use crate::provider::mercury::Commitment;
+  use crate::provider::traits::DlogGroup;
+  use crate::provider::traits::DlogGroupExt;
   use crate::{
     errors::NovaError,
-    provider::traits::PairingGroup,
+    provider::{mercury::CommitmentEngine, traits::PairingGroup},
     spartan::polys::univariate::UniPoly,
     traits::{commitment::CommitmentEngineTrait, Engine, TranscriptEngineTrait},
   };
@@ -664,7 +668,11 @@ mod batch_evaluation {
       <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
     ),
     NovaError,
-  > {
+  >
+  where
+    E: Engine<CE = CommitmentEngine<E>>,
+    E::GE: PairingGroup,
+  {
     use super::transcript_labels::*;
 
     let zeta = evals.zeta;
@@ -705,26 +713,43 @@ mod batch_evaluation {
     let z_eval_t = z_eval_t_s4 * van_zeta;
 
     // F = sum{ beta_pow * z_eval_t_si * cm_poly_i } - [ sum{ beta_pow * z_eval_t_si * star_eval_at_z } ] - z_eval_t * comm_W
+    // LHS = F + comm_w_prime * z
     // See BDFG20 4.1 - 6
-    let mut f = cm.comm_g * z_eval_t_s1;
-    f = f + cm.comm_h * (beta * z_eval_t_s2);
-    f = f + cm.comm_s * (beta_2 * z_eval_t_s3);
-    f = f + cm.comm_d * (beta_3 * z_eval_t_s4);
+    let scalars = {
+      let scalar = z_eval_t_s1 * g_star_eval
+        + beta * z_eval_t_s2 * h_star_eval
+        + beta_2 * z_eval_t_s3 * s_star_eval
+        + beta_3 * z_eval_t_s4 * d_star_eval;
 
-    let scalar = z_eval_t_s1 * g_star_eval
-      + beta * z_eval_t_s2 * h_star_eval
-      + beta_2 * z_eval_t_s3 * s_star_eval
-      + beta_3 * z_eval_t_s4 * d_star_eval;
+      [
+        z_eval_t_s1,
+        beta * z_eval_t_s2,
+        beta_2 * z_eval_t_s3,
+        beta_3 * z_eval_t_s4,
+        -scalar,
+        -z_eval_t,
+        z,
+      ]
+    };
 
-    f = f + g1 * (-scalar);
-
-    f = f + cm.comm_w * (-z_eval_t);
+    let bases = [
+      cm.comm_g,
+      cm.comm_h,
+      cm.comm_s,
+      cm.comm_d,
+      g1,
+      cm.comm_w,
+      cm.comm_w_prime,
+    ]
+    .into_iter()
+    .map(|b| b.into_inner().affine())
+    .collect::<Vec<_>>();
 
     // pairing 1 lhs is F + [z] comm_W_prime
     // pairing 1 rhs is g1
     // pairing 2 lhs = comm_W_prime
     // pairing 2 rhs is [tau]_2
-    let lhs1 = f + cm.comm_w_prime * z;
+    let lhs1 = Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
     let lhs2 = cm.comm_w_prime;
 
     Ok((lhs1, lhs2))
@@ -1247,8 +1272,14 @@ where
       let zeta_b = zeta_b_one * zeta;
       let zeta_b_alpha = zeta_b - alpha;
 
-      let mut ll = *comm_f + arg.comm_q * (-zeta_b_alpha) + g1 * (-arg.g_zeta);
-      ll = ll + arg.comm_quot_f * zeta;
+      let scalars = [-zeta_b_alpha, -arg.g_zeta, zeta];
+
+      let bases = [arg.comm_q, g1, arg.comm_quot_f]
+        .into_iter()
+        .map(|b| b.into_inner().affine())
+        .collect::<Vec<_>>();
+
+      let ll = *comm_f + Commitment::new(E::GE::vartime_multiscalar_mul(&scalars, &bases));
       let rl = arg.comm_quot_f;
 
       #[cfg(debug_assertions)]
