@@ -7,7 +7,7 @@
 //!
 //! The batch KZG evaluation tech is from BDFG20 <https://eprint.iacr.org/2020/081.pdf>
 //!
-//! Mercury and HyperKZG shares the same types of commitment key and engine.
+//! Mercury and HyperKZG share the same types of commitment key and engine.
 //!
 //! Samaritan presents a similar construction and achieves the same performance, see <https://eprint.iacr.org/2025/419.pdf>.
 
