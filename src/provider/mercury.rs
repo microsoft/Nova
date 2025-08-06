@@ -238,6 +238,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
 
 // f(X) / (X^{num_cols} - alpha)
 // returns the quotient and the remainder polynomial
+// See Mercury 5. Univariate division
 #[inline]
 fn divide_by_binomial<Scalar: PrimeField>(
   coeffs: &[Scalar],
@@ -278,6 +279,7 @@ fn divide_by_binomial<Scalar: PrimeField>(
   (quotient, remainder)
 }
 
+/// Evaluate eq(r, u)
 fn eval_pu_poly<Scalar: PrimeField>(u: &[Scalar], r: &Scalar) -> Scalar {
   let mut res = Scalar::ONE;
   for (i, u_i) in u.iter().rev().enumerate() {
@@ -286,6 +288,7 @@ fn eval_pu_poly<Scalar: PrimeField>(u: &[Scalar], r: &Scalar) -> Scalar {
   res
 }
 
+/// Compute polynomial h, See Mercury Section 2
 #[inline]
 fn compute_h_poly<Scalar: PrimeField>(
   f_poly: &[Scalar],
@@ -306,6 +309,8 @@ fn compute_h_poly<Scalar: PrimeField>(
   UniPoly { coeffs }
 }
 
+/// Compute polynomial s for inner product argument
+/// See Mercury 4.1 and 4.2
 #[inline]
 fn make_s_polynomial<Scalar: PrimeField>(
   a_polys: (&[Scalar], &[Scalar]),
