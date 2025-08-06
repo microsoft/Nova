@@ -56,12 +56,14 @@ mod transcript_labels {
   pub const LABEL_SZ: &[u8] = b"sz";
   pub const LABEL_SZI: &[u8] = b"szi";
   pub const LABEL_W: &[u8] = b"w";
+  pub const LABEL_W_PRIME: &[u8] = b"wp";
 
   pub const LABEL_ALPHA: &[u8] = b"a";
   pub const LABEL_GAMMA: &[u8] = b"gm";
   pub const LABEL_ZETA: &[u8] = b"zt";
   pub const LABEL_BETA: &[u8] = b"b";
   pub const LABEL_Z: &[u8] = b"z";
+  pub const LABEL_PAIRING_D: &[u8] = b"pd";
 }
 
 type ProverKey<E> = hyperkzg::ProverKey<E>;
@@ -1125,6 +1127,10 @@ where
       transcript,
     )?;
 
+    // For Pairing Check Batch
+    transcript.absorb(LABEL_W_PRIME, &[comm_w_prime].to_vec().as_slice());
+    let _d = transcript.squeeze(LABEL_PAIRING_D)?;
+
     Ok(EvaluationArgument {
       comm_h,
       comm_g,
@@ -1221,6 +1227,7 @@ where
     let zeta_inv = zeta.invert().unwrap();
     let zeta_b_one = zeta.pow_vartime([(1_u64 << (log_n / 2)) - 1]);
 
+    // * O(log n) Field Operations
     let pu_col_zeta = eval_pu_poly(&u_col, &zeta);
     let pu_col_zeta_inv = eval_pu_poly(&u_col, &zeta_inv);
     let pu_row_zeta = eval_pu_poly(&u_row, &zeta);
@@ -1341,7 +1348,8 @@ where
     )?;
 
     // Check Pairing of 3. and 4.
-    let d = E::Scalar::random(rand_core::OsRng);
+    transcript.absorb(LABEL_W_PRIME, &[arg.comm_w_prime].to_vec().as_slice());
+    let d = transcript.squeeze(LABEL_PAIRING_D)?;
 
     // * Main Cost (Verifier) III: MSM of 2
     let ll = lhs_1_1 + lhs_1_2 * d;
