@@ -596,9 +596,9 @@ pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  G: G1Affine<E>,
-  H: G2Affine<E>,
-  tau_H: G2Affine<E>,
+  pub(crate) G: G1Affine<E>,
+  pub(crate) H: G2Affine<E>,
+  pub(crate) tau_H: G2Affine<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
