@@ -1,5 +1,4 @@
 use crate::constants::NUM_HASH_BITS;
-use bincode::Options;
 use ff::PrimeField;
 use serde::Serialize;
 use sha3::{Digest, Sha3_256};
@@ -17,13 +16,13 @@ pub trait SimpleDigestible: Serialize {}
 
 impl<T: SimpleDigestible> Digestible for T {
   fn write_bytes<W: Sized + io::Write>(&self, byte_sink: &mut W) -> Result<(), io::Error> {
-    let config = bincode::DefaultOptions::new()
+    let config = bincode::config::legacy()
       .with_little_endian()
-      .with_fixint_encoding();
+      .with_fixed_int_encoding();
     // Note: bincode recursively length-prefixes every field!
-    config
-      .serialize_into(byte_sink, self)
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    bincode::serde::encode_into_std_write(self, byte_sink, config)
+      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    Ok(())
   }
 }
 
@@ -153,9 +152,12 @@ mod tests {
     // this justifies the adjective "bad"
     assert_ne!(good_s.digest(), bad_s.digest());
 
-    let naughty_bytes = bincode::serialize(&bad_s).unwrap();
+    let naughty_bytes = bincode::serde::encode_to_vec(&bad_s, bincode::config::legacy()).unwrap();
 
-    let retrieved_s: S<E> = bincode::deserialize(&naughty_bytes).unwrap();
+    let retrieved_s: S<E> =
+      bincode::serde::decode_from_slice(&naughty_bytes, bincode::config::legacy())
+        .unwrap()
+        .0;
     assert_eq!(good_s.digest(), retrieved_s.digest())
   }
 }

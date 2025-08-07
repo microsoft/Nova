@@ -249,7 +249,12 @@ fn main() {
     let compressed_snark = res.unwrap();
 
     let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
+    bincode::serde::encode_into_std_write(
+      &compressed_snark,
+      &mut encoder,
+      bincode::config::legacy(),
+    )
+    .expect("Failed to serialize compressed SNARK");
     let compressed_snark_encoded = encoder.finish().unwrap();
     println!(
       "CompressedSNARK::len {:?} bytes",
