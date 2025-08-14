@@ -399,52 +399,44 @@ impl<E: Engine> MemorySumcheckInstance<E> {
                   W: &[E::Scalar],
                   TS: &[E::Scalar],
                   r: &E::Scalar|
-     -> (
+     -> Result<
       (
-        Result<Vec<E::Scalar>, NovaError>,
-        Result<Vec<E::Scalar>, NovaError>,
+        Vec<E::Scalar>,
+        Vec<E::Scalar>,
+        Vec<E::Scalar>,
+        Vec<E::Scalar>,
       ),
-      (
-        Result<Vec<E::Scalar>, NovaError>,
-        Result<Vec<E::Scalar>, NovaError>,
-      ),
-    ) {
-      rayon::join(
-        || {
-          rayon::join(
-            || {
-              let inv = batch_invert(&T.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>())?;
+      NovaError,
+    > {
+      let t_plus_r_and_w_plus_r = T
+        .par_iter()
+        .chain(W.par_iter())
+        .map(|e| *e + *r)
+        .collect::<Vec<E::Scalar>>();
 
-              // compute inv[i] * TS[i] in parallel
-              Ok(
-                zip_with!((inv.into_par_iter(), TS.par_iter()), |e1, e2| e1 * *e2)
-                  .collect::<Vec<_>>(),
-              )
-            },
-            || batch_invert(&W.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
-          )
-        },
-        || {
-          rayon::join(
-            || Ok(T.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
-            || Ok(W.par_iter().map(|e| *e + *r).collect::<Vec<E::Scalar>>()),
-          )
-        },
-      )
+      let inv = batch_invert(&t_plus_r_and_w_plus_r)?;
+
+      let mut t_plus_r = t_plus_r_and_w_plus_r;
+      let w_plus_r = t_plus_r.split_off(T.len());
+
+      let mut t_plus_r_inv = inv;
+      let w_plus_r_inv = t_plus_r_inv.split_off(T.len());
+
+      // compute inv[i] * TS[i] in parallel
+      t_plus_r_inv = zip_with!((t_plus_r_inv.into_par_iter(), TS.par_iter()), |e1, e2| e1
+        * *e2)
+      .collect::<Vec<_>>();
+
+      Ok((t_plus_r_inv, w_plus_r_inv, t_plus_r, w_plus_r))
     };
 
-    let (
-      ((t_plus_r_inv_row, w_plus_r_inv_row), (t_plus_r_row, w_plus_r_row)),
-      ((t_plus_r_inv_col, w_plus_r_inv_col), (t_plus_r_col, w_plus_r_col)),
-    ) = rayon::join(
+    let (row, col) = rayon::join(
       || helper(&T_row, &W_row, ts_row, r),
       || helper(&T_col, &W_col, ts_col, r),
     );
 
-    let t_plus_r_inv_row = t_plus_r_inv_row?;
-    let w_plus_r_inv_row = w_plus_r_inv_row?;
-    let t_plus_r_inv_col = t_plus_r_inv_col?;
-    let w_plus_r_inv_col = w_plus_r_inv_col?;
+    let (t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_row, w_plus_r_row) = row?;
+    let (t_plus_r_inv_col, w_plus_r_inv_col, t_plus_r_col, w_plus_r_col) = col?;
 
     let (
       (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
@@ -478,7 +470,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       w_plus_r_inv_col,
     ];
 
-    let aux_poly_vec = [t_plus_r_row?, w_plus_r_row?, t_plus_r_col?, w_plus_r_col?];
+    let aux_poly_vec = [t_plus_r_row, w_plus_r_row, t_plus_r_col, w_plus_r_col];
 
     Ok((comm_vec, poly_vec, aux_poly_vec))
   }
