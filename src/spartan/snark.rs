@@ -223,7 +223,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // We will reduce a vector of claims of evaluations at different points into claims about them at the same point.
     // For example, eval_W =? W(r_y[1..]) and eval_E =? E(r_x) into
     // two claims: eval_W_prime =? W(rz) and eval_E_prime =? E(rz)
-    // We can them combine the two into one: eval_W_prime + gamma * eval_E_prime =? (W + gamma*E)(rz),
+    // We can then combine the two into one: eval_W_prime + gamma * eval_E_prime =? (W + gamma*E)(rz),
     // where gamma is a public challenge
     // Since commitments to W and E are homomorphic, the verifier can compute a commitment
     // to the batched polynomial.
