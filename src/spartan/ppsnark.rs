@@ -29,7 +29,7 @@ use crate::{
   zip_with, Commitment, CommitmentKey,
 };
 use core::cmp::max;
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -393,33 +393,6 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       || hash_func_vec(mem_row, addr_row, L_row),
       || hash_func_vec(mem_col, addr_col, L_col),
     );
-
-    let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
-      let mut products = vec![E::Scalar::ZERO; v.len()];
-      let mut acc = E::Scalar::ONE;
-
-      for i in 0..v.len() {
-        products[i] = acc;
-        acc *= v[i];
-      }
-
-      // we can compute an inversion only if acc is non-zero
-      if acc == E::Scalar::ZERO {
-        return Err(NovaError::InternalError);
-      }
-
-      // compute the inverse once for all entries
-      acc = acc.invert().unwrap();
-
-      let mut inv = vec![E::Scalar::ZERO; v.len()];
-      for i in 0..v.len() {
-        let tmp = acc * v[v.len() - 1 - i];
-        inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
-        acc = tmp;
-      }
-
-      Ok(inv)
-    };
 
     // compute vectors TS[i]/(T[i] + r) and 1/(W[i] + r)
     let helper = |T: &[E::Scalar],
@@ -1637,5 +1610,152 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     )?;
 
     Ok(())
+  }
+}
+
+// Compute the inverse of a batch of field elements in parallel
+fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+  const MIN_CHUNK_SIZE: usize = 32;
+
+  let num_chunks = rayon::current_num_threads();
+
+  let mut beta: Vec<Vec<Scalar>> = vec![];
+  let mut prods: Vec<Vec<Scalar>> = vec![];
+  beta.push(v.to_vec());
+  prods.push(vec![Scalar::ZERO; v.len()]);
+
+  let mut chunk_sizes = vec![];
+
+  // Phase 1: Compute Product Tree
+  let mut level = 0;
+  while beta.last().unwrap().len() > 1 {
+    level += 1;
+
+    let last_level_beta = &mut beta[level - 1];
+    let last_level_prod = &mut prods[level - 1];
+
+    let chunk_size = max(MIN_CHUNK_SIZE, last_level_beta.len() / num_chunks);
+
+    let current_level_beta = last_level_beta
+      .par_chunks_mut(chunk_size)
+      .zip(last_level_prod.par_chunks_mut(chunk_size))
+      .map(|(beta, prod)| {
+        let mut acc = Scalar::ONE;
+        beta.iter_mut().zip(prod).for_each(|(e, p)| {
+          let nxt_acc = acc * *e;
+          *p = acc;
+          acc = nxt_acc;
+        });
+        acc
+      })
+      .collect::<Vec<_>>();
+
+    prods.push(vec![Scalar::ZERO; current_level_beta.len()]);
+    beta.push(current_level_beta);
+    chunk_sizes.push(chunk_size);
+  }
+
+  let root = beta.last().unwrap().first().unwrap();
+  if *root == Scalar::ZERO {
+    return Err(NovaError::InternalError);
+  }
+  let inv_root = root.invert().unwrap();
+
+  beta.last_mut().unwrap()[0] = inv_root;
+
+  // Phase 2: Compute Inverse Tree
+  let mut level = beta.len();
+  while level > 1 {
+    level -= 1;
+
+    let (next_level_beta, current_level_beta) = beta.split_at_mut(level);
+
+    let current_level_beta = current_level_beta.first().unwrap();
+    let next_level_beta = next_level_beta.last_mut().unwrap();
+
+    let next_level_prod = &prods[level - 1];
+
+    let chunk_size = chunk_sizes[level - 1];
+
+    next_level_beta
+      .par_chunks_mut(chunk_size)
+      .zip(next_level_prod.par_chunks(chunk_size))
+      .zip(current_level_beta)
+      .for_each(|((e, prod), parent)| {
+        let mut acc = *parent;
+        for i in (0..e.len()).rev() {
+          let nxt_acc = acc * e[i];
+          e[i] = acc * prod[i];
+          acc = nxt_acc;
+        }
+      });
+  }
+
+  Ok(beta[0].to_owned())
+}
+
+#[cfg(test)]
+mod batch_invert_tests {
+  use ff::PrimeField;
+
+  use super::*;
+
+  fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+    let mut products = vec![Scalar::ZERO; v.len()];
+    let mut acc = Scalar::ONE;
+
+    for i in 0..v.len() {
+      products[i] = acc;
+      acc *= v[i];
+    }
+
+    // we can compute an inversion only if acc is non-zero
+    if acc == Scalar::ZERO {
+      return Err(NovaError::InternalError);
+    }
+
+    // compute the inverse once for all entries
+    acc = acc.invert().unwrap();
+
+    let mut inv = vec![Scalar::ZERO; v.len()];
+    for i in 0..v.len() {
+      let tmp = acc * v[v.len() - 1 - i];
+      inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+      acc = tmp;
+    }
+
+    Ok(inv)
+  }
+
+  #[cfg(test)]
+  mod tests {
+    use super::*;
+    use ff::Field;
+    use rand::rngs::OsRng;
+    use rayon::iter::IntoParallelIterator;
+
+    type F = halo2curves::bn256::Fr;
+
+    #[test]
+    fn test_batch_invert() {
+      let n = 10;
+      let v = (0..n)
+        .into_par_iter()
+        .map(|_| F::random(&mut OsRng))
+        .collect::<Vec<_>>();
+
+      let start = std::time::Instant::now();
+      let res_1 = batch_invert_serial(&v);
+      let dur1 = start.elapsed();
+
+      let start = std::time::Instant::now();
+      let res_2 = batch_invert(&v);
+      let dur2 = start.elapsed();
+
+      println!("batch_invert: {:?}", dur1);
+      println!("parallel_batch_invert: {:?}", dur2);
+
+      assert_eq!(res_1, res_2);
+    }
   }
 }
