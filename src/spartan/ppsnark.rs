@@ -1616,88 +1616,68 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 // Compute the inverse of a batch of field elements in parallel
 // Inspired by https://blog.eryx.co/2024/11/27/The-Power-of-GPU-Parallelization-Applied-to-Cryptography-Primitives.html
 fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-  const MIN_CHUNK_SIZE: usize = 128;
   const MAX_SIZE_FOR_SERIAL: usize = 4096;
+  const MIN_CHUNK_SIZE: usize = 128;
 
   if v.len() < MAX_SIZE_FOR_SERIAL {
     return batch_invert_serial(v);
   }
 
+  let compute_prod = |beta: &[Scalar]| -> (Vec<Scalar>, Scalar) {
+    let mut prod = vec![Scalar::ZERO; beta.len()];
+    let mut acc = Scalar::ONE;
+    prod.iter_mut().zip(beta).for_each(|(p, e)| {
+      let nxt_acc = acc * *e;
+      *p = acc;
+      acc = nxt_acc;
+    });
+    (prod, acc)
+  };
+
+  let compute_inv = |beta: &mut [Scalar], prod: &[Scalar], init_inv: Scalar| {
+    let mut acc = init_inv;
+    for i in (0..beta.len()).rev() {
+      let nxt_acc = acc * beta[i];
+      beta[i] = acc * prod[i];
+      acc = nxt_acc;
+    }
+  };
+
+  let mut v = v.to_vec();
+
   let num_chunks = rayon::current_num_threads();
+  let chunk_size = max(MIN_CHUNK_SIZE, v.len() / num_chunks);
 
-  let mut beta: Vec<Vec<Scalar>> = Vec::with_capacity(3);
-  let mut prods: Vec<Vec<Scalar>> = Vec::with_capacity(3);
-  beta.push(v.to_vec());
-  prods.push(vec![Scalar::ZERO; v.len()]);
-
-  let mut chunk_sizes = vec![];
-
-  // Phase 1: Compute Product Tree
-  let mut level = 0;
-  while beta.last().unwrap().len() > 1 {
-    level += 1;
-
-    let last_level_beta = &mut beta[level - 1];
-    let last_level_prod = &mut prods[level - 1];
-
-    let chunk_size = max(MIN_CHUNK_SIZE, last_level_beta.len() / num_chunks);
-
-    let current_level_beta = last_level_beta
-      .par_chunks_mut(chunk_size)
-      .zip(last_level_prod.par_chunks_mut(chunk_size))
-      .map(|(beta, prod)| {
-        let mut acc = Scalar::ONE;
-        beta.iter_mut().zip(prod).for_each(|(e, p)| {
-          let nxt_acc = acc * *e;
-          *p = acc;
-          acc = nxt_acc;
-        });
-        acc
-      })
+  // Phase 1: Compute Product Tree (Depth = 3)
+  let (prod1, mut beta2, prod2, root) = {
+    let chunks = v
+      .par_chunks(chunk_size)
+      .map(compute_prod)
       .collect::<Vec<_>>();
 
-    prods.push(vec![Scalar::ZERO; current_level_beta.len()]);
-    beta.push(current_level_beta);
-    chunk_sizes.push(chunk_size);
-  }
+    let (prod1, beta2): (Vec<Vec<_>>, Vec<_>) = chunks.into_iter().unzip();
 
-  let root = beta.last().unwrap().first().unwrap();
-  if *root == Scalar::ZERO {
+    let (prod2, root) = compute_prod(&beta2);
+
+    (prod1, beta2, prod2, root)
+  };
+
+  if root == Scalar::ZERO {
     return Err(NovaError::InternalError);
   }
-  let inv_root = root.invert().unwrap();
+  let root_inv = root.invert().unwrap();
 
-  beta.last_mut().unwrap()[0] = inv_root;
+  // Phase 2: Compute Inverse Tree (Depth = 3)
+  compute_inv(&mut beta2, &prod2, root_inv);
 
-  // Phase 2: Compute Inverse Tree
-  let mut level = beta.len();
-  while level > 1 {
-    level -= 1;
+  v.par_chunks_mut(chunk_size)
+    .zip(prod1)
+    .zip(beta2)
+    .for_each(|((v, p), b)| {
+      compute_inv(v, &p, b);
+    });
 
-    let (next_level_beta, current_level_beta) = beta.split_at_mut(level);
-
-    let current_level_beta = current_level_beta.first().unwrap();
-    let next_level_beta = next_level_beta.last_mut().unwrap();
-
-    let next_level_prod = &prods[level - 1];
-
-    let chunk_size = chunk_sizes[level - 1];
-
-    next_level_beta
-      .par_chunks_mut(chunk_size)
-      .zip(next_level_prod.par_chunks(chunk_size))
-      .zip(current_level_beta)
-      .for_each(|((e, prod), parent)| {
-        let mut acc = *parent;
-        for i in (0..e.len()).rev() {
-          let nxt_acc = acc * e[i];
-          e[i] = acc * prod[i];
-          acc = nxt_acc;
-        }
-      });
-  }
-
-  Ok(beta[0].to_owned())
+  Ok(v)
 }
 
 fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
