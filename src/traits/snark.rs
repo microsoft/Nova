@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Public parameter creation takes a size hint. This size hint carries the particular requirements of
 /// the final compressing SNARK the user expected to use with these public parameters, and the below
-/// is a sensible default, which is to not require any more bases then the usual (maximum of the number of
+/// is a sensible default, which is to not require any more bases than the usual (maximum of the number of
 /// variables and constraints of the involved R1CS circuit).
 pub fn default_ck_hint<E: Engine>() -> Box<dyn for<'a> Fn(&'a R1CSShape<E>) -> usize> {
   // The default is to not put an additional floor on the size of the commitment key
