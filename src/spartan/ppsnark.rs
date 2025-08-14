@@ -1742,7 +1742,7 @@ mod batch_invert_tests {
 
     #[test]
     fn test_batch_invert() {
-      let n = 1 << 15 + 5;
+      let n = (1 << 15) + 5;
 
       let v = (0..n)
         .into_par_iter()
