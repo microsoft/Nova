@@ -1614,13 +1614,19 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 }
 
 // Compute the inverse of a batch of field elements in parallel
+// Inspired by https://blog.eryx.co/2024/11/27/The-Power-of-GPU-Parallelization-Applied-to-Cryptography-Primitives.html
 fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-  const MIN_CHUNK_SIZE: usize = 32;
+  const MIN_CHUNK_SIZE: usize = 128;
+  const MAX_SIZE_FOR_SERIAL: usize = 4096;
+
+  if v.len() < MAX_SIZE_FOR_SERIAL {
+    return batch_invert_serial(v);
+  }
 
   let num_chunks = rayon::current_num_threads();
 
-  let mut beta: Vec<Vec<Scalar>> = vec![];
-  let mut prods: Vec<Vec<Scalar>> = vec![];
+  let mut beta: Vec<Vec<Scalar>> = Vec::with_capacity(3);
+  let mut prods: Vec<Vec<Scalar>> = Vec::with_capacity(3);
   beta.push(v.to_vec());
   prods.push(vec![Scalar::ZERO; v.len()]);
 
@@ -1694,38 +1700,36 @@ fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaErr
   Ok(beta[0].to_owned())
 }
 
+fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+  let mut products = vec![Scalar::ZERO; v.len()];
+  let mut acc = Scalar::ONE;
+
+  for i in 0..v.len() {
+    products[i] = acc;
+    acc *= v[i];
+  }
+
+  // we can compute an inversion only if acc is non-zero
+  if acc == Scalar::ZERO {
+    return Err(NovaError::InternalError);
+  }
+
+  // compute the inverse once for all entries
+  acc = acc.invert().unwrap();
+
+  let mut inv = vec![Scalar::ZERO; v.len()];
+  for i in 0..v.len() {
+    let tmp = acc * v[v.len() - 1 - i];
+    inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+    acc = tmp;
+  }
+
+  Ok(inv)
+}
+
 #[cfg(test)]
 mod batch_invert_tests {
-  use ff::PrimeField;
-
   use super::*;
-
-  fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-    let mut products = vec![Scalar::ZERO; v.len()];
-    let mut acc = Scalar::ONE;
-
-    for i in 0..v.len() {
-      products[i] = acc;
-      acc *= v[i];
-    }
-
-    // we can compute an inversion only if acc is non-zero
-    if acc == Scalar::ZERO {
-      return Err(NovaError::InternalError);
-    }
-
-    // compute the inverse once for all entries
-    acc = acc.invert().unwrap();
-
-    let mut inv = vec![Scalar::ZERO; v.len()];
-    for i in 0..v.len() {
-      let tmp = acc * v[v.len() - 1 - i];
-      inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
-      acc = tmp;
-    }
-
-    Ok(inv)
-  }
 
   #[cfg(test)]
   mod tests {
@@ -1738,24 +1742,17 @@ mod batch_invert_tests {
 
     #[test]
     fn test_batch_invert() {
-      let n = 10;
+      let n = 1 << 15 + 5;
+
       let v = (0..n)
         .into_par_iter()
         .map(|_| F::random(&mut OsRng))
         .collect::<Vec<_>>();
 
-      let start = std::time::Instant::now();
       let res_1 = batch_invert_serial(&v);
-      let dur1 = start.elapsed();
-
-      let start = std::time::Instant::now();
       let res_2 = batch_invert(&v);
-      let dur2 = start.elapsed();
 
-      println!("batch_invert: {:?}", dur1);
-      println!("parallel_batch_invert: {:?}", dur2);
-
-      assert_eq!(res_1, res_2);
+      assert_eq!(res_1, res_2)
     }
   }
 }
