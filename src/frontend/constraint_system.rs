@@ -133,7 +133,7 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
     false
   }
 
-  /// Extend concatenates thew  `other` constraint systems to the receiver, modifying the receiver, whose
+  /// Extend concatenates the  `other` constraint systems to the receiver, modifying the receiver, whose
   /// inputs, allocated variables, and constraints will precede those of the `other` constraint system.
   /// The primary use case for this is parallel synthesis of circuits which can be decomposed into
   /// entirely independent sub-circuits. Each can be synthesized in its own thread, then the
