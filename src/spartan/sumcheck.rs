@@ -483,3 +483,362 @@ impl<E: Engine> SumcheckProof<E> {
     ))
   }
 }
+
+pub(crate) mod eq_sumcheck {
+  use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
+  use ff::Field;
+  use rayon::prelude::*;
+
+  pub struct EqSumCheckInstance<E: Engine> {
+    // number of variables at first
+    l: usize,
+    first_half: usize,
+    round: usize,
+    taus: Vec<E::Scalar>,
+    eval_eq_left: E::Scalar,
+    poly_eq_left: Vec<Vec<E::Scalar>>,
+    poly_eq_right: Vec<Vec<E::Scalar>>,
+    eq_tau_0_2_3: Vec<(E::Scalar, E::Scalar, E::Scalar)>,
+  }
+
+  impl<E: Engine> EqSumCheckInstance<E> {
+    pub fn new(taus: Vec<E::Scalar>) -> Self {
+      let l = taus.len();
+      let first_half = l / 2;
+
+      let compute_eq_polynomials = |taus: Vec<&E::Scalar>| -> Vec<Vec<E::Scalar>> {
+        let len = taus.len();
+        let mut result = Vec::with_capacity(len + 1);
+
+        result.push(vec![E::Scalar::ONE]);
+
+        for i in 0..len {
+          let tau = taus[i];
+
+          let prev = &result[i];
+          let mut v_next = prev.to_vec();
+          v_next.par_extend(prev.par_iter().map(|v| *v * tau));
+          let (first, last) = v_next.split_at_mut(prev.len());
+          first
+            .par_iter_mut()
+            .zip(last)
+            .for_each(|(a, b)| *a = *a - *b);
+
+          result.push(v_next);
+        }
+
+        result
+      };
+
+      let (left_taus, right_taus) = taus.split_at(first_half);
+      let left_taus = left_taus.iter().skip(1).rev().collect::<Vec<_>>();
+      let right_taus = right_taus.iter().rev().collect::<Vec<_>>();
+
+      let (poly_eq_left, poly_eq_right) = rayon::join(
+        || compute_eq_polynomials(left_taus),
+        || compute_eq_polynomials(right_taus),
+      );
+
+      let f2 = E::Scalar::ONE.double();
+      let f1 = E::Scalar::ONE;
+      let eq_tau_0_2_3 = taus
+        .par_iter()
+        .map(|tau| {
+          let tau2 = tau.double();
+          let tau3 = tau2 + tau;
+          let tau5 = tau3 + tau2;
+          (f1 - tau, tau3 - f1, tau5 - f2)
+        })
+        .collect::<Vec<_>>();
+
+      Self {
+        l,
+        first_half,
+        round: 1,
+        taus,
+        eval_eq_left: E::Scalar::ONE,
+        poly_eq_left,
+        poly_eq_right,
+        eq_tau_0_2_3,
+      }
+    }
+
+    #[inline]
+    pub fn bound(&mut self, r: &E::Scalar) {
+      let tau = self.taus[self.round - 1];
+      self.eval_eq_left *= E::Scalar::ONE - tau - r + (*r * tau).double();
+      self.round += 1;
+    }
+
+    #[inline]
+    pub fn evaluation_points_cubic_with_three_inputs<F>(
+      &self,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+      poly_B: &MultilinearPolynomial<E::Scalar>,
+      poly_C: &MultilinearPolynomial<E::Scalar>,
+      comb_func: F,
+    ) -> (E::Scalar, E::Scalar, E::Scalar)
+    where
+      F: Fn([E::Scalar; 3]) -> E::Scalar + Sync,
+    {
+      assert_eq!(poly_A.len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+
+      let (poly_eq_left, poly_eq_right, right_len, second_half) = if in_first_half {
+        let second_half = self.l - self.first_half;
+        let poly_eq_left = &self.poly_eq_left[self.first_half - self.round];
+        let poly_eq_right = &self.poly_eq_right[second_half];
+        let right_len = poly_eq_right.len();
+        assert_eq!(right_len, 1 << second_half);
+        (poly_eq_left, poly_eq_right, right_len, second_half)
+      } else {
+        let poly_eq_right = &self.poly_eq_right[self.l - self.round];
+        (poly_eq_right, poly_eq_right, 0, 0)
+      };
+
+      let half_p = poly_A.Z.len() / 2;
+
+      let (zero_A, one_A) = poly_A.Z.split_at(half_p);
+      let (zero_B, one_B) = poly_B.Z.split_at(half_p);
+      let (zero_C, one_C) = poly_C.Z.split_at(half_p);
+
+      let zip_A = zero_A.par_iter().zip(one_A);
+      let zip_B = zero_B.par_iter().zip(one_B);
+      let zip_C = zero_C.par_iter().zip(one_C);
+
+      let (partial_eval_0, partial_eval_2, partial_eval_3) = zip_A
+        .zip(zip_B)
+        .zip(zip_C)
+        .enumerate()
+        .map(
+          |(i, (((zero_a, one_a), (zero_b, one_b)), (zero_c, one_c)))| {
+            let one_a_double = one_a.double();
+            let one_b_double = one_b.double();
+            let one_c_double = one_c.double();
+            let one_a_triple = one_a_double + one_a;
+            let one_b_triple = one_b_double + one_b;
+            let one_c_triple = one_c_double + one_c;
+            let zero_a_double = zero_a.double();
+            let zero_b_double = zero_b.double();
+            let zero_c_double = zero_c.double();
+
+            let e_a_0 = *zero_a;
+            let e_b_0 = *zero_b;
+            let e_c_0 = *zero_c;
+
+            let e_a_2 = one_a_double - zero_a;
+            let e_b_2 = one_b_double - zero_b;
+            let e_c_2 = one_c_double - zero_c;
+
+            let e_a_3 = one_a_triple - zero_a_double;
+            let e_b_3 = one_b_triple - zero_b_double;
+            let e_c_3 = one_c_triple - zero_c_double;
+
+            let mut eval_0 = comb_func([e_a_0, e_b_0, e_c_0]);
+            let mut eval_2 = comb_func([e_a_2, e_b_2, e_c_2]);
+            let mut eval_3 = comb_func([e_a_3, e_b_3, e_c_3]);
+
+            let factor = if in_first_half {
+              let left_id = i >> second_half;
+              let right_id = i % right_len;
+              assert_eq!(i, left_id * (1 << second_half) + right_id);
+              let left = poly_eq_left[left_id];
+              let right = poly_eq_right[right_id];
+              left * right
+            } else {
+              poly_eq_right[i]
+            };
+
+            eval_0 *= factor;
+            eval_2 *= factor;
+            eval_3 *= factor;
+
+            (eval_0, eval_2, eval_3)
+          },
+        )
+        .reduce(
+          || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+          |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+        );
+
+      let p = self.eval_eq_left;
+      let eq_tau_0_2_3 = self.eq_tau_0_2_3[self.round - 1];
+      let eq_tau_0_p = eq_tau_0_2_3.0 * p;
+      let eq_tau_2_p = eq_tau_0_2_3.1 * p;
+      let eq_tau_3_p = eq_tau_0_2_3.2 * p;
+
+      (
+        partial_eval_0 * eq_tau_0_p,
+        partial_eval_2 * eq_tau_2_p,
+        partial_eval_3 * eq_tau_3_p,
+      )
+    }
+
+    #[inline]
+    pub fn evaluation_points_cubic_with_two_inputs<F>(
+      &self,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+      poly_B: &MultilinearPolynomial<E::Scalar>,
+      comb_func: F,
+    ) -> (E::Scalar, E::Scalar, E::Scalar)
+    where
+      F: Fn([E::Scalar; 2]) -> E::Scalar + Sync,
+    {
+      assert_eq!(poly_A.len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+
+      let (poly_eq_left, poly_eq_right, right_len, second_half) = if in_first_half {
+        let second_half = self.l - self.first_half;
+        let poly_eq_left = &self.poly_eq_left[self.first_half - self.round];
+        let poly_eq_right = &self.poly_eq_right[second_half];
+        let right_len = poly_eq_right.len();
+        assert_eq!(right_len, 1 << second_half);
+        (poly_eq_left, poly_eq_right, right_len, second_half)
+      } else {
+        let poly_eq_right = &self.poly_eq_right[self.l - self.round];
+        (poly_eq_right, poly_eq_right, 0, 0)
+      };
+
+      let half_p = poly_A.Z.len() / 2;
+
+      let (zero_A, one_A) = poly_A.Z.split_at(half_p);
+      let (zero_B, one_B) = poly_B.Z.split_at(half_p);
+
+      let zip_A = zero_A.par_iter().zip(one_A);
+      let zip_B = zero_B.par_iter().zip(one_B);
+
+      let (partial_eval_0, partial_eval_2, partial_eval_3) = zip_A
+        .zip(zip_B)
+        .enumerate()
+        .map(|(i, ((zero_a, one_a), (zero_b, one_b)))| {
+          let one_a_double = one_a.double();
+          let one_b_double = one_b.double();
+          let one_a_triple = one_a_double + one_a;
+          let one_b_triple = one_b_double + one_b;
+          let zero_a_double = zero_a.double();
+          let zero_b_double = zero_b.double();
+
+          let e_a_0 = *zero_a;
+          let e_b_0 = *zero_b;
+
+          let e_a_2 = one_a_double - zero_a;
+          let e_b_2 = one_b_double - zero_b;
+
+          let e_a_3 = one_a_triple - zero_a_double;
+          let e_b_3 = one_b_triple - zero_b_double;
+
+          let mut eval_0 = comb_func([e_a_0, e_b_0]);
+          let mut eval_2 = comb_func([e_a_2, e_b_2]);
+          let mut eval_3 = comb_func([e_a_3, e_b_3]);
+
+          let factor = if in_first_half {
+            let left_id = i >> second_half;
+            let right_id = i % right_len;
+            assert_eq!(i, left_id * (1 << second_half) + right_id);
+            let left = poly_eq_left[left_id];
+            let right = poly_eq_right[right_id];
+            left * right
+          } else {
+            poly_eq_right[i]
+          };
+
+          eval_0 *= factor;
+          eval_2 *= factor;
+          eval_3 *= factor;
+
+          (eval_0, eval_2, eval_3)
+        })
+        .reduce(
+          || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+          |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+        );
+
+      let p = self.eval_eq_left;
+      let eq_tau_0_2_3 = self.eq_tau_0_2_3[self.round - 1];
+      let eq_tau_0_p = eq_tau_0_2_3.0 * p;
+      let eq_tau_2_p = eq_tau_0_2_3.1 * p;
+      let eq_tau_3_p = eq_tau_0_2_3.2 * p;
+
+      (
+        partial_eval_0 * eq_tau_0_p,
+        partial_eval_2 * eq_tau_2_p,
+        partial_eval_3 * eq_tau_3_p,
+      )
+    }
+
+    #[inline]
+    pub fn evaluation_points_cubic_with_one_input(
+      &self,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      assert_eq!(poly_A.len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+
+      let (poly_eq_left, poly_eq_right, right_len, second_half) = if in_first_half {
+        let second_half = self.l - self.first_half;
+        let poly_eq_left = &self.poly_eq_left[self.first_half - self.round];
+        let poly_eq_right = &self.poly_eq_right[second_half];
+        let right_len = poly_eq_right.len();
+        assert_eq!(right_len, 1 << second_half);
+        (poly_eq_left, poly_eq_right, right_len, second_half)
+      } else {
+        let poly_eq_right = &self.poly_eq_right[self.l - self.round];
+        (poly_eq_right, poly_eq_right, 0, 0)
+      };
+
+      let half_p = poly_A.Z.len() / 2;
+
+      let (zero_A, one_A) = poly_A.Z.split_at(half_p);
+
+      let zip_A = zero_A.par_iter().zip(one_A);
+
+      let (partial_eval_0, partial_eval_2, partial_eval_3) = zip_A
+        .enumerate()
+        .map(|(i, (zero_a, one_a))| {
+          let one_a_double = one_a.double();
+          let one_a_triple = one_a_double + one_a;
+          let zero_a_double = zero_a.double();
+
+          let mut eval_0 = *zero_a;
+          let mut eval_2 = one_a_double - zero_a;
+          let mut eval_3 = one_a_triple - zero_a_double;
+
+          let factor = if in_first_half {
+            let left_id = i >> second_half;
+            let right_id = i % right_len;
+            let left = poly_eq_left[left_id];
+            let right = poly_eq_right[right_id];
+            assert_eq!(i, left_id * (1 << second_half) + right_id);
+            left * right
+          } else {
+            poly_eq_right[i]
+          };
+
+          eval_0 *= factor;
+          eval_2 *= factor;
+          eval_3 *= factor;
+
+          (eval_0, eval_2, eval_3)
+        })
+        .reduce(
+          || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+          |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+        );
+
+      let p = self.eval_eq_left;
+      let eq_tau_0_2_3 = self.eq_tau_0_2_3[self.round - 1];
+      let eq_tau_0_p = eq_tau_0_2_3.0 * p;
+      let eq_tau_2_p = eq_tau_0_2_3.1 * p;
+      let eq_tau_3_p = eq_tau_0_2_3.2 * p;
+
+      (
+        partial_eval_0 * eq_tau_0_p,
+        partial_eval_2 * eq_tau_2_p,
+        partial_eval_3 * eq_tau_3_p,
+      )
+    }
+  }
+}
