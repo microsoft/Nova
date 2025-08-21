@@ -312,6 +312,8 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 }
 
+#[cfg_attr(feature = "bench", visibility::make(pub))]
+/// Memory sumcheck instance for PPSNARK LogUp
 struct MemorySumcheckInstance<E: Engine> {
   // row
   w_plus_r_row: MultilinearPolynomial<E::Scalar>,
@@ -475,6 +477,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     Ok((comm_vec, poly_vec, aux_poly_vec))
   }
 
+  /// Create a new memory sumcheck instance
   pub fn new(
     polys_oracle: [Vec<E::Scalar>; 4],
     polys_aux: [Vec<E::Scalar>; 4],
@@ -645,6 +648,8 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 }
 
+#[cfg_attr(feature = "bench", visibility::make(pub))]
+/// Outer sumcheck instance for PPSNARK
 struct OuterSumcheckInstance<E: Engine> {
   poly_tau: MultilinearPolynomial<E::Scalar>,
   poly_Az: MultilinearPolynomial<E::Scalar>,
@@ -658,6 +663,7 @@ struct OuterSumcheckInstance<E: Engine> {
 }
 
 impl<E: Engine> OuterSumcheckInstance<E> {
+  /// Create a new outer sumcheck instance
   pub fn new(
     tau: Vec<E::Scalar>,
     Az: Vec<E::Scalar>,

@@ -32,6 +32,7 @@ byteorder = "1.4.3"
 thiserror = "2.0.11"
 once_cell = "1.18.0"
 itertools = "0.14.0"
+visibility = "0.1.1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.15", default-features = false, features = ["js"] }
@@ -67,7 +68,12 @@ harness = false
 name = "commit"
 harness = false
 
+[[bench]]
+name = "sumcheckeq"
+harness = false
+
 [features]
 default = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
+bench = []
