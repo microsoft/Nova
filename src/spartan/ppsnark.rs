@@ -1169,7 +1169,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         // absorb the commitments
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());
 
-        let rho: Vec<<E as Engine>::Scalar> = (0..num_rounds_sc)
+        let rho = (0..num_rounds_sc)
           .map(|_| transcript.squeeze(b"r"))
           .collect::<Result<Vec<_>, NovaError>>()?;
 
