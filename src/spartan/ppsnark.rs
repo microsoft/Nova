@@ -487,7 +487,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     let [t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_inv_col, w_plus_r_inv_col] = polys_oracle;
     let [t_plus_r_row, w_plus_r_row, t_plus_r_col, w_plus_r_col] = polys_aux;
 
-    let zero = vec![E::Scalar::ZERO; rhos.len()];
+    let zero = vec![E::Scalar::ZERO; 1 << rhos.len()];
 
     Self {
       w_plus_r_row: MultilinearPolynomial::new(w_plus_r_row),
