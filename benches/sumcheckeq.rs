@@ -9,7 +9,7 @@ use nova_snark::{
   provider::Bn256EngineKZG,
   spartan::{
     ppsnark::{MemorySumcheckInstance, OuterSumcheckInstance},
-    EqPolynomial, SumcheckEngine,
+    SumcheckEngine,
   },
   traits::Engine,
 };
@@ -40,7 +40,7 @@ fn run_sc<E: Engine, S: SumcheckEngine<E>>(
 }
 
 fn bench_sumcheckeq(c: &mut Criterion) {
-  const MAX_NUM_VARS: usize = 25;
+  const MAX_NUM_VARS: usize = 26;
 
   let rs = (0..MAX_NUM_VARS)
     .map(|i| -<E as Engine>::Scalar::from(i as u64))
@@ -101,7 +101,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
 
         black_box({
           let mut instance = OuterSumcheckInstance::<E>::new(
-            EqPolynomial::new(taus).evals(),
+            taus,
             vs_a,
             vs_b,
             vs_c,
@@ -143,13 +143,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
         });
 
         black_box({
-          let mut instance = MemorySumcheckInstance::<E>::new(
-            polys1,
-            polys2,
-            EqPolynomial::new(taus).evals(),
-            poly3,
-            poly4,
-          );
+          let mut instance = MemorySumcheckInstance::<E>::new(polys1, polys2, taus, poly3, poly4);
           run_sc(&rs, &mut instance);
         });
       });

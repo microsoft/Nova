@@ -16,8 +16,6 @@ pub(crate) mod polys;
 pub(crate) mod sumcheck;
 
 #[cfg(feature = "bench")]
-pub use polys::eq::EqPolynomial;
-#[cfg(feature = "bench")]
 pub use sumcheck::SumcheckEngine;
 
 use crate::{

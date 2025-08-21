@@ -557,15 +557,11 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
         &self.t_plus_r_inv_row,
         &self.t_plus_r_row,
         &self.ts_row,
-        |[a, b, c]: [E::Scalar; 3]| a * b - c,
       );
     // 0 = ∑ eq[i] * (inv_W[i] * (T[i] + r) - 1))
-    let (eval_W_0_row, eval_W_2_row, eval_W_3_row) =
-      self.eq_sumcheck.evaluation_points_cubic_with_two_inputs(
-        &self.w_plus_r_inv_row,
-        &self.w_plus_r_row,
-        |[a, b]: [E::Scalar; 2]| a * b - E::Scalar::ONE,
-      );
+    let (eval_W_0_row, eval_W_2_row, eval_W_3_row) = self
+      .eq_sumcheck
+      .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_row, &self.w_plus_r_row);
 
     // column related evaluation points
     let (eval_T_0_col, eval_T_2_col, eval_T_3_col) =
@@ -573,14 +569,10 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
         &self.t_plus_r_inv_col,
         &self.t_plus_r_col,
         &self.ts_col,
-        |[a, b, c]: [E::Scalar; 3]| a * b - c,
       );
-    let (eval_W_0_col, eval_W_2_col, eval_W_3_col) =
-      self.eq_sumcheck.evaluation_points_cubic_with_two_inputs(
-        &self.w_plus_r_inv_col,
-        &self.w_plus_r_col,
-        |[a, b]: [E::Scalar; 2]| a * b - E::Scalar::ONE,
-      );
+    let (eval_W_0_col, eval_W_2_col, eval_W_3_col) = self
+      .eq_sumcheck
+      .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_col, &self.w_plus_r_col);
 
     vec![
       vec![eval_inv_0_row, eval_inv_2_row, eval_inv_3_row],
@@ -679,13 +671,9 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let (eval_point_h_0, eval_point_h_2, eval_point_h_3) =
-      self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
-        &self.poly_Az,
-        &self.poly_Bz,
-        &self.poly_uCz_E,
-        &|[a, b, c]: [E::Scalar; 3]| a * b - c,
-      );
+    let (eval_point_h_0, eval_point_h_2, eval_point_h_3) = self
+      .eq_sumcheck
+      .evaluation_points_cubic_with_three_inputs(&self.poly_Az, &self.poly_Bz, &self.poly_uCz_E);
 
     let (eval_point_e_0, eval_point_e_2, eval_point_e_3) = self
       .eq_sumcheck
