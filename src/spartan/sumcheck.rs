@@ -522,10 +522,7 @@ pub(crate) mod eq_sumcheck {
           let mut v_next = prev.to_vec();
           v_next.par_extend(prev.par_iter().map(|v| *v * tau));
           let (first, last) = v_next.split_at_mut(prev.len());
-          first
-            .par_iter_mut()
-            .zip(last)
-            .for_each(|(a, b)| *a = *a - *b);
+          first.par_iter_mut().zip(last).for_each(|(a, b)| *a -= *b);
 
           result.push(v_next);
         }
