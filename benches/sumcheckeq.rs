@@ -44,7 +44,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
     .map(|i| -<E as Engine>::Scalar::from(i as u64))
     .collect::<Vec<_>>();
   let taus = (0..MAX_NUM_VARS)
-    .map(|i| -<E as Engine>::Scalar::from(2 * i as u64))
+    .map(|i| -<E as Engine>::Scalar::from(i as u64 * 2))
     .collect::<Vec<_>>();
   let vs_a = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
@@ -52,31 +52,31 @@ fn bench_sumcheckeq(c: &mut Criterion) {
     .collect::<Vec<_>>();
   let vs_b = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 2 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 2_u64))
     .collect::<Vec<_>>();
   let vs_c = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 3 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 3_u64))
     .collect::<Vec<_>>();
   let vs_d = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 4 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 4_u64))
     .collect::<Vec<_>>();
   let vs_e = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 5 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 5_u64))
     .collect::<Vec<_>>();
   let vs_f = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 6 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 6_u64))
     .collect::<Vec<_>>();
   let vs_g = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 7 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 7_u64))
     .collect::<Vec<_>>();
   let vs_h = (0..1 << MAX_NUM_VARS)
     .into_par_iter()
-    .map(|i| <E as Engine>::Scalar::from(i * 8 as u64))
+    .map(|i| <E as Engine>::Scalar::from(i * 8_u64))
     .collect::<Vec<_>>();
 
   for i in 3..MAX_NUM_VARS {
@@ -106,7 +106,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
             vs_d,
             &<E as Engine>::Scalar::ZERO,
           );
-          run_sc(&rs, &mut instance);
+          run_sc(&rs, &mut instance)
         });
       });
     });
@@ -142,7 +142,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
 
         black_box({
           let mut instance = MemorySumcheckInstance::<E>::new(polys1, polys2, taus, poly3, poly4);
-          run_sc(&rs, &mut instance);
+          run_sc(&rs, &mut instance)
         });
       });
     });
