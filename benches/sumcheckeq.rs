@@ -1,7 +1,5 @@
-//! Benchmarks Nova's prover for proving SHA-256 with varying sized messages.
-//! We run a single step with the step performing the entire computation.
-//! This code invokes a hand-written SHA-256 gadget from bellman/bellperson.
-//! It also uses code from bellman/bellperson to compare circuit-generated digest with sha2 crate's output
+//! Benchmarks Nova's prover for sumcheck involving equality polynomials.
+//! The optimization is described in Section 5 of https://eprint.iacr.org/2025/1117.
 #![allow(non_snake_case)]
 use criterion::*;
 use ff::Field;
@@ -81,7 +79,7 @@ fn bench_sumcheckeq(c: &mut Criterion) {
     .map(|i| <E as Engine>::Scalar::from(i * 8 as u64))
     .collect::<Vec<_>>();
 
-  for i in 1..MAX_NUM_VARS {
+  for i in 3..MAX_NUM_VARS {
     let mut group = c.benchmark_group(format!("NovaProve-PPSNARK-SumCheckEq-len-{}", i));
     group.sample_size(20);
 

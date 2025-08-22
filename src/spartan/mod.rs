@@ -15,7 +15,6 @@ pub(crate) mod math;
 pub(crate) mod polys;
 pub(crate) mod sumcheck;
 
-#[cfg(feature = "bench")]
 pub use sumcheck::SumcheckEngine;
 
 use crate::{

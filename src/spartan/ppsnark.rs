@@ -312,9 +312,8 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 }
 
-#[cfg_attr(feature = "bench", visibility::make(pub))]
 /// Memory sumcheck instance for PPSNARK LogUp
-struct MemorySumcheckInstance<E: Engine> {
+pub struct MemorySumcheckInstance<E: Engine> {
   // row
   w_plus_r_row: MultilinearPolynomial<E::Scalar>,
   t_plus_r_row: MultilinearPolynomial<E::Scalar>,
@@ -550,29 +549,47 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
         &comb_func,
       );
 
-    // row related evaluation points
-    // 0 = ∑ eq[i] * (inv_T[i] * (T[i] + r) - TS[i]))
-    let (eval_T_0_row, eval_T_2_row, eval_T_3_row) =
-      self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
-        &self.t_plus_r_inv_row,
-        &self.t_plus_r_row,
-        &self.ts_row,
-      );
-    // 0 = ∑ eq[i] * (inv_W[i] * (T[i] + r) - 1))
-    let (eval_W_0_row, eval_W_2_row, eval_W_3_row) = self
-      .eq_sumcheck
-      .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_row, &self.w_plus_r_row);
-
-    // column related evaluation points
-    let (eval_T_0_col, eval_T_2_col, eval_T_3_col) =
-      self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
-        &self.t_plus_r_inv_col,
-        &self.t_plus_r_col,
-        &self.ts_col,
-      );
-    let (eval_W_0_col, eval_W_2_col, eval_W_3_col) = self
-      .eq_sumcheck
-      .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_col, &self.w_plus_r_col);
+    let (
+      ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
+      ((eval_T_0_col, eval_T_2_col, eval_T_3_col), (eval_W_0_col, eval_W_2_col, eval_W_3_col)),
+    ) = rayon::join(
+      || {
+        // row related evaluation points
+        rayon::join(
+          || {
+            // 0 = ∑ eq[i] * (inv_T[i] * (T[i] + r) - TS[i]))
+            self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
+              &self.t_plus_r_inv_row,
+              &self.t_plus_r_row,
+              &self.ts_row,
+            )
+          },
+          || {
+            // 0 = ∑ eq[i] * (inv_W[i] * (T[i] + r) - 1))
+            self
+              .eq_sumcheck
+              .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_row, &self.w_plus_r_row)
+          },
+        )
+      },
+      || {
+        // column related evaluation points
+        rayon::join(
+          || {
+            self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
+              &self.t_plus_r_inv_col,
+              &self.t_plus_r_col,
+              &self.ts_col,
+            )
+          },
+          || {
+            self
+              .eq_sumcheck
+              .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_col, &self.w_plus_r_col)
+          },
+        )
+      },
+    );
 
     vec![
       vec![eval_inv_0_row, eval_inv_2_row, eval_inv_3_row],
@@ -620,9 +637,8 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 }
 
-#[cfg_attr(feature = "bench", visibility::make(pub))]
 /// Outer sumcheck instance for PPSNARK
-struct OuterSumcheckInstance<E: Engine> {
+pub struct OuterSumcheckInstance<E: Engine> {
   poly_Az: MultilinearPolynomial<E::Scalar>,
   poly_Bz: MultilinearPolynomial<E::Scalar>,
   poly_uCz_E: MultilinearPolynomial<E::Scalar>,
@@ -671,13 +687,23 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let (eval_point_h_0, eval_point_h_2, eval_point_h_3) = self
-      .eq_sumcheck
-      .evaluation_points_cubic_with_three_inputs(&self.poly_Az, &self.poly_Bz, &self.poly_uCz_E);
-
-    let (eval_point_e_0, eval_point_e_2, eval_point_e_3) = self
-      .eq_sumcheck
-      .evaluation_points_cubic_with_one_input(&self.poly_Mz);
+    let (
+      (eval_point_h_0, eval_point_h_2, eval_point_h_3),
+      (eval_point_e_0, eval_point_e_2, eval_point_e_3),
+    ) = rayon::join(
+      || {
+        self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
+          &self.poly_Az,
+          &self.poly_Bz,
+          &self.poly_uCz_E,
+        )
+      },
+      || {
+        self
+          .eq_sumcheck
+          .evaluation_points_cubic_with_one_input(&self.poly_Mz)
+      },
+    );
 
     vec![
       vec![eval_point_h_0, eval_point_h_2, eval_point_h_3],
