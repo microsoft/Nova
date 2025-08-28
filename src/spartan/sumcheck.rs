@@ -1,8 +1,11 @@
 use crate::{
   errors::NovaError,
-  spartan::polys::{
-    multilinear::MultilinearPolynomial,
-    univariate::{CompressedUniPoly, UniPoly},
+  spartan::{
+    polys::{
+      multilinear::MultilinearPolynomial,
+      univariate::{CompressedUniPoly, UniPoly},
+    },
+    sumcheck::eq_sumcheck::EqSumCheckInstance,
   },
   traits::{Engine, TranscriptEngineTrait},
 };
@@ -363,79 +366,28 @@ impl<E: Engine> SumcheckProof<E> {
       )
   }
 
-  #[inline]
-  pub fn compute_eval_points_cubic_with_additive_term<F>(
-    poly_A: &MultilinearPolynomial<E::Scalar>,
-    poly_B: &MultilinearPolynomial<E::Scalar>,
-    poly_C: &MultilinearPolynomial<E::Scalar>,
-    poly_D: &MultilinearPolynomial<E::Scalar>,
-    comb_func: &F,
-  ) -> (E::Scalar, E::Scalar, E::Scalar)
-  where
-    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
-    let len = poly_A.len() / 2;
-    (0..len)
-      .into_par_iter()
-      .map(|i| {
-        // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i], &poly_D[i]);
-
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D[len + i] + poly_D[len + i] - poly_D[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let poly_D_bound_point = poly_D_bound_point + poly_D[len + i] - poly_D[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-          &poly_D_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
-      })
-      .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      )
-  }
-
-  pub fn prove_cubic_with_additive_term<F>(
+  /// Prove poly_A * poly_B - poly_C
+  pub fn prove_cubic_with_three_inputs(
     claim: &E::Scalar,
-    num_rounds: usize,
+    taus: Vec<E::Scalar>,
     poly_A: &mut MultilinearPolynomial<E::Scalar>,
     poly_B: &mut MultilinearPolynomial<E::Scalar>,
     poly_C: &mut MultilinearPolynomial<E::Scalar>,
-    poly_D: &mut MultilinearPolynomial<E::Scalar>,
-    comb_func: F,
     transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
-  where
-    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
     let mut r: Vec<E::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
+
+    let num_rounds = taus.len();
+
+    let mut eq_instance = EqSumCheckInstance::<E>::new(taus);
 
     for _ in 0..num_rounds {
       let poly = {
         // Make an iterator returning the contributions to the evaluations
         let (eval_point_0, eval_point_2, eval_point_3) =
-          Self::compute_eval_points_cubic_with_additive_term(
-            poly_A, poly_B, poly_C, poly_D, &comb_func,
-          );
+          eq_instance.evaluation_points_cubic_with_three_inputs(poly_A, poly_B, poly_C);
 
         let evals = vec![
           eval_point_0,
@@ -459,18 +411,12 @@ impl<E: Engine> SumcheckProof<E> {
 
       // bound all tables to the verifier's challenge
       rayon::join(
-        || {
-          rayon::join(
-            || poly_A.bind_poly_var_top(&r_i),
-            || poly_B.bind_poly_var_top(&r_i),
-          )
-        },
-        || {
-          rayon::join(
-            || poly_C.bind_poly_var_top(&r_i),
-            || poly_D.bind_poly_var_top(&r_i),
-          )
-        },
+        || poly_A.bind_poly_var_top(&r_i),
+        || poly_B.bind_poly_var_top(&r_i),
+      );
+      rayon::join(
+        || poly_C.bind_poly_var_top(&r_i),
+        || eq_instance.bound(&r_i),
       );
     }
 
@@ -479,7 +425,7 @@ impl<E: Engine> SumcheckProof<E> {
         compressed_polys: polys,
       },
       r,
-      vec![poly_A[0], poly_B[0], poly_C[0], poly_D[0]],
+      vec![poly_A[0], poly_B[0], poly_C[0]],
     ))
   }
 }
@@ -564,6 +510,7 @@ pub(crate) mod eq_sumcheck {
       }
     }
 
+    /// Evaluate poly_A * poly_B - poly_C
     #[inline]
     pub fn evaluation_points_cubic_with_three_inputs(
       &self,
@@ -632,6 +579,7 @@ pub(crate) mod eq_sumcheck {
       (eval_0, eval_2, eval_3)
     }
 
+    /// Evaluate poly_A * poly_B - ONE
     #[inline]
     pub fn evaluation_points_cubic_with_two_inputs(
       &self,
@@ -695,6 +643,7 @@ pub(crate) mod eq_sumcheck {
       (eval_0, eval_2, eval_3)
     }
 
+    /// Evaluate poly_A
     #[inline]
     pub fn evaluation_points_cubic_with_one_input(
       &self,
