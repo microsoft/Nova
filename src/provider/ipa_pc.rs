@@ -10,7 +10,7 @@ use crate::{
   Commitment, CommitmentKey, CE,
 };
 use core::iter;
-use ff::{Field, PrimeField};
+use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
