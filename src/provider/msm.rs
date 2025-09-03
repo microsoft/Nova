@@ -1,6 +1,7 @@
 //! This module provides a multi-scalar multiplication routine
 //! The generic implementation is adapted from halo2; we add an optimization to commit to bits more efficiently
 //! The specialized implementations are adapted from jolt, with additional optimizations and parallelization.
+use crate::{errors::NovaError, provider::ipa_pc::batch_invert};
 use ff::{Field, PrimeField};
 use halo2curves::{group::Group, CurveAffine};
 use num_integer::Integer;
@@ -162,19 +163,88 @@ pub fn msm_small_with_max_num_bits<
   }
 }
 
+// Batch-add affine points using pairwise affine formulas with one
+/// Assumes: all points are distinct, non-identity; denominators are nonzero.
+pub fn batch_affine_addition<C: CurveAffine + Send + Sync>(
+  mut points: Vec<C>,
+) -> Result<C, NovaError>
+where
+  C::Base: Field + Send + Sync,
+{
+  if points.is_empty() {
+    return Ok(C::identity());
+  }
+  if points.len() == 1 {
+    return Ok(points[0]);
+  }
+
+  while points.len() > 1 {
+    let len = points.len();
+    let pairs = len / 2;
+    let has_odd = (len & 1) == 1;
+
+    // 1) Denominators in parallel: (x2 - x1)
+    let denominators: Vec<C::Base> = (0..pairs)
+      .into_par_iter()
+      .map(|i| {
+        let p1 = points[2 * i];
+        let p2 = points[2 * i + 1];
+        let c1 = p1.coordinates().unwrap();
+        let c2 = p2.coordinates().unwrap();
+        *c2.x() - *c1.x()
+      })
+      .collect();
+
+    // 2) One batch inversion for all denominators this round.
+    let inverses: Vec<C::Base> = batch_invert(&denominators)?;
+
+    // 3) Finish additions in parallel.
+    let mut new_points: Vec<C> = (0..pairs)
+      .into_par_iter()
+      .zip(inverses.par_iter())
+      .map(|(i, inv)| {
+        let p1 = points[2 * i];
+        let p2 = points[2 * i + 1];
+
+        let c1 = p1.coordinates().unwrap();
+        let c2 = p2.coordinates().unwrap();
+        let (x1, y1) = (*c1.x(), *c1.y());
+        let (x2, y2) = (*c2.x(), *c2.y());
+
+        let lambda = (y2 - y1) * *inv;
+        let x3 = lambda.square() - x1 - x2;
+        let y3 = lambda * (x1 - x3) - y1;
+
+        // halo2curves constructor from (x,y)
+        C::from_xy(x3, y3).unwrap()
+      })
+      .collect();
+
+    if has_odd {
+      new_points.push(points[len - 1]);
+    }
+    points = new_points;
+  }
+
+  Ok(points[0])
+}
+
 fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> C::Curve {
   assert_eq!(scalars.len(), bases.len());
   let num_threads = current_num_threads();
   let process_chunk = |scalars: &[T], bases: &[C]| {
-    let mut acc = C::Curve::identity();
-    scalars
-      .iter()
-      .zip(bases.iter())
-      .filter(|(scalar, _)| !scalar.is_zero())
-      .for_each(|(_, base)| {
-        acc += *base;
-      });
-    acc
+    // indices of scalar == 1 (we only call this path for {0,1} scalars)
+    let mut bases_selected = Vec::new();
+    for (si, bi) in scalars.iter().zip(bases.iter()) {
+      if !si.is_zero() {
+        bases_selected.push(*bi)
+      }
+    }
+    if bases_selected.is_empty() {
+      C::Curve::identity()
+    } else {
+      batch_affine_addition::<C>(bases_selected).unwrap().to_curve()
+    }
   };
 
   if scalars.len() > num_threads {

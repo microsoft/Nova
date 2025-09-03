@@ -10,7 +10,7 @@ use crate::{
   Commitment, CommitmentKey, CE,
 };
 use core::iter;
-use ff::Field;
+use ff::{Field, PrimeField};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
@@ -104,6 +104,32 @@ fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
     .into_par_iter()
     .map(|i| a[i] * b[i])
     .reduce(|| T::ZERO, |x, y| x + y)
+}
+
+pub(crate) fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+  let mut products = vec![Scalar::ZERO; v.len()];
+  let mut acc = Scalar::ONE;
+
+  for i in 0..v.len() {
+    products[i] = acc;
+    acc *= v[i];
+  }
+
+  // return error if acc is zero
+  acc = match Option::from(acc.invert()) {
+    Some(inv) => inv,
+    None => return Err(NovaError::InternalError),
+  };
+
+  // compute the inverse once for all entries
+  let mut inv = vec![Scalar::ZERO; v.len()];
+  for i in (0..v.len()).rev() {
+    let tmp = acc * v[i];
+    inv[i] = products[i] * acc;
+    acc = tmp;
+  }
+
+  Ok(inv)
 }
 
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
@@ -309,32 +335,6 @@ where
     let ck_c = ck_c.scale(&r);
 
     let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c], &E::Scalar::ZERO);
-
-    let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
-      let mut products = vec![E::Scalar::ZERO; v.len()];
-      let mut acc = E::Scalar::ONE;
-
-      for i in 0..v.len() {
-        products[i] = acc;
-        acc *= v[i];
-      }
-
-      // return error if acc is zero
-      acc = match Option::from(acc.invert()) {
-        Some(inv) => inv,
-        None => return Err(NovaError::InternalError),
-      };
-
-      // compute the inverse once for all entries
-      let mut inv = vec![E::Scalar::ZERO; v.len()];
-      for i in (0..v.len()).rev() {
-        let tmp = acc * v[i];
-        inv[i] = products[i] * acc;
-        acc = tmp;
-      }
-
-      Ok(inv)
-    };
 
     // compute a vector of public coins using self.L_vec and self.R_vec
     let r = (0..self.L_vec.len())
