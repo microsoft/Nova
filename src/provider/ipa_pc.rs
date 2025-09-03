@@ -308,6 +308,8 @@ where
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
 
+    let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c], &E::Scalar::ZERO);
+
     let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
       let mut products = vec![E::Scalar::ZERO; v.len()];
       let mut acc = E::Scalar::ONE;
@@ -333,8 +335,6 @@ where
 
       Ok(inv)
     };
-
-    let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c], &E::Scalar::ZERO);
 
     // compute a vector of public coins using self.L_vec and self.R_vec
     let r = (0..self.L_vec.len())
