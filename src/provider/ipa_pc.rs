@@ -106,32 +106,6 @@ fn inner_product<T: Field + Send + Sync>(a: &[T], b: &[T]) -> T {
     .reduce(|| T::ZERO, |x, y| x + y)
 }
 
-pub(crate) fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-  let mut products = vec![Scalar::ZERO; v.len()];
-  let mut acc = Scalar::ONE;
-
-  for i in 0..v.len() {
-    products[i] = acc;
-    acc *= v[i];
-  }
-
-  // return error if acc is zero
-  acc = match Option::from(acc.invert()) {
-    Some(inv) => inv,
-    None => return Err(NovaError::InternalError),
-  };
-
-  // compute the inverse once for all entries
-  let mut inv = vec![Scalar::ZERO; v.len()];
-  for i in (0..v.len()).rev() {
-    let tmp = acc * v[i];
-    inv[i] = products[i] * acc;
-    acc = tmp;
-  }
-
-  Ok(inv)
-}
-
 /// An inner product instance consists of a commitment to a vector `a` and another vector `b`
 /// and the claim that c = <a, b>.
 pub struct InnerProductInstance<E: Engine> {
@@ -333,6 +307,32 @@ where
     // sample a random base for committing to the inner product
     let r = transcript.squeeze(b"r")?;
     let ck_c = ck_c.scale(&r);
+
+    let batch_invert = |v: &[E::Scalar]| -> Result<Vec<E::Scalar>, NovaError> {
+      let mut products = vec![E::Scalar::ZERO; v.len()];
+      let mut acc = E::Scalar::ONE;
+
+      for i in 0..v.len() {
+        products[i] = acc;
+        acc *= v[i];
+      }
+
+      // return error if acc is zero
+      acc = match Option::from(acc.invert()) {
+        Some(inv) => inv,
+        None => return Err(NovaError::InternalError),
+      };
+
+      // compute the inverse once for all entries
+      let mut inv = vec![E::Scalar::ZERO; v.len()];
+      for i in (0..v.len()).rev() {
+        let tmp = acc * v[i];
+        inv[i] = products[i] * acc;
+        acc = tmp;
+      }
+
+      Ok(inv)
+    };
 
     let P = U.comm_a_vec + CE::<E>::commit(&ck_c, &[U.c], &E::Scalar::ZERO);
 
