@@ -1,7 +1,7 @@
 //! This module provides a multi-scalar multiplication routine
 //! The generic implementation is adapted from halo2; we add an optimization to commit to bits more efficiently
 //! The specialized implementations are adapted from jolt, with additional optimizations and parallelization.
-use crate::{errors::NovaError, provider::ipa_pc::batch_invert};
+use crate::{errors::NovaError, spartan::ppsnark::batch_invert};
 use ff::{Field, PrimeField};
 use halo2curves::{group::Group, CurveAffine};
 use num_integer::Integer;

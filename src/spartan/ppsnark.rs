@@ -1607,7 +1607,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
 // Compute the inverse of a batch of field elements in parallel
 // Inspired by https://blog.eryx.co/2024/11/27/The-Power-of-GPU-Parallelization-Applied-to-Cryptography-Primitives.html
-fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+pub(crate) fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
   const MAX_SIZE_FOR_SERIAL: usize = 4096;
   const MIN_CHUNK_SIZE: usize = 128;
 
