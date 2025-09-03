@@ -231,31 +231,18 @@ where
 
 fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> C::Curve {
   assert_eq!(scalars.len(), bases.len());
-  let num_threads = current_num_threads();
-  let process_chunk = |scalars: &[T], bases: &[C]| {
-    // indices of scalar == 1 (we only call this path for {0,1} scalars)
-    let mut bases_selected = Vec::new();
-    for (si, bi) in scalars.iter().zip(bases.iter()) {
-      if !si.is_zero() {
-        bases_selected.push(*bi)
-      }
-    }
-    if bases_selected.is_empty() {
-      C::Curve::identity()
-    } else {
-      batch_affine_addition::<C>(bases_selected).unwrap().to_curve()
-    }
-  };
-
-  if scalars.len() > num_threads {
-    let chunk = scalars.len() / num_threads;
-    scalars
-      .par_chunks(chunk)
-      .zip(bases.par_chunks(chunk))
-      .map(|(scalars, bases)| process_chunk(scalars, bases))
-      .reduce(C::Curve::identity, |sum, evl| sum + evl)
+  // indices of scalar == 1 (we only call this path for {0,1} scalars)
+  let bases_selected: Vec<C> = scalars
+    .par_iter()
+    .zip(bases.par_iter())
+    .filter_map(|(si, bi)| if !si.is_zero() { Some(*bi) } else { None })
+    .collect();
+  if bases_selected.is_empty() {
+    C::Curve::identity()
   } else {
-    process_chunk(scalars, bases)
+    batch_affine_addition::<C>(bases_selected)
+      .unwrap()
+      .to_curve()
   }
 }
 
