@@ -15,6 +15,8 @@ pub(crate) mod math;
 pub(crate) mod polys;
 pub(crate) mod sumcheck;
 
+pub use sumcheck::SumcheckEngine;
+
 use crate::{
   r1cs::{R1CSShape, SparseMatrix},
   traits::Engine,
