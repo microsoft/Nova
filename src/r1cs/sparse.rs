@@ -108,15 +108,25 @@ impl<F: PrimeField> SparseMatrix<F> {
 
   /// returns a custom iterator
   pub fn iter(&self) -> Iter<'_, F> {
+    let nnz = *self.indptr.last().unwrap();
+    if nnz == 0 {
+      return Iter {
+        matrix: self,
+        row: 0,
+        i: 0,
+        nnz,
+      };
+    }
+
     let mut row = 0;
-    while self.indptr[row + 1] == 0 {
+    while row + 1 < self.indptr.len() && self.indptr[row + 1] == 0 {
       row += 1;
     }
     Iter {
       matrix: self,
       row,
       i: 0,
-      nnz: *self.indptr.last().unwrap(),
+      nnz,
     }
   }
 }
