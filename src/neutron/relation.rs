@@ -78,7 +78,7 @@ impl<E: Engine> Structure<E> {
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
     let (Az, Bz, Cz) = self.S.multiply_vec(&z)?;
 
-    // full_E is the outer outer product of E1 and E2
+    // full_E is the outer product of E1 and E2
     // E1 and E2 are splits of E
     let (E1, E2) = W.E.split_at(self.left);
     let mut full_E = vec![E::Scalar::ONE; self.left * self.right];
