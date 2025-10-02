@@ -21,7 +21,10 @@ pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
   /// Generate Poseidon constants
   fn default() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self(
+      Sponge::<Scalar, U24>::api_constants(Strength::Standard)
+        .expect("Failed to create default Poseidon constants for circuit"),
+    )
   }
 }
 

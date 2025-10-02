@@ -246,9 +246,13 @@ where
         E::Base::ONE
       } else {
         // Set to the actual inverse
-        (*other.x.get_value().get()? - *self.x.get_value().get()?)
-          .invert()
-          .unwrap()
+        let diff = *other.x.get_value().get()? - *self.x.get_value().get()?;
+        let inv = diff.invert();
+        if inv.is_some().into() {
+          inv.unwrap()
+        } else {
+          return Err(SynthesisError::DivisionByZero);
+        }
       };
 
       Ok((*other.y.get_value().get()? - *self.y.get_value().get()?) * x_diff_inv)
@@ -385,7 +389,13 @@ where
         E::Base::ONE
       } else {
         // Return the actual inverse
-        (*tmp.get_value().get()?).invert().unwrap()
+        let val = *tmp.get_value().get()?;
+        let inv = val.invert();
+        if inv.is_some().into() {
+          inv.unwrap()
+        } else {
+          return Err(SynthesisError::DivisionByZero);
+        }
       };
 
       Ok(tmp_inv * (*prod_1.get_value().get()? + E::GE::group_params().0))
@@ -686,7 +696,12 @@ impl<E: Engine> AllocatedPointNonInfinity<E> {
       if d == E::Base::ZERO {
         Ok(E::Base::ONE)
       } else {
-        Ok(n * d.invert().unwrap())
+        let inv = d.invert();
+        if inv.is_some().into() {
+          Ok(n * inv.unwrap())
+        } else {
+          Err(SynthesisError::DivisionByZero)
+        }
       }
     })?;
     cs.enforce(
@@ -890,7 +905,7 @@ mod tests {
       loop {
         let x = E::Base::random(&mut OsRng);
         let y = (x.square() * x + E::GE::group_params().1).sqrt();
-        if y.is_some().unwrap_u8() == 1 {
+        if bool::from(y.is_some()) {
           return Self {
             x,
             y: y.unwrap(),
@@ -929,7 +944,19 @@ mod tests {
         return self.clone();
       }
 
-      let lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
+      let x_diff = other.x - self.x;
+      let x_inv = x_diff.invert();
+      if bool::from(x_inv.is_none()) {
+        // This would be a division by zero, which means the points have the same x coordinate
+        // This shouldn't happen in add_internal as it assumes different points
+        // Return infinity as a safe fallback
+        return Self {
+          x: E::Base::ZERO,
+          y: E::Base::ZERO,
+          is_infinity: true,
+        };
+      }
+      let lambda = (other.y - self.y) * x_inv.unwrap();
       let x = lambda * lambda - self.x - other.x;
       let y = lambda * (self.x - x) - self.y;
       Self {
@@ -948,10 +975,18 @@ mod tests {
         };
       }
 
-      let lambda = E::Base::from(3)
-        * self.x
-        * self.x
-        * ((E::Base::ONE + E::Base::ONE) * self.y).invert().unwrap();
+      let denominator = (E::Base::ONE + E::Base::ONE) * self.y;
+      let inv = denominator.invert();
+      if bool::from(inv.is_none()) {
+        // Division by zero, likely y = 0, return infinity
+        return Self {
+          x: E::Base::ZERO,
+          y: E::Base::ZERO,
+          is_infinity: true,
+        };
+      }
+
+      let lambda = E::Base::from(3) * self.x * self.x * inv.unwrap();
       let x = lambda * lambda - self.x - self.x;
       let y = lambda * (self.x - x) - self.y;
       Self {
