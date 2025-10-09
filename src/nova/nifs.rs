@@ -148,7 +148,6 @@ impl<E: Engine> NIFSRelaxed<E> {
 
     // compute a commitment to the cross-term
     let r_T = E::Scalar::random(&mut OsRng);
-    E::Scalar::random(&mut OsRng);
     let (T, comm_T) = S.commit_T_relaxed(ck, U1, W1, U2, W2, &r_T)?;
 
     // append `comm_T` to the transcript and obtain a challenge
