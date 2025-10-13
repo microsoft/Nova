@@ -91,7 +91,7 @@ impl<F: PrimeField> SparseMatrix<F> {
         self
           .get_row_unchecked(ptrs.try_into().unwrap())
           .map(|(val, col_idx)| *val * vector[*col_idx])
-          .sum()
+          .fold(F::zero(), |acc, x| acc + x)
       })
       .collect()
   }
