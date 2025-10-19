@@ -16,6 +16,7 @@ use super::{
   mds::{MdsMatrices, SparseMatrix},
   quintic_s_box, round_constants, round_numbers, Strength, DEFAULT_STRENGTH,
 };
+use crate::errors::NovaError;
 
 /// Available arities for the Poseidon hasher.
 pub trait Arity<T>: ArrayLength {
@@ -107,7 +108,11 @@ where
   A: Arity<F>,
 {
   fn default() -> Self {
-    Self::new()
+    // Default parameters (DEFAULT_STRENGTH + HashType::MerkleTree) should always be valid
+    // If this fails, there's a serious configuration or implementation issue
+    Self::new().expect(
+      "Failed to create default PoseidonConstants with DEFAULT_STRENGTH and MerkleTree - this indicates a serious implementation bug"
+    )
   }
 }
 
@@ -129,20 +134,25 @@ where
   /// with following default parameters:
   /// - 128 bit of security;
   /// - Merkle Tree (where all leaves are presented) domain separation ([`HashType`]).
-  pub fn new() -> Self {
+  pub fn new() -> Result<Self, NovaError> {
     Self::new_with_strength(DEFAULT_STRENGTH)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with Merkle Tree (where all leaves are presented) domain separation ([`HashType`]) custom security level ([`Strength`]).
-  pub fn new_with_strength(strength: Strength) -> Self {
+  pub fn new_with_strength(strength: Strength) -> Result<Self, NovaError> {
     Self::new_with_strength_and_type(strength, HashType::MerkleTree)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with custom domain separation ([`HashType`]) and custom security level ([`Strength`]).
-  pub fn new_with_strength_and_type(strength: Strength, hash_type: HashType<F, A>) -> Self {
-    assert!(hash_type.is_supported());
+  pub fn new_with_strength_and_type(
+    strength: Strength,
+    hash_type: HashType<F, A>,
+  ) -> Result<Self, NovaError> {
+    if !hash_type.is_supported() {
+      return Err(NovaError::InvalidInputLength);
+    }
     let arity = A::to_usize();
     let width = arity + 1;
     let mds = generate_mds(width);
@@ -171,8 +181,8 @@ where
     partial_rounds: usize,
     hash_type: HashType<F, A>,
     strength: Strength,
-  ) -> Self {
-    let mds_matrices = derive_mds_matrices(m);
+  ) -> Result<Self, NovaError> {
+    let mds_matrices = derive_mds_matrices(m)?;
     let half_full_rounds = full_rounds / 2;
     let compressed_round_constants = compress_round_constants(
       width,
@@ -181,23 +191,21 @@ where
       &round_constants,
       &mds_matrices,
       partial_rounds,
-    );
+    )?;
 
     let (pre_sparse_matrix, sparse_matrixes) =
-      factor_to_sparse_matrixes(&transpose(&mds_matrices.m), partial_rounds);
+      factor_to_sparse_matrixes(&transpose(&mds_matrices.m), partial_rounds)?;
 
     // Ensure we have enough constants for the sbox rounds
-    assert!(
-      width * (full_rounds + partial_rounds) <= round_constants.len(),
-      "Not enough round constants"
-    );
+    if width * (full_rounds + partial_rounds) > round_constants.len() {
+      return Err(NovaError::InvalidInputLength);
+    }
 
-    assert_eq!(
-      full_rounds * width + partial_rounds,
-      compressed_round_constants.len()
-    );
+    if full_rounds * width + partial_rounds != compressed_round_constants.len() {
+      return Err(NovaError::InvalidInputLength);
+    }
 
-    Self {
+    Ok(Self {
       mds_matrices,
       round_constants: Some(round_constants),
       compressed_round_constants,
@@ -210,7 +218,7 @@ where
       partial_rounds,
       hash_type,
       _a: PhantomData::<A>,
-    }
+    })
   }
 
   /// Returns the [`Arity`] value represented as `usize`.
@@ -262,7 +270,7 @@ where
   /// Performs hashing using underlying [`Poseidon`] buffer of the preimage' field elements
   /// using provided [`HashMode`]. Always outputs digest expressed as a single field element
   /// of concrete type specified upon [`PoseidonConstants`] and [`Poseidon`] instantiations.
-  pub fn hash_in_mode(&mut self, mode: HashMode) -> F {
+  pub fn hash_in_mode(&mut self, mode: HashMode) -> Result<F, NovaError> {
     let res = match mode {
       OptimizedStatic => self.hash_optimized_static(),
     };
@@ -273,18 +281,17 @@ where
   /// Performs hashing using underlying [`Poseidon`] buffer of the preimage' field elements
   /// in default (optimized) mode. Always outputs digest expressed as a single field element
   /// of concrete type specified upon [`PoseidonConstants`] and [`Poseidon`] instantiations.
-  pub fn hash(&mut self) -> F {
+  pub fn hash(&mut self) -> Result<F, NovaError> {
     self.hash_in_mode(DEFAULT_HASH_MODE)
   }
 
-  pub(crate) fn apply_padding(&mut self) {
+  pub(crate) fn apply_padding(&mut self) -> Result<(), NovaError> {
     if let HashType::ConstantLength(l) = self.constants.hash_type {
       let final_pos = 1 + (l % self.constants.arity());
 
-      assert_eq!(
-        self.pos, final_pos,
-        "preimage length does not match constant length required for hash"
-      );
+      if self.pos != final_pos {
+        return Err(NovaError::InvalidInputLength);
+      }
     };
     match self.constants.hash_type {
       HashType::ConstantLength(_) | HashType::Encryption => {
@@ -296,6 +303,7 @@ where
       HashType::VariableLength => todo!(),
       _ => (), // incl. HashType::Sponge
     }
+    Ok(())
   }
 
   /// Returns 1-th element from underlying [`Poseidon`] buffer. This function is important, since
@@ -309,36 +317,32 @@ where
   /// Performs hashing using underlying [`Poseidon`] buffer of the preimage' field elements
   /// using [`HashMode::OptimizedStatic`] mode. Always outputs digest expressed as a single field element
   /// of concrete type specified upon [`PoseidonConstants`] and [`Poseidon`] instantiations.
-  pub fn hash_optimized_static(&mut self) -> F {
+  pub fn hash_optimized_static(&mut self) -> Result<F, NovaError> {
     // The first full round should use the initial constants.
     self.add_round_constants();
 
     for _ in 0..self.constants.half_full_rounds {
-      self.full_round(false);
+      self.full_round(false)?;
     }
 
     for _ in 0..self.constants.partial_rounds {
-      self.partial_round();
+      self.partial_round()?;
     }
 
     // All but last full round.
     for _ in 1..self.constants.half_full_rounds {
-      self.full_round(false);
+      self.full_round(false)?;
     }
-    self.full_round(true);
+    self.full_round(true)?;
 
-    assert_eq!(
-      self.constants_offset,
-      self.constants.compressed_round_constants.len(),
-      "Constants consumed ({}) must equal preprocessed constants provided ({}).",
-      self.constants_offset,
-      self.constants.compressed_round_constants.len()
-    );
+    if self.constants_offset != self.constants.compressed_round_constants.len() {
+      return Err(NovaError::InternalError);
+    }
 
-    self.extract_output()
+    Ok(self.extract_output())
   }
 
-  fn full_round(&mut self, last_round: bool) {
+  fn full_round(&mut self, last_round: bool) -> Result<(), NovaError> {
     let to_take = self.elements.len();
     let post_round_keys = self
       .constants
@@ -349,47 +353,45 @@ where
 
     if !last_round {
       let needed = self.constants_offset + to_take;
-      assert!(
-        needed <= self.constants.compressed_round_constants.len(),
-        "Not enough preprocessed round constants ({}), need {}.",
-        self.constants.compressed_round_constants.len(),
-        needed
-      );
+      if needed > self.constants.compressed_round_constants.len() {
+        return Err(NovaError::InvalidInputLength);
+      }
     }
-    self
-      .elements
-      .iter_mut()
-      .zip(post_round_keys)
-      .for_each(|(l, post)| {
-        // Be explicit that no round key is added after last round of S-boxes.
-        let post_key = if last_round {
-          panic!("Trying to skip last full round, but there is a key here! ({post:?})");
-        } else {
-          Some(post)
-        };
-        quintic_s_box(l, None, post_key);
-      });
-    // We need this because post_round_keys will have been empty, so it didn't happen in the for_each. :(
-    if last_round {
+
+    // Check if we have the right number of keys for non-last rounds
+    if !last_round {
+      self
+        .elements
+        .iter_mut()
+        .zip(post_round_keys)
+        .for_each(|(l, post)| {
+          quintic_s_box(l, None, Some(post));
+        });
+      self.constants_offset += self.elements.len();
+    } else {
+      // Last round: should have no post-round keys
+      if post_round_keys.len() > 0 {
+        return Err(NovaError::InternalError);
+      }
       self
         .elements
         .iter_mut()
         .for_each(|l| quintic_s_box(l, None, None));
-    } else {
-      self.constants_offset += self.elements.len();
     }
-    self.round_product_mds();
+    self.round_product_mds()?;
+    Ok(())
   }
 
   /// The partial round is the same as the full round, with the difference that we apply the S-Box only to the first (arity tag) poseidon leaf.
-  fn partial_round(&mut self) {
+  fn partial_round(&mut self) -> Result<(), NovaError> {
     let post_round_key = self.constants.compressed_round_constants[self.constants_offset];
 
     // Apply the quintic S-Box to the first element
     quintic_s_box(&mut self.elements[0], None, Some(&post_round_key));
     self.constants_offset += 1;
 
-    self.round_product_mds();
+    self.round_product_mds()?;
+    Ok(())
   }
 
   fn add_round_constants(&mut self) {
@@ -408,7 +410,7 @@ where
   /// Set the provided elements with the result of the product between the elements and the appropriate
   /// MDS matrix.
   #[allow(clippy::collapsible_else_if)]
-  fn round_product_mds(&mut self) {
+  fn round_product_mds(&mut self) -> Result<(), NovaError> {
     let full_half = self.constants.half_full_rounds;
     let sparse_offset = full_half - 1;
     if self.current_round == sparse_offset {
@@ -422,17 +424,18 @@ where
 
         self.product_mds_with_sparse_matrix(sparse_matrix);
       } else {
-        self.product_mds();
+        self.product_mds()?;
       }
     };
 
     self.current_round += 1;
+    Ok(())
   }
 
   /// Set the provided elements with the result of the product between the elements and the constant
   /// MDS matrix.
-  pub(crate) fn product_mds(&mut self) {
-    self.product_mds_with_matrix_left(&self.constants.mds_matrices.m);
+  pub(crate) fn product_mds(&mut self) -> Result<(), NovaError> {
+    self.product_mds_with_matrix_left(&self.constants.mds_matrices.m)
   }
 
   /// NOTE: This calculates a vector-matrix product (`elements * matrix`) rather than the
@@ -453,12 +456,16 @@ where
     let _ = std::mem::replace(&mut self.elements, result);
   }
 
-  pub(crate) fn product_mds_with_matrix_left(&mut self, matrix: &Matrix<F>) {
-    let result = left_apply_matrix(matrix, &self.elements);
+  pub(crate) fn product_mds_with_matrix_left(
+    &mut self,
+    matrix: &Matrix<F>,
+  ) -> Result<(), NovaError> {
+    let result = left_apply_matrix(matrix, &self.elements)?;
     let _ = std::mem::replace(
       &mut self.elements,
       GenericArray::<F, A::ConstantsSize>::generate(|i| result[i]),
     );
+    Ok(())
   }
 
   // Sparse matrix in this context means one of the form, M''.
