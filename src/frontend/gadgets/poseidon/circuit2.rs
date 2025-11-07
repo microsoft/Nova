@@ -350,7 +350,7 @@ where
     Ok(())
   }
 
-  #[allow(clippy::ptr_arg)]
+  #[allow(clippy::ptr_arg, clippy::needless_range_loop)]
   fn product_mds_with_matrix<CS: ConstraintSystem<Scalar>>(
     &mut self,
     matrix: &Matrix<Scalar>,
