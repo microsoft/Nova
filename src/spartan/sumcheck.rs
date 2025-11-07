@@ -9,7 +9,7 @@ use crate::{
   },
   traits::{Engine, TranscriptEngineTrait},
 };
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -26,7 +26,7 @@ pub trait SumcheckEngine<E: Engine>: Send + Sync {
   fn size(&self) -> usize;
 
   /// returns evaluation points at 0, 2, d-1 (where d is the degree of the sum-check polynomial)
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>>;
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>>;
 
   /// bounds a variable in the constituent polynomials
   fn bound(&mut self, r: &E::Scalar);
@@ -312,48 +312,92 @@ impl<E: Engine> SumcheckProof<E> {
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))
   }
 
+  // DEG1: poly_A - poly_B
+  // DEG2: poly_A * poly_B
+  // DEG3: poly_A * poly_B * poly_C
   #[inline]
-  pub fn compute_eval_points_cubic<F>(
+  pub fn compute_eval_points_cubic_with_deg_with_hint<const DEG: usize>(
     poly_A: &MultilinearPolynomial<E::Scalar>,
     poly_B: &MultilinearPolynomial<E::Scalar>,
     poly_C: &MultilinearPolynomial<E::Scalar>,
-    comb_func: &F,
-  ) -> (E::Scalar, E::Scalar, E::Scalar)
-  where
-    F: Fn(&E::Scalar, &E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
+    hint: &E::Scalar,
+  ) -> (E::Scalar, E::Scalar, E::Scalar) {
     let len = poly_A.len() / 2;
-    (0..len)
+    let (eval_0, bound_coeff, eval_inf) = (0..len)
       .into_par_iter()
       .map(|i| {
         // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i], &poly_C[i]);
+        let eval_point_0 = match DEG {
+          1 => poly_A[i] - poly_B[i],
+          2 => poly_A[i] * poly_B[i],
+          3 => poly_A[i] * poly_B[i] * poly_C[i],
+          _ => unreachable!(),
+        };
 
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C[len + i] + poly_C[len + i] - poly_C[i];
-        let eval_point_2 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-        );
+        // eval cubic coefficient: (A(high)-A(low)) * (B(high)-B(low)) * (C(high)-C(low)) if DEG = 3
+        let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
+        let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
+        let mut poly_C_bound_coeff = E::Scalar::ZERO;
+        let bound_coeff = match DEG {
+          1 | 2 => E::Scalar::ZERO,
+          3 => {
+            poly_C_bound_coeff = poly_C[len + i] - poly_C[i];
+            poly_A_bound_coeff * poly_B_bound_coeff * poly_C_bound_coeff
+          }
+          _ => unreachable!(),
+        };
 
-        // eval 3: bound_func is -2A(low) + 3A(high); computed incrementally with bound_func applied to eval(2)
-        let poly_A_bound_point = poly_A_bound_point + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B_bound_point + poly_B[len + i] - poly_B[i];
-        let poly_C_bound_point = poly_C_bound_point + poly_C[len + i] - poly_C[i];
-        let eval_point_3 = comb_func(
-          &poly_A_bound_point,
-          &poly_B_bound_point,
-          &poly_C_bound_point,
-        );
-        (eval_point_0, eval_point_2, eval_point_3)
+        // eval -1: comb_func(A(-1), B(-1), C(-1))
+        let poly_A_inf_point = poly_A[i] - poly_A_bound_coeff;
+        let poly_B_inf_point = poly_B[i] - poly_B_bound_coeff;
+        let eval_point_inf = match DEG {
+          1 => poly_A_inf_point - poly_B_inf_point,
+          2 => poly_A_inf_point * poly_B_inf_point,
+          3 => {
+            let poly_C_inf_point = poly_C[i] - poly_C_bound_coeff;
+            poly_A_inf_point * poly_B_inf_point * poly_C_inf_point
+          }
+          _ => unreachable!(),
+        };
+
+        (eval_point_0, bound_coeff, eval_point_inf)
       })
       .reduce(
         || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-      )
+        |a, b| {
+          (
+            a.0 + b.0,
+            match DEG {
+              1 | 2 => E::Scalar::ZERO,
+              3 => a.1 + b.1,
+              _ => unreachable!(),
+            },
+            a.2 + b.2,
+          )
+        },
+      );
+
+    let d = eval_0;
+    let a = bound_coeff;
+    let a_b_c_d = *hint - d;
+    let b2_d2 = a_b_c_d + eval_inf;
+    let b = b2_d2 * E::Scalar::TWO_INV - d;
+    let c = a_b_c_d - b - d - a;
+    let c2 = c + c;
+    let c3 = c2 + c;
+    let b2 = b + b;
+    let b4 = b2 + b2;
+    let b8 = b4 + b4;
+    let b9 = b8 + b;
+    let a2 = a + a;
+    let a4 = a2 + a2;
+    let a8 = a4 + a4;
+    let a9 = a8 + a;
+    let a18 = a9 + a9;
+    let a27 = a18 + a9;
+    let eval2 = a8 + b4 + c2 + d;
+    let eval3 = a27 + b9 + c3 + d;
+    (d, eval2, eval3)
   }
 
   /// Prove poly_A * poly_B - poly_C

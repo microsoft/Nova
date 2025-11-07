@@ -252,6 +252,9 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
 pub struct WitnessBoundSumcheck<E: Engine> {
   poly_W: MultilinearPolynomial<E::Scalar>,
   poly_masked_eq: MultilinearPolynomial<E::Scalar>,
+
+  claim: E::Scalar,
+  uni: Option<UniPoly<E::Scalar>>,
 }
 
 impl<E: Engine> WitnessBoundSumcheck<E> {
@@ -268,6 +271,8 @@ impl<E: Engine> WitnessBoundSumcheck<E> {
     Self {
       poly_W: MultilinearPolynomial::new(poly_W_padded),
       poly_masked_eq: MultilinearPolynomial::new(poly_masked_eq_evals),
+      claim: E::Scalar::ZERO,
+      uni: None,
     }
   }
 }
@@ -285,18 +290,21 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
     self.poly_W.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     _: &E::Scalar|
-     -> E::Scalar { *poly_A_comp * *poly_B_comp };
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
+    let (eval_point_0, eval_point_2, eval_point_3) =
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg_with_hint::<2>(
+        &self.poly_masked_eq,
+        &self.poly_W,
+        &self.poly_W, // unused
+        &self.claim,
+      );
 
-    let (eval_point_0, eval_point_2, eval_point_3) = SumcheckProof::<E>::compute_eval_points_cubic(
-      &self.poly_masked_eq,
-      &self.poly_W,
-      &self.poly_W, // unused
-      &comb_func,
-    );
+    self.uni = Some(UniPoly::from_evals(&[
+      eval_point_0,
+      self.claim - eval_point_0,
+      eval_point_2,
+      eval_point_3,
+    ]));
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -305,6 +313,8 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
     [&mut self.poly_W, &mut self.poly_masked_eq]
       .par_iter_mut()
       .for_each(|poly| poly.bind_poly_var_top(r));
+
+    self.claim = self.uni.as_ref().unwrap().evaluate(r);
   }
 
   fn final_claims(&self) -> Vec<Vec<E::Scalar>> {
@@ -332,6 +342,11 @@ pub struct MemorySumcheckInstance<E: Engine> {
   poly_zero: MultilinearPolynomial<E::Scalar>,
 
   eq_sumcheck: EqSumCheckInstance<E>,
+
+  claim1: E::Scalar,
+  uni1: Option<UniPoly<E::Scalar>>,
+  claim2: E::Scalar,
+  uni2: Option<UniPoly<E::Scalar>>,
 }
 
 impl<E: Engine> MemorySumcheckInstance<E> {
@@ -501,6 +516,10 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       ts_col: MultilinearPolynomial::new(ts_col),
       poly_zero: MultilinearPolynomial::new(zero),
       eq_sumcheck: EqSumCheckInstance::new(rhos),
+      claim1: E::Scalar::ZERO,
+      uni1: None,
+      claim2: E::Scalar::ZERO,
+      uni2: None,
     }
   }
 }
@@ -525,29 +544,37 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
     self.w_plus_r_row.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     _poly_C_comp: &E::Scalar|
-     -> E::Scalar { *poly_A_comp - *poly_B_comp };
-
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
     // inv related evaluation points
     // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
     let (eval_inv_0_row, eval_inv_2_row, eval_inv_3_row) =
-      SumcheckProof::<E>::compute_eval_points_cubic(
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg_with_hint::<1>(
         &self.t_plus_r_inv_row,
         &self.w_plus_r_inv_row,
         &self.poly_zero,
-        &comb_func,
+        &self.claim1,
       );
 
     let (eval_inv_0_col, eval_inv_2_col, eval_inv_3_col) =
-      SumcheckProof::<E>::compute_eval_points_cubic(
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg_with_hint::<1>(
         &self.t_plus_r_inv_col,
         &self.w_plus_r_inv_col,
         &self.poly_zero,
-        &comb_func,
+        &self.claim2,
       );
+
+    self.uni1 = Some(UniPoly::from_evals(&[
+      eval_inv_0_row,
+      self.claim1 - eval_inv_0_row,
+      eval_inv_2_row,
+      eval_inv_3_row,
+    ]));
+    self.uni2 = Some(UniPoly::from_evals(&[
+      eval_inv_0_col,
+      self.claim2 - eval_inv_0_col,
+      eval_inv_2_col,
+      eval_inv_3_col,
+    ]));
 
     let (
       ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
@@ -618,6 +645,9 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
     .for_each(|poly| poly.bind_poly_var_top(r));
 
     self.eq_sumcheck.bound(r);
+
+    self.claim1 = self.uni1.as_ref().unwrap().evaluate(r);
+    self.claim2 = self.uni2.as_ref().unwrap().evaluate(r);
   }
 
   fn final_claims(&self) -> Vec<Vec<E::Scalar>> {
@@ -686,7 +716,7 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
     self.poly_Az.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
     let (
       (eval_point_h_0, eval_point_h_2, eval_point_h_3),
       (eval_point_e_0, eval_point_e_2, eval_point_e_3),
@@ -734,6 +764,9 @@ struct InnerSumcheckInstance<E: Engine> {
   poly_L_row: MultilinearPolynomial<E::Scalar>,
   poly_L_col: MultilinearPolynomial<E::Scalar>,
   poly_val: MultilinearPolynomial<E::Scalar>,
+
+  cur_claim: E::Scalar,
+  uni: Option<UniPoly<E::Scalar>>,
 }
 
 impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
@@ -751,15 +784,23 @@ impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
     self.poly_L_row.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
     let (poly_A, poly_B, poly_C) = (&self.poly_L_row, &self.poly_L_col, &self.poly_val);
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     poly_C_comp: &E::Scalar|
-     -> E::Scalar { *poly_A_comp * *poly_B_comp * *poly_C_comp };
 
     let (eval_point_0, eval_point_2, eval_point_3) =
-      SumcheckProof::<E>::compute_eval_points_cubic(poly_A, poly_B, poly_C, &comb_func);
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg_with_hint::<3>(
+        poly_A,
+        poly_B,
+        poly_C,
+        &self.cur_claim,
+      );
+
+    self.uni = Some(UniPoly::from_evals(&[
+      eval_point_0,
+      self.cur_claim - eval_point_0,
+      eval_point_2,
+      eval_point_3,
+    ]));
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -772,6 +813,8 @@ impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
     ]
     .par_iter_mut()
     .for_each(|poly| poly.bind_poly_var_top(r));
+
+    self.cur_claim = self.uni.as_ref().unwrap().evaluate(r);
   }
 
   fn final_claims(&self) -> Vec<Vec<E::Scalar>> {
@@ -933,6 +976,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
         evals_combined_2,
         evals_combined_3,
       ];
+      // let poly = UniPoly::from_evals_deg3(&evals);
       let poly = UniPoly::from_evals(&evals);
 
       // append the prover's message to the transcript
@@ -1156,6 +1200,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           poly_L_row: MultilinearPolynomial::new(L_row.clone()),
           poly_L_col: MultilinearPolynomial::new(L_col.clone()),
           poly_val: MultilinearPolynomial::new(val),
+          cur_claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
+          uni: None,
         };
 
         (outer_sc_inst, inner_sc_inst)
