@@ -198,15 +198,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       z
     };
 
-    let comb_func = |poly_A_comp: &E::Scalar, poly_B_comp: &E::Scalar| -> E::Scalar {
-      *poly_A_comp * *poly_B_comp
-    };
-    let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad(
+    let (sc_proof_inner, r_y, _claims_inner) = SumcheckProof::prove_quad_prod(
       &claim_inner_joint,
       num_rounds_y,
       &mut MultilinearPolynomial::new(poly_ABC),
       &mut MultilinearPolynomial::new(poly_z),
-      comb_func,
       &mut transcript,
     )?;
 
@@ -455,14 +451,12 @@ fn batch_eval_reduce<E: Engine>(
     .collect();
 
   // For each i, check eᵢ = ∑ₓ Pᵢ(x)eq(xᵢ,x), where x ∈ {0,1}^nᵢ
-  let comb_func = |poly_P: &E::Scalar, poly_eq: &E::Scalar| -> E::Scalar { *poly_P * *poly_eq };
-  let (sc_proof_batch, r, claims_batch) = SumcheckProof::prove_quad_batch(
+  let (sc_proof_batch, r, claims_batch) = SumcheckProof::prove_quad_batch_prod(
     &claims,
     &num_rounds,
     polys_P,
     polys_eq,
     &powers_of_rho,
-    comb_func,
     transcript,
   )?;
 

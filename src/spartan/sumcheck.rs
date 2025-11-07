@@ -122,26 +122,23 @@ impl<E: Engine> SumcheckProof<E> {
     self.verify(claim, num_rounds_max, degree_bound, transcript)
   }
 
+  // comb_func: |p, q| p * q
   #[inline]
-  fn compute_eval_points_quad<F>(
+  fn compute_eval_points_quad_prod(
     poly_A: &MultilinearPolynomial<E::Scalar>,
     poly_B: &MultilinearPolynomial<E::Scalar>,
-    comb_func: &F,
-  ) -> (E::Scalar, E::Scalar)
-  where
-    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
+  ) -> (E::Scalar, E::Scalar) {
     let len = poly_A.len() / 2;
     (0..len)
       .into_par_iter()
       .map(|i| {
         // eval 0: bound_func is A(low)
-        let eval_point_0 = comb_func(&poly_A[i], &poly_B[i]);
+        let eval_point_0 = poly_A[i] * poly_B[i];
 
-        // eval 2: bound_func is -A(low) + 2*A(high)
-        let poly_A_bound_point = poly_A[len + i] + poly_A[len + i] - poly_A[i];
-        let poly_B_bound_point = poly_B[len + i] + poly_B[len + i] - poly_B[i];
-        let eval_point_2 = comb_func(&poly_A_bound_point, &poly_B_bound_point);
+        // eval quadratic coefficient: (A(high)-A(low)) * (B(high)-B(low))
+        let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
+        let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
+        let eval_point_2 = poly_A_bound_coeff * poly_B_bound_coeff;
         (eval_point_0, eval_point_2)
       })
       .reduce(
@@ -150,27 +147,23 @@ impl<E: Engine> SumcheckProof<E> {
       )
   }
 
-  pub fn prove_quad<F>(
+  // comb_func: |p, q| p * q
+  pub fn prove_quad_prod(
     claim: &E::Scalar,
     num_rounds: usize,
     poly_A: &mut MultilinearPolynomial<E::Scalar>,
     poly_B: &mut MultilinearPolynomial<E::Scalar>,
-    comb_func: F,
     transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError>
-  where
-    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
     let mut r: Vec<E::Scalar> = Vec::new();
     let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
     let mut claim_per_round = *claim;
     for _ in 0..num_rounds {
       let poly = {
-        let (eval_point_0, eval_point_2) =
-          Self::compute_eval_points_quad(poly_A, poly_B, &comb_func);
+        let (eval_point_0, eval_point_2) = Self::compute_eval_points_quad_prod(poly_A, poly_B);
 
         let evals = vec![eval_point_0, claim_per_round - eval_point_0, eval_point_2];
-        UniPoly::from_evals(&evals)
+        UniPoly::from_evals_deg2(&evals)
       };
 
       // append the prover's message to the transcript
@@ -200,18 +193,15 @@ impl<E: Engine> SumcheckProof<E> {
     ))
   }
 
-  pub fn prove_quad_batch<F>(
+  // comb_func: |p, q| p * q
+  pub fn prove_quad_batch_prod(
     claims: &[E::Scalar],
     num_rounds: &[usize],
     mut poly_A_vec: Vec<MultilinearPolynomial<E::Scalar>>,
     mut poly_B_vec: Vec<MultilinearPolynomial<E::Scalar>>,
     coeffs: &[E::Scalar],
-    comb_func: F,
     transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, (Vec<E::Scalar>, Vec<E::Scalar>)), NovaError>
-  where
-    F: Fn(&E::Scalar, &E::Scalar) -> E::Scalar + Sync,
-  {
+  ) -> Result<(Self, Vec<E::Scalar>, (Vec<E::Scalar>, Vec<E::Scalar>)), NovaError> {
     let num_claims = claims.len();
 
     assert_eq!(num_rounds.len(), num_claims);
@@ -254,7 +244,7 @@ impl<E: Engine> SumcheckProof<E> {
         (num_rounds, claims, poly_A_vec, poly_B_vec),
         |num_rounds, claim, poly_A, poly_B| {
           if remaining_rounds <= *num_rounds {
-            Self::compute_eval_points_quad(poly_A, poly_B, &comb_func)
+            Self::compute_eval_points_quad_prod(poly_A, poly_B)
           } else {
             let remaining_variables = remaining_rounds - num_rounds - 1;
             let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
@@ -268,7 +258,7 @@ impl<E: Engine> SumcheckProof<E> {
       let evals_combined_2 = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
 
       let evals = vec![evals_combined_0, e - evals_combined_0, evals_combined_2];
-      let poly = UniPoly::from_evals(&evals);
+      let poly = UniPoly::from_evals_deg2(&evals);
 
       // append the prover's message to the transcript
       transcript.absorb(b"p", &poly);
@@ -312,7 +302,7 @@ impl<E: Engine> SumcheckProof<E> {
     let eval_expected = zip_with!(
       iter,
       (poly_A_final, poly_B_final, coeffs),
-      |eA, eB, coeff| comb_func(eA, eB) * coeff
+      |eA, eB, coeff| *eA * *eB * coeff
     )
     .sum::<E::Scalar>();
     assert_eq!(e, eval_expected);

@@ -22,6 +22,18 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
+  // a x^2 + b x + c
+  // evals: [c, a + b + c, a]
+  pub fn from_evals_deg2(evals: &[Scalar]) -> Self {
+    let c = evals[0];
+    let a = evals[2];
+    let a_b_c = evals[1];
+    let b = a_b_c - a - c;
+    Self {
+      coeffs: vec![c, b, a],
+    }
+  }
+
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
     let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
