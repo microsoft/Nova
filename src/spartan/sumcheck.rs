@@ -377,27 +377,29 @@ impl<E: Engine> SumcheckProof<E> {
         },
       );
 
-    let d = eval_0;
-    let a = bound_coeff;
-    let a_b_c_d = *hint - d;
-    let b2_d2 = a_b_c_d + eval_inf;
-    let b = b2_d2 * E::Scalar::TWO_INV - d;
-    let c = a_b_c_d - b - d - a;
-    let c2 = c + c;
-    let c3 = c2 + c;
-    let b2 = b + b;
-    let b4 = b2 + b2;
-    let b8 = b4 + b4;
-    let b9 = b8 + b;
-    let a2 = a + a;
-    let a4 = a2 + a2;
-    let a8 = a4 + a4;
-    let a9 = a8 + a;
-    let a18 = a9 + a9;
-    let a27 = a18 + a9;
-    let eval2 = a8 + b4 + c2 + d;
-    let eval3 = a27 + b9 + c3 + d;
-    (d, eval2, eval3)
+    (eval_0, bound_coeff, eval_inf)
+
+    // let d = eval_0;
+    // let a = bound_coeff;
+    // let a_b_c_d = *hint - d;
+    // let b2_d2 = a_b_c_d + eval_inf;
+    // let b = b2_d2 * E::Scalar::TWO_INV - d;
+    // let c = a_b_c_d - b - d - a;
+    // let c2 = c + c;
+    // let c3 = c2 + c;
+    // let b2 = b + b;
+    // let b4 = b2 + b2;
+    // let b8 = b4 + b4;
+    // let b9 = b8 + b;
+    // let a2 = a + a;
+    // let a4 = a2 + a2;
+    // let a8 = a4 + a4;
+    // let a9 = a8 + a;
+    // let a18 = a9 + a9;
+    // let a27 = a18 + a9;
+    // let eval2 = a8 + b4 + c2 + d;
+    // let eval3 = a27 + b9 + c3 + d;
+    // (d, eval2, eval3)
   }
 
   /// Prove poly_A * poly_B - poly_C
@@ -469,6 +471,7 @@ pub(crate) mod eq_sumcheck {
   //! The optimization is described in Section 5 of https://eprint.iacr.org/2025/1117 algorithm 5.
   use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
   use ff::{Field, PrimeField};
+  use num_traits::one;
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};
 
   pub struct EqSumCheckInstance<E: Engine> {
@@ -481,7 +484,7 @@ pub(crate) mod eq_sumcheck {
     eval_eq_left: E::Scalar,
     poly_eq_left: Vec<Vec<E::Scalar>>,
     poly_eq_right: Vec<Vec<E::Scalar>>,
-    eq_tau_0_2_3: Vec<(E::Scalar, E::Scalar, E::Scalar)>,
+    _eq_tau_0_2_3: Vec<(E::Scalar, E::Scalar, E::Scalar)>,
   }
 
   impl<E: Engine> EqSumCheckInstance<E> {
@@ -540,7 +543,7 @@ pub(crate) mod eq_sumcheck {
         eval_eq_left: E::Scalar::ONE,
         poly_eq_left,
         poly_eq_right,
-        eq_tau_0_2_3,
+        _eq_tau_0_2_3: eq_tau_0_2_3,
       }
     }
 
@@ -608,7 +611,14 @@ pub(crate) mod eq_sumcheck {
           )
       };
 
-      self.update_evals(&mut eval_0, &mut eval_2, &mut eval_3);
+      let rho = self.taus[self.round - 1];
+      let one_minus_rho = E::Scalar::ONE - rho;
+      let two_rho_minus_one = rho.double() - E::Scalar::ONE;
+      let two_minus_three_rho = E::Scalar::ONE + E::Scalar::ONE - rho.double() - rho;
+
+      let eval_0 = eval_0 * one_minus_rho;
+      let eval_2 = eval_2 * two_rho_minus_one;
+      let eval_3 = eval_3 * two_minus_three_rho;
 
       (eval_0, eval_2, eval_3)
     }
@@ -672,7 +682,14 @@ pub(crate) mod eq_sumcheck {
           )
       };
 
-      self.update_evals(&mut eval_0, &mut eval_2, &mut eval_3);
+      let rho = self.taus[self.round - 1];
+      let one_minus_rho = E::Scalar::ONE - rho;
+      let two_rho_minus_one = rho.double() - E::Scalar::ONE;
+      let two_minus_three_rho = E::Scalar::ONE + E::Scalar::ONE - rho.double() - rho;
+
+      let eval_0 = eval_0 * one_minus_rho;
+      let eval_2 = eval_2 * two_rho_minus_one;
+      let eval_3 = eval_3 * two_minus_three_rho;
 
       (eval_0, eval_2, eval_3)
     }
@@ -729,7 +746,17 @@ pub(crate) mod eq_sumcheck {
           )
       };
 
-      self.update_evals(&mut eval_0, &mut eval_2, &mut eval_3);
+      // self.update_evals(&mut eval_0, &mut eval_2, &mut eval_3);
+      // (1-rho), 2rho-1, 2-3rho
+
+      let rho = self.taus[self.round - 1];
+      let one_minus_rho = E::Scalar::ONE - rho;
+      let two_rho_minus_one = rho.double() - E::Scalar::ONE;
+      let two_minus_three_rho = E::Scalar::ONE + E::Scalar::ONE - rho.double() - rho;
+
+      let eval_0 = eval_0 * one_minus_rho;
+      let eval_2 = eval_2 * two_rho_minus_one;
+      let eval_3 = eval_3 * two_minus_three_rho;
 
       (eval_0, eval_2, eval_3)
     }
@@ -742,9 +769,14 @@ pub(crate) mod eq_sumcheck {
     }
 
     #[inline]
-    fn update_evals(&self, eval_0: &mut E::Scalar, eval_2: &mut E::Scalar, eval_3: &mut E::Scalar) {
+    fn _update_evals(
+      &self,
+      eval_0: &mut E::Scalar,
+      eval_2: &mut E::Scalar,
+      eval_3: &mut E::Scalar,
+    ) {
       let p = self.eval_eq_left;
-      let eq_tau_0_2_3 = self.eq_tau_0_2_3[self.round - 1];
+      let eq_tau_0_2_3 = self._eq_tau_0_2_3[self.round - 1];
       let eq_tau_0_p = eq_tau_0_2_3.0 * p;
       let eq_tau_2_p = eq_tau_0_2_3.1 * p;
       let eq_tau_3_p = eq_tau_0_2_3.2 * p;
@@ -787,18 +819,20 @@ pub(crate) mod eq_sumcheck {
     })
   }
 
+  // 0, A, -1
   #[inline]
   fn eval_one_case_cubic_one_input<Scalar: PrimeField>(
     zero_a: &Scalar,
     one_a: &Scalar,
   ) -> (Scalar, Scalar, Scalar) {
     let eval_0 = zero_a;
-    let double_one_a = one_a.double();
-    let eval_2 = double_one_a - zero_a;
-    let eval_3 = double_one_a + one_a - zero_a.double();
-    (*eval_0, eval_2, eval_3)
+    let q = Scalar::ZERO;
+    let m1 = -*one_a + zero_a.double();
+
+    (*eval_0, q, m1)
   }
 
+  // ab -1
   #[inline]
   fn eval_one_case_cubic_two_inputs<Scalar: PrimeField>(
     zero_a: &Scalar,
@@ -809,22 +843,12 @@ pub(crate) mod eq_sumcheck {
     let one = Scalar::ONE;
     let eval_0 = *zero_a * *zero_b - one;
 
-    let double_one_a = one_a.double();
-    let double_one_b = one_b.double();
+    let q = (*one_a - *zero_a) * (*one_b - *zero_b);
+    let m1_a = -*one_a + zero_a.double();
+    let m1_b = -*one_b + zero_b.double();
+    let eval_m1 = m1_a * m1_b - one;
 
-    let eval_2 = {
-      let point_a = double_one_a - *zero_a;
-      let point_b = double_one_b - *zero_b;
-      point_a * point_b - one
-    };
-
-    let eval_3 = {
-      let point_a = double_one_a + one_a - zero_a.double();
-      let point_b = double_one_b + one_b - zero_b.double();
-      point_a * point_b - one
-    };
-
-    (eval_0, eval_2, eval_3)
+    (eval_0, q, eval_m1)
   }
 
   #[inline]
@@ -838,25 +862,12 @@ pub(crate) mod eq_sumcheck {
   ) -> (Scalar, Scalar, Scalar) {
     let eval_0 = *zero_a * *zero_b - *zero_c;
 
-    let double_one_a = one_a.double();
-    let double_one_b = one_b.double();
-    let double_one_c = one_c.double();
+    let q = (*one_a - *zero_a) * (*one_b - *zero_b);
+    let m1_a = -*one_a + zero_a.double();
+    let m1_b = -*one_b + zero_b.double();
+    let m1_c = -*one_c + zero_c.double();
+    let eval_m1 = m1_a * m1_b - m1_c;
 
-    let eval_2 = {
-      let point_a = double_one_a - *zero_a;
-      let point_b = double_one_b - *zero_b;
-      let point_c = double_one_c - *zero_c;
-
-      point_a * point_b - point_c
-    };
-
-    let eval_3 = {
-      let point_a = double_one_a + one_a - zero_a.double();
-      let point_b = double_one_b + one_b - zero_b.double();
-      let point_c = double_one_c + one_c - zero_c.double();
-      point_a * point_b - point_c
-    };
-
-    (eval_0, eval_2, eval_3)
+    (eval_0, q, eval_m1)
   }
 }

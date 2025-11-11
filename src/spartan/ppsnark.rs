@@ -299,12 +299,12 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
         &self.claim,
       );
 
-    self.uni = Some(UniPoly::from_evals(&[
-      eval_point_0,
-      self.claim - eval_point_0,
-      eval_point_2,
-      eval_point_3,
-    ]));
+    // self.uni = Some(UniPoly::from_evals(&[
+    //   eval_point_0,
+    //   self.claim - eval_point_0,
+    //   eval_point_2,
+    //   eval_point_3,
+    // ]));
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -563,18 +563,18 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
         &self.claim2,
       );
 
-    self.uni1 = Some(UniPoly::from_evals(&[
-      eval_inv_0_row,
-      self.claim1 - eval_inv_0_row,
-      eval_inv_2_row,
-      eval_inv_3_row,
-    ]));
-    self.uni2 = Some(UniPoly::from_evals(&[
-      eval_inv_0_col,
-      self.claim2 - eval_inv_0_col,
-      eval_inv_2_col,
-      eval_inv_3_col,
-    ]));
+    // self.uni1 = Some(UniPoly::from_evals(&[
+    //   eval_inv_0_row,
+    //   self.claim1 - eval_inv_0_row,
+    //   eval_inv_2_row,
+    //   eval_inv_3_row,
+    // ]));
+    // self.uni2 = Some(UniPoly::from_evals(&[
+    //   eval_inv_0_col,
+    //   self.claim2 - eval_inv_0_col,
+    //   eval_inv_2_col,
+    //   eval_inv_3_col,
+    // ]));
 
     let (
       ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
@@ -795,12 +795,12 @@ impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
         &self.cur_claim,
       );
 
-    self.uni = Some(UniPoly::from_evals(&[
-      eval_point_0,
-      self.cur_claim - eval_point_0,
-      eval_point_2,
-      eval_point_3,
-    ]));
+    // self.uni = Some(UniPoly::from_evals(&[
+    //   eval_point_0,
+    //   self.cur_claim - eval_point_0,
+    //   eval_point_2,
+    //   eval_point_3,
+    // ]));
 
     vec![vec![eval_point_0, eval_point_2, eval_point_3]]
   }
@@ -977,7 +977,18 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
         evals_combined_3,
       ];
       // let poly = UniPoly::from_evals_deg3(&evals);
-      let poly = UniPoly::from_evals(&evals);
+      // let poly = UniPoly::from_evals(&evals);
+
+      let d = evals[0];
+      let abcd = evals[1];
+      let a = evals[2];
+      let b2_d2 = evals[3] + abcd;
+      let b = b2_d2 * E::Scalar::TWO_INV - d;
+      let c = abcd - a - d - b;
+
+      let poly = UniPoly {
+        coeffs: vec![d, c, b, a],
+      };
 
       // append the prover's message to the transcript
       transcript.absorb(b"p", &poly);

@@ -1,11 +1,11 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![deny(
-  warnings,
-  unused,
-  future_incompatible,
-  nonstandard_style,
-  rust_2018_idioms,
-  missing_docs
+  // warnings,
+  // unused,
+  // future_incompatible,
+  // nonstandard_style,
+  // rust_2018_idioms,
+  // missing_docs
 )]
 #![allow(non_snake_case)]
 #![forbid(unsafe_code)]
