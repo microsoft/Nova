@@ -146,6 +146,7 @@ pub(crate) fn kronecker_delta<F: PrimeField>(i: usize, j: usize) -> F {
   }
 }
 
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn is_identity<F: PrimeField>(matrix: &Matrix<F>) -> bool {
   for i in 0..rows(matrix) {
     for j in 0..columns(matrix) {

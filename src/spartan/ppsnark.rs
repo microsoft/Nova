@@ -286,19 +286,16 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     _: &E::Scalar|
-     -> E::Scalar { *poly_A_comp * *poly_B_comp };
+    let (eval_point_0, bound_coeff, eval_point_inf) =
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<2>(
+        &self.poly_masked_eq,
+        &self.poly_W,
+        &self.poly_W, // unused
+      );
 
-    let (eval_point_0, eval_point_2, eval_point_3) = SumcheckProof::<E>::compute_eval_points_cubic(
-      &self.poly_masked_eq,
-      &self.poly_W,
-      &self.poly_W, // unused
-      &comb_func,
-    );
+    assert_eq!(bound_coeff, E::Scalar::ZERO);
 
-    vec![vec![eval_point_0, eval_point_2, eval_point_3]]
+    vec![vec![eval_point_0, bound_coeff, eval_point_inf]]
   }
 
   fn bound(&mut self, r: &E::Scalar) {
@@ -526,27 +523,20 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     _poly_C_comp: &E::Scalar|
-     -> E::Scalar { *poly_A_comp - *poly_B_comp };
-
     // inv related evaluation points
     // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
     let (eval_inv_0_row, eval_inv_2_row, eval_inv_3_row) =
-      SumcheckProof::<E>::compute_eval_points_cubic(
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
         &self.t_plus_r_inv_row,
         &self.w_plus_r_inv_row,
         &self.poly_zero,
-        &comb_func,
       );
 
     let (eval_inv_0_col, eval_inv_2_col, eval_inv_3_col) =
-      SumcheckProof::<E>::compute_eval_points_cubic(
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
         &self.t_plus_r_inv_col,
         &self.w_plus_r_inv_col,
         &self.poly_zero,
-        &comb_func,
       );
 
     let (
@@ -753,15 +743,11 @@ impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
     let (poly_A, poly_B, poly_C) = (&self.poly_L_row, &self.poly_L_col, &self.poly_val);
-    let comb_func = |poly_A_comp: &E::Scalar,
-                     poly_B_comp: &E::Scalar,
-                     poly_C_comp: &E::Scalar|
-     -> E::Scalar { *poly_A_comp * *poly_B_comp * *poly_C_comp };
 
-    let (eval_point_0, eval_point_2, eval_point_3) =
-      SumcheckProof::<E>::compute_eval_points_cubic(poly_A, poly_B, poly_C, &comb_func);
+    let (eval_point_0, bound_coeff, eval_point_inf) =
+      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<3>(poly_A, poly_B, poly_C);
 
-    vec![vec![eval_point_0, eval_point_2, eval_point_3]]
+    vec![vec![eval_point_0, bound_coeff, eval_point_inf]]
   }
 
   fn bound(&mut self, r: &E::Scalar) {
@@ -924,16 +910,17 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
       assert_eq!(evals.len(), claims.len());
 
       let evals_combined_0 = (0..evals.len()).map(|i| evals[i][0] * coeffs[i]).sum();
-      let evals_combined_2 = (0..evals.len()).map(|i| evals[i][1] * coeffs[i]).sum();
-      let evals_combined_3 = (0..evals.len()).map(|i| evals[i][2] * coeffs[i]).sum();
+      let evals_combined_bound_coeff = (0..evals.len()).map(|i| evals[i][1] * coeffs[i]).sum();
+      let evals_combined_inf = (0..evals.len()).map(|i| evals[i][2] * coeffs[i]).sum();
 
       let evals = vec![
         evals_combined_0,
         e - evals_combined_0,
-        evals_combined_2,
-        evals_combined_3,
+        evals_combined_bound_coeff,
+        evals_combined_inf,
       ];
-      let poly = UniPoly::from_evals(&evals);
+
+      let poly = UniPoly::from_evals_deg3(&evals);
 
       // append the prover's message to the transcript
       transcript.absorb(b"p", &poly);
