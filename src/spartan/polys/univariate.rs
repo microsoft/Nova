@@ -22,6 +22,28 @@ pub struct CompressedUniPoly<Scalar: PrimeField> {
 }
 
 impl<Scalar: PrimeField> UniPoly<Scalar> {
+  #[cfg(feature = "experimental")]
+  pub fn from_evals(evals: &[Scalar]) -> Self {
+    let n = evals.len();
+    let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
+
+    let mut matrix: Vec<Vec<Scalar>> = Vec::with_capacity(n);
+    for i in 0..n {
+      let mut row = Vec::with_capacity(n);
+      let x = xs[i];
+      row.push(Scalar::ONE);
+      row.push(x);
+      for j in 2..n {
+        row.push(row[j - 1] * x);
+      }
+      row.push(evals[i]);
+      matrix.push(row);
+    }
+
+    let coeffs = gaussian_elimination(&mut matrix);
+    Self { coeffs }
+  }
+
   // a x^2 + b x + c
   // evals: [c, a + b + c, a]
   pub fn from_evals_deg2(evals: &[Scalar]) -> Self {
