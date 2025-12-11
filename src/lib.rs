@@ -23,11 +23,9 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
-
-// private modules
-mod constants;
-mod digest;
-mod r1cs;
+pub mod constants;
+pub mod digest;
+pub mod r1cs;
 
 use traits::{commitment::CommitmentEngineTrait, Engine};
 

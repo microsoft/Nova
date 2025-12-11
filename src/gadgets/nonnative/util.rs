@@ -13,14 +13,14 @@ use std::{
 #[derive(Clone)]
 /// A representation of a bit
 pub struct Bit<Scalar: PrimeField> {
-  /// The linear combination which constrain the value of the bit
+  /// The linear combination which constrains the value of the bit
   pub bit: LinearCombination<Scalar>,
 }
 
 #[derive(Clone)]
 /// A representation of a bit-vector
 pub struct Bitvector<Scalar: PrimeField> {
-  /// The linear combination which constrain the values of the bits
+  /// The linear combination which constrains the values of the bits
   pub bits: Vec<LinearCombination<Scalar>>,
   /// The value of the bits (filled at witness-time)
   pub values: Option<Vec<bool>>,
@@ -61,15 +61,20 @@ impl<Scalar: PrimeField> Bit<Scalar> {
   }
 }
 
+/// A representation of a field element as a linear combination with an optional value.
 pub struct Num<Scalar: PrimeField> {
-  pub(crate) num: LinearCombination<Scalar>,
-  pub(crate) value: Option<Scalar>,
+  /// The linear combination representing the number.
+  pub num: LinearCombination<Scalar>,
+  /// The value of the number (filled at witness-time).
+  pub value: Option<Scalar>,
 }
 
 impl<Scalar: PrimeField> Num<Scalar> {
+  /// Creates a new `Num` with the given value and linear combination.
   pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
     Self { value, num }
   }
+  /// Allocates a new `Num` in the constraint system with the given value.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
@@ -93,6 +98,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     })
   }
 
+  /// Checks that the `Num` fits in the given number of bits.
   pub fn fits_in_bits<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -211,6 +217,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     })
   }
 
+  /// Converts the `Num` to an `AllocatedNum` in the constraint system.
   pub fn as_allocated_num<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,

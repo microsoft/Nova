@@ -1,4 +1,10 @@
 //! This module implements various gadgets necessary for Nova and applications built with Nova.
-pub(crate) mod ecc;
-pub(crate) mod nonnative;
-pub(crate) mod utils;
+
+/// Elliptic curve gadgets for in-circuit point operations.
+pub mod ecc;
+
+/// Non-native field arithmetic gadgets for operations on fields with different characteristics.
+pub mod nonnative;
+
+/// Utility gadgets for common operations like conditional selection, bit manipulation, etc.
+pub mod utils;
