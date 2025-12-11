@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 mod sparse;
-pub(crate) use sparse::SparseMatrix;
+pub use sparse::SparseMatrix;
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,9 +72,46 @@ pub struct RelaxedR1CSInstance<E: Engine> {
   pub(crate) u: E::Scalar,
 }
 
+/// A type alias for a function that provides hints about the commitment key size needed for an R1CS shape.
 pub type CommitmentKeyHint<E> = dyn Fn(&R1CSShape<E>) -> usize;
 
 impl<E: Engine> R1CSShape<E> {
+  /// Returns the number of constraints in the R1CS shape.
+  ///
+  /// This is useful for computing the number of rounds in sumcheck.
+  pub fn num_cons(&self) -> usize {
+    self.num_cons
+  }
+
+  /// Returns the number of variables in the R1CS shape.
+  ///
+  /// This is useful for computing the number of rounds in sumcheck.
+  pub fn num_vars(&self) -> usize {
+    self.num_vars
+  }
+
+  /// Returns the number of public inputs/outputs in the R1CS shape.
+  ///
+  /// This is useful for dimension validation.
+  pub fn num_io(&self) -> usize {
+    self.num_io
+  }
+
+  /// Returns a reference to the A matrix of the R1CS shape.
+  pub fn A(&self) -> &SparseMatrix<E::Scalar> {
+    &self.A
+  }
+
+  /// Returns a reference to the B matrix of the R1CS shape.
+  pub fn B(&self) -> &SparseMatrix<E::Scalar> {
+    &self.B
+  }
+
+  /// Returns a reference to the C matrix of the R1CS shape.
+  pub fn C(&self) -> &SparseMatrix<E::Scalar> {
+    &self.C
+  }
+
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
     num_cons: usize,
@@ -152,6 +189,7 @@ impl<E: Engine> R1CSShape<E> {
     cons_valid && vars_valid && io_lt_vars
   }
 
+  /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],
@@ -452,6 +490,13 @@ impl<E: Engine> R1CSWitness<E> {
     })
   }
 
+  /// Returns a reference to the witness vector W.
+  ///
+  /// This is useful for cloning witness values for matrix commitments.
+  pub fn W(&self) -> &[E::Scalar] {
+    &self.W
+  }
+
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)
@@ -481,6 +526,18 @@ impl<E: Engine> R1CSInstance<E> {
         X: X.to_owned(),
       })
     }
+  }
+
+  /// Returns a reference to the commitment to the witness.
+  pub fn comm_W(&self) -> &Commitment<E> {
+    &self.comm_W
+  }
+
+  /// Returns a reference to the public inputs/outputs.
+  ///
+  /// This is useful for public IO indexing (e.g., `inst.X()[i]`).
+  pub fn X(&self) -> &[E::Scalar] {
+    &self.X
   }
 }
 
@@ -526,6 +583,20 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       E: vec![E::Scalar::ZERO; S.num_cons],
       r_E: E::Scalar::ZERO,
     }
+  }
+
+  /// Returns a reference to the witness vector W.
+  ///
+  /// This is useful for witness manipulation.
+  pub fn W(&self) -> &[E::Scalar] {
+    &self.W
+  }
+
+  /// Returns a reference to the error vector E.
+  ///
+  /// This is useful for error term manipulation.
+  pub fn E(&self) -> &[E::Scalar] {
+    &self.E
   }
 
   /// Commits to the witness using the supplied generators
@@ -618,6 +689,7 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
   }
 
+  /// Derandomizes the witness by setting randomness to zero.
   pub fn derandomize(&self) -> (Self, E::Scalar, E::Scalar) {
     (
       RelaxedR1CSWitness {
@@ -656,6 +728,34 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     r_instance.X.clone_from(&instance.X);
 
     r_instance
+  }
+
+  /// Returns a reference to the commitment to the witness W.
+  ///
+  /// This is useful for commitment operations.
+  pub fn comm_W(&self) -> &Commitment<E> {
+    &self.comm_W
+  }
+
+  /// Returns a reference to the commitment to the error vector E.
+  ///
+  /// This is useful for commitment operations.
+  pub fn comm_E(&self) -> &Commitment<E> {
+    &self.comm_E
+  }
+
+  /// Returns a reference to the public inputs/outputs.
+  ///
+  /// This is useful for public IO access.
+  pub fn X(&self) -> &[E::Scalar] {
+    &self.X
+  }
+
+  /// Returns the relaxation factor u.
+  ///
+  /// This is useful for accessing the relaxation factor in folding.
+  pub fn u(&self) -> E::Scalar {
+    self.u
   }
 
   /// Initializes a new `RelaxedR1CSInstance` from an `R1CSInstance`
@@ -729,6 +829,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
     }
   }
 
+  /// Derandomizes the instance by removing the randomness from the commitments.
   pub fn derandomize(
     &self,
     dk: &DerandKey<E>,

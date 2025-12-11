@@ -27,8 +27,9 @@ use serde::{Deserialize, Serialize};
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MultilinearPolynomial<Scalar: PrimeField> {
-  num_vars: usize,           // the number of variables in the multilinear polynomial
-  pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  num_vars: usize, // the number of variables in the multilinear polynomial
+  /// The evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  pub Z: Vec<Scalar>,
 }
 
 impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
@@ -50,6 +51,11 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Returns the total number of evaluations.
   pub fn len(&self) -> usize {
     self.Z.len()
+  }
+
+  /// Returns true if the polynomial has no evaluations.
+  pub fn is_empty(&self) -> bool {
+    self.Z.is_empty()
   }
 
   /// Binds the polynomial's top variable using the given scalar.
@@ -111,17 +117,19 @@ impl<Scalar: PrimeField> Index<usize> for MultilinearPolynomial<Scalar> {
 /// Sparse multilinear polynomial, which means the $Z(\cdot)$ is zero at most points.
 /// In our context, sparse polynomials are non-zeros over the hypercube at locations that map to "small" integers
 /// We exploit this property to implement a time-optimal algorithm
-pub(crate) struct SparsePolynomial<Scalar: PrimeField> {
+pub struct SparsePolynomial<Scalar: PrimeField> {
   num_vars: usize,
-  Z: Vec<Scalar>,
+  /// The non-zero evaluations
+  pub Z: Vec<Scalar>,
 }
 
 impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
+  /// Creates a new `SparsePolynomial` from the given number of variables and evaluations.
   pub fn new(num_vars: usize, Z: Vec<Scalar>) -> Self {
     SparsePolynomial { num_vars, Z }
   }
 
-  // a time-optimal algorithm to evaluate sparse polynomials
+  /// A time-optimal algorithm to evaluate sparse polynomials
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert_eq!(self.num_vars, r.len());
 
@@ -141,7 +149,6 @@ impl<Scalar: PrimeField> SparsePolynomial<Scalar> {
     common * eval_partial
   }
 }
-
 /// Adds another multilinear polynomial to `self`.
 /// Assumes the two polynomials have the same number of variables.
 impl<Scalar: PrimeField> Add for MultilinearPolynomial<Scalar> {
