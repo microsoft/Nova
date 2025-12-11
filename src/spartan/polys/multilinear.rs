@@ -53,6 +53,11 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.Z.len()
   }
 
+  /// Returns true if the polynomial has no evaluations.
+  pub fn is_empty(&self) -> bool {
+    self.Z.is_empty()
+  }
+
   /// Binds the polynomial's top variable using the given scalar.
   ///
   /// This operation modifies the polynomial in-place.
