@@ -36,8 +36,8 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   }
 
   /// Returns the coordinates (powers of t) used in this polynomial.
-  pub fn coordinates(&self) -> Vec<Scalar> {
-    self.t_pow.clone()
+  pub fn coordinates(&self) -> &[Scalar] {
+    &self.t_pow
   }
 
   /// Computes two vectors such that their outer product equals the output of the `evals` function.
