@@ -343,7 +343,7 @@ impl<E: Engine> SumcheckProof<E> {
 
   /// Computes evaluation points for a cubic sumcheck round.
   /// DEG1: poly_A - poly_B
-  /// DEG2: poly_A * poly_B  
+  /// DEG2: poly_A * poly_B
   /// DEG3: poly_A * poly_B * poly_C
   #[inline]
   pub fn compute_eval_points_cubic_with_deg<const DEG: usize>(
