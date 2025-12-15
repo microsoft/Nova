@@ -301,6 +301,32 @@ where
       h: first[0],
     })
   }
+
+  fn commit_sparse_binary(
+    ck: &Self::CommitmentKey,
+    non_zero_indices: &[usize],
+    r: &<E as Engine>::Scalar,
+  ) -> Self::Commitment {
+    let num_chunks = rayon::current_num_threads();
+    let chunk_size = (non_zero_indices.len() + num_chunks).div_ceil(num_chunks);
+    let mut comm = non_zero_indices
+      .par_chunks(chunk_size)
+      .into_par_iter()
+      .map(|chunk| {
+        let mut comm = <E as Engine>::GE::zero();
+        for index in chunk {
+          comm += <E as Engine>::GE::group(&ck.ck[*index]);
+        }
+        comm
+      })
+      .reduce(E::GE::zero, |a, b| a + b);
+
+    if r != &E::Scalar::ZERO {
+      comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+    }
+
+    Commitment { comm }
+  }
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion

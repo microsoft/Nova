@@ -89,6 +89,13 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
       .collect()
   }
 
+  /// Commits to the provided vector of sparse binary scalars using the provided generators and random blind
+  fn commit_sparse_binary(
+    ck: &Self::CommitmentKey,
+    non_zero_indices: &[usize],
+    r: &E::Scalar,
+  ) -> Self::Commitment;
+
   /// Commits to the provided vector of "small" scalars (at most 64 bits) using the provided generators and random blind
   fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     ck: &Self::CommitmentKey,
