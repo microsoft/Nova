@@ -3,8 +3,11 @@
 /// Module providing the equality polynomial.
 pub mod eq;
 
-pub(crate) mod identity;
-pub(crate) mod masked_eq;
+/// Module providing identity polynomial
+pub mod identity;
+
+/// Module providing masked eq polynomial
+pub mod masked_eq;
 
 /// Module providing multilinear polynomial types.
 pub mod multilinear;
@@ -12,4 +15,5 @@ pub mod multilinear;
 /// Module providing power polynomial.
 pub mod power;
 
-pub(crate) mod univariate;
+/// Module providing univariate polynomial
+pub mod univariate;
