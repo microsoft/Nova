@@ -21,9 +21,12 @@ use num_bigint::BigInt;
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
 pub struct AllocatedPoint<E: Engine> {
-  pub(crate) x: AllocatedNum<E::Base>,
-  pub(crate) y: AllocatedNum<E::Base>,
-  pub(crate) is_infinity: AllocatedNum<E::Base>,
+  /// The x-coordinate of the point.
+  pub x: AllocatedNum<E::Base>,
+  /// The y-coordinate of the point.
+  pub y: AllocatedNum<E::Base>,
+  /// Flag indicating if this is the point at infinity (1 = infinity, 0 = not infinity).
+  pub is_infinity: AllocatedNum<E::Base>,
 }
 
 impl<E> AllocatedPoint<E>
@@ -584,8 +587,10 @@ where
 #[derive(Clone)]
 /// `AllocatedPoint` but one that is guaranteed to be not infinity
 pub struct AllocatedPointNonInfinity<E: Engine> {
-  x: AllocatedNum<E::Base>,
-  y: AllocatedNum<E::Base>,
+  /// The x-coordinate of the point.
+  pub x: AllocatedNum<E::Base>,
+  /// The y-coordinate of the point.
+  pub y: AllocatedNum<E::Base>,
 }
 
 impl<E: Engine> AllocatedPointNonInfinity<E> {
@@ -742,18 +747,21 @@ impl<E: Engine> AllocatedPointNonInfinity<E> {
   }
 }
 
-// `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
-// of another curve E (specified as the group G) to prove things about points on E'.
-// `AllocatedNonnativePoint`s are always represented as affine coordinates.
+/// `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
+/// of another curve E (specified as the group G) to prove things about points on E'.
+/// `AllocatedNonnativePoint`s are always represented as affine coordinates.
 #[derive(Clone, Debug)]
 pub struct AllocatedNonnativePoint<E: Engine> {
-  pub(crate) x: BigNat<E::Scalar>,
-  pub(crate) y: BigNat<E::Scalar>,
-  pub(crate) is_infinity: AllocatedNum<E::Scalar>,
+  /// The x-coordinate as a BigNat.
+  pub x: BigNat<E::Scalar>,
+  /// The y-coordinate as a BigNat.
+  pub y: BigNat<E::Scalar>,
+  /// Flag indicating if this is the point at infinity.
+  pub is_infinity: AllocatedNum<E::Scalar>,
 }
 
-#[allow(dead_code)]
 impl<E: Engine> AllocatedNonnativePoint<E> {
+  /// Allocates a new nonnative point from coordinates.
   pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     coords: Option<(E::Base, E::Base, bool)>,

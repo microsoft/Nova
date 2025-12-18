@@ -199,6 +199,27 @@ where
     points.extend(self.ck.iter().cloned());
     write_points(writer, points)
   }
+
+  /// Returns the coordinates of the generator points.
+  ///
+  /// This method extracts the (x, y) coordinates of each generator point
+  /// in the commitment key. This is useful for operations that need direct
+  /// access to the underlying elliptic curve points.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  pub fn to_coordinates(&self) -> Vec<(E::Base, E::Base)> {
+    self
+      .ck
+      .iter()
+      .map(|c| {
+        let (x, y, is_infinity) = <E::GE as DlogGroup>::group(c).to_coordinates();
+        assert!(!is_infinity);
+        (x, y)
+      })
+      .collect()
+  }
 }
 
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
@@ -300,6 +321,10 @@ where
       ck: second.to_vec(),
       h: first[0],
     })
+  }
+
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
+    ck.to_coordinates()
   }
 }
 
