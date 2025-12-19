@@ -25,8 +25,8 @@ pub enum SynthesisError {
   #[error("division by zero")]
   DivisionByZero,
   /// During synthesis, we constructed an unsatisfiable constraint system.
-  #[error("unsatisfiable constraint system")]
-  Unsatisfiable,
+  #[error("unsatisfiable constraint system: {0}")]
+  Unsatisfiable(String),
   /// During synthesis, our polynomials ended up being too high of degree
   #[error("polynomial degree is too large")]
   PolynomialDegreeTooLarge,
