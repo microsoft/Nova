@@ -143,8 +143,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               }
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -192,8 +191,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               limb_values.push(vs[limb_i]);
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
