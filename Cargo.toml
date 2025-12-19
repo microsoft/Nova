@@ -72,6 +72,7 @@ name = "sumcheckeq"
 harness = false
 
 [features]
-default = ["halo2curves/asm"]
+default = ["halo2curves/asm", "io"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
+io = []
