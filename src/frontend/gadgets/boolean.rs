@@ -350,7 +350,9 @@ impl Boolean {
         if a == b {
           Ok(())
         } else {
-          Err(SynthesisError::Unsatisfiable)
+          Err(SynthesisError::Unsatisfiable(
+            "Booleans are not equal".to_string(),
+          ))
         }
       }
       (&Boolean::Constant(true), a) | (a, &Boolean::Constant(true)) => {

@@ -6,15 +6,12 @@
 //! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
 //! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
+#[cfg(feature = "io")]
+use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::{
-    ptau::PtauFileError,
-    read_ptau,
-    traits::{DlogGroup, DlogGroupExt, PairingGroup},
-    write_ptau,
-  },
+  provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -140,6 +137,7 @@ where
   E::GE: PairingGroup,
 {
   /// Save keys
+  #[cfg(feature = "io")]
   pub fn save_to(
     &self,
     mut writer: &mut (impl std::io::Write + std::io::Seek),
@@ -541,6 +539,7 @@ where
     }
   }
 
+  #[cfg(feature = "io")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     label: &'static [u8],

@@ -157,15 +157,6 @@ pub fn gaussian_elimination<F: PrimeField>(matrix: &mut [Vec<F>]) -> Vec<F> {
     eliminate(matrix, i);
   }
 
-  // Disable cargo clippy warnings about needless range loops.
-  // Checking the diagonal like this is simpler than any alternative.
-  #[allow(clippy::needless_range_loop)]
-  for i in 0..size {
-    if matrix[i][i] == F::ZERO {
-      println!("Infinitely many solutions");
-    }
-  }
-
   let mut result: Vec<F> = vec![F::ZERO; size];
   for i in 0..size {
     result[i] = div_f(matrix[i][size], matrix[i][i]);

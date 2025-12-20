@@ -1,11 +1,10 @@
 //! This module provides an implementation of a commitment engine
+#[cfg(feature = "io")]
+use crate::provider::ptau::{read_points, write_points, PtauFileError};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::{
-    ptau::{read_points, write_points, PtauFileError},
-    traits::{DlogGroup, DlogGroupExt},
-  },
+  provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -22,6 +21,7 @@ use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
 /// A type that holds commitment generators
@@ -192,6 +192,7 @@ impl<E: Engine> CommitmentKey<E>
 where
   E::GE: DlogGroup,
 {
+  #[cfg(feature = "io")]
   pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
     writer.write_all(&KEY_FILE_HEAD)?;
     let mut points = Vec::with_capacity(self.ck.len() + 1);
@@ -278,6 +279,7 @@ where
     }
   }
 
+  #[cfg(feature = "io")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     _label: &'static [u8],
