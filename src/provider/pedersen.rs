@@ -6,7 +6,7 @@ use crate::{
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentTrait, Len, SaveTo},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
 };
@@ -188,12 +188,12 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> CommitmentKey<E>
+impl<E: Engine> SaveTo for CommitmentKey<E>
 where
   E::GE: DlogGroup,
 {
   #[cfg(feature = "io")]
-  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
+  fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
     writer.write_all(&KEY_FILE_HEAD)?;
     let mut points = Vec::with_capacity(self.ck.len() + 1);
     points.push(self.h);

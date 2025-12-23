@@ -13,7 +13,7 @@ use crate::{
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentTrait, Len, SaveTo},
     evaluation::EvaluationEngineTrait,
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
@@ -132,13 +132,13 @@ where
   }
 }
 
-impl<E: Engine> CommitmentKey<E>
+impl<E: Engine> SaveTo for CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
   /// Save keys
   #[cfg(feature = "io")]
-  pub fn save_to(
+  fn save_to(
     &self,
     mut writer: &mut (impl std::io::Write + std::io::Seek),
   ) -> Result<(), PtauFileError> {

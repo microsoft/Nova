@@ -47,11 +47,27 @@ pub trait Len {
   fn length(&self) -> usize;
 }
 
+/// A trait for saving structures to a writer
+pub trait SaveTo {
+  /// Saves the structure to the provided writer.
+  fn save_to(
+    &self,
+    writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError>;
+}
+
 /// A trait that ties different pieces of the commitment generation together
 pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Holds the type of the commitment key
   /// The key should quantify its length in terms of group generators.
-  type CommitmentKey: Len + Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type CommitmentKey: Len
+    + SaveTo
+    + Clone
+    + Debug
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// Holds the type of the derandomization key
   type DerandKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
