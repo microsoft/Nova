@@ -10,13 +10,14 @@ use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
   provider::{
+    check_sanity_of_ptau_file,
     ptau::PtauFileError,
     read_ptau,
     traits::{DlogGroup, DlogGroupExt, PairingGroup},
     write_ptau,
   },
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentKeyFileTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
@@ -135,12 +136,12 @@ where
   }
 }
 
-impl<E: Engine> CommitmentKey<E>
+impl<E: Engine> CommitmentKeyFileTrait for CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
   /// Save keys
-  pub fn save_to(
+  fn save_to(
     &self,
     mut writer: &mut (impl std::io::Write + std::io::Seek),
   ) -> Result<(), PtauFileError> {
@@ -150,6 +151,14 @@ where
     let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
 
     write_ptau(&mut writer, g1_points, g2_points, power)
+  }
+
+  fn check_sanity_of_key_file(
+    path: impl AsRef<std::path::Path>,
+    num_g1: usize,
+    num_g2: usize,
+  ) -> Result<(), PtauFileError> {
+    check_sanity_of_ptau_file::<<E::GE as DlogGroup>::AffineGroupElement>(&path, num_g1, num_g2)
   }
 }
 

@@ -10,7 +10,7 @@ use nova_snark::{
     hyperkzg::{CommitmentEngine, CommitmentKey},
     Bn256EngineKZG,
   },
-  traits::commitment::CommitmentEngineTrait,
+  traits::commitment::{CommitmentEngineTrait, CommitmentKeyFileTrait},
 };
 use rand_core::OsRng;
 

@@ -12,6 +12,7 @@ use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// A helper trait for types implementing scalar multiplication.
 pub trait ScalarMul<Rhs, Output = Self>: Mul<Rhs, Output = Output> + MulAssign<Rhs> {}
@@ -48,11 +49,34 @@ pub trait Len {
   fn length(&self) -> usize;
 }
 
+/// A trait for saving key to a writer and checking sanity of key file
+pub trait CommitmentKeyFileTrait {
+  /// Saves the key to the provided writer.
+  fn save_to(
+    &self,
+    writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError>;
+
+  /// Checks the sanity of the key file at the provided path.
+  fn check_sanity_of_key_file(
+    path: impl AsRef<Path>,
+    num_g1: usize,
+    num_g2: usize,
+  ) -> Result<(), PtauFileError>;
+}
+
 /// A trait that ties different pieces of the commitment generation together
 pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Holds the type of the commitment key
   /// The key should quantify its length in terms of group generators.
-  type CommitmentKey: Len + Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
+  type CommitmentKey: Len
+    + CommitmentKeyFileTrait
+    + Clone
+    + Debug
+    + Send
+    + Sync
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// Holds the type of the derandomization key
   type DerandKey: Clone + Debug + Send + Sync + Serialize + for<'de> Deserialize<'de>;
