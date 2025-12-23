@@ -6,7 +6,7 @@ use crate::{
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentTrait, Len, SaveTo},
+    commitment::{CommitmentEngineTrait, CommitmentKeyFileTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
 };
@@ -20,6 +20,7 @@ use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::{fs::File, io::Read};
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
@@ -188,7 +189,7 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> SaveTo for CommitmentKey<E>
+impl<E: Engine> CommitmentKeyFileTrait for CommitmentKey<E>
 where
   E::GE: DlogGroup,
 {
@@ -199,6 +200,21 @@ where
     points.push(self.h);
     points.extend(self.ck.iter().cloned());
     write_points(writer, points)
+  }
+
+  fn check_sanity_of_key_file(
+    path: impl AsRef<std::path::Path>,
+    _num_g1: usize,
+    _num_g2: usize,
+  ) -> Result<(), PtauFileError> {
+    let mut reader = File::open(path)?;
+    let mut head = [0u8; 12];
+    reader.read_exact(&mut head)?;
+    if head != KEY_FILE_HEAD {
+      Err(PtauFileError::InvalidHead)
+    } else {
+      Ok(())
+    }
   }
 }
 
