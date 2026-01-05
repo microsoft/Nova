@@ -52,8 +52,9 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         .collect(),
     )
   } else {
-    eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
-    Err(SynthesisError::Unsatisfiable)
+    Err(SynthesisError::Unsatisfiable(format!(
+      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
+    )))
   }
 }
 
@@ -132,8 +133,9 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           || match values_cell {
             Ok(ref vs) => {
               if vs.len() != n_limbs {
-                eprintln!("Values do not match stated limb count");
-                return Err(SynthesisError::Unsatisfiable);
+                return Err(SynthesisError::Unsatisfiable(
+                  "Values do not match stated limb count".to_string(),
+                ));
               }
               if value.is_none() {
                 value = Some(limbs_to_nat::<Scalar, _, _>(vs.iter(), limb_width));
@@ -143,8 +145,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               }
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -192,8 +193,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               limb_values.push(vs[limb_i]);
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -317,11 +317,10 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     if self.params.limb_width == other.params.limb_width {
       Ok(self.params.limb_width)
     } else {
-      eprintln!(
+      Err(SynthesisError::Unsatisfiable(format!(
         "Limb widths {}, {}, do not agree at {}",
         self.params.limb_width, other.params.limb_width, location
-      );
-      Err(SynthesisError::Unsatisfiable)
+      )))
     }
   }
 

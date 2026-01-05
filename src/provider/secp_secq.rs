@@ -20,7 +20,6 @@ use num_integer::Integer;
 use num_traits::{Num, ToPrimitive};
 use rayon::prelude::*;
 use sha3::Shake256;
-use std::io::Read;
 
 /// Re-exports that give access to the standard aliases used in the code base, for secp
 pub mod secp256k1 {
