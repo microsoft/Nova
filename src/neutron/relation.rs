@@ -97,10 +97,8 @@ impl<E: Engine> Structure<E> {
       .reduce(|| E::Scalar::ZERO, |acc, x| acc + x);
 
     if sum != U.T {
-      println!("sum: {:?}", sum);
-      println!("U.T: {:?}", U.T);
       return Err(NovaError::UnSat {
-        reason: "sum != U.T".to_string(),
+        reason: format!("sum != U.T\n    sum: {:?}\n    U.T: {:?}", sum, U.T),
       });
     }
 

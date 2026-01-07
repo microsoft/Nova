@@ -6,15 +6,16 @@
 //! - `SimpleDigestible`: A marker trait for types that can be digested via serialization.
 
 use crate::constants::NUM_HASH_BITS;
+use bincode::{enc::write::Writer, error::EncodeError};
 use ff::PrimeField;
 use serde::Serialize;
 use sha3::{Digest, Sha3_256};
-use std::{io, marker::PhantomData};
+use std::marker::PhantomData;
 
 /// Trait for components with potentially discrete digests to be included in their container's digest.
 pub trait Digestible {
   /// Write the byte representation of Self in a byte buffer
-  fn write_bytes<W: Sized + io::Write>(&self, byte_sink: &mut W) -> Result<(), io::Error>;
+  fn write_bytes<W: Sized + Writer>(&self, byte_sink: &mut W) -> Result<(), EncodeError>;
 }
 
 /// Marker trait to be implemented for types that implement `Digestible` and `Serialize`.
@@ -22,14 +23,12 @@ pub trait Digestible {
 pub trait SimpleDigestible: Serialize {}
 
 impl<T: SimpleDigestible> Digestible for T {
-  fn write_bytes<W: Sized + io::Write>(&self, byte_sink: &mut W) -> Result<(), io::Error> {
+  fn write_bytes<W: Sized + Writer>(&self, byte_sink: &mut W) -> Result<(), EncodeError> {
     let config = bincode::config::legacy()
       .with_little_endian()
       .with_fixed_int_encoding();
     // Note: bincode recursively length-prefixes every field!
-    bincode::serde::encode_into_std_write(self, byte_sink, config)
-      .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    Ok(())
+    bincode::serde::encode_into_writer(self, byte_sink, config)
   }
 }
 
@@ -73,13 +72,17 @@ impl<'a, F: PrimeField, T: Digestible> DigestComputer<'a, F, T> {
   }
 
   /// Compute the digest of a `Digestible` instance.
-  pub fn digest(&self) -> Result<F, io::Error> {
-    let mut hasher = Self::hasher();
-    self
-      .inner
-      .write_bytes(&mut hasher)
-      .expect("Serialization error");
-    let bytes: [u8; 32] = hasher.finalize().into();
+  pub fn digest(&self) -> Result<F, EncodeError> {
+    struct Hasher(Sha3_256);
+    impl Writer for Hasher {
+      fn write(&mut self, bytes: &[u8]) -> Result<(), EncodeError> {
+        self.0.update(bytes);
+        Ok(())
+      }
+    }
+    let mut hasher = Hasher(Self::hasher());
+    self.inner.write_bytes(&mut hasher)?;
+    let bytes: [u8; 32] = hasher.0.finalize().into();
     Ok(Self::map_to_field(&bytes))
   }
 }

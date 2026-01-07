@@ -1,11 +1,10 @@
 //! This module provides an implementation of a commitment engine
+#[cfg(feature = "io")]
+use crate::provider::ptau::{read_points, write_points, PtauFileError};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::{
-    ptau::{read_points, write_points, PtauFileError},
-    traits::{DlogGroup, DlogGroupExt},
-  },
+  provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
@@ -22,6 +21,7 @@ use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
 
 /// A type that holds commitment generators
@@ -192,14 +192,6 @@ impl<E: Engine> CommitmentKey<E>
 where
   E::GE: DlogGroup,
 {
-  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
-    writer.write_all(&KEY_FILE_HEAD)?;
-    let mut points = Vec::with_capacity(self.ck.len() + 1);
-    points.push(self.h);
-    points.extend(self.ck.iter().cloned());
-    write_points(writer, points)
-  }
-
   /// Returns the coordinates of the generator points.
   ///
   /// This method extracts the (x, y) coordinates of each generator point
@@ -299,6 +291,7 @@ where
     }
   }
 
+  #[cfg(feature = "io")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     _label: &'static [u8],
@@ -325,6 +318,17 @@ where
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
+  
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    writer: &mut impl std::io::Write,
+  ) -> Result<(), PtauFileError> {
+    writer.write_all(&KEY_FILE_HEAD)?;
+    let mut points = Vec::with_capacity(ck.ck.len() + 1);
+    points.push(ck.h);
+    points.extend(ck.ck.iter().cloned());
+    write_points(writer, points)
   }
 }
 
@@ -429,6 +433,7 @@ where
   }
 }
 
+#[cfg(feature = "io")]
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -446,9 +451,7 @@ mod tests {
 
     let keys = CommitmentEngine::<E>::setup(LABEL, 100);
 
-    keys
-      .save_to(&mut BufWriter::new(File::create(path).unwrap()))
-      .unwrap();
+    CommitmentEngine::save_setup(&keys, &mut BufWriter::new(File::create(path).unwrap())).unwrap();
 
     let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), LABEL, 100);
 
