@@ -6,6 +6,7 @@
 //! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
 //! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
@@ -35,7 +36,6 @@ use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::traits::evm_serde::EvmCompatSerde;
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;

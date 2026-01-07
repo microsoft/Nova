@@ -1,4 +1,5 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
   digest::{DigestComputer, SimpleDigestible},
@@ -20,7 +21,6 @@ use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::traits::evm_serde::EvmCompatSerde;
 
 mod sparse;
 pub use sparse::SparseMatrix;

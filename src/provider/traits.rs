@@ -164,8 +164,8 @@ macro_rules! impl_traits_no_dlog_ext {
       #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use ff::PrimeField;
-        use serde::Deserialize;
         use serde::de::Error;
+        use serde::Deserialize;
         let mut bytes = <[u8; 32]>::deserialize(deserializer)?;
         bytes.reverse(); // big-endian
         Option::from(Self::from_repr(bytes.into()))
@@ -176,9 +176,9 @@ macro_rules! impl_traits_no_dlog_ext {
     impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Affine {
       #[cfg(feature = "evm")]
       fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
         use $crate::traits::evm_serde::EvmCompatSerde;
-        use serde::{Deserialize, Serialize};
 
         #[serde_as]
         #[derive(Deserialize, Serialize)]
@@ -193,9 +193,9 @@ macro_rules! impl_traits_no_dlog_ext {
 
       #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
         use $crate::traits::evm_serde::EvmCompatSerde;
-        use serde::{Deserialize, Serialize};
 
         #[serde_as]
         #[derive(Deserialize, Serialize)]
@@ -222,7 +222,9 @@ macro_rules! impl_traits_no_dlog_ext {
       #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use $crate::traits::evm_serde::CustomSerdeTrait;
-        Ok(Self::from(<$name::Affine as CustomSerdeTrait>::deserialize(deserializer)?))
+        Ok(Self::from(
+          <$name::Affine as CustomSerdeTrait>::deserialize(deserializer)?,
+        ))
       }
     }
 

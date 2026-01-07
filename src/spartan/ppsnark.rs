@@ -3,6 +3,7 @@
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 //! The SNARK implemented here is described in the MicroNova paper.
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -35,7 +36,6 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::traits::evm_serde::EvmCompatSerde;
 
 fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar> {
   let mut v_padded = vec![*e; n];

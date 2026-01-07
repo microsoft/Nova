@@ -137,7 +137,10 @@ impl<Scalar: PrimeField + CustomSerdeTrait> CompressedUniPoly<Scalar> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> where G::Scalar: CustomSerdeTrait {
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar>
+where
+  G::Scalar: CustomSerdeTrait,
+{
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs

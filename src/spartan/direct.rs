@@ -1,6 +1,7 @@
 //! This module provides interfaces to directly prove a step circuit by using Spartan SNARK.
 //! In particular, it supports any SNARK that implements `RelaxedR1CSSNARK` trait
 //! (e.g., with the SNARKs implemented in ppsnark.rs or snark.rs).
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   errors::NovaError,
   frontend::{
@@ -23,7 +24,6 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::traits::evm_serde::EvmCompatSerde;
 
 /// A direct circuit that can be synthesized
 pub struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {

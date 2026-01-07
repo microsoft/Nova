@@ -30,7 +30,11 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 /// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldBits + TranscriptReprTrait<Self::GE> + Serialize + for<'de> Deserialize<'de> + CustomSerdeTrait;
+  type Base: PrimeFieldBits
+    + TranscriptReprTrait<Self::GE>
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + CustomSerdeTrait;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits

@@ -190,9 +190,9 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
   #[cfg(feature = "evm")]
   fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     use crate::traits::evm_serde::EvmCompatSerde;
+    use halo2curves::bn256::Fq2;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
-    use halo2curves::bn256::Fq2;
 
     #[serde_as]
     #[derive(Deserialize, Serialize)]
@@ -207,8 +207,8 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
     let affine = HelperAffine::deserialize(deserializer)?;
 
     Ok(G2Affine {
-      x: Fq2::new(affine.0.0, affine.0.1),
-      y: Fq2::new(affine.1.0, affine.1.1),
+      x: Fq2::new(affine.0 .0, affine.0 .1),
+      y: Fq2::new(affine.1 .0, affine.1 .1),
     })
   }
 }
