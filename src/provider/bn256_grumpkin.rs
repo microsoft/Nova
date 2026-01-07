@@ -162,7 +162,7 @@ impl<G: DlogGroup> TranscriptReprTrait<G> for G2Affine {
 
 // CustomSerdeTrait implementations for G2
 impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
-  #[cfg(feature = "evm")]
+  
   fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     use crate::traits::evm_serde::EvmCompatSerde;
     use serde::{Deserialize, Serialize};
@@ -186,7 +186,7 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
     affine.serialize(serializer)
   }
 
-  #[cfg(feature = "evm")]
+  
   fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     use crate::traits::evm_serde::EvmCompatSerde;
     use halo2curves::bn256::Fq2;

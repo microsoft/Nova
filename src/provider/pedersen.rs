@@ -467,3 +467,24 @@ mod tests {
     assert_eq!(keys_read.ck, keys.ck);
   }
 }
+
+
+#[cfg(test)]
+mod evm_tests {
+  use super::*;
+  use crate::provider::Bn256EngineKZG;
+
+  #[test]
+  fn test_commitment_evm_serialization() {
+    type E = Bn256EngineKZG;
+    
+    let comm = Commitment::<E>::default();
+    let bytes = bincode::serde::encode_to_vec(&comm, bincode::config::legacy()).unwrap();
+    
+    println!("Commitment serialized length in nova-snark: {} bytes", bytes.len());
+    println!("Commitment hex: {}", hex::encode(&bytes[..std::cmp::min(64, bytes.len())]));
+    
+    // Always expect 64 bytes (EVM-compatible uncompressed G1 point)
+    assert_eq!(bytes.len(), 64, "Commitment should be 64 bytes (uncompressed G1)");
+  }
+}
