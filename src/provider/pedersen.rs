@@ -6,7 +6,7 @@ use crate::{
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt},
   traits::{
-    commitment::{CommitmentEngineTrait, CommitmentKeyFileTrait, CommitmentTrait, Len},
+    commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptReprTrait,
   },
 };
@@ -20,7 +20,6 @@ use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::Read};
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
@@ -189,35 +188,6 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> CommitmentKeyFileTrait for CommitmentKey<E>
-where
-  E::GE: DlogGroup,
-{
-  #[cfg(feature = "io")]
-  fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
-    writer.write_all(&KEY_FILE_HEAD)?;
-    let mut points = Vec::with_capacity(self.ck.len() + 1);
-    points.push(self.h);
-    points.extend(self.ck.iter().cloned());
-    write_points(writer, points)
-  }
-
-  fn check_sanity_of_key_file(
-    path: impl AsRef<std::path::Path>,
-    _num_g1: usize,
-    _num_g2: usize,
-  ) -> Result<(), PtauFileError> {
-    let mut reader = File::open(path)?;
-    let mut head = [0u8; 12];
-    reader.read_exact(&mut head)?;
-    if head != KEY_FILE_HEAD {
-      Err(PtauFileError::InvalidHead)
-    } else {
-      Ok(())
-    }
-  }
-}
-
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroupExt,
@@ -318,6 +288,18 @@ where
       ck: second.to_vec(),
       h: first[0],
     })
+  }
+
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    writer: &mut impl std::io::Write,
+  ) -> Result<(), PtauFileError> {
+    writer.write_all(&KEY_FILE_HEAD)?;
+    let mut points = Vec::with_capacity(ck.ck.len() + 1);
+    points.push(ck.h);
+    points.extend(ck.ck.iter().cloned());
+    write_points(writer, points)
   }
 }
 
@@ -422,6 +404,7 @@ where
   }
 }
 
+#[cfg(feature = "io")]
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -439,9 +422,7 @@ mod tests {
 
     let keys = CommitmentEngine::<E>::setup(LABEL, 100);
 
-    keys
-      .save_to(&mut BufWriter::new(File::create(path).unwrap()))
-      .unwrap();
+    CommitmentEngine::save_setup(&keys, &mut BufWriter::new(File::create(path).unwrap())).unwrap();
 
     let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), LABEL, 100);
 

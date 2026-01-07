@@ -10,7 +10,7 @@ use nova_snark::{
     hyperkzg::{CommitmentEngine, CommitmentKey},
     Bn256EngineKZG,
   },
-  traits::commitment::{CommitmentEngineTrait, CommitmentKeyFileTrait},
+  traits::commitment::CommitmentEngineTrait,
 };
 use rand_core::OsRng;
 
@@ -61,7 +61,7 @@ fn keygen_save_large() {
     let mut writer = BufWriter::with_capacity(BUFFER_SIZE, &file);
 
     let (_, dur) = timeit!(|| {
-      ck.save_to(&mut writer).unwrap();
+      CommitmentEngine::<E>::save_setup(&ck, &mut writer).unwrap();
     });
 
     println!(
