@@ -132,25 +132,6 @@ where
   }
 }
 
-impl<E: Engine> CommitmentKey<E>
-where
-  E::GE: PairingGroup,
-{
-  /// Save keys
-  #[cfg(feature = "io")]
-  pub fn save_to(
-    &self,
-    mut writer: &mut (impl std::io::Write + std::io::Seek),
-  ) -> Result<(), PtauFileError> {
-    let g1_points = self.ck.clone();
-
-    let g2_points = vec![self.tau_H, self.tau_H];
-    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
-
-    write_ptau(&mut writer, g1_points, g2_points, power)
-  }
-}
-
 impl<E: Engine> Default for Commitment<E>
 where
   E::GE: PairingGroup,
@@ -547,6 +528,7 @@ where
   ) -> Result<Self::CommitmentKey, PtauFileError> {
     let num = n.next_power_of_two();
 
+    // read points as well as check sanity of ptau file
     let (g1_points, g2_points) = read_ptau(reader, num, 2)?;
 
     let ck = g1_points.to_vec();
@@ -556,6 +538,20 @@ where
     let h = *E::GE::from_label(label, 1).first().unwrap();
 
     Ok(CommitmentKey { ck, h, tau_H })
+  }
+
+  /// Save keys
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    mut writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError> {
+    let g1_points = ck.ck.clone();
+
+    let g2_points = vec![ck.tau_H, ck.tau_H];
+    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
+
+    write_ptau(&mut writer, g1_points, g2_points, power)
   }
 
   fn commit_small_range<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
@@ -1029,17 +1025,19 @@ where
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  #[cfg(feature = "io")]
+  use crate::provider::hyperkzg;
+  use crate::{
+    provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
+    spartan::polys::multilinear::MultilinearPolynomial,
+  };
+  use rand::SeedableRng;
+  #[cfg(feature = "io")]
   use std::{
     fs::OpenOptions,
     io::{BufReader, BufWriter},
   };
-
-  use super::*;
-  use crate::{
-    provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
-    spartan::polys::multilinear::MultilinearPolynomial,
-  };
-  use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
   type Fr = <E as Engine>::Scalar;
@@ -1193,6 +1191,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[ignore = "only available with external ptau files"]
   #[test]
   fn test_hyperkzg_large_from_file() {
@@ -1252,6 +1251,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[test]
   fn test_save_load_ck() {
     const BUFFER_SIZE: usize = 64 * 1024;
@@ -1270,7 +1270,7 @@ mod tests {
       .unwrap();
     let mut writer = BufWriter::with_capacity(BUFFER_SIZE, file);
 
-    ck.save_to(&mut writer).unwrap();
+    CommitmentEngine::save_setup(&ck, &mut writer).unwrap();
 
     let file = OpenOptions::new().read(true).open(filename).unwrap();
 
@@ -1287,6 +1287,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[ignore = "only available with external ptau files"]
   #[test]
   fn test_load_ptau() {

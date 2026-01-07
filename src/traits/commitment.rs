@@ -67,6 +67,13 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError>;
 
+  /// Saves the key to the provided writer.
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError>;
+
   /// Samples a new commitment key of a specified size
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
 

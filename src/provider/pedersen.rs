@@ -188,20 +188,6 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
-impl<E: Engine> CommitmentKey<E>
-where
-  E::GE: DlogGroup,
-{
-  #[cfg(feature = "io")]
-  pub fn save_to(&self, writer: &mut impl std::io::Write) -> Result<(), PtauFileError> {
-    writer.write_all(&KEY_FILE_HEAD)?;
-    let mut points = Vec::with_capacity(self.ck.len() + 1);
-    points.push(self.h);
-    points.extend(self.ck.iter().cloned());
-    write_points(writer, points)
-  }
-}
-
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroupExt,
@@ -302,6 +288,18 @@ where
       ck: second.to_vec(),
       h: first[0],
     })
+  }
+
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    writer: &mut impl std::io::Write,
+  ) -> Result<(), PtauFileError> {
+    writer.write_all(&KEY_FILE_HEAD)?;
+    let mut points = Vec::with_capacity(ck.ck.len() + 1);
+    points.push(ck.h);
+    points.extend(ck.ck.iter().cloned());
+    write_points(writer, points)
   }
 }
 
@@ -406,6 +404,7 @@ where
   }
 }
 
+#[cfg(feature = "io")]
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -423,9 +422,7 @@ mod tests {
 
     let keys = CommitmentEngine::<E>::setup(LABEL, 100);
 
-    keys
-      .save_to(&mut BufWriter::new(File::create(path).unwrap()))
-      .unwrap();
+    CommitmentEngine::save_setup(&keys, &mut BufWriter::new(File::create(path).unwrap())).unwrap();
 
     let keys_read = CommitmentEngine::load_setup(&mut File::open(path).unwrap(), LABEL, 100);
 
