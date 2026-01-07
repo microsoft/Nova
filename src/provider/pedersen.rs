@@ -322,6 +322,7 @@ where
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
+  }
   
   #[cfg(feature = "io")]
   fn save_setup(
