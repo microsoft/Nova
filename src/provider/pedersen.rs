@@ -20,6 +20,8 @@ use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use crate::traits::evm_serde::EvmCompatSerde;
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
@@ -53,9 +55,11 @@ where
 }
 
 /// A type that holds a commitment
+#[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<E: Engine> {
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) comm: E::GE,
 }
 

@@ -227,7 +227,7 @@ mod tests {
   use super::*;
   use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
 
-  fn test_from_evals_quad_with<F: PrimeField>() {
+  fn test_from_evals_quad_with<F: PrimeField + CustomSerdeTrait>() {
     // polynomial is 2x^2 + 3x + 1
     let e0 = F::ONE;
     let e1 = F::from(6);
@@ -260,7 +260,7 @@ mod tests {
     test_from_evals_quad_with::<secp256k1::Scalar>();
   }
 
-  fn test_from_evals_cubic_with<F: PrimeField>() {
+  fn test_from_evals_cubic_with<F: PrimeField + CustomSerdeTrait>() {
     // polynomial is x^3 + 2x^2 + 3x + 1
     let e0 = F::ONE; // f(0)
     let e1 = F::from(7); // f(1)

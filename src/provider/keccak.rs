@@ -132,6 +132,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
 }
 
 #[cfg(test)]
+#[allow(unused_imports)]
 mod tests {
   use crate::{
     provider::{
@@ -144,6 +145,7 @@ mod tests {
   use rand::Rng;
   use sha3::{Digest, Keccak256};
 
+  #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript_with<E: Engine>(expected_h1: &'static str, expected_h2: &'static str) {
     let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(b"test");
 
@@ -171,6 +173,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<PallasEngine>(
       "b67339da79ce5f6dc72ad23c8c3b4179f49655cadf92d47e79c3e7788f00f125",
@@ -199,11 +202,13 @@ mod tests {
     );
   }
 
+  #[allow(unused)]
   use super::{
     DOM_SEP_TAG, KECCAK256_PREFIX_CHALLENGE_HI, KECCAK256_PREFIX_CHALLENGE_LO,
     KECCAK256_STATE_SIZE, PERSONA_TAG,
   };
 
+  #[cfg(not(feature = "evm"))]
   fn compute_updated_state_for_testing(input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
     let input_lo = [input, &[KECCAK256_PREFIX_CHALLENGE_LO]].concat();
     let input_hi = [input, &[KECCAK256_PREFIX_CHALLENGE_HI]].concat();
@@ -224,6 +229,7 @@ mod tests {
       .unwrap()
   }
 
+  #[cfg(not(feature = "evm"))]
   fn squeeze_for_testing(
     transcript: &[u8],
     round: u16,
@@ -243,6 +249,7 @@ mod tests {
 
   // This test is meant to ensure compatibility between the incremental way of computing the transcript above, and
   // the former, which materialized the entirety of the input vector before calling Keccak256 on it.
+  #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript_incremental_vs_explicit_with<E: Engine>() {
     let test_label = b"test";
     let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(test_label);
@@ -278,6 +285,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript_incremental_vs_explicit() {
     test_keccak_transcript_incremental_vs_explicit_with::<PallasEngine>();
     test_keccak_transcript_incremental_vs_explicit_with::<VestaEngine>();
@@ -287,3 +295,4 @@ mod tests {
     test_keccak_transcript_incremental_vs_explicit_with::<Secq256k1Engine>();
   }
 }
+

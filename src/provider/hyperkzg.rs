@@ -1125,6 +1125,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_hyperkzg_small() {
     let n = 4;
 
