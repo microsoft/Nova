@@ -22,6 +22,8 @@ use crate::{
 use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use crate::traits::evm_serde::EvmCompatSerde;
 
 /// A direct circuit that can be synthesized
 pub struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {
@@ -98,6 +100,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>> VerifierKey<E, S> {
 }
 
 /// A direct SNARK proving a step circuit
+#[serde_as]
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct DirectSNARK<E, S, C>
@@ -107,6 +110,7 @@ where
   C: StepCircuit<E::Scalar>,
 {
   comm_W: Commitment<E>, // commitment to the witness
+  #[serde_as(as = "EvmCompatSerde")]
   blind_r_W: E::Scalar,
   snark: S, // snark proving the witness is satisfying
   _p: PhantomData<C>,

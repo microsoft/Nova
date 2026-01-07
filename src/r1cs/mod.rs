@@ -19,6 +19,8 @@ use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use crate::traits::evm_serde::EvmCompatSerde;
 
 mod sparse;
 pub use sparse::SparseMatrix;
@@ -46,10 +48,12 @@ pub struct R1CSWitness<E: Engine> {
 }
 
 /// A type that holds an R1CS instance
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSInstance<E: Engine> {
   pub(crate) comm_W: Commitment<E>,
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   pub(crate) X: Vec<E::Scalar>,
 }
 
@@ -63,12 +67,15 @@ pub struct RelaxedR1CSWitness<E: Engine> {
 }
 
 /// A type that holds a Relaxed R1CS instance
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RelaxedR1CSInstance<E: Engine> {
   pub(crate) comm_W: Commitment<E>,
   pub(crate) comm_E: Commitment<E>,
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   pub(crate) X: Vec<E::Scalar>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) u: E::Scalar,
 }
 

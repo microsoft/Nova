@@ -34,6 +34,8 @@ use num_traits::ToPrimitive;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use crate::traits::evm_serde::EvmCompatSerde;
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -611,26 +613,34 @@ pub struct ProverKey<E: Engine> {
 }
 
 /// A verifier key
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) G: G1Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) H: G2Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) tau_H: G2Affine<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   com: Vec<G1Affine<E>>,
+  #[serde_as(as = "[EvmCompatSerde; 3]")]
   w: [G1Affine<E>; 3],
+  #[serde_as(as = "Vec<[EvmCompatSerde; 3]>")]
   v: Vec<[E::Scalar; 3]>,
 }
 

@@ -49,7 +49,8 @@ pub trait DlogGroup:
     + for<'de> Deserialize<'de>
     + TranscriptReprTrait<Self>
     + CurveAffine
-    + SerdeObject;
+    + SerdeObject
+    + crate::traits::evm_serde::CustomSerdeTrait;
 
   /// Produce a vector of group elements using a static label
   fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement>;
@@ -147,6 +148,81 @@ macro_rules! impl_traits_no_dlog_ext {
         let base = BigInt::from_str_radix($base_str, 16).unwrap();
 
         (A, B, order, base)
+      }
+    }
+
+    impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Scalar {
+      #[cfg(feature = "evm")]
+      fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use ff::PrimeField;
+        use serde::Serialize;
+        let mut bytes = self.to_repr();
+        bytes.as_mut().reverse(); // big-endian
+        bytes.serialize(serializer)
+      }
+
+      #[cfg(feature = "evm")]
+      fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use ff::PrimeField;
+        use serde::Deserialize;
+        use serde::de::Error;
+        let mut bytes = <[u8; 32]>::deserialize(deserializer)?;
+        bytes.reverse(); // big-endian
+        Option::from(Self::from_repr(bytes.into()))
+          .ok_or_else(|| D::Error::custom("deserialized bytes don't encode a valid field element"))
+      }
+    }
+
+    impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Affine {
+      #[cfg(feature = "evm")]
+      fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde_with::serde_as;
+        use $crate::traits::evm_serde::EvmCompatSerde;
+        use serde::{Deserialize, Serialize};
+
+        #[serde_as]
+        #[derive(Deserialize, Serialize)]
+        struct HelperAffine(
+          #[serde_as(as = "EvmCompatSerde")] $name::Base,
+          #[serde_as(as = "EvmCompatSerde")] $name::Base,
+        );
+
+        let affine = HelperAffine(self.x, self.y);
+        affine.serialize(serializer)
+      }
+
+      #[cfg(feature = "evm")]
+      fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde_with::serde_as;
+        use $crate::traits::evm_serde::EvmCompatSerde;
+        use serde::{Deserialize, Serialize};
+
+        #[serde_as]
+        #[derive(Deserialize, Serialize)]
+        struct HelperAffine(
+          #[serde_as(as = "EvmCompatSerde")] $name::Base,
+          #[serde_as(as = "EvmCompatSerde")] $name::Base,
+        );
+
+        let affine = HelperAffine::deserialize(deserializer)?;
+        Ok($name::Affine {
+          x: affine.0,
+          y: affine.1,
+        })
+      }
+    }
+
+    impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Point {
+      #[cfg(feature = "evm")]
+      fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use $crate::traits::evm_serde::CustomSerdeTrait;
+        <$name::Affine as CustomSerdeTrait>::serialize(&self.to_affine(), serializer)
+      }
+
+      #[cfg(feature = "evm")]
+      fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use $crate::traits::evm_serde::CustomSerdeTrait;
+        Ok(Self::from(<$name::Affine as CustomSerdeTrait>::deserialize(deserializer)?))
       }
     }
 

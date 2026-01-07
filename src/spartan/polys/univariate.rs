@@ -1,11 +1,15 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait};
+use crate::traits::{
+  evm_serde::{CustomSerdeTrait, EvmCompatSerde},
+  AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+};
 use core::panic;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 /// A univariate dense polynomial in coefficient form (little endian).
 /// For example, ax^2 + bx + c is stored as vec![c, b, a]
@@ -18,12 +22,14 @@ pub struct UniPoly<Scalar: PrimeField> {
 /// A compressed univariate polynomial with the linear term omitted (little endian).
 /// For example, ax^2 + bx + c is stored as vec![c, a]
 /// and ax^3 + bx^2 + cx + d is stored as vec![d, c, a]
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CompressedUniPoly<Scalar: PrimeField> {
+pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   coeffs_except_linear_term: Vec<Scalar>,
 }
 
-impl<Scalar: PrimeField> UniPoly<Scalar> {
+impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
   #[cfg(feature = "experimental")]
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
@@ -111,7 +117,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   }
 }
 
-impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
+impl<Scalar: PrimeField + CustomSerdeTrait> CompressedUniPoly<Scalar> {
   /// Decompresses the polynomial by recovering the linear term using the hint.
   /// We require eval(0) + eval(1) = hint, so we can solve for the linear term as:
   /// linear_term = hint - 2 * constant_term - deg2 term - deg3 term
@@ -131,7 +137,7 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> where G::Scalar: CustomSerdeTrait {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs

@@ -25,6 +25,7 @@ num-bigint = { version = "0.4.6", features = ["serde", "rand"] }
 num-traits = "0.2.19"
 num-integer = "0.1.46"
 serde = { version = "1.0.217", features = ["derive"] }
+serde_with = "3.8.3"
 bincode = { version = "2", features = ["serde", "std"] }
 bitvec = "1.0"
 blitzar = { version = "4.4.2", optional = true }
@@ -75,3 +76,4 @@ harness = false
 default = ["halo2curves/asm"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
+evm = []

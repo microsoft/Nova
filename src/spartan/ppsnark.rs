@@ -34,6 +34,8 @@ use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use crate::traits::evm_serde::EvmCompatSerde;
 
 fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar> {
   let mut v_padded = vec![*e; n];
@@ -792,6 +794,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> SimpleDigestible for VerifierKey<E
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
@@ -810,34 +813,55 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   comm_w_plus_r_inv_col: Commitment<E>,
 
   // claims about Az, Bz, and Cz polynomials
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Az_at_tau: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Bz_at_tau: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Cz_at_tau: E::Scalar,
 
   // sum-check
   sc: SumcheckProof<E>,
 
   // claims from the end of sum-check
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Az: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Bz: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Cz: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_E: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_L_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_L_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_A: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_B: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_C: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_W: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_t_plus_r_inv_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_row: E::Scalar, // address
+  #[serde_as(as = "EvmCompatSerde")]
   eval_w_plus_r_inv_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_ts_row: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_t_plus_r_inv_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_col: E::Scalar, // address
+  #[serde_as(as = "EvmCompatSerde")]
   eval_w_plus_r_inv_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_ts_col: E::Scalar,
 
   // a PCS evaluation argument
