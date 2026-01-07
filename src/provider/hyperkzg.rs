@@ -10,9 +10,9 @@
 use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
-  traits::evm_serde::EvmCompatSerde,
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
+  traits::evm_serde::EvmCompatSerde,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,

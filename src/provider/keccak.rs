@@ -295,4 +295,3 @@ mod tests {
     test_keccak_transcript_incremental_vs_explicit_with::<Secq256k1Engine>();
   }
 }
-

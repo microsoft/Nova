@@ -47,7 +47,10 @@ pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
     + CustomSerdeTrait;
 
   /// A type that represents an element of the group
-  type GE: Group<Base = Self::Base, Scalar = Self::Scalar> + Serialize + for<'de> Deserialize<'de> + CustomSerdeTrait;
+  type GE: Group<Base = Self::Base, Scalar = Self::Scalar>
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + CustomSerdeTrait;
 
   /// A type that represents a circuit-friendly sponge that consumes
   /// elements from the base field

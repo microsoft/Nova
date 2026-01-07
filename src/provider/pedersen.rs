@@ -1,6 +1,7 @@
 //! This module provides an implementation of a commitment engine
 #[cfg(feature = "io")]
 use crate::provider::ptau::{read_points, write_points, PtauFileError};
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
@@ -21,7 +22,6 @@ use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::traits::evm_serde::EvmCompatSerde;
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
@@ -323,7 +323,7 @@ where
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
   }
-  
+
   #[cfg(feature = "io")]
   fn save_setup(
     ck: &Self::CommitmentKey,
