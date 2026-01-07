@@ -46,11 +46,14 @@ where
 }
 
 /// A type that holds blinding generator
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DerandKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
@@ -58,9 +61,12 @@ where
 #[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Commitment<E: Engine> {
+pub struct Commitment<E: Engine>
+where
+  E::GE: DlogGroup,
+{
   #[serde_as(as = "EvmCompatSerde")]
-  pub(crate) comm: E::GE,
+  pub(crate) comm: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 impl<E: Engine> CommitmentTrait<E> for Commitment<E>
@@ -68,7 +74,7 @@ where
   E::GE: DlogGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
-    self.comm.to_coordinates()
+    E::GE::group(&self.comm).to_coordinates()
   }
 }
 
@@ -78,7 +84,7 @@ where
 {
   fn default() -> Self {
     Commitment {
-      comm: E::GE::zero(),
+      comm: E::GE::zero().affine(),
     }
   }
 }
@@ -88,7 +94,7 @@ where
   E::GE: DlogGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
     let is_infinity_byte = (!is_infinity).into();
     [
       x.to_transcript_bytes(),
@@ -104,7 +110,7 @@ where
   E::GE: DlogGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
     ro.absorb(x);
     ro.absorb(y);
     ro.absorb(if is_infinity {
@@ -120,7 +126,7 @@ where
   E::GE: DlogGroup,
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -143,7 +149,7 @@ where
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
     *self = Commitment {
-      comm: self.comm * scalar,
+      comm: (E::GE::group(&self.comm) * scalar).affine(),
     };
   }
 }
@@ -155,7 +161,7 @@ where
   type Output = Commitment<E>;
   fn mul(self, scalar: &'b E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: self.comm * scalar,
+      comm: (E::GE::group(&self.comm) * scalar).affine(),
     }
   }
 }
@@ -168,7 +174,7 @@ where
 
   fn mul(self, scalar: E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: self.comm * scalar,
+      comm: (E::GE::group(&self.comm) * scalar).affine(),
     }
   }
 }
@@ -181,7 +187,7 @@ where
 
   fn add(self, other: Commitment<E>) -> Commitment<E> {
     Commitment {
-      comm: self.comm + other.comm,
+      comm: (E::GE::group(&self.comm) + E::GE::group(&other.comm)).affine(),
     }
   }
 }
@@ -245,8 +251,9 @@ where
     assert!(ck.ck.len() >= v.len());
 
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r,
+      comm: (E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r)
+        .affine(),
     }
   }
 
@@ -258,8 +265,9 @@ where
     assert!(ck.ck.len() >= v.len());
 
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r,
+      comm: (E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r)
+        .affine(),
     }
   }
 
@@ -282,7 +290,7 @@ where
       res += <E::GE as DlogGroup>::group(&ck.h) * r;
     }
 
-    Commitment { comm: res }
+    Commitment { comm: res.affine() }
   }
 
   fn derandomize(
@@ -291,7 +299,7 @@ where
     r: &E::Scalar,
   ) -> Self::Commitment {
     Commitment {
-      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
+      comm: (E::GE::group(&commit.comm) - <E::GE as DlogGroup>::group(&dk.h) * r).affine(),
     }
   }
 
@@ -423,10 +431,7 @@ where
 
   /// reinterprets a vector of commitments as a set of generators
   fn reinterpret_commitments_as_ck(c: &[Commitment<E>]) -> Result<Self, NovaError> {
-    let ck = (0..c.len())
-      .into_par_iter()
-      .map(|i| c[i].comm.affine())
-      .collect();
+    let ck = (0..c.len()).into_par_iter().map(|i| c[i].comm).collect();
 
     // cmt is derandomized by the point that this is called
     Ok(CommitmentKey {
@@ -468,7 +473,6 @@ mod tests {
   }
 }
 
-
 #[cfg(test)]
 mod evm_tests {
   use super::*;
@@ -477,14 +481,24 @@ mod evm_tests {
   #[test]
   fn test_commitment_evm_serialization() {
     type E = Bn256EngineKZG;
-    
+
     let comm = Commitment::<E>::default();
     let bytes = bincode::serde::encode_to_vec(&comm, bincode::config::legacy()).unwrap();
-    
-    println!("Commitment serialized length in nova-snark: {} bytes", bytes.len());
-    println!("Commitment hex: {}", hex::encode(&bytes[..std::cmp::min(64, bytes.len())]));
-    
+
+    println!(
+      "Commitment serialized length in nova-snark: {} bytes",
+      bytes.len()
+    );
+    println!(
+      "Commitment hex: {}",
+      hex::encode(&bytes[..std::cmp::min(64, bytes.len())])
+    );
+
     // Always expect 64 bytes (EVM-compatible uncompressed G1 point)
-    assert_eq!(bytes.len(), 64, "Commitment should be 64 bytes (uncompressed G1)");
+    assert_eq!(
+      bytes.len(),
+      64,
+      "Commitment should be 64 bytes (uncompressed G1)"
+    );
   }
 }

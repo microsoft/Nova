@@ -110,22 +110,27 @@ where
 }
 
 /// A type that holds blinding generator
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DerandKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A KZG commitment
+#[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  comm: <E as Engine>::GE,
+  #[serde_as(as = "EvmCompatSerde")]
+  comm: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 impl<E: Engine> Commitment<E>
@@ -134,11 +139,13 @@ where
 {
   /// Creates a new commitment from the underlying group element
   pub fn new(comm: <E as Engine>::GE) -> Self {
-    Commitment { comm }
+    Commitment {
+      comm: comm.affine(),
+    }
   }
   /// Returns the commitment as a group element
   pub fn into_inner(self) -> <E as Engine>::GE {
-    self.comm
+    E::GE::group(&self.comm)
   }
 }
 
@@ -147,7 +154,7 @@ where
   E::GE: PairingGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
-    self.comm.to_coordinates()
+    E::GE::group(&self.comm).to_coordinates()
   }
 }
 
@@ -157,7 +164,7 @@ where
 {
   fn default() -> Self {
     Commitment {
-      comm: E::GE::zero(),
+      comm: E::GE::zero().affine(),
     }
   }
 }
@@ -167,7 +174,7 @@ where
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
     let is_infinity_byte = (!is_infinity).into();
     [
       x.to_transcript_bytes(),
@@ -183,7 +190,7 @@ where
   E::GE: PairingGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
     ro.absorb(x);
     ro.absorb(y);
     ro.absorb(if is_infinity {
@@ -199,7 +206,7 @@ where
   E::GE: PairingGroup,
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
-    let (x, y, is_infinity) = self.comm.to_coordinates();
+    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -221,7 +228,7 @@ where
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
-    let result = (self as &Commitment<E>).comm * scalar;
+    let result = (E::GE::group(&self.comm) * scalar).affine();
     *self = Commitment { comm: result };
   }
 }
@@ -234,7 +241,7 @@ where
 
   fn mul(self, scalar: &'b E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: self.comm * scalar,
+      comm: (E::GE::group(&self.comm) * scalar).affine(),
     }
   }
 }
@@ -247,7 +254,7 @@ where
 
   fn mul(self, scalar: E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: self.comm * scalar,
+      comm: (E::GE::group(&self.comm) * scalar).affine(),
     }
   }
 }
@@ -260,7 +267,7 @@ where
 
   fn add(self, other: Commitment<E>) -> Commitment<E> {
     Commitment {
-      comm: self.comm + other.comm,
+      comm: (E::GE::group(&self.comm) + E::GE::group(&other.comm)).affine(),
     }
   }
 }
@@ -470,8 +477,9 @@ where
     assert!(ck.ck.len() >= v.len());
 
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r,
+      comm: (E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r)
+        .affine(),
     }
   }
 
@@ -491,7 +499,7 @@ where
       .par_iter()
       .zip(r.par_iter())
       .map(|(commit, r_i)| Commitment {
-        comm: *commit + (h * r_i),
+        comm: (*commit + (h * r_i)).affine(),
       })
       .collect()
   }
@@ -503,8 +511,9 @@ where
   ) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r,
+      comm: (E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r)
+        .affine(),
     }
   }
 
@@ -524,7 +533,7 @@ where
       .iter()
       .zip(r.iter())
       .map(|(commit, r_i)| Commitment {
-        comm: *commit + (h * r_i),
+        comm: (*commit + (h * r_i)).affine(),
       })
       .collect()
   }
@@ -535,7 +544,7 @@ where
     r: &E::Scalar,
   ) -> Self::Commitment {
     Commitment {
-      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
+      comm: (E::GE::group(&commit.comm) - <E::GE as DlogGroup>::group(&dk.h) * r).affine(),
     }
   }
 
@@ -592,7 +601,7 @@ where
       res += <E::GE as DlogGroup>::group(&ck.h) * r;
     }
 
-    Commitment { comm: res }
+    Commitment { comm: res.affine() }
   }
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
@@ -813,7 +822,7 @@ where
       let target_chunks = DEFAULT_TARGET_CHUNKS;
       let h = &div_by_monomial(f, u, target_chunks);
 
-      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
+      E::CE::commit(ck, h, &E::Scalar::ZERO).comm
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -911,7 +920,7 @@ where
     let r = vec![E::Scalar::ZERO; ell - 1];
     let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
       .par_iter()
-      .map(|i| i.comm.affine())
+      .map(|i| i.comm)
       .collect();
 
     // Phase 2
@@ -1027,13 +1036,7 @@ where
         ],
       ]
       .concat(),
-      &[
-        &[C.comm.affine()][..],
-        &pi.com,
-        &pi.w,
-        slice::from_ref(&vk.G),
-      ]
-      .concat(),
+      &[&[C.comm][..], &pi.com, &pi.w, slice::from_ref(&vk.G)].concat(),
     );
 
     let R0 = E::GE::group(&pi.w[0]);
@@ -1166,7 +1169,7 @@ mod tests {
       .with_fixed_int_encoding();
     let proof_bytes =
       bincode::serde::encode_to_vec(&proof, config).expect("Failed to serialize proof");
-    assert_eq!(proof_bytes.len(), 336);
+    assert_eq!(proof_bytes.len(), 464);
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
