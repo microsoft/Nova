@@ -174,14 +174,31 @@ where
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
+    use crate::traits::Group;
     let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
-    let is_infinity_byte = (!is_infinity).into();
-    [
-      x.to_transcript_bytes(),
-      y.to_transcript_bytes(),
-      [is_infinity_byte].to_vec(),
-    ]
-    .concat()
+    // Get curve parameter B to determine encoding strategy
+    let (_, b, _, _) = E::GE::group_params();
+
+    if b != E::Base::ZERO {
+      // For curves with B!=0 (like BN254 with B=3, Grumpkin with B=-5),
+      // (0, 0) doesn't lie on the curve (since 0 != 0 + 0 + B),
+      // so point at infinity can be safely encoded as (0, 0).
+      let (x, y) = if is_infinity {
+        (E::Base::ZERO, E::Base::ZERO)
+      } else {
+        (x, y)
+      };
+      [x.to_transcript_bytes(), y.to_transcript_bytes()].concat()
+    } else {
+      // For curves with B=0, (0, 0) lies on the curve, so we need the is_infinity flag
+      let is_infinity_byte = (!is_infinity).into();
+      [
+        x.to_transcript_bytes(),
+        y.to_transcript_bytes(),
+        [is_infinity_byte].to_vec(),
+      ]
+      .concat()
+    }
   }
 }
 
