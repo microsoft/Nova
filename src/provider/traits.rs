@@ -152,6 +152,7 @@ macro_rules! impl_traits_no_dlog_ext {
     }
 
     impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Scalar {
+      #[cfg(feature = "evm")]
       fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use ff::PrimeField;
         use serde::Serialize;
@@ -160,6 +161,7 @@ macro_rules! impl_traits_no_dlog_ext {
         bytes.serialize(serializer)
       }
 
+      #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use ff::PrimeField;
         use serde::de::Error;
@@ -172,6 +174,7 @@ macro_rules! impl_traits_no_dlog_ext {
     }
 
     impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Affine {
+      #[cfg(feature = "evm")]
       fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
@@ -188,6 +191,7 @@ macro_rules! impl_traits_no_dlog_ext {
         affine.serialize(serializer)
       }
 
+      #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::{Deserialize, Serialize};
         use serde_with::serde_as;
@@ -209,11 +213,13 @@ macro_rules! impl_traits_no_dlog_ext {
     }
 
     impl $crate::traits::evm_serde::CustomSerdeTrait for $name::Point {
+      #[cfg(feature = "evm")]
       fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use $crate::traits::evm_serde::CustomSerdeTrait;
         <$name::Affine as CustomSerdeTrait>::serialize(&self.to_affine(), serializer)
       }
 
+      #[cfg(feature = "evm")]
       fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use $crate::traits::evm_serde::CustomSerdeTrait;
         Ok(Self::from(
