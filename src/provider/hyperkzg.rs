@@ -130,7 +130,7 @@ where
   E::GE: PairingGroup,
 {
   #[serde_as(as = "EvmCompatSerde")]
-  comm: <E::GE as DlogGroup>::AffineGroupElement,
+  comm: E::GE,
 }
 
 impl<E: Engine> Commitment<E>
@@ -138,14 +138,12 @@ where
   E::GE: PairingGroup,
 {
   /// Creates a new commitment from the underlying group element
-  pub fn new(comm: <E as Engine>::GE) -> Self {
-    Commitment {
-      comm: comm.affine(),
-    }
+  pub fn new(comm: E::GE) -> Self {
+    Commitment { comm }
   }
   /// Returns the commitment as a group element
-  pub fn into_inner(self) -> <E as Engine>::GE {
-    E::GE::group(&self.comm)
+  pub fn into_inner(self) -> E::GE {
+    self.comm
   }
 }
 
@@ -154,7 +152,7 @@ where
   E::GE: PairingGroup,
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
-    E::GE::group(&self.comm).to_coordinates()
+    self.comm.to_coordinates()
   }
 }
 
@@ -164,7 +162,7 @@ where
 {
   fn default() -> Self {
     Commitment {
-      comm: E::GE::zero().affine(),
+      comm: E::GE::zero(),
     }
   }
 }
@@ -175,7 +173,7 @@ where
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     use crate::traits::Group;
-    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
+    let (x, y, is_infinity) = self.comm.to_coordinates();
     // Get curve parameter B to determine encoding strategy
     let (_, b, _, _) = E::GE::group_params();
 
@@ -207,7 +205,7 @@ where
   E::GE: PairingGroup,
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
-    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
+    let (x, y, is_infinity) = self.comm.to_coordinates();
     ro.absorb(x);
     ro.absorb(y);
     ro.absorb(if is_infinity {
@@ -223,7 +221,7 @@ where
   E::GE: PairingGroup,
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
-    let (x, y, is_infinity) = E::GE::group(&self.comm).to_coordinates();
+    let (x, y, is_infinity) = self.comm.to_coordinates();
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -245,7 +243,7 @@ where
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
-    let result = (E::GE::group(&self.comm) * scalar).affine();
+    let result = self.comm * scalar;
     *self = Commitment { comm: result };
   }
 }
@@ -258,7 +256,7 @@ where
 
   fn mul(self, scalar: &'b E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: (E::GE::group(&self.comm) * scalar).affine(),
+      comm: self.comm * scalar,
     }
   }
 }
@@ -271,7 +269,7 @@ where
 
   fn mul(self, scalar: E::Scalar) -> Commitment<E> {
     Commitment {
-      comm: (E::GE::group(&self.comm) * scalar).affine(),
+      comm: self.comm * scalar,
     }
   }
 }
@@ -284,7 +282,7 @@ where
 
   fn add(self, other: Commitment<E>) -> Commitment<E> {
     Commitment {
-      comm: (E::GE::group(&self.comm) + E::GE::group(&other.comm)).affine(),
+      comm: self.comm + other.comm,
     }
   }
 }
@@ -494,9 +492,8 @@ where
     assert!(ck.ck.len() >= v.len());
 
     Commitment {
-      comm: (E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r)
-        .affine(),
+      comm: E::GE::vartime_multiscalar_mul(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
     }
   }
 
@@ -516,7 +513,7 @@ where
       .par_iter()
       .zip(r.par_iter())
       .map(|(commit, r_i)| Commitment {
-        comm: (*commit + (h * r_i)).affine(),
+        comm: *commit + (h * r_i),
       })
       .collect()
   }
@@ -528,9 +525,8 @@ where
   ) -> Self::Commitment {
     assert!(ck.ck.len() >= v.len());
     Commitment {
-      comm: (E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
-        + <E::GE as DlogGroup>::group(&ck.h) * r)
-        .affine(),
+      comm: E::GE::vartime_multiscalar_mul_small(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
     }
   }
 
@@ -550,7 +546,7 @@ where
       .iter()
       .zip(r.iter())
       .map(|(commit, r_i)| Commitment {
-        comm: (*commit + (h * r_i)).affine(),
+        comm: *commit + (h * r_i),
       })
       .collect()
   }
@@ -561,7 +557,7 @@ where
     r: &E::Scalar,
   ) -> Self::Commitment {
     Commitment {
-      comm: (E::GE::group(&commit.comm) - <E::GE as DlogGroup>::group(&dk.h) * r).affine(),
+      comm: commit.comm - <E::GE as DlogGroup>::group(&dk.h) * r,
     }
   }
 
@@ -618,7 +614,7 @@ where
       res += <E::GE as DlogGroup>::group(&ck.h) * r;
     }
 
-    Commitment { comm: res.affine() }
+    Commitment { comm: res }
   }
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
@@ -839,7 +835,7 @@ where
       let target_chunks = DEFAULT_TARGET_CHUNKS;
       let h = &div_by_monomial(f, u, target_chunks);
 
-      E::CE::commit(ck, h, &E::Scalar::ZERO).comm
+      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -937,7 +933,7 @@ where
     let r = vec![E::Scalar::ZERO; ell - 1];
     let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
       .par_iter()
-      .map(|i| i.comm)
+      .map(|i| i.comm.affine())
       .collect();
 
     // Phase 2
@@ -1053,7 +1049,7 @@ where
         ],
       ]
       .concat(),
-      &[&[C.comm][..], &pi.com, &pi.w, slice::from_ref(&vk.G)].concat(),
+      &[&[C.comm.affine()][..], &pi.com, &pi.w, slice::from_ref(&vk.G)].concat(),
     );
 
     let R0 = E::GE::group(&pi.w[0]);
