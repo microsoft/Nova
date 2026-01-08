@@ -12,6 +12,7 @@ use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
   provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
+  traits::evm_serde::EvmCompatSerde,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -31,6 +32,7 @@ use num_traits::ToPrimitive;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -79,6 +81,23 @@ where
   pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
     &self.tau_H
   }
+
+  /// Returns the coordinates of the generator points.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  pub fn to_coordinates(&self) -> Vec<(E::Base, E::Base)> {
+    self
+      .ck
+      .iter()
+      .map(|c| {
+        let (x, y, is_infinity) = <E::GE as DlogGroup>::group(c).to_coordinates();
+        assert!(!is_infinity);
+        (x, y)
+      })
+      .collect()
+  }
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -91,22 +110,27 @@ where
 }
 
 /// A type that holds blinding generator
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DerandKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A KZG commitment
+#[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  comm: <E as Engine>::GE,
+  #[serde_as(as = "EvmCompatSerde")]
+  comm: E::GE,
 }
 
 impl<E: Engine> Commitment<E>
@@ -114,11 +138,11 @@ where
   E::GE: PairingGroup,
 {
   /// Creates a new commitment from the underlying group element
-  pub fn new(comm: <E as Engine>::GE) -> Self {
+  pub fn new(comm: E::GE) -> Self {
     Commitment { comm }
   }
   /// Returns the commitment as a group element
-  pub fn into_inner(self) -> <E as Engine>::GE {
+  pub fn into_inner(self) -> E::GE {
     self.comm
   }
 }
@@ -148,14 +172,31 @@ where
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
+    use crate::traits::Group;
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    let is_infinity_byte = (!is_infinity).into();
-    [
-      x.to_transcript_bytes(),
-      y.to_transcript_bytes(),
-      [is_infinity_byte].to_vec(),
-    ]
-    .concat()
+    // Get curve parameter B to determine encoding strategy
+    let (_, b, _, _) = E::GE::group_params();
+
+    if b != E::Base::ZERO {
+      // For curves with B!=0 (like BN254 with B=3, Grumpkin with B=-5),
+      // (0, 0) doesn't lie on the curve (since 0 != 0 + 0 + B),
+      // so point at infinity can be safely encoded as (0, 0).
+      let (x, y) = if is_infinity {
+        (E::Base::ZERO, E::Base::ZERO)
+      } else {
+        (x, y)
+      };
+      [x.to_transcript_bytes(), y.to_transcript_bytes()].concat()
+    } else {
+      // For curves with B=0, (0, 0) lies on the curve, so we need the is_infinity flag
+      let is_infinity_byte = (!is_infinity).into();
+      [
+        x.to_transcript_bytes(),
+        y.to_transcript_bytes(),
+        [is_infinity_byte].to_vec(),
+      ]
+      .concat()
+    }
   }
 }
 
@@ -202,7 +243,7 @@ where
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
-    let result = (self as &Commitment<E>).comm * scalar;
+    let result = self.comm * scalar;
     *self = Commitment { comm: result };
   }
 }
@@ -575,6 +616,10 @@ where
 
     Commitment { comm: res }
   }
+
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
+    ck.to_coordinates()
+  }
 }
 
 /// Provides an implementation of generators for proving evaluations
@@ -585,26 +630,34 @@ pub struct ProverKey<E: Engine> {
 }
 
 /// A verifier key
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) G: G1Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) H: G2Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) tau_H: G2Affine<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   com: Vec<G1Affine<E>>,
+  #[serde_as(as = "[EvmCompatSerde; 3]")]
   w: [G1Affine<E>; 3],
+  #[serde_as(as = "Vec<[EvmCompatSerde; 3]>")]
   v: Vec<[E::Scalar; 3]>,
 }
 
@@ -1094,6 +1147,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_hyperkzg_small() {
     let n = 4;
 
@@ -1134,7 +1188,11 @@ mod tests {
       .with_fixed_int_encoding();
     let proof_bytes =
       bincode::serde::encode_to_vec(&proof, config).expect("Failed to serialize proof");
-    assert_eq!(proof_bytes.len(), 336);
+
+    assert_eq!(
+      proof_bytes.len(),
+      if cfg!(feature = "evm") { 464 } else { 336 }
+    );
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
@@ -1312,5 +1370,35 @@ mod tests {
 
       assert_eq!(left, right);
     }
+  }
+}
+
+#[cfg(test)]
+mod evm_tests {
+  use super::*;
+  use crate::provider::Bn256EngineKZG;
+
+  #[test]
+  fn test_commitment_evm_serialization() {
+    type E = Bn256EngineKZG;
+
+    let comm = Commitment::<E>::default();
+    let bytes = bincode::serde::encode_to_vec(comm, bincode::config::legacy()).unwrap();
+
+    println!(
+      "Commitment serialized length in nova-snark: {} bytes",
+      bytes.len()
+    );
+    println!(
+      "Commitment hex: {}",
+      hex::encode(&bytes[..std::cmp::min(64, bytes.len())])
+    );
+
+    // Expect 64 bytes for EVM feature, else 32 bytes
+    assert_eq!(
+      bytes.len(),
+      if cfg!(feature = "evm") { 64 } else { 32 },
+      "Commitment serialization length mismatch"
+    );
   }
 }

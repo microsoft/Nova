@@ -1,3 +1,10 @@
+//! This module provides digest computation functionality for public parameters.
+//!
+//! It includes:
+//! - `DigestComputer`: A type for computing digests of public parameters.
+//! - `Digestible`: A trait for types that can be digested with custom implementations.
+//! - `SimpleDigestible`: A marker trait for types that can be digested via serialization.
+
 use crate::constants::NUM_HASH_BITS;
 use bincode::{enc::write::Writer, error::EncodeError};
 use ff::PrimeField;
@@ -25,6 +32,8 @@ impl<T: SimpleDigestible> Digestible for T {
   }
 }
 
+/// A type for computing digests of public parameters.
+/// Uses SHA3-256 and maps the result to a field element.
 pub struct DigestComputer<'a, F: PrimeField, T> {
   inner: &'a T,
   _phantom: PhantomData<F>,

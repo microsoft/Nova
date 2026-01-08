@@ -37,11 +37,18 @@ fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCA
   let output_lo = hasher_lo.finalize();
   let output_hi = hasher_hi.finalize();
 
-  [output_lo, output_hi]
+  #[cfg(not(feature = "evm"))]
+  return [output_lo, output_hi]
     .concat()
     .as_slice()
     .try_into()
-    .unwrap()
+    .unwrap();
+  #[cfg(feature = "evm")]
+  return [output_hi, output_lo]
+    .concat()
+    .as_slice()
+    .try_into()
+    .unwrap();
 }
 
 impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
@@ -58,6 +65,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
     }
   }
 
+  #[cfg(not(feature = "evm"))]
   fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError> {
     // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
@@ -81,6 +89,34 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
     self.transcript = Keccak256::new();
 
     // squeeze out a challenge
+    Ok(E::Scalar::from_uniform(&output))
+  }
+
+  #[cfg(feature = "evm")]
+  fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError> {
+    // we gather the full input from the round, preceded by the current state of the transcript
+    let input = [
+      DOM_SEP_TAG,
+      self.round.to_be_bytes().as_ref(),
+      self.state.as_ref(),
+      label,
+    ]
+    .concat();
+    let mut output = compute_updated_state(self.transcript.clone(), &input);
+
+    // update state
+    self.round = {
+      if let Some(v) = self.round.checked_add(1) {
+        v
+      } else {
+        return Err(NovaError::InternalTranscriptError);
+      }
+    };
+    self.state.copy_from_slice(&output);
+    self.transcript = Keccak256::new();
+
+    // squeeze out a challenge
+    output.reverse();
     Ok(E::Scalar::from_uniform(&output))
   }
 

@@ -18,17 +18,15 @@ pub mod nova;
 pub mod neutron;
 
 // public modules
+pub mod constants;
+pub mod digest;
 pub mod errors;
 pub mod frontend;
 pub mod gadgets;
 pub mod provider;
+pub mod r1cs;
 pub mod spartan;
 pub mod traits;
-
-// private modules
-mod constants;
-mod digest;
-mod r1cs;
 
 use traits::{commitment::CommitmentEngineTrait, Engine};
 

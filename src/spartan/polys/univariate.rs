@@ -1,27 +1,35 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait};
+use crate::traits::{
+  evm_serde::{CustomSerdeTrait, EvmCompatSerde},
+  AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+};
 use core::panic;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
-// ax^2 + bx + c stored as vec![c, b, a]
-// ax^3 + bx^2 + cx + d stored as vec![d, c, b, a]
+/// A univariate dense polynomial in coefficient form (little endian).
+/// For example, ax^2 + bx + c is stored as vec![c, b, a]
+/// and ax^3 + bx^2 + cx + d is stored as vec![d, c, b, a]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UniPoly<Scalar: PrimeField> {
   pub(crate) coeffs: Vec<Scalar>,
 }
 
-// ax^2 + bx + c stored as vec![c, a]
-// ax^3 + bx^2 + cx + d stored as vec![d, c, a]
+/// A compressed univariate polynomial with the linear term omitted (little endian).
+/// For example, ax^2 + bx + c is stored as vec![c, a]
+/// and ax^3 + bx^2 + cx + d is stored as vec![d, c, a]
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CompressedUniPoly<Scalar: PrimeField> {
+pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   coeffs_except_linear_term: Vec<Scalar>,
 }
 
-impl<Scalar: PrimeField> UniPoly<Scalar> {
+impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
   #[cfg(feature = "experimental")]
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
@@ -44,8 +52,8 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     Self { coeffs }
   }
 
-  // a x^2 + b x + c
-  // evals: [c, a + b + c, a]
+  /// Constructs a degree-2 polynomial from its evaluations.
+  /// The polynomial a*x^2 + b*x + c is constructed from evals: [c, a + b + c, a]
   pub fn from_evals_deg2(evals: &[Scalar]) -> Self {
     let c = evals[0];
     let a = evals[2];
@@ -56,8 +64,8 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     }
   }
 
-  // a x^3 + b x^2 + c x + d
-  // evals: [d, a + b + c, a, -a + b - c + d]
+  /// Constructs a degree-3 polynomial from its evaluations.
+  /// The polynomial a*x^3 + b*x^2 + c*x + d is constructed from evals: [d, a + b + c, a, -a + b - c + d]
   pub fn from_evals_deg3(evals: &[Scalar]) -> Self {
     let d = evals[0];
     let a = evals[2];
@@ -70,14 +78,17 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     }
   }
 
+  /// Returns the degree of the polynomial.
   pub fn degree(&self) -> usize {
     self.coeffs.len() - 1
   }
 
+  /// Evaluates the polynomial at zero, returning the constant term.
   pub fn eval_at_zero(&self) -> Scalar {
     self.coeffs[0]
   }
 
+  /// Evaluates the polynomial at one, returning the sum of all coefficients.
   pub fn eval_at_one(&self) -> Scalar {
     (0..self.coeffs.len())
       .into_par_iter()
@@ -85,6 +96,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
       .sum()
   }
 
+  /// Evaluates the polynomial at the given point using Horner's method.
   pub fn evaluate(&self, r: &Scalar) -> Scalar {
     let mut eval = self.coeffs[0];
     let mut power = *r;
@@ -95,6 +107,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     eval
   }
 
+  /// Compresses the polynomial by omitting the linear term.
   pub fn compress(&self) -> CompressedUniPoly<Scalar> {
     let coeffs_except_linear_term = [&self.coeffs[0..1], &self.coeffs[2..]].concat();
     assert_eq!(coeffs_except_linear_term.len() + 1, self.coeffs.len());
@@ -104,9 +117,10 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
   }
 }
 
-impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
-  // we require eval(0) + eval(1) = hint, so we can solve for the linear term as:
-  // linear_term = hint - 2 * constant_term - deg2 term - deg3 term
+impl<Scalar: PrimeField + CustomSerdeTrait> CompressedUniPoly<Scalar> {
+  /// Decompresses the polynomial by recovering the linear term using the hint.
+  /// We require eval(0) + eval(1) = hint, so we can solve for the linear term as:
+  /// linear_term = hint - 2 * constant_term - deg2 term - deg3 term
   pub fn decompress(&self, hint: &Scalar) -> UniPoly<Scalar> {
     let mut linear_term =
       *hint - self.coeffs_except_linear_term[0] - self.coeffs_except_linear_term[0];
@@ -123,7 +137,10 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
   }
 }
 
-impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
+impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar>
+where
+  G::Scalar: CustomSerdeTrait,
+{
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs
@@ -141,8 +158,9 @@ impl<E: Engine> AbsorbInRO2Trait<E> for UniPoly<E::Scalar> {
   }
 }
 
-// This code is based on code from https://github.com/a16z/jolt/blob/main/jolt-core/src/utils/gaussian_elimination.rs, which itself is
-// inspired by https://github.com/TheAlgorithms/Rust/blob/master/src/math/gaussian_elimination.rs
+/// Performs Gaussian elimination on the given augmented matrix to solve a system of linear equations.
+/// This code is based on code from https://github.com/a16z/jolt/blob/main/jolt-core/src/utils/gaussian_elimination.rs,
+/// which itself is inspired by https://github.com/TheAlgorithms/Rust/blob/master/src/math/gaussian_elimination.rs
 pub fn gaussian_elimination<F: PrimeField>(matrix: &mut [Vec<F>]) -> Vec<F> {
   let size = matrix.len();
   assert_eq!(size, matrix[0].len() - 1);
@@ -209,7 +227,7 @@ mod tests {
   use super::*;
   use crate::provider::{bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1};
 
-  fn test_from_evals_quad_with<F: PrimeField>() {
+  fn test_from_evals_quad_with<F: PrimeField + CustomSerdeTrait>() {
     // polynomial is 2x^2 + 3x + 1
     let e0 = F::ONE;
     let e1 = F::from(6);
@@ -242,7 +260,7 @@ mod tests {
     test_from_evals_quad_with::<secp256k1::Scalar>();
   }
 
-  fn test_from_evals_cubic_with<F: PrimeField>() {
+  fn test_from_evals_cubic_with<F: PrimeField + CustomSerdeTrait>() {
     // polynomial is x^3 + 2x^2 + 3x + 1
     let e0 = F::ONE; // f(0)
     let e1 = F::from(7); // f(1)

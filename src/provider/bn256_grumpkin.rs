@@ -159,3 +159,55 @@ impl<G: DlogGroup> TranscriptReprTrait<G> for G2Affine {
     unimplemented!()
   }
 }
+
+// CustomSerdeTrait implementations for G2
+impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
+  #[cfg(feature = "evm")]
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    use crate::traits::evm_serde::EvmCompatSerde;
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+
+    #[serde_as]
+    #[derive(Deserialize, Serialize)]
+    struct HelperBase(
+      #[serde_as(as = "EvmCompatSerde")] bn256::Base,
+      #[serde_as(as = "EvmCompatSerde")] bn256::Base,
+    );
+
+    #[derive(Deserialize, Serialize)]
+    struct HelperAffine(HelperBase, HelperBase);
+
+    let affine = HelperAffine(
+      HelperBase(*self.x.c0(), *self.x.c1()),
+      HelperBase(*self.y.c0(), *self.y.c1()),
+    );
+
+    affine.serialize(serializer)
+  }
+
+  #[cfg(feature = "evm")]
+  fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    use crate::traits::evm_serde::EvmCompatSerde;
+    use halo2curves::bn256::Fq2;
+    use serde::{Deserialize, Serialize};
+    use serde_with::serde_as;
+
+    #[serde_as]
+    #[derive(Deserialize, Serialize)]
+    struct HelperBase(
+      #[serde_as(as = "EvmCompatSerde")] bn256::Base,
+      #[serde_as(as = "EvmCompatSerde")] bn256::Base,
+    );
+
+    #[derive(Deserialize, Serialize)]
+    struct HelperAffine(HelperBase, HelperBase);
+
+    let affine = HelperAffine::deserialize(deserializer)?;
+
+    Ok(G2Affine {
+      x: Fq2::new(affine.0 .0, affine.0 .1),
+      y: Fq2::new(affine.1 .0, affine.1 .1),
+    })
+  }
+}

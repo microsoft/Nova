@@ -131,4 +131,16 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     commit: &Self::Commitment,
     r: &E::Scalar,
   ) -> Self::Commitment;
+
+  /// Returns the coordinates of each generator in the commitment key.
+  ///
+  /// This method extracts the (x, y) coordinates of each generator point
+  /// in the commitment key. This is useful for operations that need direct
+  /// access to the underlying elliptic curve points, such as in-circuit
+  /// verification of polynomial evaluations.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)>;
 }

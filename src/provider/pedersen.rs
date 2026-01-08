@@ -1,6 +1,7 @@
 //! This module provides an implementation of a commitment engine
 #[cfg(feature = "io")]
 use crate::provider::ptau::{read_points, write_points, PtauFileError};
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
@@ -20,6 +21,7 @@ use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
@@ -44,18 +46,26 @@ where
 }
 
 /// A type that holds blinding generator
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DerandKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A type that holds a commitment
+#[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Commitment<E: Engine> {
+pub struct Commitment<E: Engine>
+where
+  E::GE: DlogGroup,
+{
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) comm: E::GE,
 }
 
@@ -188,6 +198,32 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: DlogGroup,
+{
+  /// Returns the coordinates of the generator points.
+  ///
+  /// This method extracts the (x, y) coordinates of each generator point
+  /// in the commitment key. This is useful for operations that need direct
+  /// access to the underlying elliptic curve points.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  pub fn to_coordinates(&self) -> Vec<(E::Base, E::Base)> {
+    self
+      .ck
+      .iter()
+      .map(|c| {
+        let (x, y, is_infinity) = <E::GE as DlogGroup>::group(c).to_coordinates();
+        assert!(!is_infinity);
+        (x, y)
+      })
+      .collect()
+  }
+}
+
 impl<E: Engine> CommitmentEngineTrait<E> for CommitmentEngine<E>
 where
   E::GE: DlogGroupExt,
@@ -288,6 +324,10 @@ where
       ck: second.to_vec(),
       h: first[0],
     })
+  }
+
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
+    ck.to_coordinates()
   }
 
   #[cfg(feature = "io")]

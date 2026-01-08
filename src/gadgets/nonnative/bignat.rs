@@ -58,15 +58,21 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   }
 }
 
+/// Parameters for a `BigNat` representation of a large integer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigNatParams {
+  /// Minimum number of bits required to represent the value.
   pub min_bits: usize,
+  /// Maximum value that a single limb can hold.
   pub max_word: BigInt,
+  /// Number of bits per limb.
   pub limb_width: usize,
+  /// Number of limbs in the representation.
   pub n_limbs: usize,
 }
 
 impl BigNatParams {
+  /// Creates a new `BigNatParams` with the specified limb width and number of limbs.
   pub fn new(limb_width: usize, n_limbs: usize) -> Self {
     let mut max_word = BigInt::from(1) << limb_width as u32;
     max_word -= 1;
@@ -243,6 +249,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     Ok(bignat)
   }
 
+  /// Returns the limbs as a vector of `Num` values.
   pub fn as_limbs(&self) -> Vec<Num<Scalar>> {
     let mut limbs = Vec::new();
     for (i, lc) in self.limbs.iter().enumerate() {
@@ -254,6 +261,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     limbs
   }
 
+  /// Asserts that the `BigNat` is well-formed by checking that each limb fits in the limb width.
   pub fn assert_well_formed<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -309,6 +317,8 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     })
   }
 
+  /// Enforces that two `BigNat`s have the same limb width.
+  /// Returns the limb width if they agree, otherwise returns an error.
   pub fn enforce_limb_width_agreement(
     &self,
     other: &Self,
@@ -324,6 +334,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     }
   }
 
+  /// Constructs a `BigNat` from a polynomial representation.
   pub fn from_poly(poly: Polynomial<Scalar>, limb_width: usize, max_word: BigInt) -> Self {
     Self {
       params: BigNatParams {
@@ -442,6 +453,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     self_grouped.equal_when_carried(cs.namespace(|| "grouped"), &other_grouped)
   }
 
+  /// Adds two `BigNat`s together, returning a new `BigNat` with the sum.
   pub fn add(&self, other: &Self) -> Result<BigNat<Scalar>, SynthesisError> {
     self.enforce_limb_width_agreement(other, "add")?;
     let n_limbs = max(self.params.n_limbs, other.params.n_limbs);
@@ -657,18 +669,23 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     }
   }
 
+  /// Returns the number of bits required to represent the `BigNat`.
   pub fn n_bits(&self) -> usize {
     assert!(self.params.n_limbs > 0);
     self.params.limb_width * (self.params.n_limbs - 1) + self.params.max_word.bits() as usize
   }
 }
 
+/// A polynomial with coefficients represented as linear combinations.
 pub struct Polynomial<Scalar: PrimeField> {
+  /// The coefficients of the polynomial as linear combinations.
   pub coefficients: Vec<LinearCombination<Scalar>>,
+  /// The concrete values of the coefficients, if available.
   pub values: Option<Vec<Scalar>>,
 }
 
 impl<Scalar: PrimeField> Polynomial<Scalar> {
+  /// Allocates constraints for the product of two polynomials.
   pub fn alloc_product<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -734,6 +751,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     Ok(product)
   }
 
+  /// Returns the sum of two polynomials.
   pub fn sum(&self, other: &Self) -> Self {
     let n_coeffs = max(self.coefficients.len(), other.coefficients.len());
     let values = self.values.as_ref().and_then(|self_vs| {
