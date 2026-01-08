@@ -40,7 +40,25 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
     &self.t_pow
   }
 
-  /// Computes two vectors such that their outer product equals the output of the `evals` function.
+  /// Computes two vectors such that their outer product equals the output of the [`evals`](Self::evals) function.
+  ///
+  /// # Parameters
+  ///
+  /// - `len_left`: Length of the first (left) vector factor. This must be chosen
+  ///   together with `len_right` so that `len_left * len_right == 2^{|t_pow|}`,
+  ///   where `|t_pow|` is the number of variables in the polynomial
+  ///   (`self.t_pow.len()`). If this condition is not satisfied, the function
+  ///   will panic due to the internal assertion.
+  /// - `len_right`: Length of the second (right) vector factor. See `len_left`
+  ///   for the required relation between the two lengths.
+  ///
+  /// # Returns
+  ///
+  /// A vector containing the concatenation of the two factor vectors:
+  /// first all entries of the left vector, followed by all entries of the
+  /// right vector. Conceptually, if `L` and `R` denote these two vectors,
+  /// then their outer product `L ⊗ R` (viewed as a flattened vector) equals
+  /// the evaluations returned by [`evals`](Self::evals).
   pub fn split_evals(&self, len_left: usize, len_right: usize) -> Vec<Scalar> {
     // Compute the number of elements in the left and right halves
     let ell = self.t_pow.len();
