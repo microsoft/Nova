@@ -1049,7 +1049,13 @@ where
         ],
       ]
       .concat(),
-      &[&[C.comm.affine()][..], &pi.com, &pi.w, slice::from_ref(&vk.G)].concat(),
+      &[
+        &[C.comm.affine()][..],
+        &pi.com,
+        &pi.w,
+        slice::from_ref(&vk.G),
+      ]
+      .concat(),
     );
 
     let R0 = E::GE::group(&pi.w[0]);
@@ -1182,7 +1188,11 @@ mod tests {
       .with_fixed_int_encoding();
     let proof_bytes =
       bincode::serde::encode_to_vec(&proof, config).expect("Failed to serialize proof");
-    assert_eq!(proof_bytes.len(), 464);
+
+    assert_eq!(
+      proof_bytes.len(),
+      if cfg!(feature = "evm") { 464 } else { 336 }
+    );
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
@@ -1360,5 +1370,35 @@ mod tests {
 
       assert_eq!(left, right);
     }
+  }
+}
+
+#[cfg(test)]
+mod evm_tests {
+  use super::*;
+  use crate::provider::Bn256EngineKZG;
+
+  #[test]
+  fn test_commitment_evm_serialization() {
+    type E = Bn256EngineKZG;
+
+    let comm = Commitment::<E>::default();
+    let bytes = bincode::serde::encode_to_vec(&comm, bincode::config::legacy()).unwrap();
+
+    println!(
+      "Commitment serialized length in nova-snark: {} bytes",
+      bytes.len()
+    );
+    println!(
+      "Commitment hex: {}",
+      hex::encode(&bytes[..std::cmp::min(64, bytes.len())])
+    );
+
+    // Expect 64 bytes for EVM feature, else 32 bytes
+    assert_eq!(
+      bytes.len(),
+      if cfg!(feature = "evm") { 64 } else { 32 },
+      "Commitment serialization length mismatch"
+    );
   }
 }
