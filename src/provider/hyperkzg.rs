@@ -1383,7 +1383,7 @@ mod evm_tests {
     type E = Bn256EngineKZG;
 
     let comm = Commitment::<E>::default();
-    let bytes = bincode::serde::encode_to_vec(&comm, bincode::config::legacy()).unwrap();
+    let bytes = bincode::serde::encode_to_vec(comm, bincode::config::legacy()).unwrap();
 
     println!(
       "Commitment serialized length in nova-snark: {} bytes",
