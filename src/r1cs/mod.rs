@@ -558,7 +558,6 @@ impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSInstance<E> {
   }
 }
 
-
 impl<E: Engine> AbsorbInROTrait<E> for R1CSInstance<E> {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     self.comm_W.absorb_in_ro(ro);
