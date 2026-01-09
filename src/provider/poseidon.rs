@@ -53,7 +53,7 @@ where
   }
 
   /// Compute a challenge by hashing the current state
-  fn squeeze(&mut self, num_bits: usize) -> Base {
+  fn squeeze(&mut self, num_bits: usize, start_with_one: bool) -> Base {
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -73,7 +73,14 @@ where
     let bits = hash[0].to_le_bits();
     let mut res = Base::ZERO;
     let mut coeff = Base::ONE;
-    for bit in bits[0..num_bits].into_iter() {
+    let start_idx = if start_with_one {
+      res = coeff;
+      coeff += coeff;
+      1
+    } else {
+      0
+    };
+    for bit in bits[start_idx..num_bits].into_iter() {
       if *bit {
         res += coeff;
       }
@@ -116,6 +123,7 @@ where
     &mut self,
     mut cs: CS,
     num_bits: usize,
+    start_with_one: bool,
   ) -> Result<Vec<AllocatedBit>, SynthesisError> {
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(self.state.len() as u32),
@@ -148,17 +156,64 @@ where
     self.state = vec![hash.clone()];
 
     // return the hash as a vector of bits, truncated
-    Ok(
-      hash
-        .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
-        .iter()
-        .map(|boolean| match boolean {
-          Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Wrong type of input. We should have never reached there"),
-        })
-        .collect::<Vec<AllocatedBit>>()[..num_bits]
-        .to_vec(),
-    )
+    let mut bits: Vec<AllocatedBit> = hash
+      .to_bits_le_strict(ns.namespace(|| "poseidon hash to boolean"))?
+      .iter()
+      .map(|boolean| match boolean {
+        Boolean::Is(ref x) => x.clone(),
+        _ => panic!("Wrong type of input. We should have never reached there"),
+      })
+      .collect::<Vec<AllocatedBit>>()[..num_bits]
+      .to_vec();
+
+    if start_with_one {
+      bits[0] = AllocatedBit::alloc(ns.namespace(|| "set first bit to 1"), Some(true))?;
+      ns.enforce(
+        || "check bits[0] = 1",
+        |lc| lc + bits[0].get_variable(),
+        |lc| lc + CS::one(),
+        |lc| lc + CS::one(),
+      );
+    }
+
+    Ok(bits)
+  }
+
+  fn squeeze_scalar<CS: ConstraintSystem<Scalar>>(
+    &mut self,
+    mut cs: CS,
+  ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
+    let parameter = IOPattern(vec![
+      SpongeOp::Absorb(self.state.len() as u32),
+      SpongeOp::Squeeze(1u32),
+    ]);
+    let mut ns = cs.namespace(|| "ns");
+
+    let hash = {
+      let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      let acc = &mut ns;
+
+      sponge.start(parameter, None, acc);
+      SpongeAPI::absorb(
+        &mut sponge,
+        self.state.len() as u32,
+        &(0..self.state.len())
+          .map(|i| Elt::Allocated(self.state[i].clone()))
+          .collect::<Vec<Elt<Scalar>>>(),
+        acc,
+      );
+
+      let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
+      sponge.finish(acc).unwrap();
+      output
+    };
+
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+
+    // reset the state to only contain the squeezed value
+    self.state = vec![hash.clone()];
+
+    Ok(hash)
   }
 }
 
@@ -194,8 +249,10 @@ mod tests {
         .unwrap();
       ro_gadget.absorb(&num_gadget);
     }
-    let num = ro.squeeze(NUM_CHALLENGE_BITS);
-    let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
+    let num = ro.squeeze(NUM_CHALLENGE_BITS, false);
+    let num2_bits = ro_gadget
+      .squeeze(&mut cs, NUM_CHALLENGE_BITS, false)
+      .unwrap();
     let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
     assert_eq!(num, num2.get_value().unwrap());
   }

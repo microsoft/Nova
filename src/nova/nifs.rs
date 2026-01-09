@@ -60,7 +60,7 @@ impl<E: Engine> NIFS<E> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS));
+    let r = base_as_scalar::<E>(ro.squeeze(NUM_CHALLENGE_BITS, false));
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &comm_T, &r);
@@ -97,7 +97,7 @@ impl<E: Engine> NIFS<E> {
     self.comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold(U2, &self.comm_T, &base_as_scalar::<E>(r));
@@ -154,7 +154,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold_relaxed(U2, &comm_T, &base_as_scalar::<E>(r));
@@ -191,7 +191,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     self.comm_T.absorb_in_ro(&mut ro);
 
     // compute a challenge from the RO
-    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // fold the instance using `r` and `comm_T`
     let U = U1.fold_relaxed(U2, &self.comm_T, &base_as_scalar::<E>(r));

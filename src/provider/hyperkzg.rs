@@ -16,7 +16,8 @@ use crate::{
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptEngineTrait,
+    TranscriptReprTrait,
   },
 };
 use core::{
@@ -206,13 +207,26 @@ where
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    ro.absorb(x);
-    ro.absorb(y);
-    ro.absorb(if is_infinity {
-      E::Base::ONE
+    // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
+    // so we can use it as a canonical representation for infinity.
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let (x, y) = if is_infinity {
+        (E::Base::ZERO, E::Base::ZERO)
+      } else {
+        (x, y)
+      };
+      ro.absorb(x);
+      ro.absorb(y);
     } else {
-      E::Base::ZERO
-    });
+      ro.absorb(x);
+      ro.absorb(y);
+      ro.absorb(if is_infinity {
+        E::Base::ONE
+      } else {
+        E::Base::ZERO
+      });
+    }
   }
 }
 
@@ -222,6 +236,13 @@ where
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
+    // When B != 0, use (0,0) for infinity
+    let (_, b, _, _) = E::GE::group_params();
+    let (x, y) = if b != E::Base::ZERO && is_infinity {
+      (E::Base::ZERO, E::Base::ZERO)
+    } else {
+      (x, y)
+    };
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -230,11 +251,14 @@ where
     for limb in limbs_x.iter().chain(limbs_y.iter()) {
       ro.absorb(*limb);
     }
-    ro.absorb(if is_infinity {
-      E::Scalar::ONE
-    } else {
-      E::Scalar::ZERO
-    });
+    // Only absorb is_infinity when B == 0
+    if b == E::Base::ZERO {
+      ro.absorb(if is_infinity {
+        E::Scalar::ONE
+      } else {
+        E::Scalar::ZERO
+      });
+    }
   }
 }
 

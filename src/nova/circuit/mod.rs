@@ -196,7 +196,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
     ro.absorb(r_i);
 
-    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS, false)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
 
     Ok(hash)
@@ -448,8 +448,8 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit() {
-    test_recursive_circuit_with::<PallasEngine, VestaEngine>(9817, 10349);
-    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(9985, 10538);
-    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(10264, 10961);
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(9833, 10365);
+    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(10001, 10554);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(10280, 10977);
   }
 }
