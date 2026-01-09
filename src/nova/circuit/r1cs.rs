@@ -46,7 +46,11 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
 
   /// Absorb the provided instance in the RO
   /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
-  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS, ro: &mut E::ROCircuit) {
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::ROCircuit,
+  ) -> Result<(), SynthesisError> {
     // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
     // so we can use it as a canonical representation for infinity.
     let (_, b, _, _) = E::GE::group_params();
@@ -57,15 +61,13 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
         &zero,
         &self.comm_W.x,
         &self.comm_W.is_infinity,
-      )
-      .expect("conditionally_select2 failed");
+      )?;
       let y = conditionally_select2(
         cs.namespace(|| "select y"),
         &zero,
         &self.comm_W.y,
         &self.comm_W.is_infinity,
-      )
-      .expect("conditionally_select2 failed");
+      )?;
       ro.absorb(&x);
       ro.absorb(&y);
     } else {
@@ -75,6 +77,7 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
     }
     ro.absorb(&self.X0);
     ro.absorb(&self.X1);
+    Ok(())
   }
 }
 
@@ -292,7 +295,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     ro.absorb(params);
 
     // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
-    u.absorb_in_ro(cs.namespace(|| "absorb u"), &mut ro);
+    u.absorb_in_ro(cs.namespace(|| "absorb u"), &mut ro)?;
 
     // When B != 0, use (0,0) for infinity
     let (_, b, _, _) = E::GE::group_params();
