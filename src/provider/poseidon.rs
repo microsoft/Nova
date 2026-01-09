@@ -250,7 +250,9 @@ mod tests {
       ro_gadget.absorb(&num_gadget);
     }
     let num = ro.squeeze(NUM_CHALLENGE_BITS, false);
-    let num2_bits = ro_gadget.squeeze(&mut cs, NUM_CHALLENGE_BITS).unwrap();
+    let num2_bits = ro_gadget
+      .squeeze(&mut cs, NUM_CHALLENGE_BITS, false)
+      .unwrap();
     let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
     assert_eq!(num, num2.get_value().unwrap());
   }
