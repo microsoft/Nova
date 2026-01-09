@@ -46,11 +46,7 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
 
   /// Absorb the provided instance in the RO
   /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
-  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
-    &self,
-    mut cs: CS,
-    ro: &mut E::ROCircuit,
-  ) {
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(&self, mut cs: CS, ro: &mut E::ROCircuit) {
     // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
     // so we can use it as a canonical representation for infinity.
     let (_, b, _, _) = E::GE::group_params();
@@ -302,18 +298,8 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     let (_, b, _, _) = E::GE::group_params();
     if b != E::Base::ZERO {
       let zero = alloc_zero(cs.namespace(|| "zero for T absorb"));
-      let t_x = conditionally_select2(
-        cs.namespace(|| "select T.x"),
-        &zero,
-        &T.x,
-        &T.is_infinity,
-      )?;
-      let t_y = conditionally_select2(
-        cs.namespace(|| "select T.y"),
-        &zero,
-        &T.y,
-        &T.is_infinity,
-      )?;
+      let t_x = conditionally_select2(cs.namespace(|| "select T.x"), &zero, &T.x, &T.is_infinity)?;
+      let t_y = conditionally_select2(cs.namespace(|| "select T.y"), &zero, &T.y, &T.is_infinity)?;
       ro.absorb(&t_x);
       ro.absorb(&t_y);
     } else {

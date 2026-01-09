@@ -124,6 +124,13 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     cs: CS,
     num_bits: usize,
   ) -> Result<Vec<AllocatedBit>, SynthesisError>;
+
+  /// Returns the hash as a scalar element by hashing the internal state
+  /// This is more efficient than squeeze when the scalar is needed directly
+  fn squeeze_scalar<CS: ConstraintSystem<Base>>(
+    &mut self,
+    cs: CS,
+  ) -> Result<AllocatedNum<Base>, SynthesisError>;
 }
 
 /// An alias for constants associated with E::RO

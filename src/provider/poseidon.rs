@@ -160,6 +160,43 @@ where
         .to_vec(),
     )
   }
+
+  fn squeeze_scalar<CS: ConstraintSystem<Scalar>>(
+    &mut self,
+    mut cs: CS,
+  ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
+    let parameter = IOPattern(vec![
+      SpongeOp::Absorb(self.state.len() as u32),
+      SpongeOp::Squeeze(1u32),
+    ]);
+    let mut ns = cs.namespace(|| "ns");
+
+    let hash = {
+      let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      let acc = &mut ns;
+
+      sponge.start(parameter, None, acc);
+      SpongeAPI::absorb(
+        &mut sponge,
+        self.state.len() as u32,
+        &(0..self.state.len())
+          .map(|i| Elt::Allocated(self.state[i].clone()))
+          .collect::<Vec<Elt<Scalar>>>(),
+        acc,
+      );
+
+      let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
+      sponge.finish(acc).unwrap();
+      output
+    };
+
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+
+    // reset the state to only contain the squeezed value
+    self.state = vec![hash.clone()];
+
+    Ok(hash)
+  }
 }
 
 #[cfg(test)]
