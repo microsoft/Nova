@@ -508,8 +508,8 @@ where
       hasher2.absorb(self.ri_secondary);
 
       (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
+        hasher.squeeze(NUM_HASH_BITS, false),
+        hasher2.squeeze(NUM_HASH_BITS, false),
       )
     };
 
@@ -845,8 +845,8 @@ where
       hasher2.absorb(self.ri_secondary);
 
       (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
+        hasher.squeeze(NUM_HASH_BITS, false),
+        hasher2.squeeze(NUM_HASH_BITS, false),
       )
     };
 

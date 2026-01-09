@@ -217,7 +217,7 @@ impl<E: Engine> NIFS<E> {
     U2.absorb_in_ro2(&mut ro);
 
     // generate a challenge for the eq polynomial
-    let tau = ro.squeeze(NUM_CHALLENGE_BITS);
+    let tau = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // compute a commitment to the eq polynomial
     let E = PowPolynomial::new(&tau, S.ell).split_evals(S.left, S.right);
@@ -227,7 +227,7 @@ impl<E: Engine> NIFS<E> {
     comm_E.absorb_in_ro2(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
-    let rho = ro.squeeze(NUM_CHALLENGE_BITS);
+    let rho = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // We now run a single round of the sum-check protocol to establish
     // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
@@ -275,7 +275,7 @@ impl<E: Engine> NIFS<E> {
     <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&poly, &mut ro);
 
     // squeeze a challenge
-    let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r_b = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;
@@ -311,12 +311,12 @@ impl<E: Engine> NIFS<E> {
     U2.absorb_in_ro2(&mut ro);
 
     // generate a challenge for the eq polynomial
-    let _tau = ro.squeeze(NUM_CHALLENGE_BITS);
+    let _tau = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     self.comm_E.absorb_in_ro2(&mut ro); // absorb the commitment in the NIFS
 
     // compute a challenge from the RO
-    let rho = ro.squeeze(NUM_CHALLENGE_BITS);
+    let rho = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // T = (1-rho) * T1 + rho * T2, where T1 comes from the running instance and T2 = 0
     let T = (E::Scalar::ONE - rho) * U1.T;
@@ -330,7 +330,7 @@ impl<E: Engine> NIFS<E> {
     <UniPoly<E::Scalar> as AbsorbInRO2Trait<E>>::absorb_in_ro2(&self.poly, &mut ro);
 
     // squeeze a challenge
-    let r_b = ro.squeeze(NUM_CHALLENGE_BITS);
+    let r_b = ro.squeeze(NUM_CHALLENGE_BITS, false);
 
     // compute the sum-check polynomial's evaluations at r_b
     let eq_rho_r_b = (E::Scalar::ONE - rho) * (E::Scalar::ONE - r_b) + rho * r_b;

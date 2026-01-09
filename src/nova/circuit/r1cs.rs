@@ -307,7 +307,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
       ro.absorb(&T.y);
       ro.absorb(&T.is_infinity);
     }
-    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
+    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS, false)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W

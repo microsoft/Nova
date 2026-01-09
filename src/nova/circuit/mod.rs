@@ -196,7 +196,7 @@ impl<'a, E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'a, E, SC> {
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
     ro.absorb(r_i);
 
-    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
+    let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS, false)?;
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
 
     Ok(hash)

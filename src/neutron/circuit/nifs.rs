@@ -61,7 +61,7 @@ impl<E: Engine> AllocatedNIFS<E> {
     U2.absorb_in_ro(cs.namespace(|| "absorb U2"), &mut ro)?;
 
     // generate a challenge for the eq polynomial
-    let _tau = ro.squeeze(cs.namespace(|| "tau"), NUM_CHALLENGE_BITS);
+    let _tau = ro.squeeze(cs.namespace(|| "tau"), NUM_CHALLENGE_BITS, false);
 
     // TODO: We will check the power-check instance contains tau as public IO later
 
@@ -71,7 +71,7 @@ impl<E: Engine> AllocatedNIFS<E> {
       .absorb_in_ro(cs.namespace(|| "absorb comm_E"), &mut ro)?;
 
     // squeeze a challenge from the RO
-    let rho_bits = ro.squeeze(cs.namespace(|| "rho_bits"), NUM_CHALLENGE_BITS)?;
+    let rho_bits = ro.squeeze(cs.namespace(|| "rho_bits"), NUM_CHALLENGE_BITS, false)?;
     let rho = le_bits_to_num(cs.namespace(|| "rho"), &rho_bits)?;
 
     // T = (1-rho) * U1.T + rho * U2.T, but U2.T = 0
@@ -95,7 +95,7 @@ impl<E: Engine> AllocatedNIFS<E> {
     self.poly.absorb_in_ro(&mut ro);
 
     // squeeze a challenge
-    let r_b_bits = ro.squeeze(cs.namespace(|| "r_b_bits"), NUM_CHALLENGE_BITS)?;
+    let r_b_bits = ro.squeeze(cs.namespace(|| "r_b_bits"), NUM_CHALLENGE_BITS, false)?;
     let r_b = le_bits_to_num(cs.namespace(|| "r_b"), &r_b_bits)?;
 
     // compute the sum-check polynomial's evaluations at r_b
