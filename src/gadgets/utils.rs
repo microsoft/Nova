@@ -541,12 +541,12 @@ pub fn fingerprint<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
     |lc| lc + acc_out.get_variable() - acc.get_variable(),
   );
 
-  // (2) we then compute c_i_out <- c * c^i
+  // (2) we then compute c_i_out <- c_i * c
   let c_i_out = AllocatedNum::alloc(cs.namespace(|| "c_i_out"), || {
     Ok(*c_i.get_value().get()? * *c.get_value().get()?)
   })?;
   cs.enforce(
-    || "c_i_out = c * c^i",
+    || "c_i_out = c_i * c",
     |lc| lc + c.get_variable(),
     |lc| lc + c_i.get_variable(),
     |lc| lc + c_i_out.get_variable(),
