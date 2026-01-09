@@ -2,7 +2,9 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, LinearCombination, SynthesisError};
+use crate::frontend::{
+  num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, LinearCombination, SynthesisError,
+};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -699,7 +701,17 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   pub fn inputize<CS: ConstraintSystem<Scalar>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
     for (i, l) in self.limbs.iter().enumerate() {
       let mut c = cs.namespace(|| format!("limb {i}"));
-      let v = c.alloc_input(|| "alloc", || Ok(self.limb_values.as_ref().ok_or(SynthesisError::AssignmentMissing)?[i]))?;
+      let v = c.alloc_input(
+        || "alloc",
+        || {
+          Ok(
+            self
+              .limb_values
+              .as_ref()
+              .ok_or(SynthesisError::AssignmentMissing)?[i],
+          )
+        },
+      )?;
       c.enforce(|| "eq", |lc| lc, |lc| lc, |lc| lc + v - l);
     }
     Ok(())
@@ -758,9 +770,18 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     let diff = BigNat::alloc_from_nat(
       cs.namespace(|| "sub_mod: compute diff"),
       || {
-        let s_val = self.value.as_ref().ok_or(SynthesisError::AssignmentMissing)?;
-        let o_val = other.value.as_ref().ok_or(SynthesisError::AssignmentMissing)?;
-        let m_val = modulus.value.as_ref().ok_or(SynthesisError::AssignmentMissing)?;
+        let s_val = self
+          .value
+          .as_ref()
+          .ok_or(SynthesisError::AssignmentMissing)?;
+        let o_val = other
+          .value
+          .as_ref()
+          .ok_or(SynthesisError::AssignmentMissing)?;
+        let m_val = modulus
+          .value
+          .as_ref()
+          .ok_or(SynthesisError::AssignmentMissing)?;
         let mut s = s_val.clone();
         s += m_val;
         s -= o_val;

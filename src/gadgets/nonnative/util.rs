@@ -1,8 +1,8 @@
+use super::bignat::BigNat;
 use super::{BitAccess, OptionExt};
 use crate::frontend::{
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
-use super::bignat::BigNat;
 use crate::traits::{Engine, Group, ROCircuitTrait, ROTrait};
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
@@ -263,7 +263,7 @@ where
   E::ROCircuit: ROCircuitTrait<E::Base>,
 {
   use crate::frontend::{num::AllocatedNum, Assignment};
-  
+
   let limbs = n
     .as_limbs()
     .iter()
@@ -308,9 +308,9 @@ pub fn absorb_bignat_in_ro_native<E: Engine>(e: &E::Scalar, ro: &mut E::RO)
 where
   E::RO: ROTrait<E::Base>,
 {
-  use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
   use super::bignat::nat_to_limbs;
-  
+  use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+
   // absorb each element of x in bignum format
   let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
   assert_eq!(limbs.len() % 2, 0); // we need the number of limbs to be even
@@ -330,7 +330,7 @@ pub fn fingerprint_bignat<E: Engine, CS: ConstraintSystem<E::Base>>(
   bn: &BigNat<E::Base>,
 ) -> Result<(AllocatedNum<E::Base>, AllocatedNum<E::Base>), SynthesisError> {
   use crate::gadgets::utils::fingerprint;
-  
+
   // Analyze bignat as limbs
   let limbs = bn
     .as_limbs()
@@ -367,7 +367,7 @@ where
   E::RO2Circuit: ROCircuitTrait<E::Scalar>,
 {
   use crate::frontend::{num::AllocatedNum, Assignment};
-  
+
   let limbs = n
     .as_limbs()
     .iter()
