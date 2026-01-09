@@ -677,7 +677,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     self.params.limb_width * (self.params.n_limbs - 1) + self.params.max_word.bits() as usize
   }
 
-  /// Returns a copy of the limb values.
+  /// Returns a clone of the limb values if they exist, or `None` otherwise.
   pub fn as_limb_values(&self) -> Option<Vec<Scalar>> {
     self.limb_values.clone()
   }
