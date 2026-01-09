@@ -548,6 +548,17 @@ impl<E: Engine> R1CSInstance<E> {
   }
 }
 
+impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSInstance<E> {
+  fn to_transcript_bytes(&self) -> Vec<u8> {
+    [
+      self.comm_W.to_transcript_bytes(),
+      self.X.as_slice().to_transcript_bytes(),
+    ]
+    .concat()
+  }
+}
+
+
 impl<E: Engine> AbsorbInROTrait<E> for R1CSInstance<E> {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     self.comm_W.absorb_in_ro(ro);
