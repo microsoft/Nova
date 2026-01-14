@@ -8,9 +8,10 @@ use crate::{
   gadgets::{
     nonnative::{bignat::BigNat, util::f_to_nat},
     utils::{
-      alloc_bignat_constant, alloc_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
-      conditionally_select2, conditionally_select_bignat, select_num_or_one, select_num_or_zero,
-      select_num_or_zero2, select_one_or_diff2, select_one_or_num2, select_zero_or_num2,
+      alloc_bignat_constant, alloc_constant, alloc_num_equals, alloc_one, alloc_zero,
+      conditionally_select, conditionally_select2, conditionally_select_bignat, select_num_or_one,
+      select_num_or_zero, select_num_or_zero2, select_one_or_diff2, select_one_or_num2,
+      select_zero_or_num2,
     },
   },
   traits::{Engine, Group, ROCircuitTrait},
