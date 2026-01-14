@@ -300,14 +300,18 @@ pub fn absorb_bignat_in_ro_scalar<E: Engine, CS: ConstraintSystem<E::Scalar>>(
 }
 
 /// Absorb a scalar field element into a random oracle (native version).
-pub fn absorb_bignat_in_ro_native<E: Engine>(e: &E::Scalar, ro: &mut E::RO) {
+pub fn absorb_bignat_in_ro_native<E: Engine>(
+  e: &E::Scalar,
+  ro: &mut E::RO,
+) -> Result<(), SynthesisError> {
   use super::bignat::nat_to_limbs;
   // absorb each element of x in bignum format
-  let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+  let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS)?;
   // absorb each limb directly (no packing - limbs are not constrained to be small)
   for limb in limbs {
     ro.absorb(limb);
   }
+  Ok(())
 }
 
 /// Fingerprint a BigNat by fingerprinting each of its limbs.
