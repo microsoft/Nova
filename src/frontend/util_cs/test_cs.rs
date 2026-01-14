@@ -114,13 +114,7 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
 
   /// Check if the constraint system is satisfied.
   pub fn is_satisfied(&self) -> bool {
-    match self.which_is_unsatisfied() {
-      Some(b) => {
-        println!("fail: {b:?}");
-        false
-      }
-      None => true,
-    }
+    self.which_is_unsatisfied().is_none()
   }
 
   fn set_named_obj(&mut self, path: String, to: NamedObject) {

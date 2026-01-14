@@ -338,22 +338,22 @@ impl<E: Engine> MemorySumcheckInstance<E> {
   ///
   /// # Description
   /// We use the logUp protocol to prove that
-  /// ∑ TS[i]/(T[i] + r) - 1/(W[i] + r) = 0
+  /// ∑ TS\[i\]/(T\[i\] + r) - 1/(W\[i\] + r) = 0
   /// where
-  ///   T_row[i] = mem_row[i]      * gamma + i
-  ///            = eq(tau)[i]      * gamma + i
-  ///   W_row[i] = L_row[i]        * gamma + addr_row[i]
-  ///            = eq(tau)[row[i]] * gamma + addr_row[i]
-  ///   T_col[i] = mem_col[i]      * gamma + i
-  ///            = z[i]            * gamma + i
-  ///   W_col[i] = L_col[i]     * gamma + addr_col[i]
-  ///            = z[col[i]]       * gamma + addr_col[i]
+  ///   T_row\[i\] = mem_row\[i\]      * gamma + i
+  ///            = eq(tau)\[i\]      * gamma + i
+  ///   W_row\[i\] = L_row\[i\]        * gamma + addr_row\[i\]
+  ///            = eq(tau)\[row\[i\]\] * gamma + addr_row\[i\]
+  ///   T_col\[i\] = mem_col\[i\]      * gamma + i
+  ///            = z\[i\]            * gamma + i
+  ///   W_col\[i\] = L_col\[i\]     * gamma + addr_col\[i\]
+  ///            = z\[col\[i\]\]       * gamma + addr_col\[i\]
   /// and
   ///   TS_row, TS_col are integer-valued vectors representing the number of reads
   ///   to each memory cell of L_row, L_col
   ///
-  /// The function returns oracles for the polynomials TS[i]/(T[i] + r), 1/(W[i] + r),
-  /// as well as auxiliary polynomials T[i] + r, W[i] + r
+  /// The function returns oracles for the polynomials TS\[i\]/(T\[i\] + r), 1/(W\[i\] + r),
+  /// as well as auxiliary polynomials T\[i\] + r, W\[i\] + r
   pub fn compute_oracles(
     ck: &CommitmentKey<E>,
     r: &E::Scalar,

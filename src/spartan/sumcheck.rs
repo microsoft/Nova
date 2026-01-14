@@ -218,7 +218,7 @@ impl<E: Engine> SumcheckProof<E> {
   }
 
   /// Proves a batch of quadratic sumcheck instances over product polynomials.
-  /// Each instance computes the sum over the boolean hypercube of poly_A[i] * poly_B[i].
+  /// Each instance computes the sum over the boolean hypercube of poly_A\[i\] * poly_B\[i\].
   pub fn prove_quad_batch_prod(
     claims: &[E::Scalar],
     num_rounds: &[usize],
@@ -476,7 +476,7 @@ impl<E: Engine> SumcheckProof<E> {
 
 pub(crate) mod eq_sumcheck {
   //! This module implements the sumcheck optimization for equality polynomials.
-  //! The optimization is described in Section 5 of https://eprint.iacr.org/2025/1117 algorithm 5.
+  //! The optimization is described in Section 5 of <https://eprint.iacr.org/2025/1117> algorithm 5.
   use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
   use ff::{Field, PrimeField};
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};

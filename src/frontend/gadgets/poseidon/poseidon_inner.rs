@@ -75,12 +75,12 @@ where
   _f: PhantomData<F>,
 }
 
-/// Holds constant values required for further [`Poseidon`] hashing. It contains MDS matrices,
-/// round constants and numbers, parameters that specify security level ([`Strength`]) and
-/// domain separation ([`HashType`]). Additional constants related to optimizations are also included.
+/// Holds constant values required for Poseidon hashing. It contains MDS matrices,
+/// round constants and numbers, parameters that specify security level and
+/// domain separation. Additional constants related to optimizations are also included.
 ///
 /// For correct operation, [`PoseidonConstants`] instance should be parameterized with the same [`ff::PrimeField`]
-/// and [`Arity`] as [`Poseidon`] instance that consumes it.
+/// as the hash function that uses it.
 ///
 /// See original [Poseidon paper](https://eprint.iacr.org/2019/458.pdf) for more details.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,19 +128,19 @@ where
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
   /// with following default parameters:
   /// - 128 bit of security;
-  /// - Merkle Tree (where all leaves are presented) domain separation ([`HashType`]).
+  /// - Merkle Tree (where all leaves are presented) domain separation.
   pub fn new() -> Self {
     Self::new_with_strength(DEFAULT_STRENGTH)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
-  /// with Merkle Tree (where all leaves are presented) domain separation ([`HashType`]) custom security level ([`Strength`]).
+  /// with Merkle Tree (where all leaves are presented) domain separation and custom security level.
   pub fn new_with_strength(strength: Strength) -> Self {
     Self::new_with_strength_and_type(strength, HashType::MerkleTree)
   }
 
   /// Generates new instance of [`PoseidonConstants`] suitable for both optimized / non-optimized hashing
-  /// with custom domain separation ([`HashType`]) and custom security level ([`Strength`]).
+  /// with custom domain separation and custom security level.
   pub fn new_with_strength_and_type(strength: Strength, hash_type: HashType<F, A>) -> Self {
     assert!(hash_type.is_supported());
     let arity = A::to_usize();
@@ -213,13 +213,13 @@ where
     }
   }
 
-  /// Returns the [`Arity`] value represented as `usize`.
+  /// Returns the arity value represented as `usize`.
   #[inline]
   pub fn arity(&self) -> usize {
     A::to_usize()
   }
 
-  /// Returns `width` value represented as `usize`. It equals to [`Arity`] + 1.
+  /// Returns `width` value represented as `usize`. It equals to arity + 1.
   #[inline]
   pub fn width(&self) -> usize {
     A::ConstantsSize::to_usize()
