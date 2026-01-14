@@ -584,7 +584,7 @@ where
     Ok(Self { x, y, is_infinity })
   }
 
-  /// Allocate a point with constant x and y coordinates (but allocated is_infinity).
+  /// Allocate a point with constant x and y coordinates and a provided `is_infinity` flag.
   pub fn alloc_constant<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
     coords: (E::Base, E::Base),
