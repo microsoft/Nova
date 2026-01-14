@@ -2,11 +2,12 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-use ff::PrimeField;
+use crate::frontend::{num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, LinearCombination, SynthesisError};
+use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::{
+  ops::Rem,
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
@@ -673,6 +674,105 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   pub fn n_bits(&self) -> usize {
     assert!(self.params.n_limbs > 0);
     self.params.limb_width * (self.params.n_limbs - 1) + self.params.max_word.bits() as usize
+  }
+
+  /// Returns a copy of the limb values.
+  pub fn as_limb_values(&self) -> Option<Vec<Scalar>> {
+    self.limb_values.clone()
+  }
+
+  /// Fold two BigNat values: self + r * other mod modulus
+  pub fn fold_bn<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    r: &Self,
+    modulus: &Self,
+  ) -> Result<Self, SynthesisError> {
+    // Fold self + r * other
+    let (_, r_0) = r.mult_mod(cs.namespace(|| "r*other"), other, modulus)?;
+    let r_new_0 = self.add(&r_0)?;
+    // Now reduce
+    r_new_0.red_mod(cs.namespace(|| "reduce folded"), modulus)
+  }
+
+  /// Make the limbs of this BigNat into public inputs.
+  pub fn inputize<CS: ConstraintSystem<Scalar>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
+    for (i, l) in self.limbs.iter().enumerate() {
+      let mut c = cs.namespace(|| format!("limb {i}"));
+      let v = c.alloc_input(|| "alloc", || Ok(self.limb_values.as_ref().grab()?[i]))?;
+      c.enforce(|| "eq", |lc| lc, |lc| lc, |lc| lc + v - l);
+    }
+    Ok(())
+  }
+
+  /// Break `self` up into an allocated bit-vector.
+  pub fn decompose_allocated<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    Scalar: PrimeFieldBits,
+  {
+    let mut scalar_bits = vec![];
+
+    for i in 0..self.params.n_limbs {
+      let limb = AllocatedNum::alloc(cs.namespace(|| format!("allocate scalar limb_{i}")), || {
+        self
+          .limb_values
+          .as_ref()
+          .map(|limb_values| limb_values[i])
+          .ok_or(SynthesisError::AssignmentMissing)
+      })?;
+
+      cs.enforce(
+        || format!("eq scalar limb_{i}"),
+        |lc| lc + limb.get_variable(),
+        |lc| lc + CS::one(),
+        |_| self.limbs[i].clone(),
+      );
+
+      let limb_bits = limb
+        .to_bits_le(cs.namespace(|| format!("scalar limb_{i} to le")))?
+        .iter()
+        .take(self.params.limb_width)
+        .map(|b| match b {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Wrong type of input. We should have never reached there"),
+        })
+        .collect::<Vec<AllocatedBit>>();
+
+      scalar_bits.extend(limb_bits);
+    }
+
+    Ok(scalar_bits)
+  }
+
+  /// Compute self - other mod modulus
+  pub fn sub_mod<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    modulus: &Self,
+  ) -> Result<Self, SynthesisError> {
+    let diff = BigNat::alloc_from_nat(
+      cs.namespace(|| "sub_mod: compute diff"),
+      || {
+        let mut s = self.value.grab()?.clone();
+        s += modulus.value.grab()?;
+        s -= other.value.grab()?;
+        let t = s.clone().rem(modulus.value.grab()?);
+        Ok(t)
+      },
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
+
+    let sum = other
+      .add(&diff)?
+      .red_mod(cs.namespace(|| "sub_mod: reduce sum"), modulus)?;
+    self.equal_when_carried_regroup(cs.namespace(|| "sub_mod: equality check"), &sum)?;
+    Ok(diff)
   }
 }
 

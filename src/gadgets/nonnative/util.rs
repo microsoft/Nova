@@ -1,5 +1,5 @@
 use super::{BitAccess, OptionExt};
-use crate::frontend::{
+use crate::frontend::{Assignment, 
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
 use ff::PrimeField;
@@ -244,4 +244,156 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
   Scalar::from_str_vartime(&format!("{n}"))
+}
+
+use super::bignat::BigNat;
+use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::utils::fingerprint,
+  traits::{Engine, Group, ROCircuitTrait, ROTrait},
+};
+
+/// Get the base field modulus as a BigInt.
+pub fn get_base_modulus<E: Engine>() -> BigInt {
+  E::GE::group_params().3
+}
+
+/// Absorb a BigNat into a random oracle circuit (base field version).
+/// Packs two limbs into one scalar for efficiency.
+pub fn absorb_bignat_in_ro<E: Engine, CS: ConstraintSystem<E::Base>>(
+  n: &BigNat<E::Base>,
+  mut cs: CS,
+  ro: &mut E::ROCircuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // pack two limbs into one scalar
+  let pow_2_limb_width = E::Base::from(1 << (n.params.limb_width - 1)) * E::Base::from(2);
+  let limbs_packed: Vec<AllocatedNum<E::Base>> = limbs
+    .chunks(2)
+    .enumerate()
+    .map(|(i, w)| {
+      // comb = limb[0] + limb[1] * 2^limb_width
+      let comb: AllocatedNum<E::Base> = AllocatedNum::alloc(
+        cs.namespace(|| format!("combine two limbs into one scalar {i}")),
+        || Ok(*w[0].get_value().get()? + *w[1].get_value().get()? * pow_2_limb_width),
+      )?;
+
+      // check that comb = limb[0] + limb[1] * 2^limb_width
+      cs.enforce(
+        || format!("check combine two limbs into one scalar {i}"),
+        |lc| lc + w[0].get_variable() + (pow_2_limb_width, w[1].get_variable()),
+        |lc| lc + CS::one(),
+        |lc| lc + comb.get_variable(),
+      );
+
+      Ok(comb)
+    })
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, SynthesisError>>()?;
+
+  // absorb each of the limbs
+  for limb in limbs_packed {
+    ro.absorb(&limb);
+  }
+
+  Ok(())
+}
+
+/// Absorb a BigNat into a random oracle circuit (scalar field version).
+/// Packs two limbs into one scalar for efficiency.
+pub fn absorb_bignat_in_ro_scalar<E: Engine, CS: ConstraintSystem<E::Scalar>>(
+  n: &BigNat<E::Scalar>,
+  mut cs: CS,
+  ro: &mut E::RO2Circuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
+
+  let pow_2_limb_width = E::Scalar::from(1 << (n.params.limb_width - 1)) * E::Scalar::from(2);
+
+  // pack two limbs into one scalar
+  let limbs_packed = limbs
+    .chunks(2)
+    .enumerate()
+    .map(|(i, w)| {
+      // comb = limb[0] + limb[1] * 2^limb_width
+      let comb = AllocatedNum::alloc(
+        cs.namespace(|| format!("combine two limbs into one scalar {i}")),
+        || Ok(*w[0].get_value().get()? + *w[1].get_value().get()? * pow_2_limb_width),
+      )?;
+
+      // check that comb = limb[0] + limb[1] * 2^limb_width
+      cs.enforce(
+        || format!("check combine two limbs into one scalar {i}"),
+        |lc| lc + w[0].get_variable() + (pow_2_limb_width, w[1].get_variable()),
+        |lc| lc + CS::one(),
+        |lc| lc + comb.get_variable(),
+      );
+
+      Ok(comb)
+    })
+    .collect::<Result<Vec<_>, SynthesisError>>()?;
+
+  // absorb each of the limbs
+  for limb in limbs_packed {
+    ro.absorb(&limb);
+  }
+  Ok(())
+}
+
+/// Absorb a scalar field element into a random oracle (native version).
+/// Packs two limbs into one scalar for efficiency.
+pub fn absorb_bignat_in_ro_native<E: Engine>(e: &E::Scalar, ro: &mut E::RO) {
+  use super::bignat::nat_to_limbs;
+  // absorb each element of x in bignum format
+  let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+  assert_eq!(limbs.len() % 2, 0); // we need the number of limbs to be even
+  for w in limbs.chunks(2) {
+    let pow_2_limb_width = E::Base::from(1 << (BN_LIMB_WIDTH - 1)) * E::Base::from(2);
+    let packed_limb = w[0] + w[1] * pow_2_limb_width;
+    ro.absorb(packed_limb);
+  }
+}
+
+/// Fingerprint a BigNat by fingerprinting each of its limbs.
+pub fn fingerprint_bignat<E: Engine, CS: ConstraintSystem<E::Base>>(
+  mut cs: CS,
+  acc: &AllocatedNum<E::Base>,
+  c: &AllocatedNum<E::Base>,
+  c_i: &AllocatedNum<E::Base>,
+  bn: &BigNat<E::Base>,
+) -> Result<(AllocatedNum<E::Base>, AllocatedNum<E::Base>), SynthesisError> {
+  // Analyze bignat as limbs
+  let limbs = bn
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| {
+      limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of x to num")))
+    })
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // fingerprint the limbs
+  let mut acc_out = acc.clone();
+  let mut c_i_out = c_i.clone();
+  for (i, limb) in limbs.iter().enumerate() {
+    (acc_out, c_i_out) = fingerprint::<E::Base, _>(
+      cs.namespace(|| format!("output limb_{i}")),
+      &acc_out,
+      c,
+      &c_i_out,
+      limb,
+    )?;
+  }
+
+  Ok((acc_out, c_i_out))
 }
