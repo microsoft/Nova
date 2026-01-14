@@ -245,3 +245,105 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
   Scalar::from_str_vartime(&format!("{n}"))
 }
+
+use super::bignat::BigNat;
+use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::utils::fingerprint,
+  traits::{Engine, Group, ROCircuitTrait, ROTrait},
+};
+
+/// Get the base field modulus as a BigInt.
+pub fn get_base_modulus<E: Engine>() -> BigInt {
+  E::GE::group_params().3
+}
+
+/// Absorb a BigNat into a random oracle circuit (base field version).
+pub fn absorb_bignat_in_ro<E: Engine, CS: ConstraintSystem<E::Base>>(
+  n: &BigNat<E::Base>,
+  mut cs: CS,
+  ro: &mut E::ROCircuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(&limb);
+  }
+
+  Ok(())
+}
+
+/// Absorb a BigNat into a random oracle circuit (scalar field version).
+pub fn absorb_bignat_in_ro_scalar<E: Engine, CS: ConstraintSystem<E::Scalar>>(
+  n: &BigNat<E::Scalar>,
+  mut cs: CS,
+  ro: &mut E::RO2Circuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
+
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(&limb);
+  }
+  Ok(())
+}
+
+/// Absorb a scalar field element into a random oracle (native version).
+pub fn absorb_bignat_in_ro_native<E: Engine>(
+  e: &E::Scalar,
+  ro: &mut E::RO,
+) -> Result<(), SynthesisError> {
+  use super::bignat::nat_to_limbs;
+  // absorb each element of x in bignum format
+  let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS)?;
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(limb);
+  }
+  Ok(())
+}
+
+/// Fingerprint a BigNat by fingerprinting each of its limbs.
+pub fn fingerprint_bignat<E: Engine, CS: ConstraintSystem<E::Base>>(
+  mut cs: CS,
+  acc: &AllocatedNum<E::Base>,
+  c: &AllocatedNum<E::Base>,
+  c_i: &AllocatedNum<E::Base>,
+  bn: &BigNat<E::Base>,
+) -> Result<(AllocatedNum<E::Base>, AllocatedNum<E::Base>), SynthesisError> {
+  // Analyze bignat as limbs
+  let limbs = bn
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| {
+      limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of x to num")))
+    })
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // fingerprint the limbs
+  let mut acc_out = acc.clone();
+  let mut c_i_out = c_i.clone();
+  for (i, limb) in limbs.iter().enumerate() {
+    (acc_out, c_i_out) = fingerprint::<E::Base, _>(
+      cs.namespace(|| format!("output limb_{i}")),
+      &acc_out,
+      c,
+      &c_i_out,
+      limb,
+    )?;
+  }
+
+  Ok((acc_out, c_i_out))
+}

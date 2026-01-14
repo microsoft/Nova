@@ -448,3 +448,109 @@ pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
 
   Ok(c)
 }
+
+/// Allocate a constant value in the circuit
+pub fn alloc_constant<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  mut cs: CS,
+  c: &Scalar,
+) -> Result<AllocatedNum<Scalar>, SynthesisError> {
+  let constant = AllocatedNum::alloc(cs.namespace(|| "constant"), || Ok(*c))?;
+
+  cs.enforce(
+    || "check eq given constant",
+    |lc| lc + constant.get_variable(),
+    |lc| lc + CS::one(),
+    |lc| lc + (*c, CS::one()),
+  );
+
+  Ok(constant)
+}
+
+/// Convert a base field element to a BigInt representation.
+pub fn base_as_bigint<E: Engine>(input: E::Base) -> BigInt {
+  let input_bits = input.to_le_bits();
+  let mut mult = BigInt::from(1);
+  let mut val = BigInt::from(0);
+  for bit in input_bits {
+    if bit {
+      val += &mult;
+    }
+    mult *= BigInt::from(2);
+  }
+  val
+}
+
+/// Gets as input the little endian representation of a number (as AllocatedNum bits)
+/// and outputs the number.
+///
+/// Unlike le_bits_to_num which takes AllocatedBit, this takes AllocatedNum where
+/// each num is constrained to be 0 or 1.
+pub fn le_num_to_num<Scalar, CS>(
+  mut cs: CS,
+  bits: &[AllocatedNum<Scalar>],
+) -> Result<AllocatedNum<Scalar>, SynthesisError>
+where
+  Scalar: PrimeField + PrimeFieldBits,
+  CS: ConstraintSystem<Scalar>,
+{
+  // We loop over the input bits and construct the constraint
+  // and the field element that corresponds to the result
+  let mut lc = LinearCombination::zero();
+  let mut coeff = Scalar::ONE;
+  let mut fe = Some(Scalar::ZERO);
+  for bit in bits.iter() {
+    lc = lc + (coeff, bit.get_variable());
+    fe = bit.get_value().map(|val| {
+      if val == Scalar::ONE {
+        fe.unwrap() + coeff
+      } else {
+        fe.unwrap()
+      }
+    });
+    coeff = coeff.double();
+  }
+  let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
+    fe.ok_or(SynthesisError::AssignmentMissing)
+  })?;
+  lc = lc - num.get_variable();
+  cs.enforce(|| "compute number from bits", |lc| lc, |lc| lc, |_| lc);
+  Ok(num)
+}
+
+/// Compute acc_out = acc + c_i * v and c_i_out = c * c_i
+///
+/// This is used to fingerprint values in a circuit by computing a running sum.
+pub fn fingerprint<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  mut cs: CS,
+  acc: &AllocatedNum<Scalar>,
+  c: &AllocatedNum<Scalar>,
+  c_i: &AllocatedNum<Scalar>,
+  v: &AllocatedNum<Scalar>,
+) -> Result<(AllocatedNum<Scalar>, AllocatedNum<Scalar>), SynthesisError> {
+  // we need to compute acc_out <- acc + c_i * v (the initial value of acc is zero and c_i = 1)
+  // we then return acc_out and c_i_out = c_i * c
+
+  // (1) we first compute acc_out <- acc + c_i * v
+  let acc_out = AllocatedNum::alloc(cs.namespace(|| "acc_out"), || {
+    Ok(*acc.get_value().get()? + *c_i.get_value().get()? * *v.get_value().get()?)
+  })?;
+  cs.enforce(
+    || "acc_out = acc + c_i * v",
+    |lc| lc + c_i.get_variable(),
+    |lc| lc + v.get_variable(),
+    |lc| lc + acc_out.get_variable() - acc.get_variable(),
+  );
+
+  // (2) we then compute c_i_out <- c * c^i
+  let c_i_out = AllocatedNum::alloc(cs.namespace(|| "c_i_out"), || {
+    Ok(*c_i.get_value().get()? * *c.get_value().get()?)
+  })?;
+  cs.enforce(
+    || "c_i_out = c * c^i",
+    |lc| lc + c.get_variable(),
+    |lc| lc + c_i.get_variable(),
+    |lc| lc + c_i_out.get_variable(),
+  );
+
+  Ok((acc_out, c_i_out))
+}
