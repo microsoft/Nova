@@ -740,7 +740,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
         .take(self.params.limb_width)
         .map(|b| match b {
           Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Wrong type of input. We should have never reached there"),
+          _ => panic!("Unreachable: expected Boolean::Is variant from to_bits_le when constructing scalar limb bits"),
         })
         .collect::<Vec<AllocatedBit>>();
 
