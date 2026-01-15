@@ -107,6 +107,42 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
     eval
   }
 
+  /// Constructs a polynomial from evaluations at 0, 1, 2, 3 using Lagrange interpolation.
+  /// This is used for backwards compatibility with custom combination functions.
+  pub fn from_evals(evals: &[Scalar]) -> Self {
+    // Lagrange interpolation for evaluations at 0, 1, 2, 3
+    assert!(evals.len() >= 3, "at least 3 evaluations required");
+    
+    if evals.len() == 3 {
+      // Quadratic: evaluations at 0, 1, 2
+      let two_inv = Scalar::TWO_INV;
+      let c = evals[0];
+      let a = (evals[0] - evals[1] * Scalar::from(2u64) + evals[2]) * two_inv;
+      let b = evals[1] - evals[0] - a;
+      Self { coeffs: vec![c, b, a] }
+    } else {
+      // Cubic: evaluations at 0, 1, 2, 3
+      let two_inv = Scalar::TWO_INV;
+      let six_inv = (Scalar::from(6u64)).invert().unwrap();
+      
+      let c0 = evals[0];
+      let c1 = -Scalar::from(11u64) * six_inv * evals[0]
+             + Scalar::from(3u64) * two_inv * evals[1]
+             - Scalar::from(3u64) * two_inv * evals[2]
+             + Scalar::from(1u64) * six_inv * evals[3];
+      let c2 = evals[0]
+             - Scalar::from(5u64) * two_inv * evals[1]
+             + Scalar::from(2u64) * evals[2]
+             - two_inv * evals[3];
+      let c3 = -six_inv * evals[0]
+             + two_inv * evals[1]
+             - two_inv * evals[2]
+             + six_inv * evals[3];
+      
+      Self { coeffs: vec![c0, c1, c2, c3] }
+    }
+  }
+
   /// Compresses the polynomial by omitting the linear term.
   pub fn compress(&self) -> CompressedUniPoly<Scalar> {
     let coeffs_except_linear_term = [&self.coeffs[0..1], &self.coeffs[2..]].concat();
