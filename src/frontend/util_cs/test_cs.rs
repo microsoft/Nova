@@ -114,7 +114,16 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
 
   /// Check if the constraint system is satisfied.
   pub fn is_satisfied(&self) -> bool {
-    self.which_is_unsatisfied().is_none()
+    match self.which_is_unsatisfied() {
+      Some(b) => {
+        #[allow(clippy::print_stdout)]
+        {
+          println!("fail: {b:?}");
+        }
+        false
+      }
+      None => true,
+    }
   }
 
   fn set_named_obj(&mut self, path: String, to: NamedObject) {
