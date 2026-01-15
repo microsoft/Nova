@@ -1,7 +1,7 @@
 use ff::PrimeField;
 
 /// From the paper ():
-/// The round constants are generated using the Grain LFSR [23] in a self-shrinking
+/// The round constants are generated using the Grain LFSR \[23\] in a self-shrinking
 /// mode:
 /// 1. Initialize the state with 80 bits b0, b1, . . . , b79, where
 ///    (a) b0, b1 describe the field,
@@ -23,9 +23,9 @@ use ff::PrimeField;
 ///    next one. Note that cryptographically strong randomness is not needed for the
 ///    round constants, and other methods can also be used.
 ///
-/// Following https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/scripts/create_rcs_grain.sage
+/// Following <https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/scripts/create_rcs_grain.sage>
 /// The script was updated and can currently be found at:
-/// https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/generate_parameters_grain.sage
+/// <https://extgit.iaik.tugraz.at/krypto/hadeshash/blob/master/code/generate_parameters_grain.sage>
 pub(crate) fn generate_constants<F: PrimeField>(
   field: u8,
   sbox: u8,

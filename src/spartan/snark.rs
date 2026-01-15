@@ -398,7 +398,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 /// # Details
 ///
 /// We are given as input a list of instance/witness pairs
-/// u = [(Cᵢ, xᵢ, eᵢ)], w = [Pᵢ], such that
+/// u = \[(Cᵢ, xᵢ, eᵢ)\], w = \[Pᵢ\], such that
 /// - nᵢ = |xᵢ|
 /// - Cᵢ = Commit(Pᵢ)
 /// - eᵢ = Pᵢ(xᵢ)
