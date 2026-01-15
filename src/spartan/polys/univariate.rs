@@ -30,7 +30,8 @@ pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
 }
 
 impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
-  #[cfg(feature = "experimental")]
+  /// Constructs a polynomial from its evaluations using Gaussian elimination.
+  /// Given evals: [P(0), P(1), ..., P(n-1)], constructs the polynomial P(x).
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
     let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();

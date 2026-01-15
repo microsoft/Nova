@@ -474,13 +474,14 @@ impl<E: Engine> SumcheckProof<E> {
   }
 }
 
-pub(crate) mod eq_sumcheck {
-  //! This module implements the sumcheck optimization for equality polynomials.
-  //! The optimization is described in Section 5 of <https://eprint.iacr.org/2025/1117> algorithm 5.
+pub mod eq_sumcheck {
+  //! Sumcheck optimization for equality polynomials, implementing the optimized
+  //! protocol described in Section 5 (Algorithm 5) of <https://eprint.iacr.org/2025/1117>.
   use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
   use ff::{Field, PrimeField};
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};
 
+  /// Instance for optimized equality polynomial sumcheck.
   pub struct EqSumCheckInstance<E: Engine> {
     // number of variables at first
     init_num_vars: usize,
@@ -495,6 +496,7 @@ pub(crate) mod eq_sumcheck {
   }
 
   impl<E: Engine> EqSumCheckInstance<E> {
+    /// Creates a new EqSumCheckInstance from tau values.
     pub fn new(taus: Vec<E::Scalar>) -> Self {
       let l = taus.len();
       let first_half = l / 2;
@@ -745,6 +747,7 @@ pub(crate) mod eq_sumcheck {
       (eval_0, bound_coeff, eval_inf)
     }
 
+    /// Binds a variable in the sumcheck instance.
     #[inline]
     pub fn bound(&mut self, r: &E::Scalar) {
       let tau = self.taus[self.round - 1];
