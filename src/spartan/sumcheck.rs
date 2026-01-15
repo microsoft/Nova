@@ -747,8 +747,8 @@ pub mod eq_sumcheck {
       (eval_0, bound_coeff, eval_inf)
     }
 
-    #[inline]
     /// Binds a variable in the sumcheck instance.
+    #[inline]
     pub fn bound(&mut self, r: &E::Scalar) {
       let tau = self.taus[self.round - 1];
       self.eval_eq_left *= E::Scalar::ONE - tau - r + (*r * tau).double();
