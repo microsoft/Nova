@@ -79,6 +79,19 @@ jobs:
           command: clippy
           args: --all-targets -- -D warnings
 
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check documentation build
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --no-deps --document-private-items
+
   spelling:
     runs-on: ubuntu-latest
     steps:

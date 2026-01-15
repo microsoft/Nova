@@ -29,7 +29,7 @@ pub enum HashType<F: PrimeField, A: Arity<F>> {
 
 impl<F: PrimeField, A: Arity<F>> HashType<F, A> {
   /// Implements domain separation defined in original [Poseidon paper](https://eprint.iacr.org/2019/458.pdf).
-  /// Calculates field element used as a zero element in underlying [`crate::poseidon::Poseidon`] buffer that holds preimage.
+  /// Calculates field element used as a zero element in the Poseidon buffer that holds preimage.
   pub fn domain_tag(&self) -> F {
     match self {
       // 2^arity - 1

@@ -159,8 +159,8 @@ impl<E: Engine> AbsorbInRO2Trait<E> for UniPoly<E::Scalar> {
 }
 
 /// Performs Gaussian elimination on the given augmented matrix to solve a system of linear equations.
-/// This code is based on code from https://github.com/a16z/jolt/blob/main/jolt-core/src/utils/gaussian_elimination.rs,
-/// which itself is inspired by https://github.com/TheAlgorithms/Rust/blob/master/src/math/gaussian_elimination.rs
+/// This code is based on code from <https://github.com/a16z/jolt/blob/main/jolt-core/src/utils/gaussian_elimination.rs>,
+/// which itself is inspired by <https://github.com/TheAlgorithms/Rust/blob/master/src/math/gaussian_elimination.rs>
 pub fn gaussian_elimination<F: PrimeField>(matrix: &mut [Vec<F>]) -> Vec<F> {
   let size = matrix.len();
   assert_eq!(size, matrix[0].len() - 1);

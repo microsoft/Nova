@@ -116,7 +116,10 @@ impl<Scalar: PrimeField> TestConstraintSystem<Scalar> {
   pub fn is_satisfied(&self) -> bool {
     match self.which_is_unsatisfied() {
       Some(b) => {
-        println!("fail: {b:?}");
+        #[allow(clippy::print_stdout)]
+        {
+          println!("fail: {b:?}");
+        }
         false
       }
       None => true,

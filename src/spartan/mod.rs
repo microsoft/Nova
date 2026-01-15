@@ -57,7 +57,7 @@ impl<E: Engine> PolyEvalWitness<E> {
     &self.p
   }
 
-  /// Given [Pᵢ] and s, compute P = ∑ᵢ sⁱ⋅Pᵢ
+  /// Given \[Pᵢ\] and s, compute P = ∑ᵢ sⁱ⋅Pᵢ
   ///
   /// # Details
   ///
