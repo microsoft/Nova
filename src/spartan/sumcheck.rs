@@ -475,9 +475,8 @@ impl<E: Engine> SumcheckProof<E> {
 }
 
 pub mod eq_sumcheck {
-  //! Sumcheck optimization module for equality polynomials.
-  //! This module implements the sumcheck optimization for equality polynomials.
-  //! The optimization is described in Section 5 of <https://eprint.iacr.org/2025/1117> algorithm 5.
+  //! Sumcheck optimization for equality polynomials, implementing the optimized
+  //! protocol described in Section 5 (Algorithm 5) of <https://eprint.iacr.org/2025/1117>.
   use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
   use ff::{Field, PrimeField};
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};
