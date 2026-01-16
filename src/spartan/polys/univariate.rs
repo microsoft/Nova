@@ -34,14 +34,14 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
   /// Given evals: [P(0), P(1), ..., P(n-1)], constructs the polynomial P(x).
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
-    
+
     // Special case for constant polynomial (degree 0)
     if n == 1 {
       return Self {
         coeffs: vec![evals[0]],
       };
     }
-    
+
     let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
 
     let mut matrix: Vec<Vec<Scalar>> = Vec::with_capacity(n);
