@@ -34,6 +34,14 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
   /// Given evals: [P(0), P(1), ..., P(n-1)], constructs the polynomial P(x).
   pub fn from_evals(evals: &[Scalar]) -> Self {
     let n = evals.len();
+
+    // Special case for constant polynomial (degree 0)
+    if n == 1 {
+      return Self {
+        coeffs: vec![evals[0]],
+      };
+    }
+
     let xs: Vec<Scalar> = (0..n).map(|x| Scalar::from(x as u64)).collect();
 
     let mut matrix: Vec<Vec<Scalar>> = Vec::with_capacity(n);
@@ -294,5 +302,100 @@ mod tests {
     test_from_evals_cubic_with::<pallas::Scalar>();
     test_from_evals_cubic_with::<bn256::Scalar>();
     test_from_evals_cubic_with::<secp256k1::Scalar>()
+  }
+
+  fn test_from_evals_constant_with<F: PrimeField + CustomSerdeTrait>() {
+    // polynomial is 5 (constant)
+    let evals = vec![F::from(5)];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.coeffs.len(), 1);
+    assert_eq!(poly.coeffs[0], F::from(5));
+    assert_eq!(poly.evaluate(&F::ZERO), F::from(5));
+    assert_eq!(poly.evaluate(&F::ONE), F::from(5));
+    assert_eq!(poly.evaluate(&F::from(100)), F::from(5));
+  }
+
+  #[test]
+  fn test_from_evals_constant() {
+    test_from_evals_constant_with::<pallas::Scalar>();
+    test_from_evals_constant_with::<bn256::Scalar>();
+    test_from_evals_constant_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_evals_linear_with<F: PrimeField + CustomSerdeTrait>() {
+    // polynomial is 3x + 2
+    let e0 = F::from(2); // f(0) = 2
+    let e1 = F::from(5); // f(1) = 3 + 2 = 5
+    let evals = vec![e0, e1];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.coeffs.len(), 2);
+    assert_eq!(poly.coeffs[0], F::from(2)); // constant term
+    assert_eq!(poly.coeffs[1], F::from(3)); // linear term
+    assert_eq!(poly.evaluate(&F::ZERO), e0);
+    assert_eq!(poly.evaluate(&F::ONE), e1);
+    assert_eq!(poly.evaluate(&F::from(2)), F::from(8)); // 3*2 + 2 = 8
+  }
+
+  #[test]
+  fn test_from_evals_linear() {
+    test_from_evals_linear_with::<pallas::Scalar>();
+    test_from_evals_linear_with::<bn256::Scalar>();
+    test_from_evals_linear_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_evals_quadratic_with<F: PrimeField + CustomSerdeTrait>() {
+    // polynomial is 2x^2 + 3x + 1
+    let e0 = F::ONE; // f(0) = 1
+    let e1 = F::from(6); // f(1) = 2 + 3 + 1 = 6
+    let e2 = F::from(15); // f(2) = 8 + 6 + 1 = 15
+    let evals = vec![e0, e1, e2];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.coeffs.len(), 3);
+    assert_eq!(poly.coeffs[0], F::ONE);
+    assert_eq!(poly.coeffs[1], F::from(3));
+    assert_eq!(poly.coeffs[2], F::from(2));
+    assert_eq!(poly.evaluate(&F::ZERO), e0);
+    assert_eq!(poly.evaluate(&F::ONE), e1);
+    assert_eq!(poly.evaluate(&F::from(2)), e2);
+    assert_eq!(poly.evaluate(&F::from(3)), F::from(28)); // 18 + 9 + 1 = 28
+  }
+
+  #[test]
+  fn test_from_evals_quadratic() {
+    test_from_evals_quadratic_with::<pallas::Scalar>();
+    test_from_evals_quadratic_with::<bn256::Scalar>();
+    test_from_evals_quadratic_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_evals_quartic_with<F: PrimeField + CustomSerdeTrait>() {
+    // polynomial is x^4 + 2x^3 + 3x^2 + 4x + 5
+    let e0 = F::from(5); // f(0) = 5
+    let e1 = F::from(15); // f(1) = 1 + 2 + 3 + 4 + 5 = 15
+    let e2 = F::from(57); // f(2) = 16 + 16 + 12 + 8 + 5 = 57
+    let e3 = F::from(179); // f(3) = 81 + 54 + 27 + 12 + 5 = 179
+    let e4 = F::from(453); // f(4) = 256 + 128 + 48 + 16 + 5 = 453
+    let evals = vec![e0, e1, e2, e3, e4];
+    let poly = UniPoly::from_evals(&evals);
+
+    assert_eq!(poly.coeffs.len(), 5);
+    assert_eq!(poly.coeffs[0], F::from(5)); // constant
+    assert_eq!(poly.coeffs[1], F::from(4)); // x
+    assert_eq!(poly.coeffs[2], F::from(3)); // x^2
+    assert_eq!(poly.coeffs[3], F::from(2)); // x^3
+    assert_eq!(poly.coeffs[4], F::from(1)); // x^4
+    assert_eq!(poly.evaluate(&F::ZERO), e0);
+    assert_eq!(poly.evaluate(&F::ONE), e1);
+    assert_eq!(poly.evaluate(&F::from(2)), e2);
+    assert_eq!(poly.evaluate(&F::from(3)), e3);
+  }
+
+  #[test]
+  fn test_from_evals_quartic() {
+    test_from_evals_quartic_with::<pallas::Scalar>();
+    test_from_evals_quartic_with::<bn256::Scalar>();
+    test_from_evals_quartic_with::<secp256k1::Scalar>();
   }
 }
