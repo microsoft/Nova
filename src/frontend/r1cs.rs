@@ -28,6 +28,11 @@ pub trait NovaShape<E: Engine> {
   /// A `CommitmentKeyHint` should be provided to help guide the construction of the `CommitmentKey`.
   /// This parameter is documented in `r1cs::R1CS::commitment_key`.
   fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>);
+
+  /// Return only the `R1CSShape` without generating a `CommitmentKey`.
+  /// This is useful when you want to determine the required commitment key size
+  /// before actually generating it (e.g., for caching purposes).
+  fn r1cs_shape_only(&self) -> R1CSShape<E>;
 }
 
 impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
@@ -54,6 +59,12 @@ macro_rules! impl_nova_shape {
       E::Scalar: PrimeField,
     {
       fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>) {
+        let S = self.r1cs_shape_only();
+        let ck = S.commitment_key(ck_hint);
+        (S, ck)
+      }
+
+      fn r1cs_shape_only(&self) -> R1CSShape<E> {
         let mut A = SparseMatrix::<E::Scalar>::empty();
         let mut B = SparseMatrix::<E::Scalar>::empty();
         let mut C = SparseMatrix::<E::Scalar>::empty();
@@ -80,10 +91,7 @@ macro_rules! impl_nova_shape {
         C.cols = num_vars + num_inputs;
 
         // Don't count One as an input for shape's purposes.
-        let S = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C).unwrap();
-        let ck = S.commitment_key(ck_hint);
-
-        (S, ck)
+        R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C).unwrap()
       }
     }
   };

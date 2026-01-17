@@ -171,10 +171,19 @@ impl<E: Engine> R1CSShape<E> {
   ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
   pub fn commitment_key(&self, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
+    let n = self.commitment_key_size(ck_floor);
+    E::CE::setup(b"ck", n)
+  }
+
+  /// Returns the required commitment key size for this R1CS shape.
+  ///
+  /// This is useful when you want to check for a cached commitment key before
+  /// generating a new one.
+  pub fn commitment_key_size(&self, ck_floor: &CommitmentKeyHint<E>) -> usize {
     let num_cons = self.num_cons;
     let num_vars = self.num_vars;
     let ck_hint = ck_floor(self);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
+    max(max(num_cons, num_vars), ck_hint)
   }
 
   /// Returns the digest of the `R1CSShape`
