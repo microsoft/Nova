@@ -6,19 +6,21 @@
 //! (2) HyperKZG is specialized to use KZG as the univariate commitment scheme, so it includes several optimizations (both during the transformation of multilinear-to-univariate claims
 //! and within the KZG commitment scheme implementation itself).
 #![allow(non_snake_case)]
+#[cfg(feature = "io")]
+use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
   provider::{
-    ptau::PtauFileError,
-    read_ptau,
+    msm::batch_add,
     traits::{DlogGroup, DlogGroupExt, PairingGroup},
-    write_ptau,
   },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
-    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
+    evm_serde::EvmCompatSerde,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptEngineTrait,
+    TranscriptReprTrait,
   },
 };
 use core::{
@@ -34,6 +36,7 @@ use num_traits::ToPrimitive;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 /// Alias to points on G1 that are in preprocessed form
 type G1Affine<E> = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
@@ -82,6 +85,23 @@ where
   pub fn tau_H(&self) -> &<<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement {
     &self.tau_H
   }
+
+  /// Returns the coordinates of the generator points.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  pub fn to_coordinates(&self) -> Vec<(E::Base, E::Base)> {
+    self
+      .ck
+      .iter()
+      .map(|c| {
+        let (x, y, is_infinity) = <E::GE as DlogGroup>::group(c).to_coordinates();
+        assert!(!is_infinity);
+        (x, y)
+      })
+      .collect()
+  }
 }
 
 impl<E: Engine> Len for CommitmentKey<E>
@@ -94,22 +114,27 @@ where
 }
 
 /// A type that holds blinding generator
+#[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct DerandKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
 /// A KZG commitment
+#[serde_as]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  comm: <E as Engine>::GE,
+  #[serde_as(as = "EvmCompatSerde")]
+  comm: E::GE,
 }
 
 impl<E: Engine> Commitment<E>
@@ -117,11 +142,11 @@ where
   E::GE: PairingGroup,
 {
   /// Creates a new commitment from the underlying group element
-  pub fn new(comm: <E as Engine>::GE) -> Self {
+  pub fn new(comm: E::GE) -> Self {
     Commitment { comm }
   }
   /// Returns the commitment as a group element
-  pub fn into_inner(self) -> <E as Engine>::GE {
+  pub fn into_inner(self) -> E::GE {
     self.comm
   }
 }
@@ -132,24 +157,6 @@ where
 {
   fn to_coordinates(&self) -> (E::Base, E::Base, bool) {
     self.comm.to_coordinates()
-  }
-}
-
-impl<E: Engine> CommitmentKey<E>
-where
-  E::GE: PairingGroup,
-{
-  /// Save keys
-  pub fn save_to(
-    &self,
-    mut writer: &mut (impl std::io::Write + std::io::Seek),
-  ) -> Result<(), PtauFileError> {
-    let g1_points = self.ck.clone();
-
-    let g2_points = vec![self.tau_H, self.tau_H];
-    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
-
-    write_ptau(&mut writer, g1_points, g2_points, power)
   }
 }
 
@@ -169,14 +176,31 @@ where
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
+    use crate::traits::Group;
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    let is_infinity_byte = (!is_infinity).into();
-    [
-      x.to_transcript_bytes(),
-      y.to_transcript_bytes(),
-      [is_infinity_byte].to_vec(),
-    ]
-    .concat()
+    // Get curve parameter B to determine encoding strategy
+    let (_, b, _, _) = E::GE::group_params();
+
+    if b != E::Base::ZERO {
+      // For curves with B!=0 (like BN254 with B=3, Grumpkin with B=-5),
+      // (0, 0) doesn't lie on the curve (since 0 != 0 + 0 + B),
+      // so point at infinity can be safely encoded as (0, 0).
+      let (x, y) = if is_infinity {
+        (E::Base::ZERO, E::Base::ZERO)
+      } else {
+        (x, y)
+      };
+      [x.to_transcript_bytes(), y.to_transcript_bytes()].concat()
+    } else {
+      // For curves with B=0, (0, 0) lies on the curve, so we need the is_infinity flag
+      let is_infinity_byte = (!is_infinity).into();
+      [
+        x.to_transcript_bytes(),
+        y.to_transcript_bytes(),
+        [is_infinity_byte].to_vec(),
+      ]
+      .concat()
+    }
   }
 }
 
@@ -186,13 +210,26 @@ where
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    ro.absorb(x);
-    ro.absorb(y);
-    ro.absorb(if is_infinity {
-      E::Base::ONE
+    // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
+    // so we can use it as a canonical representation for infinity.
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let (x, y) = if is_infinity {
+        (E::Base::ZERO, E::Base::ZERO)
+      } else {
+        (x, y)
+      };
+      ro.absorb(x);
+      ro.absorb(y);
     } else {
-      E::Base::ZERO
-    });
+      ro.absorb(x);
+      ro.absorb(y);
+      ro.absorb(if is_infinity {
+        E::Base::ONE
+      } else {
+        E::Base::ZERO
+      });
+    }
   }
 }
 
@@ -202,6 +239,13 @@ where
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
+    // When B != 0, use (0,0) for infinity
+    let (_, b, _, _) = E::GE::group_params();
+    let (x, y) = if b != E::Base::ZERO && is_infinity {
+      (E::Base::ZERO, E::Base::ZERO)
+    } else {
+      (x, y)
+    };
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -210,11 +254,14 @@ where
     for limb in limbs_x.iter().chain(limbs_y.iter()) {
       ro.absorb(*limb);
     }
-    ro.absorb(if is_infinity {
-      E::Scalar::ONE
-    } else {
-      E::Scalar::ZERO
-    });
+    // Only absorb is_infinity when B == 0
+    if b == E::Base::ZERO {
+      ro.absorb(if is_infinity {
+        E::Scalar::ONE
+      } else {
+        E::Scalar::ZERO
+      });
+    }
   }
 }
 
@@ -223,7 +270,7 @@ where
   E::GE: PairingGroup,
 {
   fn mul_assign(&mut self, scalar: E::Scalar) {
-    let result = (self as &Commitment<E>).comm * scalar;
+    let result = self.comm * scalar;
     *self = Commitment { comm: result };
   }
 }
@@ -541,6 +588,7 @@ where
     }
   }
 
+  #[cfg(feature = "io")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     label: &'static [u8],
@@ -548,6 +596,7 @@ where
   ) -> Result<Self::CommitmentKey, PtauFileError> {
     let num = n.next_power_of_two();
 
+    // read points as well as check sanity of ptau file
     let (g1_points, g2_points) = read_ptau(reader, num, 2)?;
 
     let ck = g1_points.to_vec();
@@ -557,6 +606,20 @@ where
     let h = *E::GE::from_label(label, 1).first().unwrap();
 
     Ok(CommitmentKey { ck, h, tau_H })
+  }
+
+  /// Save keys
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    mut writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError> {
+    let g1_points = ck.ck.clone();
+
+    let g2_points = vec![ck.tau_H, ck.tau_H];
+    let power = g1_points.len().next_power_of_two().trailing_zeros() + 1;
+
+    write_ptau(&mut writer, g1_points, g2_points, power)
   }
 
   fn commit_small_range<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
@@ -581,24 +644,17 @@ where
     Commitment { comm: res }
   }
 
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
+    ck.to_coordinates()
+  }
+
   fn commit_sparse_binary(
     ck: &Self::CommitmentKey,
     non_zero_indices: &[usize],
     r: &<E as Engine>::Scalar,
   ) -> Self::Commitment {
-    let num_chunks = rayon::current_num_threads();
-    let chunk_size = (non_zero_indices.len() + num_chunks).div_ceil(num_chunks);
-    let mut comm = non_zero_indices
-      .par_chunks(chunk_size)
-      .into_par_iter()
-      .map(|chunk| {
-        let mut comm = <E as Engine>::GE::zero();
-        for index in chunk {
-          comm += <E as Engine>::GE::group(&ck.ck[*index]);
-        }
-        comm
-      })
-      .reduce(E::GE::zero, |a, b| a + b);
+    let comm = batch_add(&ck.ck, non_zero_indices);
+    let mut comm = <E::GE as DlogGroup>::group(&comm.into());
 
     if r != &E::Scalar::ZERO {
       comm += <E::GE as DlogGroup>::group(&ck.h) * r;
@@ -616,26 +672,34 @@ pub struct ProverKey<E: Engine> {
 }
 
 /// A verifier key
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct VerifierKey<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) G: G1Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) H: G2Affine<E>,
+  #[serde_as(as = "EvmCompatSerde")]
   pub(crate) tau_H: G2Affine<E>,
 }
 
 /// Provides an implementation of a polynomial evaluation argument
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
+  #[serde_as(as = "Vec<EvmCompatSerde>")]
   com: Vec<G1Affine<E>>,
+  #[serde_as(as = "[EvmCompatSerde; 3]")]
   w: [G1Affine<E>; 3],
+  #[serde_as(as = "Vec<[EvmCompatSerde; 3]>")]
   v: Vec<[E::Scalar; 3]>,
 }
 
@@ -1056,17 +1120,19 @@ where
 
 #[cfg(test)]
 mod tests {
+  use super::*;
+  #[cfg(feature = "io")]
+  use crate::provider::hyperkzg;
+  use crate::{
+    provider::{keccak::Keccak256Transcript, Bn256EngineKZG},
+    spartan::polys::multilinear::MultilinearPolynomial,
+  };
+  use rand::SeedableRng;
+  #[cfg(feature = "io")]
   use std::{
     fs::OpenOptions,
     io::{BufReader, BufWriter},
   };
-
-  use super::*;
-  use crate::{
-    provider::{hyperkzg, keccak::Keccak256Transcript, Bn256EngineKZG},
-    spartan::polys::multilinear::MultilinearPolynomial,
-  };
-  use rand::SeedableRng;
 
   type E = Bn256EngineKZG;
   type Fr = <E as Engine>::Scalar;
@@ -1123,6 +1189,7 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_hyperkzg_small() {
     let n = 4;
 
@@ -1163,7 +1230,11 @@ mod tests {
       .with_fixed_int_encoding();
     let proof_bytes =
       bincode::serde::encode_to_vec(&proof, config).expect("Failed to serialize proof");
-    assert_eq!(proof_bytes.len(), 336);
+
+    assert_eq!(
+      proof_bytes.len(),
+      if cfg!(feature = "evm") { 464 } else { 336 }
+    );
 
     // Change the proof and expect verification to fail
     let mut bad_proof = proof.clone();
@@ -1220,6 +1291,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[ignore = "only available with external ptau files"]
   #[test]
   fn test_hyperkzg_large_from_file() {
@@ -1279,6 +1351,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[test]
   fn test_save_load_ck() {
     const BUFFER_SIZE: usize = 64 * 1024;
@@ -1297,7 +1370,7 @@ mod tests {
       .unwrap();
     let mut writer = BufWriter::with_capacity(BUFFER_SIZE, file);
 
-    ck.save_to(&mut writer).unwrap();
+    CommitmentEngine::save_setup(&ck, &mut writer).unwrap();
 
     let file = OpenOptions::new().read(true).open(filename).unwrap();
 
@@ -1314,6 +1387,7 @@ mod tests {
     }
   }
 
+  #[cfg(feature = "io")]
   #[ignore = "only available with external ptau files"]
   #[test]
   fn test_load_ptau() {
@@ -1338,5 +1412,35 @@ mod tests {
 
       assert_eq!(left, right);
     }
+  }
+}
+
+#[cfg(test)]
+mod evm_tests {
+  use super::*;
+  use crate::provider::Bn256EngineKZG;
+
+  #[test]
+  fn test_commitment_evm_serialization() {
+    type E = Bn256EngineKZG;
+
+    let comm = Commitment::<E>::default();
+    let bytes = bincode::serde::encode_to_vec(comm, bincode::config::legacy()).unwrap();
+
+    println!(
+      "Commitment serialized length in nova-snark: {} bytes",
+      bytes.len()
+    );
+    println!(
+      "Commitment hex: {}",
+      hex::encode(&bytes[..std::cmp::min(64, bytes.len())])
+    );
+
+    // Expect 64 bytes for EVM feature, else 32 bytes
+    assert_eq!(
+      bytes.len(),
+      if cfg!(feature = "evm") { 64 } else { 32 },
+      "Commitment serialization length mismatch"
+    );
   }
 }

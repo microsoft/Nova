@@ -1,9 +1,8 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
-use crate::{
-  provider::ptau::PtauFileError,
-  traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait},
-};
+#[cfg(feature = "io")]
+use crate::provider::ptau::PtauFileError;
+use crate::traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
   ops::{Add, Mul, MulAssign, Range},
@@ -61,11 +60,19 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   type Commitment: CommitmentTrait<E>;
 
   /// Load keys
+  #[cfg(feature = "io")]
   fn load_setup(
     reader: &mut (impl std::io::Read + std::io::Seek),
     label: &'static [u8],
     n: usize,
   ) -> Result<Self::CommitmentKey, PtauFileError>;
+
+  /// Saves the key to the provided writer.
+  #[cfg(feature = "io")]
+  fn save_setup(
+    ck: &Self::CommitmentKey,
+    writer: &mut (impl std::io::Write + std::io::Seek),
+  ) -> Result<(), PtauFileError>;
 
   /// Samples a new commitment key of a specified size
   fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
@@ -131,4 +138,16 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     commit: &Self::Commitment,
     r: &E::Scalar,
   ) -> Self::Commitment;
+
+  /// Returns the coordinates of each generator in the commitment key.
+  ///
+  /// This method extracts the (x, y) coordinates of each generator point
+  /// in the commitment key. This is useful for operations that need direct
+  /// access to the underlying elliptic curve points, such as in-circuit
+  /// verification of polynomial evaluations.
+  ///
+  /// # Panics
+  ///
+  /// Panics if any generator point is the point at infinity.
+  fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)>;
 }

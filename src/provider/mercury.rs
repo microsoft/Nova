@@ -20,6 +20,9 @@ use rayon::iter::{
   IntoParallelRefMutIterator, ParallelIterator,
 };
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+
+use crate::traits::evm_serde::EvmCompatSerde;
 
 use crate::provider::traits::DlogGroupExt;
 use crate::{
@@ -80,6 +83,7 @@ pub struct EvaluationEngine<E: Engine> {
 /// Provides an implementation of a polynomial evaluation argument
 /// The proof consists of 8 field elements (F) for committed values and 6 field elements (F) for evaluation values,
 /// corresponding to the structure of the EvaluationArgument. This reflects the number of field elements included in the proof.
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct EvaluationArgument<E: Engine>
@@ -100,13 +104,19 @@ where
   comm_w: Commitment<E>,
   comm_w_prime: Commitment<E>,
 
+  #[serde_as(as = "EvmCompatSerde")]
   g_zeta: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   g_zeta_inv: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   h_zeta: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   h_zeta_inv: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   s_zeta: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   s_zeta_inv: E::Scalar,
 }
 
@@ -120,6 +130,7 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     self.coeffs.resize(size, Scalar::ZERO);
   }
 
+  /// Scales all coefficients of the polynomial by a scalar value.
   pub fn scale(&mut self, s: &Scalar) {
     self.coeffs.par_iter_mut().for_each(|c| *c *= *s);
   }

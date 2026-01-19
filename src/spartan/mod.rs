@@ -11,9 +11,15 @@ pub mod snark;
 
 #[macro_use]
 mod macros;
-pub(crate) mod math;
-pub(crate) mod polys;
-pub(crate) mod sumcheck;
+
+/// Module providing the `Math` trait with `log_2()` method on `usize`.
+pub mod math;
+
+/// Module providing polynomial types for Spartan SNARKs.
+pub mod polys;
+
+/// Module providing sumcheck protocol implementation.
+pub mod sumcheck;
 
 pub use sumcheck::SumcheckEngine;
 
@@ -26,8 +32,10 @@ use ff::Field;
 use itertools::Itertools as _;
 use rayon::{iter::IntoParallelRefIterator, prelude::*};
 
-// Creates a vector of the first `n` powers of `s`.
-fn powers<E: Engine>(s: &E::Scalar, n: usize) -> Vec<E::Scalar> {
+/// Creates a vector of the first `n` powers of `s`.
+///
+/// Returns `[1, s, s^2, ..., s^{n-1}]`.
+pub fn powers<E: Engine>(s: &E::Scalar, n: usize) -> Vec<E::Scalar> {
   assert!(n >= 1);
   let mut powers = Vec::with_capacity(n);
   powers.push(E::Scalar::ONE);
@@ -38,12 +46,18 @@ fn powers<E: Engine>(s: &E::Scalar, n: usize) -> Vec<E::Scalar> {
 }
 
 /// A type that holds a witness to a polynomial evaluation instance
-struct PolyEvalWitness<E: Engine> {
+#[derive(Clone, Debug)]
+pub struct PolyEvalWitness<E: Engine> {
   p: Vec<E::Scalar>, // polynomial
 }
 
 impl<E: Engine> PolyEvalWitness<E> {
-  /// Given [Pᵢ] and s, compute P = ∑ᵢ sⁱ⋅Pᵢ
+  /// Returns a reference to the polynomial coefficients.
+  pub fn p(&self) -> &[E::Scalar] {
+    &self.p
+  }
+
+  /// Given \[Pᵢ\] and s, compute P = ∑ᵢ sⁱ⋅Pᵢ
   ///
   /// # Details
   ///
@@ -165,13 +179,29 @@ impl<E: Engine> PolyEvalWitness<E> {
 }
 
 /// A type that holds a polynomial evaluation instance
-struct PolyEvalInstance<E: Engine> {
+#[derive(Clone, Debug)]
+pub struct PolyEvalInstance<E: Engine> {
   c: Commitment<E>,  // commitment to the polynomial
   x: Vec<E::Scalar>, // evaluation point
   e: E::Scalar,      // claimed evaluation
 }
 
 impl<E: Engine> PolyEvalInstance<E> {
+  /// Returns a reference to the commitment to the polynomial.
+  pub fn c(&self) -> &Commitment<E> {
+    &self.c
+  }
+
+  /// Returns a reference to the evaluation point.
+  pub fn x(&self) -> &[E::Scalar] {
+    &self.x
+  }
+
+  /// Returns the claimed evaluation.
+  pub fn e(&self) -> E::Scalar {
+    self.e
+  }
+
   fn batch_diff_size(
     c_vec: &[Commitment<E>],
     e_vec: &[E::Scalar],
@@ -240,12 +270,22 @@ impl<E: Engine> PolyEvalInstance<E> {
   }
 }
 
-/// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials
-fn compute_eval_table_sparse<E: Engine>(
+/// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials.
+///
+/// Given an R1CS shape and evaluation point `rx`, computes the evaluations of the
+/// A, B, and C matrices when their row variables are bound to `rx`.
+///
+/// # Arguments
+/// * `S` - The R1CS shape containing the A, B, C matrices
+/// * `rx` - The evaluation point for row variables (length must equal num_cons)
+///
+/// # Returns
+/// A tuple of three vectors (A_evals, B_evals, C_evals), each of length 2 * num_vars.
+pub fn compute_eval_table_sparse<E: Engine>(
   S: &R1CSShape<E>,
   rx: &[E::Scalar],
 ) -> (Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>) {
-  assert_eq!(rx.len(), S.num_cons);
+  assert_eq!(rx.len(), S.num_cons());
 
   let inner = |M: &SparseMatrix<E::Scalar>, M_evals: &mut Vec<E::Scalar>| {
     for (row_idx, ptrs) in M.indptr.windows(2).enumerate() {
@@ -257,20 +297,20 @@ fn compute_eval_table_sparse<E: Engine>(
 
   let (A_evals, (B_evals, C_evals)) = rayon::join(
     || {
-      let mut A_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars];
-      inner(&S.A, &mut A_evals);
+      let mut A_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars()];
+      inner(S.A(), &mut A_evals);
       A_evals
     },
     || {
       rayon::join(
         || {
-          let mut B_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars];
-          inner(&S.B, &mut B_evals);
+          let mut B_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars()];
+          inner(S.B(), &mut B_evals);
           B_evals
         },
         || {
-          let mut C_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars];
-          inner(&S.C, &mut C_evals);
+          let mut C_evals: Vec<E::Scalar> = vec![E::Scalar::ZERO; 2 * S.num_vars()];
+          inner(S.C(), &mut C_evals);
           C_evals
         },
       )

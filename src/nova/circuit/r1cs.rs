@@ -9,8 +9,8 @@ use crate::{
       util::{f_to_nat, Num},
     },
     utils::{
-      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, conditionally_select,
-      conditionally_select_bignat, le_bits_to_num,
+      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, alloc_zero, conditionally_select,
+      conditionally_select2, conditionally_select_bignat, le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -45,12 +45,39 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) {
-    ro.absorb(&self.comm_W.x);
-    ro.absorb(&self.comm_W.y);
-    ro.absorb(&self.comm_W.is_infinity);
+  /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::ROCircuit,
+  ) -> Result<(), SynthesisError> {
+    // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
+    // so we can use it as a canonical representation for infinity.
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      let x = conditionally_select2(
+        cs.namespace(|| "select x"),
+        &zero,
+        &self.comm_W.x,
+        &self.comm_W.is_infinity,
+      )?;
+      let y = conditionally_select2(
+        cs.namespace(|| "select y"),
+        &zero,
+        &self.comm_W.y,
+        &self.comm_W.is_infinity,
+      )?;
+      ro.absorb(&x);
+      ro.absorb(&y);
+    } else {
+      ro.absorb(&self.comm_W.x);
+      ro.absorb(&self.comm_W.y);
+      ro.absorb(&self.comm_W.is_infinity);
+    }
     ro.absorb(&self.X0);
     ro.absorb(&self.X1);
+    Ok(())
   }
 }
 
@@ -168,17 +195,55 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
+  /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
   pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    ro.absorb(&self.W.x);
-    ro.absorb(&self.W.y);
-    ro.absorb(&self.W.is_infinity);
-    ro.absorb(&self.E.x);
-    ro.absorb(&self.E.y);
-    ro.absorb(&self.E.is_infinity);
+    // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
+    // so we can use it as a canonical representation for infinity.
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      // Absorb W
+      let w_x = conditionally_select2(
+        cs.namespace(|| "select W.x"),
+        &zero,
+        &self.W.x,
+        &self.W.is_infinity,
+      )?;
+      let w_y = conditionally_select2(
+        cs.namespace(|| "select W.y"),
+        &zero,
+        &self.W.y,
+        &self.W.is_infinity,
+      )?;
+      ro.absorb(&w_x);
+      ro.absorb(&w_y);
+      // Absorb E
+      let e_x = conditionally_select2(
+        cs.namespace(|| "select E.x"),
+        &zero,
+        &self.E.x,
+        &self.E.is_infinity,
+      )?;
+      let e_y = conditionally_select2(
+        cs.namespace(|| "select E.y"),
+        &zero,
+        &self.E.y,
+        &self.E.is_infinity,
+      )?;
+      ro.absorb(&e_x);
+      ro.absorb(&e_y);
+    } else {
+      ro.absorb(&self.W.x);
+      ro.absorb(&self.W.y);
+      ro.absorb(&self.W.is_infinity);
+      ro.absorb(&self.E.x);
+      ro.absorb(&self.E.y);
+      ro.absorb(&self.E.is_infinity);
+    }
     ro.absorb(&self.u);
 
     // Analyze X0 as limbs
@@ -230,12 +295,22 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     ro.absorb(params);
 
     // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
-    u.absorb_in_ro(&mut ro);
+    u.absorb_in_ro(cs.namespace(|| "absorb u"), &mut ro)?;
 
-    ro.absorb(&T.x);
-    ro.absorb(&T.y);
-    ro.absorb(&T.is_infinity);
-    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
+    // When B != 0, use (0,0) for infinity
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let zero = alloc_zero(cs.namespace(|| "zero for T absorb"));
+      let t_x = conditionally_select2(cs.namespace(|| "select T.x"), &zero, &T.x, &T.is_infinity)?;
+      let t_y = conditionally_select2(cs.namespace(|| "select T.y"), &zero, &T.y, &T.is_infinity)?;
+      ro.absorb(&t_x);
+      ro.absorb(&t_y);
+    } else {
+      ro.absorb(&T.x);
+      ro.absorb(&T.y);
+      ro.absorb(&T.is_infinity);
+    }
+    let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS, false)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W

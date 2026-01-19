@@ -31,5 +31,8 @@ impl<Scalar: PrimeField> BitAccess for Scalar {
   }
 }
 
+/// Module providing big natural number arithmetic in circuits.
 pub mod bignat;
+
+/// Module providing utility types and functions for non-native arithmetic.
 pub mod util;

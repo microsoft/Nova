@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// CSR format sparse matrix, We follow the names used by scipy.
-/// Detailed explanation here: https://stackoverflow.com/questions/52299420/scipy-csr-matrix-understand-indptr
+/// Detailed explanation here: <https://stackoverflow.com/questions/52299420/scipy-csr-matrix-understand-indptr>
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseMatrix<F: PrimeField> {
   /// all non-zero values in the matrix

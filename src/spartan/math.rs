@@ -1,4 +1,11 @@
+//! This module provides mathematical utilities for Spartan.
+
+/// A trait providing mathematical operations on `usize`.
 pub trait Math {
+  /// Computes the base-2 logarithm of the value.
+  ///
+  /// # Panics
+  /// Panics if the value is zero.
   fn log_2(self) -> usize;
 }
 

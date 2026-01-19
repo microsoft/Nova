@@ -2,14 +2,17 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
-use ff::PrimeField;
+use crate::frontend::{
+  num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, LinearCombination, SynthesisError,
+};
+use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 use std::{
   borrow::Borrow,
   cmp::{max, min},
   convert::From,
+  ops::Rem,
 };
 
 /// Compute the natural number represented by an array of limbs.
@@ -52,20 +55,27 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         .collect(),
     )
   } else {
-    eprintln!("nat {nat} does not fit in {n_limbs} limbs of width {limb_width}");
-    Err(SynthesisError::Unsatisfiable)
+    Err(SynthesisError::Unsatisfiable(format!(
+      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
+    )))
   }
 }
 
+/// Parameters for a `BigNat` representation of a large integer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigNatParams {
+  /// Minimum number of bits required to represent the value.
   pub min_bits: usize,
+  /// Maximum value that a single limb can hold.
   pub max_word: BigInt,
+  /// Number of bits per limb.
   pub limb_width: usize,
+  /// Number of limbs in the representation.
   pub n_limbs: usize,
 }
 
 impl BigNatParams {
+  /// Creates a new `BigNatParams` with the specified limb width and number of limbs.
   pub fn new(limb_width: usize, n_limbs: usize) -> Self {
     let mut max_word = BigInt::from(1) << limb_width as u32;
     max_word -= 1;
@@ -132,8 +142,9 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
           || match values_cell {
             Ok(ref vs) => {
               if vs.len() != n_limbs {
-                eprintln!("Values do not match stated limb count");
-                return Err(SynthesisError::Unsatisfiable);
+                return Err(SynthesisError::Unsatisfiable(
+                  "Values do not match stated limb count".to_string(),
+                ));
               }
               if value.is_none() {
                 value = Some(limbs_to_nat::<Scalar, _, _>(vs.iter(), limb_width));
@@ -143,8 +154,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               }
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -192,8 +202,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
               limb_values.push(vs[limb_i]);
               Ok(vs[limb_i])
             }
-            // Hack b/c SynthesisError and io::Error don't implement Clone
-            Err(ref e) => Err(SynthesisError::from(std::io::Error::other(format!("{e}")))),
+            Err(ref e) => Err(e.clone()),
           },
         )
         .map(|v| LinearCombination::zero() + v)
@@ -243,6 +252,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     Ok(bignat)
   }
 
+  /// Returns the limbs as a vector of `Num` values.
   pub fn as_limbs(&self) -> Vec<Num<Scalar>> {
     let mut limbs = Vec::new();
     for (i, lc) in self.limbs.iter().enumerate() {
@@ -254,6 +264,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     limbs
   }
 
+  /// Asserts that the `BigNat` is well-formed by checking that each limb fits in the limb width.
   pub fn assert_well_formed<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -309,6 +320,8 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     })
   }
 
+  /// Enforces that two `BigNat`s have the same limb width.
+  /// Returns the limb width if they agree, otherwise returns an error.
   pub fn enforce_limb_width_agreement(
     &self,
     other: &Self,
@@ -317,14 +330,14 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     if self.params.limb_width == other.params.limb_width {
       Ok(self.params.limb_width)
     } else {
-      eprintln!(
+      Err(SynthesisError::Unsatisfiable(format!(
         "Limb widths {}, {}, do not agree at {}",
         self.params.limb_width, other.params.limb_width, location
-      );
-      Err(SynthesisError::Unsatisfiable)
+      )))
     }
   }
 
+  /// Constructs a `BigNat` from a polynomial representation.
   pub fn from_poly(poly: Polynomial<Scalar>, limb_width: usize, max_word: BigInt) -> Self {
     Self {
       params: BigNatParams {
@@ -443,6 +456,7 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     self_grouped.equal_when_carried(cs.namespace(|| "grouped"), &other_grouped)
   }
 
+  /// Adds two `BigNat`s together, returning a new `BigNat` with the sum.
   pub fn add(&self, other: &Self) -> Result<BigNat<Scalar>, SynthesisError> {
     self.enforce_limb_width_agreement(other, "add")?;
     let n_limbs = max(self.params.n_limbs, other.params.n_limbs);
@@ -658,18 +672,122 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     }
   }
 
+  /// Returns the number of bits required to represent the `BigNat`.
   pub fn n_bits(&self) -> usize {
     assert!(self.params.n_limbs > 0);
     self.params.limb_width * (self.params.n_limbs - 1) + self.params.max_word.bits() as usize
   }
+
+  /// Returns a copy of the limb values.
+  pub fn as_limb_values(&self) -> Option<Vec<Scalar>> {
+    self.limb_values.clone()
+  }
+
+  /// Fold two BigNat values: self + r * other mod modulus
+  pub fn fold_bn<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    r: &Self,
+    modulus: &Self,
+  ) -> Result<Self, SynthesisError> {
+    // Fold self + r * other
+    let (_, r_0) = r.mult_mod(cs.namespace(|| "r*other"), other, modulus)?;
+    let r_new_0 = self.add(&r_0)?;
+    // Now reduce
+    r_new_0.red_mod(cs.namespace(|| "reduce folded"), modulus)
+  }
+
+  /// Make the limbs of this BigNat into public inputs.
+  pub fn inputize<CS: ConstraintSystem<Scalar>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
+    for (i, l) in self.limbs.iter().enumerate() {
+      let mut c = cs.namespace(|| format!("limb {i}"));
+      let v = c.alloc_input(|| "alloc", || Ok(self.limb_values.as_ref().grab()?[i]))?;
+      c.enforce(|| "eq", |lc| lc, |lc| lc, |lc| lc + v - l);
+    }
+    Ok(())
+  }
+
+  /// Break `self` up into an allocated bit-vector.
+  pub fn decompose_allocated<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    Scalar: PrimeFieldBits,
+  {
+    let mut scalar_bits = vec![];
+
+    for i in 0..self.params.n_limbs {
+      let limb = AllocatedNum::alloc(cs.namespace(|| format!("allocate scalar limb_{i}")), || {
+        self
+          .limb_values
+          .as_ref()
+          .map(|limb_values| limb_values[i])
+          .ok_or(SynthesisError::AssignmentMissing)
+      })?;
+
+      cs.enforce(
+        || format!("eq scalar limb_{i}"),
+        |lc| lc + limb.get_variable(),
+        |lc| lc + CS::one(),
+        |_| self.limbs[i].clone(),
+      );
+
+      let limb_bits = limb
+        .to_bits_le(cs.namespace(|| format!("scalar limb_{i} to le")))?
+        .iter()
+        .take(self.params.limb_width)
+        .map(|b| match b {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Unreachable: expected Boolean::Is variant from to_bits_le when constructing scalar limb bits"),
+        })
+        .collect::<Vec<AllocatedBit>>();
+
+      scalar_bits.extend(limb_bits);
+    }
+
+    Ok(scalar_bits)
+  }
+
+  /// Compute self - other mod modulus
+  pub fn sub_mod<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    modulus: &Self,
+  ) -> Result<Self, SynthesisError> {
+    let diff = BigNat::alloc_from_nat(
+      cs.namespace(|| "sub_mod: compute diff"),
+      || {
+        let mut s = self.value.grab()?.clone();
+        s += modulus.value.grab()?;
+        s -= other.value.grab()?;
+        let t = s.clone().rem(modulus.value.grab()?);
+        Ok(t)
+      },
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?;
+
+    let sum = other
+      .add(&diff)?
+      .red_mod(cs.namespace(|| "sub_mod: reduce sum"), modulus)?;
+    self.equal_when_carried_regroup(cs.namespace(|| "sub_mod: equality check"), &sum)?;
+    Ok(diff)
+  }
 }
 
+/// A polynomial with coefficients represented as linear combinations.
 pub struct Polynomial<Scalar: PrimeField> {
+  /// The coefficients of the polynomial as linear combinations.
   pub coefficients: Vec<LinearCombination<Scalar>>,
+  /// The concrete values of the coefficients, if available.
   pub values: Option<Vec<Scalar>>,
 }
 
 impl<Scalar: PrimeField> Polynomial<Scalar> {
+  /// Allocates constraints for the product of two polynomials.
   pub fn alloc_product<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -735,6 +853,7 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
     Ok(product)
   }
 
+  /// Returns the sum of two polynomials.
   pub fn sum(&self, other: &Self) -> Self {
     let n_coeffs = max(self.coefficients.len(), other.coefficients.len());
     let values = self.values.as_ref().and_then(|self_vs| {

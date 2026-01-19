@@ -3,6 +3,7 @@
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 //! The SNARK implemented here is described in the MicroNova paper.
+use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
@@ -34,6 +35,7 @@ use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar> {
   let mut v_padded = vec![*e; n];
@@ -336,22 +338,22 @@ impl<E: Engine> MemorySumcheckInstance<E> {
   ///
   /// # Description
   /// We use the logUp protocol to prove that
-  /// ∑ TS[i]/(T[i] + r) - 1/(W[i] + r) = 0
+  /// ∑ TS\[i\]/(T\[i\] + r) - 1/(W\[i\] + r) = 0
   /// where
-  ///   T_row[i] = mem_row[i]      * gamma + i
-  ///            = eq(tau)[i]      * gamma + i
-  ///   W_row[i] = L_row[i]        * gamma + addr_row[i]
-  ///            = eq(tau)[row[i]] * gamma + addr_row[i]
-  ///   T_col[i] = mem_col[i]      * gamma + i
-  ///            = z[i]            * gamma + i
-  ///   W_col[i] = L_col[i]     * gamma + addr_col[i]
-  ///            = z[col[i]]       * gamma + addr_col[i]
+  ///   T_row\[i\] = mem_row\[i\]      * gamma + i
+  ///            = eq(tau)\[i\]      * gamma + i
+  ///   W_row\[i\] = L_row\[i\]        * gamma + addr_row\[i\]
+  ///            = eq(tau)\[row\[i\]\] * gamma + addr_row\[i\]
+  ///   T_col\[i\] = mem_col\[i\]      * gamma + i
+  ///            = z\[i\]            * gamma + i
+  ///   W_col\[i\] = L_col\[i\]     * gamma + addr_col\[i\]
+  ///            = z\[col\[i\]\]       * gamma + addr_col\[i\]
   /// and
   ///   TS_row, TS_col are integer-valued vectors representing the number of reads
   ///   to each memory cell of L_row, L_col
   ///
-  /// The function returns oracles for the polynomials TS[i]/(T[i] + r), 1/(W[i] + r),
-  /// as well as auxiliary polynomials T[i] + r, W[i] + r
+  /// The function returns oracles for the polynomials TS\[i\]/(T\[i\] + r), 1/(W\[i\] + r),
+  /// as well as auxiliary polynomials T\[i\] + r, W\[i\] + r
   pub fn compute_oracles(
     ck: &CommitmentKey<E>,
     r: &E::Scalar,
@@ -792,6 +794,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> SimpleDigestible for VerifierKey<E
 /// A succinct proof of knowledge of a witness to a relaxed R1CS instance
 /// The proof is produced using Spartan's combination of the sum-check and
 /// the commitment to a vector viewed as a polynomial commitment
+#[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
@@ -810,34 +813,55 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   comm_w_plus_r_inv_col: Commitment<E>,
 
   // claims about Az, Bz, and Cz polynomials
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Az_at_tau: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Bz_at_tau: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Cz_at_tau: E::Scalar,
 
   // sum-check
   sc: SumcheckProof<E>,
 
   // claims from the end of sum-check
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Az: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Bz: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_Cz: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_E: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_L_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_L_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_A: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_B: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_val_C: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_W: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_t_plus_r_inv_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_row: E::Scalar, // address
+  #[serde_as(as = "EvmCompatSerde")]
   eval_w_plus_r_inv_row: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_ts_row: E::Scalar,
 
+  #[serde_as(as = "EvmCompatSerde")]
   eval_t_plus_r_inv_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_col: E::Scalar, // address
+  #[serde_as(as = "EvmCompatSerde")]
   eval_w_plus_r_inv_col: E::Scalar,
+  #[serde_as(as = "EvmCompatSerde")]
   eval_ts_col: E::Scalar,
 
   // a PCS evaluation argument

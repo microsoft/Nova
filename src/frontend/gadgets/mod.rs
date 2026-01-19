@@ -18,9 +18,6 @@ pub trait Assignment<T> {
 
 impl<T> Assignment<T> for Option<T> {
   fn get(&self) -> Result<&T, SynthesisError> {
-    match *self {
-      Some(ref v) => Ok(v),
-      None => Err(SynthesisError::AssignmentMissing),
-    }
+    self.as_ref().ok_or(SynthesisError::AssignmentMissing)
   }
 }

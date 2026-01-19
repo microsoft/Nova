@@ -5,7 +5,7 @@ use ff::PrimeField;
 
 /// Matrix functions here are, at least for now, quick and dirty — intended only to support precomputation of poseidon optimization.
 ///
-/// Matrix represented as a Vec of rows, so that m[i][j] represents the jth column of the ith row in Matrix, m.
+/// Matrix represented as a Vec of rows, so that m\[i\]\[j\] represents the jth column of the ith row in Matrix, m.
 pub(crate) type Matrix<T> = Vec<Vec<T>>;
 
 pub(crate) fn rows<T>(matrix: &Matrix<T>) -> usize {

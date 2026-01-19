@@ -2,25 +2,21 @@ use super::{BitAccess, OptionExt};
 use crate::frontend::{
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
-use byteorder::WriteBytesExt;
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
-use std::{
-  convert::From,
-  io::{self, Write},
-};
+use std::convert::From;
 
 #[derive(Clone)]
 /// A representation of a bit
 pub struct Bit<Scalar: PrimeField> {
-  /// The linear combination which constrain the value of the bit
+  /// The linear combination which constrains the value of the bit
   pub bit: LinearCombination<Scalar>,
 }
 
 #[derive(Clone)]
 /// A representation of a bit-vector
 pub struct Bitvector<Scalar: PrimeField> {
-  /// The linear combination which constrain the values of the bits
+  /// The linear combination which constrains the values of the bits
   pub bits: Vec<LinearCombination<Scalar>>,
   /// The value of the bits (filled at witness-time)
   pub values: Option<Vec<bool>>,
@@ -61,15 +57,20 @@ impl<Scalar: PrimeField> Bit<Scalar> {
   }
 }
 
+/// A representation of a field element as a linear combination with an optional value.
 pub struct Num<Scalar: PrimeField> {
-  pub(crate) num: LinearCombination<Scalar>,
-  pub(crate) value: Option<Scalar>,
+  /// The linear combination representing the number.
+  pub num: LinearCombination<Scalar>,
+  /// The value of the number (filled at witness-time).
+  pub value: Option<Scalar>,
 }
 
 impl<Scalar: PrimeField> Num<Scalar> {
+  /// Creates a new `Num` with the given value and linear combination.
   pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
     Self { value, num }
   }
+  /// Allocates a new `Num` in the constraint system with the given value.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
@@ -93,6 +94,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     })
   }
 
+  /// Checks that the `Num` fits in the given number of bits.
   pub fn fits_in_bits<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -211,6 +213,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     })
   }
 
+  /// Converts the `Num` to an `AllocatedNum` in the constraint system.
   pub fn as_allocated_num<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -232,18 +235,8 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   }
 }
 
-fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> io::Result<()> {
-  for digit in f.to_repr().as_ref().iter().rev() {
-    writer.write_u8(*digit)?;
-  }
-
-  Ok(())
-}
-
 /// Convert a field element to a natural number
 pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
-  let mut s = Vec::new();
-  write_be(f, &mut s).unwrap(); // f.to_repr().write_be(&mut s).unwrap();
   BigInt::from_bytes_le(Sign::Plus, f.to_repr().as_ref())
 }
 
@@ -251,4 +244,106 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
   Scalar::from_str_vartime(&format!("{n}"))
+}
+
+use super::bignat::BigNat;
+use crate::{
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  gadgets::utils::fingerprint,
+  traits::{Engine, Group, ROCircuitTrait, ROTrait},
+};
+
+/// Get the base field modulus as a BigInt.
+pub fn get_base_modulus<E: Engine>() -> BigInt {
+  E::GE::group_params().3
+}
+
+/// Absorb a BigNat into a random oracle circuit (base field version).
+pub fn absorb_bignat_in_ro<E: Engine, CS: ConstraintSystem<E::Base>>(
+  n: &BigNat<E::Base>,
+  mut cs: CS,
+  ro: &mut E::ROCircuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(&limb);
+  }
+
+  Ok(())
+}
+
+/// Absorb a BigNat into a random oracle circuit (scalar field version).
+pub fn absorb_bignat_in_ro_scalar<E: Engine, CS: ConstraintSystem<E::Scalar>>(
+  n: &BigNat<E::Scalar>,
+  mut cs: CS,
+  ro: &mut E::RO2Circuit,
+) -> Result<(), SynthesisError> {
+  let limbs = n
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of num"))))
+    .collect::<Result<Vec<AllocatedNum<E::Scalar>>, _>>()?;
+
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(&limb);
+  }
+  Ok(())
+}
+
+/// Absorb a scalar field element into a random oracle (native version).
+pub fn absorb_bignat_in_ro_native<E: Engine>(
+  e: &E::Scalar,
+  ro: &mut E::RO,
+) -> Result<(), SynthesisError> {
+  use super::bignat::nat_to_limbs;
+  // absorb each element of x in bignum format
+  let limbs: Vec<E::Base> = nat_to_limbs(&f_to_nat(e), BN_LIMB_WIDTH, BN_N_LIMBS)?;
+  // absorb each limb directly (no packing - limbs are not constrained to be small)
+  for limb in limbs {
+    ro.absorb(limb);
+  }
+  Ok(())
+}
+
+/// Fingerprint a BigNat by fingerprinting each of its limbs.
+pub fn fingerprint_bignat<E: Engine, CS: ConstraintSystem<E::Base>>(
+  mut cs: CS,
+  acc: &AllocatedNum<E::Base>,
+  c: &AllocatedNum<E::Base>,
+  c_i: &AllocatedNum<E::Base>,
+  bn: &BigNat<E::Base>,
+) -> Result<(AllocatedNum<E::Base>, AllocatedNum<E::Base>), SynthesisError> {
+  // Analyze bignat as limbs
+  let limbs = bn
+    .as_limbs()
+    .iter()
+    .enumerate()
+    .map(|(i, limb)| {
+      limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of x to num")))
+    })
+    .collect::<Result<Vec<AllocatedNum<E::Base>>, _>>()?;
+
+  // fingerprint the limbs
+  let mut acc_out = acc.clone();
+  let mut c_i_out = c_i.clone();
+  for (i, limb) in limbs.iter().enumerate() {
+    (acc_out, c_i_out) = fingerprint::<E::Base, _>(
+      cs.namespace(|| format!("output limb_{i}")),
+      &acc_out,
+      c,
+      &c_i_out,
+      limb,
+    )?;
+  }
+
+  Ok((acc_out, c_i_out))
 }

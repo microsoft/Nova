@@ -9,6 +9,8 @@ use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
 pub mod commitment;
+pub mod evm_serde;
+pub use evm_serde::CustomSerdeTrait;
 
 use commitment::CommitmentEngineTrait;
 
@@ -28,7 +30,11 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 /// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldBits + TranscriptReprTrait<Self::GE> + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldBits
+    + TranscriptReprTrait<Self::GE>
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + CustomSerdeTrait;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits
@@ -37,10 +43,14 @@ pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
     + Sync
     + TranscriptReprTrait<Self::GE>
     + Serialize
-    + for<'de> Deserialize<'de>;
+    + for<'de> Deserialize<'de>
+    + CustomSerdeTrait;
 
   /// A type that represents an element of the group
-  type GE: Group<Base = Self::Base, Scalar = Self::Scalar> + Serialize + for<'de> Deserialize<'de>;
+  type GE: Group<Base = Self::Base, Scalar = Self::Scalar>
+    + Serialize
+    + for<'de> Deserialize<'de>
+    + CustomSerdeTrait;
 
   /// A type that represents a circuit-friendly sponge that consumes
   /// elements from the base field
@@ -90,7 +100,7 @@ pub trait ROTrait<Base: PrimeField> {
   fn absorb(&mut self, e: Base);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
-  fn squeeze(&mut self, num_bits: usize) -> Base;
+  fn squeeze(&mut self, num_bits: usize, start_with_one: bool) -> Base;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
@@ -113,7 +123,15 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     &mut self,
     cs: CS,
     num_bits: usize,
+    start_with_one: bool,
   ) -> Result<Vec<AllocatedBit>, SynthesisError>;
+
+  /// Returns the hash as a scalar element by hashing the internal state
+  /// This is more efficient than squeeze when the scalar is needed directly
+  fn squeeze_scalar<CS: ConstraintSystem<Base>>(
+    &mut self,
+    cs: CS,
+  ) -> Result<AllocatedNum<Base>, SynthesisError>;
 }
 
 /// An alias for constants associated with E::RO

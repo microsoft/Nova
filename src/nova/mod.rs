@@ -30,7 +30,7 @@ use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 
 mod circuit;
-pub(crate) mod nifs;
+pub mod nifs;
 
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
 use nifs::{NIFSRelaxed, NIFS};
@@ -508,8 +508,8 @@ where
       hasher2.absorb(self.ri_secondary);
 
       (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
+        hasher.squeeze(NUM_HASH_BITS, false),
+        hasher2.squeeze(NUM_HASH_BITS, false),
       )
     };
 
@@ -845,8 +845,8 @@ where
       hasher2.absorb(self.ri_secondary);
 
       (
-        hasher.squeeze(NUM_HASH_BITS),
-        hasher2.squeeze(NUM_HASH_BITS),
+        hasher.squeeze(NUM_HASH_BITS, false),
+        hasher2.squeeze(NUM_HASH_BITS, false),
       )
     };
 
@@ -1016,17 +1016,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["fbd08d8d030105a2fedd6c16f5964081aac34c3ee3c6080797561af57b818802"],
+      &expect!["9e459d7e9450cce023a7adad2e4552170170b031e75b65333713ea161a294503"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["99dc4a55d3e2fec50e4da7a74c9f8fa3ae61d9871d03dc7f703dd347c78f4800"],
+      &expect!["aa8f0e6d8be0c4028ddf7a7a733cf8d1ceeff408d6ec9a8aefa815b2668b2402"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["d9fac48ccd1f55973e3fe861d35b68d56cfe1ced124555c4c27714dc1d0b2b03"],
+      &expect!["719f988d15984fe6e838dd6267455265e1081beeb3b7313594a26d702afe5702"],
     );
   }
 

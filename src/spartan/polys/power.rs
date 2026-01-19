@@ -3,20 +3,20 @@
 use core::iter::successors;
 use ff::PrimeField;
 
-/// Represents the multilinear extension polynomial (MLE) of the equality polynomial $pow(x,t)$, denoted as $\tilde{pow}(x, t)$.
+/// Represents the multilinear extension polynomial (MLE) of the power polynomial $pow(x,t)$, denoted as $\tilde{pow}(x, t)$.
 ///
 /// The polynomial is defined by the formula:
 /// $$
 /// \tilde{power}(x, t) = \prod_{i=1}^m(1 + (t^{2^i} - 1) * x_i)
 /// $$
-#[allow(dead_code)]
 pub struct PowPolynomial<Scalar: PrimeField> {
   t_pow: Vec<Scalar>,
 }
 
-#[allow(dead_code)]
 impl<Scalar: PrimeField> PowPolynomial<Scalar> {
-  /// Creates a new `PowPolynomial` from a Scalars `t`.
+  /// Creates a new `PowPolynomial` from a scalar `t` and number of variables `ell`.
+  ///
+  /// The internal representation stores `[t^{2^0}, t^{2^1}, ..., t^{2^{ell-1}}]`.
   pub fn new(t: &Scalar, ell: usize) -> Self {
     // t_pow = [t^{2^0}, t^{2^1}, ..., t^{2^{ell-1}}]
     let t_pow = successors(Some(*t), |p: &Scalar| Some(p.square()))
@@ -29,15 +29,36 @@ impl<Scalar: PrimeField> PowPolynomial<Scalar> {
   /// Evaluates the `PowPolynomial` at all the `2^|t_pow|` points in its domain.
   ///
   /// Returns a vector of Scalars, each corresponding to the polynomial evaluation at a specific point.
-  #[cfg(test)]
   pub fn evals(&self) -> Vec<Scalar> {
     successors(Some(Scalar::ONE), |p| Some(*p * self.t_pow[0]))
       .take(1 << self.t_pow.len())
       .collect::<Vec<_>>()
   }
 
-  /// Computes two vectors such that their outer product equals the output of the `evals` function.
-  /// This code ensures
+  /// Returns the coordinates (powers of t) used in this polynomial.
+  pub fn coordinates(&self) -> &[Scalar] {
+    &self.t_pow
+  }
+
+  /// Computes two vectors such that their outer product equals the output of the [`evals`](Self::evals) function.
+  ///
+  /// # Parameters
+  ///
+  /// - `len_left`: Length of the first (left) vector factor. This must be chosen
+  ///   together with `len_right` so that `len_left * len_right == 2^{|t_pow|}`,
+  ///   where `|t_pow|` is the number of variables in the polynomial
+  ///   (`self.t_pow.len()`). If this condition is not satisfied, the function
+  ///   will panic due to the internal assertion.
+  /// - `len_right`: Length of the second (right) vector factor. See `len_left`
+  ///   for the required relation between the two lengths.
+  ///
+  /// # Returns
+  ///
+  /// A vector containing the concatenation of the two factor vectors:
+  /// first all entries of the left vector, followed by all entries of the
+  /// right vector. Conceptually, if `L` and `R` denote these two vectors,
+  /// then their outer product `L ⊗ R` (viewed as a flattened vector) equals
+  /// the evaluations returned by [`evals`](Self::evals).
   pub fn split_evals(&self, len_left: usize, len_right: usize) -> Vec<Scalar> {
     // Compute the number of elements in the left and right halves
     let ell = self.t_pow.len();

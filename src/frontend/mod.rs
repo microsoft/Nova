@@ -23,7 +23,6 @@ pub mod solver;
 pub mod test_shape_cs;
 pub mod util_cs;
 
-#[cfg(test)]
 pub use util_cs::test_cs;
 
 #[cfg(test)]

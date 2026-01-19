@@ -8,9 +8,10 @@ use crate::{
   gadgets::{
     nonnative::{bignat::BigNat, util::f_to_nat},
     utils::{
-      alloc_bignat_constant, alloc_num_equals, alloc_one, alloc_zero, conditionally_select,
-      conditionally_select2, conditionally_select_bignat, select_num_or_one, select_num_or_zero,
-      select_num_or_zero2, select_one_or_diff2, select_one_or_num2, select_zero_or_num2,
+      alloc_bignat_constant, alloc_constant, alloc_num_equals, alloc_one, alloc_zero,
+      conditionally_select, conditionally_select2, conditionally_select_bignat, select_num_or_one,
+      select_num_or_zero, select_num_or_zero2, select_one_or_diff2, select_one_or_num2,
+      select_zero_or_num2,
     },
   },
   traits::{Engine, Group, ROCircuitTrait},
@@ -21,9 +22,12 @@ use num_bigint::BigInt;
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
 pub struct AllocatedPoint<E: Engine> {
-  pub(crate) x: AllocatedNum<E::Base>,
-  pub(crate) y: AllocatedNum<E::Base>,
-  pub(crate) is_infinity: AllocatedNum<E::Base>,
+  /// The x-coordinate of the point.
+  pub x: AllocatedNum<E::Base>,
+  /// The y-coordinate of the point.
+  pub y: AllocatedNum<E::Base>,
+  /// Flag indicating if this is the point at infinity (1 = infinity, 0 = not infinity).
+  pub is_infinity: AllocatedNum<E::Base>,
 }
 
 impl<E> AllocatedPoint<E>
@@ -579,13 +583,91 @@ where
 
     Ok(Self { x, y, is_infinity })
   }
+
+  /// Allocate a point with constant x and y coordinates and a provided `is_infinity` flag.
+  pub fn alloc_constant<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    coords: (E::Base, E::Base),
+    is_infinity: AllocatedNum<E::Base>,
+  ) -> Result<AllocatedPoint<E>, SynthesisError> {
+    let x = alloc_constant(cs.namespace(|| "x"), &coords.0)?;
+    let y = alloc_constant(cs.namespace(|| "y"), &coords.1)?;
+
+    Ok(AllocatedPoint { x, y, is_infinity })
+  }
+
+  /// Absorb the point into a random oracle circuit.
+  ///
+  /// When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
+  /// so we can use it as a canonical representation for infinity.
+  /// This matches Nova's native Commitment absorb behavior.
+  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut E::ROCircuit,
+  ) -> Result<(), SynthesisError> {
+    let (_, b, _, _) = E::GE::group_params();
+    if b != E::Base::ZERO {
+      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      let x = conditionally_select2(
+        cs.namespace(|| "select x"),
+        &zero,
+        &self.x,
+        &self.is_infinity,
+      )?;
+      let y = conditionally_select2(
+        cs.namespace(|| "select y"),
+        &zero,
+        &self.y,
+        &self.is_infinity,
+      )?;
+      ro.absorb(&x);
+      ro.absorb(&y);
+    } else {
+      ro.absorb(&self.x);
+      ro.absorb(&self.y);
+      ro.absorb(&self.is_infinity);
+    }
+
+    Ok(())
+  }
+
+  /// Enforce that self equals other.
+  pub fn enforce_equal<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+  ) -> Result<(), SynthesisError> {
+    cs.enforce(
+      || "check x equality",
+      |lc| lc + self.x.get_variable() - other.x.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc,
+    );
+    cs.enforce(
+      || "check y equality",
+      |lc| lc + self.y.get_variable() - other.y.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc,
+    );
+    cs.enforce(
+      || "check is_inf equality",
+      |lc| lc + self.is_infinity.get_variable() - other.is_infinity.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc,
+    );
+
+    Ok(())
+  }
 }
 
 #[derive(Clone)]
 /// `AllocatedPoint` but one that is guaranteed to be not infinity
 pub struct AllocatedPointNonInfinity<E: Engine> {
-  x: AllocatedNum<E::Base>,
-  y: AllocatedNum<E::Base>,
+  /// The x-coordinate of the point.
+  pub x: AllocatedNum<E::Base>,
+  /// The y-coordinate of the point.
+  pub y: AllocatedNum<E::Base>,
 }
 
 impl<E: Engine> AllocatedPointNonInfinity<E> {
@@ -740,20 +822,73 @@ impl<E: Engine> AllocatedPointNonInfinity<E> {
 
     Ok(Self { x, y })
   }
+
+  /// Allocate a new point from coordinates.
+  pub fn alloc<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    coords: Option<(E::Base, E::Base)>,
+  ) -> Result<AllocatedPointNonInfinity<E>, SynthesisError> {
+    let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
+      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
+    })?;
+    let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
+      coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.1))
+    })?;
+
+    Ok(AllocatedPointNonInfinity { x, y })
+  }
+
+  /// Conditional select using an AllocatedNum instead of Boolean.
+  pub fn conditionally_select2<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    a: &Self,
+    b: &Self,
+    condition: &AllocatedNum<E::Base>,
+  ) -> Result<AllocatedPointNonInfinity<E>, SynthesisError> {
+    let x = conditionally_select2(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
+    let y = conditionally_select2(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+
+    Ok(AllocatedPointNonInfinity { x, y })
+  }
+
+  /// Enforce that self equals other.
+  pub fn enforce_equal<CS: ConstraintSystem<E::Base>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+  ) -> Result<(), SynthesisError> {
+    cs.enforce(
+      || "check x equality",
+      |lc| lc + self.x.get_variable() - other.x.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc,
+    );
+    cs.enforce(
+      || "check y equality",
+      |lc| lc + self.y.get_variable() - other.y.get_variable(),
+      |lc| lc + CS::one(),
+      |lc| lc,
+    );
+
+    Ok(())
+  }
 }
 
-// `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
-// of another curve E (specified as the group G) to prove things about points on E'.
-// `AllocatedNonnativePoint`s are always represented as affine coordinates.
+/// `AllocatedNonnativePoint`s are points on an elliptic curve E'. We use the scalar field
+/// of another curve E (specified as the group G) to prove things about points on E'.
+/// `AllocatedNonnativePoint`s are always represented as affine coordinates.
 #[derive(Clone, Debug)]
 pub struct AllocatedNonnativePoint<E: Engine> {
-  pub(crate) x: BigNat<E::Scalar>,
-  pub(crate) y: BigNat<E::Scalar>,
-  pub(crate) is_infinity: AllocatedNum<E::Scalar>,
+  /// The x-coordinate as a BigNat.
+  pub x: BigNat<E::Scalar>,
+  /// The y-coordinate as a BigNat.
+  pub y: BigNat<E::Scalar>,
+  /// Flag indicating if this is the point at infinity.
+  pub is_infinity: AllocatedNum<E::Scalar>,
 }
 
-#[allow(dead_code)]
 impl<E: Engine> AllocatedNonnativePoint<E> {
+  /// Allocates a new nonnative point from coordinates.
   pub fn alloc<CS: ConstraintSystem<E::Scalar>>(
     mut cs: CS,
     coords: Option<(E::Base, E::Base, bool)>,
