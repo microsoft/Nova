@@ -314,7 +314,14 @@ macro_rules! impl_traits_no_dlog_ext {
 
     impl<G: Group> TranscriptReprTrait<G> for $name::Scalar {
       fn to_transcript_bytes(&self) -> Vec<u8> {
-        self.to_bytes().into_iter().rev().collect()
+        #[cfg(not(feature = "evm"))]
+        {
+          self.to_bytes().into_iter().collect()
+        }
+        #[cfg(feature = "evm")]
+        {
+          self.to_bytes().into_iter().rev().collect()
+        }
       }
     }
 
@@ -323,7 +330,14 @@ macro_rules! impl_traits_no_dlog_ext {
         let coords = self.coordinates().unwrap();
         let x_bytes = coords.x().to_bytes().into_iter();
         let y_bytes = coords.y().to_bytes().into_iter();
-        x_bytes.rev().chain(y_bytes.rev()).collect()
+        #[cfg(not(feature = "evm"))]
+        {
+          x_bytes.chain(y_bytes).collect()
+        }
+        #[cfg(feature = "evm")]
+        {
+          x_bytes.rev().chain(y_bytes.rev()).collect()
+        }
       }
     }
   };
