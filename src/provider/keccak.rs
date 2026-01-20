@@ -171,20 +171,40 @@ mod tests {
   }
 
   #[test]
+  #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<PallasEngine>(
-      "b67339da79ce5f6dc72ad23c8c3b4179f49655cadf92d47e79c3e7788f00f125",
-      "b7f033d47b3519dd6efe320b995eaad1dc11712cb9b655d2e7006ed5f86bd321",
+      "5ddffa8dc091862132788b8976af88b9a2c70594727e611c7217ba4c30c8c70a",
+      "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
     );
 
     test_keccak_transcript_with::<Bn256EngineKZG>(
-      "b387ba3a8b9a22b3b7544a3dbbd26a048a1d354d8dc582c64d1513335e66a205",
-      "73ad65097d947fe45de5241bb340bbd97b198b52cc559a9657f73c361bf8700b",
+      "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
+      "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
     );
 
     test_keccak_transcript_with::<Secp256k1Engine>(
-      "f15ddd8fa1675a9e273e0ef441711005d77a5fd485f4e6cdee59760ca01493fa",
-      "3c019f0e557abaecc99790382974cb27132bfe038af9c4d43a33ec9c426e19f5",
+      "9723aafb69ec8f0e9c7de756df0993247d98cf2b2f72fa353e3de654a177e310",
+      "a6a90fcb6e1b1a2a2f84c950ef1510d369aea8e42085f5c629bfa66d00255f25",
+    );
+  }
+
+  #[test]
+  #[cfg(feature = "evm")]
+  fn test_keccak_transcript() {
+    test_keccak_transcript_with::<PallasEngine>(
+      "cc8899e834968eae4269b223856518ab44d04bd381b95fda44969eedcd233710",
+      "21dd7314db7c10274ef62a25175704ac9dc86dd3be2e87cad2fe44f95ec4271b",
+    );
+
+    test_keccak_transcript_with::<Bn256EngineKZG>(
+      "4bcc2d614503c68d32df47c87c7698bfdebb71bcd9c76b5a463f806ff7bec212",
+      "d7ee88576da267c5c38cc39063e98c517aacc7581cdb6e5924b19de8218b8f01",
+    );
+
+    test_keccak_transcript_with::<Secp256k1Engine>(
+      "788f8ff3cf50d6d1509dd923abd427f16cb934721a5c8883c47cd1cc228a0e71",
+      "011ffa1afa7d3342100ec63101f6be02ed784e503e36f74f0e74a28b30dc85fb",
     );
   }
 
@@ -217,13 +237,21 @@ mod tests {
     let output_lo = hasher_lo.finalize();
     let output_hi = hasher_hi.finalize();
 
-    [output_lo, output_hi]
+    #[cfg(not(feature = "evm"))]
+    return [output_lo, output_hi]
       .concat()
       .as_slice()
       .try_into()
-      .unwrap()
+      .unwrap();
+    #[cfg(feature = "evm")]
+    return [output_hi, output_lo]
+      .concat()
+      .as_slice()
+      .try_into()
+      .unwrap();
   }
 
+  #[cfg(not(feature = "evm"))]
   fn squeeze_for_testing(
     transcript: &[u8],
     round: u16,
@@ -239,6 +267,26 @@ mod tests {
     ]
     .concat();
     compute_updated_state_for_testing(&input)
+  }
+
+  #[cfg(feature = "evm")]
+  fn squeeze_for_testing(
+    transcript: &[u8],
+    round: u16,
+    state: [u8; KECCAK256_STATE_SIZE],
+    label: &'static [u8],
+  ) -> [u8; 64] {
+    let input = [
+      transcript,
+      DOM_SEP_TAG,
+      round.to_be_bytes().as_ref(),
+      state.as_ref(),
+      label,
+    ]
+    .concat();
+    let mut output = compute_updated_state_for_testing(&input);
+    output.reverse();
+    output
   }
 
   // This test is meant to ensure compatibility between the incremental way of computing the transcript above, and
