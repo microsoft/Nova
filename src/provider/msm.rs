@@ -359,6 +359,32 @@ fn compute_ln(a: usize) -> usize {
   }
 }
 
+#[inline(always)]
+pub(crate) fn batch_add<C: CurveAffine>(bases: &[C], one_indices: &[usize]) -> C::Curve {
+  fn add_chunk<C: CurveAffine>(bases: impl Iterator<Item = C>) -> C::Curve {
+    let mut acc = C::Curve::identity();
+    for base in bases {
+      acc += base;
+    }
+    acc
+  }
+
+  let num_chunks = rayon::current_num_threads();
+  let chunk_size = (one_indices.len() + num_chunks).div_ceil(num_chunks);
+
+  let comms = one_indices
+    .par_chunks(chunk_size)
+    .into_par_iter()
+    .map(|chunk| add_chunk(chunk.iter().map(|index| bases[*index])))
+    .collect::<Vec<_>>();
+
+  let mut comm = comms[0];
+  for this_comm in comms.iter().skip(1) {
+    comm += *this_comm;
+  }
+  comm
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

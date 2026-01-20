@@ -11,11 +11,14 @@ use crate::provider::{ptau::PtauFileError, read_ptau, write_ptau};
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::traits::{DlogGroup, DlogGroupExt, PairingGroup},
-  traits::evm_serde::EvmCompatSerde,
+  provider::{
+    msm::batch_add,
+    traits::{DlogGroup, DlogGroupExt, PairingGroup},
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
+    evm_serde::EvmCompatSerde,
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptEngineTrait,
     TranscriptReprTrait,
   },
@@ -643,6 +646,21 @@ where
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
+  }
+
+  fn commit_sparse_binary(
+    ck: &Self::CommitmentKey,
+    non_zero_indices: &[usize],
+    r: &<E as Engine>::Scalar,
+  ) -> Self::Commitment {
+    let comm = batch_add(&ck.ck, non_zero_indices);
+    let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+
+    if r != &E::Scalar::ZERO {
+      comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+    }
+
+    Commitment { comm }
   }
 }
 

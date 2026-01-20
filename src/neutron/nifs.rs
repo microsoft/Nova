@@ -651,7 +651,7 @@ mod benchmarks {
       .map(|e| {
         // map field element to u8
         // this assumes little-endian representation
-        e.to_repr().as_ref()[0] as u8
+        e.to_repr().as_ref()[0]
       })
       .collect::<Vec<_>>();
 
@@ -675,10 +675,10 @@ mod benchmarks {
     let num_cons = S.num_cons;
 
     // generate a default running instance
-    let str = Structure::new(&S);
+    let str = Structure::new(S);
     let f_W = FoldedWitness::default(&str);
     let f_U = FoldedInstance::default(&str);
-    let res = str.is_sat(&ck, &f_U, &f_W);
+    let res = str.is_sat(ck, &f_U, &f_W);
     assert!(res.is_ok());
 
     // generate default values
@@ -689,18 +689,18 @@ mod benchmarks {
     c.bench_function(&format!("neutron_nifs_{name}_{num_cons}"), |b| {
       b.iter(|| {
         // commit with the specialized method
-        let comm_W = E::CE::commit_small(ck, &w, &W.r_W);
+        let comm_W = E::CE::commit_small(ck, w, &W.r_W);
 
         // make an R1CS instance
-        let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
+        let U = R1CSInstance::new(S, &comm_W, x).unwrap();
 
-        let res = NIFS::prove(ck, &ro_consts, &pp_digest, &str, &f_U, &f_W, &U, &W);
+        let res = NIFS::prove(ck, &ro_consts, &pp_digest, &str, &f_U, &f_W, &U, W);
         assert!(res.is_ok());
       })
     });
 
     // generate a random relaxed R1CS instance-witness pair
-    let (r_U, r_W) = R1CSShape::<E>::sample_random_instance_witness(&S, &ck).unwrap();
+    let (r_U, r_W) = R1CSShape::<E>::sample_random_instance_witness(S, ck).unwrap();
     let ro_consts = ROConstants::<E>::default();
 
     // produce an NIFS with (r_W, r_U) as the second incoming witness-instance pair
@@ -710,9 +710,9 @@ mod benchmarks {
         let comm_W = W.commit(ck);
 
         // make an R1CS instance
-        let U = R1CSInstance::new(&S, &comm_W, &x).unwrap();
+        let U = R1CSInstance::new(S, &comm_W, x).unwrap();
 
-        let res = NovaNIFS::prove(ck, &ro_consts, &pp_digest, &S, &r_U, &r_W, &U, &W);
+        let res = NovaNIFS::prove(ck, &ro_consts, &pp_digest, S, &r_U, &r_W, &U, W);
         assert!(res.is_ok());
       })
     });
@@ -725,7 +725,7 @@ mod benchmarks {
     let mut criterion = Criterion::default();
     let num_cons = 1024 * 1024;
     let (S, ck, W, w, x) = generate_sample_r1cs::<E>(num_cons); // W is R1CSWitness, w is a vector of u8, x is a vector of field elements
-    bench_nifs_inner(&mut criterion, &"simple", &S, &ck, &W, &w, &x);
+    bench_nifs_inner(&mut criterion, "simple", &S, &ck, &W, &w, &x);
   }
 
   #[test]
@@ -735,7 +735,7 @@ mod benchmarks {
     let mut criterion = Criterion::default();
     for len in [1024, 2048].iter() {
       let (S, ck, W, w, x) = generarate_sha_r1cs::<E>(*len);
-      bench_nifs_inner(&mut criterion, &"sha256", &S, &ck, &W, &w, &x);
+      bench_nifs_inner(&mut criterion, "sha256", &S, &ck, &W, &w, &x);
     }
   }
 }

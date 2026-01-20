@@ -1,4 +1,5 @@
 //! This module provides an implementation of a commitment engine
+use crate::provider::msm::batch_add;
 #[cfg(feature = "io")]
 use crate::provider::ptau::{read_points, write_points, PtauFileError};
 use crate::traits::evm_serde::EvmCompatSerde;
@@ -364,6 +365,21 @@ where
     points.push(ck.h);
     points.extend(ck.ck.iter().cloned());
     write_points(writer, points)
+  }
+
+  fn commit_sparse_binary(
+    ck: &Self::CommitmentKey,
+    non_zero_indices: &[usize],
+    r: &<E as Engine>::Scalar,
+  ) -> Self::Commitment {
+    let comm = batch_add(&ck.ck, non_zero_indices);
+    let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+
+    if r != &E::Scalar::ZERO {
+      comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+    }
+
+    Commitment { comm }
   }
 }
 
