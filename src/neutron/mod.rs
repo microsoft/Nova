@@ -343,7 +343,7 @@ where
       self.r_U.absorb_in_ro2(&mut hasher);
       hasher.absorb(self.ri);
 
-      hasher.squeeze(NUM_HASH_BITS)
+      hasher.squeeze(NUM_HASH_BITS, false)
     };
 
     if hash != self.l_u.X[0] {
