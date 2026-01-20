@@ -152,10 +152,27 @@ where
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let coeffs = self.compress().coeffs_except_linear_term;
-    coeffs
-      .iter()
-      .flat_map(|&t| t.to_repr().as_ref().to_vec())
-      .collect::<Vec<u8>>()
+    #[cfg(not(feature = "evm"))]
+    {
+      coeffs
+        .iter()
+        .flat_map(|&t| t.to_repr().as_ref().to_vec())
+        .collect::<Vec<u8>>()
+    }
+    #[cfg(feature = "evm")]
+    {
+      coeffs
+        .iter()
+        .flat_map(|&t| {
+          t.to_repr()
+            .as_ref()
+            .iter()
+            .rev()
+            .cloned()
+            .collect::<Vec<u8>>()
+        })
+        .collect::<Vec<u8>>()
+    }
   }
 }
 
