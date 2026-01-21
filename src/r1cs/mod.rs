@@ -166,15 +166,29 @@ impl<E: Engine> R1CSShape<E> {
   ///
   /// # Arguments
   ///
-  /// * `S`: The shape of the R1CS matrices.
-  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
+  /// * `shapes`: A slice of references to R1CS shapes.
+  /// * `ck_floors`: A slice of functions that provide a floor for the number of generators. A good function
   ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
-  pub fn commitment_key(&self, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
-    let num_cons = self.num_cons;
-    let num_vars = self.num_vars;
-    let ck_hint = ck_floor(self);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
+  pub fn commitment_key(
+    shapes: &[&R1CSShape<E>],
+    ck_floors: &[&CommitmentKeyHint<E>],
+  ) -> CommitmentKey<E> {
+    let N = shapes
+      .iter()
+      .zip(ck_floors.iter())
+      .map(|(S_i, ck_floor_i)| {
+        let num_cons = S_i.num_cons;
+        let num_vars = S_i.num_vars;
+        let ck_hint = ck_floor_i(S_i);
+        max(max(num_cons, num_vars), ck_hint)
+      })
+      .collect::<Vec<usize>>()
+      .into_iter()
+      .max()
+      .unwrap();
+
+    E::CE::setup(b"ck", N)
   }
 
   /// Returns the digest of the `R1CSShape`
@@ -985,7 +999,7 @@ mod tests {
 
   fn test_random_sample_with<E: Engine>() {
     let S = tiny_r1cs::<E>(4);
-    let ck = S.commitment_key(&*default_ck_hint());
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]);
     let (inst, wit) = S.sample_random_instance_witness(&ck).unwrap();
     assert!(S.is_sat_relaxed(&ck, &inst, &wit).is_ok());
   }

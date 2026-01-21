@@ -36,6 +36,7 @@ mod tests {
       ConstraintSystem,
     },
     provider::{Bn256EngineKZG, PallasEngine, Secp256k1Engine},
+    r1cs::R1CSShape,
     traits::{snark::default_ck_hint, Engine},
   };
   use ff::PrimeField;
@@ -64,7 +65,8 @@ mod tests {
     // First create the shape
     let mut cs: ShapeCS<E> = ShapeCS::new();
     synthesize_alloc_bit(&mut cs);
-    let (shape, ck) = cs.r1cs_shape(&*default_ck_hint());
+    let shape = cs.r1cs_shape().unwrap();
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
 
     // Now get the assignment
     let mut cs = SatisfyingAssignment::<E>::new();

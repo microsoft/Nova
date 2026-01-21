@@ -1,12 +1,9 @@
 //! Support for generating R1CS using bellpepper.
-
-#![allow(non_snake_case)]
-
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
 use crate::{
   errors::NovaError,
   frontend::{Index, LinearCombination},
-  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix},
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix},
   traits::Engine,
   CommitmentKey,
 };
@@ -22,12 +19,10 @@ pub trait NovaWitness<E: Engine> {
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
 }
 
-/// `NovaShape` provides methods for acquiring `R1CSShape` and `CommitmentKey` from implementers.
+/// `NovaShape` provides methods for acquiring `R1CSShape` from implementers.
 pub trait NovaShape<E: Engine> {
-  /// Return an appropriate `R1CSShape` and `CommitmentKey` structs.
-  /// A `CommitmentKeyHint` should be provided to help guide the construction of the `CommitmentKey`.
-  /// This parameter is documented in `r1cs::R1CS::commitment_key`.
-  fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>);
+  /// Return an appropriate `R1CSShape` struct.
+  fn r1cs_shape(&self) -> Result<R1CSShape<E>, NovaError>;
 }
 
 impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
@@ -53,7 +48,7 @@ macro_rules! impl_nova_shape {
     where
       E::Scalar: PrimeField,
     {
-      fn r1cs_shape(&self, ck_hint: &CommitmentKeyHint<E>) -> (R1CSShape<E>, CommitmentKey<E>) {
+      fn r1cs_shape(&self) -> Result<R1CSShape<E>, NovaError> {
         let mut A = SparseMatrix::<E::Scalar>::empty();
         let mut B = SparseMatrix::<E::Scalar>::empty();
         let mut C = SparseMatrix::<E::Scalar>::empty();
@@ -80,10 +75,7 @@ macro_rules! impl_nova_shape {
         C.cols = num_vars + num_inputs;
 
         // Don't count One as an input for shape's purposes.
-        let S = R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C).unwrap();
-        let ck = S.commitment_key(ck_hint);
-
-        (S, ck)
+        R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C)
       }
     }
   };

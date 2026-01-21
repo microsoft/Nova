@@ -140,16 +140,18 @@ where
     let circuit_primary: NovaAugmentedCircuit<'_, E2, C> =
       NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
     let mut cs: ShapeCS<E1> = ShapeCS::new();
-    let _ = circuit_primary.synthesize(&mut cs);
-    let (r1cs_shape_primary, ck_primary) = cs.r1cs_shape(ck_hint1);
+    let _ = circuit_primary.synthesize(&mut cs)?;
+    let r1cs_shape_primary = cs.r1cs_shape()?;
+    let ck_primary = R1CSShape::commitment_key(&[&r1cs_shape_primary], &[ck_hint1]);
 
     // Initialize ck for the secondary
     let tc = TrivialCircuit::<E2::Scalar>::default();
     let circuit_secondary: NovaAugmentedCircuit<'_, E1, _> =
       NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
     let mut cs: ShapeCS<E2> = ShapeCS::new();
-    let _ = circuit_secondary.synthesize(&mut cs);
-    let (r1cs_shape_secondary, ck_secondary) = cs.r1cs_shape(ck_hint2);
+    let _ = circuit_secondary.synthesize(&mut cs)?;
+    let r1cs_shape_secondary = cs.r1cs_shape()?;
+    let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2]);
 
     if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
       return Err(NovaError::InvalidStepCircuitIO);
