@@ -10,7 +10,7 @@ use crate::{
     solver::SatisfyingAssignment,
     ConstraintSystem, SynthesisError,
   },
-  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSWitness},
+  r1cs::{CommitmentKeyHint, R1CSInstance, R1CSShape, R1CSWitness},
   traits::{
     circuit::StepCircuit, AbsorbInRO2Trait, Engine, RO2Constants, RO2ConstantsCircuit, ROTrait,
   },
@@ -117,16 +117,82 @@ where
     let ro_consts: RO2Constants<E1> = RO2Constants::<E1>::default();
     let ro_consts_circuit: RO2ConstantsCircuit<E1> = RO2ConstantsCircuit::<E1>::default();
 
-    // Initialize ck for the primary
+    // Initialize shape for the primary
     let circuit: NeutronAugmentedCircuit<'_, E1, C> =
       NeutronAugmentedCircuit::new(None, c, ro_consts_circuit.clone());
     let mut cs: ShapeCS<E1> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
-    let (r1cs_shape, ck) = cs.r1cs_shape(ck_hint1);
+    let r1cs_shape = cs.r1cs_shape()?;
 
     if r1cs_shape.num_io != 1 {
       return Err(NovaError::InvalidStepCircuitIO);
     }
+
+    // Generate the commitment key
+    let ck = R1CSShape::commitment_key(&[&r1cs_shape], &[ck_hint1])?;
+
+    let structure = Structure::new(&r1cs_shape);
+
+    let pp = PublicParams {
+      F_arity,
+
+      ro_consts,
+      ro_consts_circuit,
+      ck,
+      structure,
+
+      digest: OnceCell::new(),
+      _p: Default::default(),
+    };
+
+    // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
+    let _ = pp.digest();
+
+    Ok(pp)
+  }
+
+  /// Creates a new `PublicParams` for a circuit `C` using commitment keys loaded from a ptau directory.
+  ///
+  /// This is designed for use with HyperKZG or Mercury on the primary curve (e.g., BN256).
+  /// The commitment key is loaded from a Powers of Tau ceremony file.
+  ///
+  /// **Note:** This method requires `E1::GE` to implement `PairingGroup`. It is only available
+  /// for pairing-friendly curves (BN256, BLS12-381, etc.).
+  ///
+  /// # Arguments
+  ///
+  /// * `c`: The primary circuit of type `C`.
+  /// * `ck_hint1`: A `CommitmentKeyHint` for the primary circuit.
+  /// * `ck_hint2`: A `CommitmentKeyHint` for the secondary circuit (unused but kept for API consistency).
+  /// * `ptau_dir`: Path to the directory containing pruned ptau files.
+  #[cfg(feature = "io")]
+  pub fn setup_with_ptau_dir(
+    c: &C,
+    ck_hint1: &CommitmentKeyHint<E1>,
+    _ck_hint2: &CommitmentKeyHint<E2>,
+    ptau_dir: &std::path::Path,
+  ) -> Result<Self, NovaError>
+  where
+    E1::GE: crate::provider::traits::PairingGroup,
+  {
+    let F_arity = c.arity();
+
+    let ro_consts: RO2Constants<E1> = RO2Constants::<E1>::default();
+    let ro_consts_circuit: RO2ConstantsCircuit<E1> = RO2ConstantsCircuit::<E1>::default();
+
+    // Initialize shape for the primary
+    let circuit: NeutronAugmentedCircuit<'_, E1, C> =
+      NeutronAugmentedCircuit::new(None, c, ro_consts_circuit.clone());
+    let mut cs: ShapeCS<E1> = ShapeCS::new();
+    let _ = circuit.synthesize(&mut cs);
+    let r1cs_shape = cs.r1cs_shape()?;
+
+    if r1cs_shape.num_io != 1 {
+      return Err(NovaError::InvalidStepCircuitIO);
+    }
+
+    // Load the commitment key from ptau directory
+    let ck = R1CSShape::commitment_key_from_ptau_dir(&[&r1cs_shape], &[ck_hint1], ptau_dir)?;
 
     let structure = Structure::new(&r1cs_shape);
 

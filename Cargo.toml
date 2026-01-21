@@ -53,6 +53,7 @@ sha2 = "0.10.7"
 proptest = "1.6.0"
 rand = "0.8.5"
 expect-test = "1.5.1"
+reqwest = { version = "0.12", features = ["blocking"] }
 
 [[bench]]
 name = "recursive-snark"
@@ -78,9 +79,19 @@ harness = false
 name = "sumcheckeq"
 harness = false
 
+[[example]]
+name = "ptau_test_setup"
+required-features = ["test-utils", "io"]
+
+[[example]]
+name = "ppot_prune"
+required-features = ["io"]
+
 [features]
 default = ["io"]
 flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
 evm = []
 io = []
+# Enables insecure setup methods that generate random tau. Only for testing!
+test-utils = []

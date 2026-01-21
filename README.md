@@ -13,7 +13,7 @@ At its core, Nova relies on a commitment scheme for vectors. Compressing IVC pro
 1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
 2. HyperKZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
     
-For more details on using  HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG instantiation requires a universal trusted setup (the so-called "powers of tau"). In the `setup` method in `src/provider/hyperkzg.rs`, one can load group elements produced in an existing KZG trusted setup (that was created for other proof systems based on univariate polynomials such as Plonk or variants). We have facility to load an existing setup, but the top-level APIs do not currently support this. 
+For more details on using HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG and Mercury instantiations require a universal setup (the so-called "powers of tau"). See the [Universal Setup](#universal-setup-for-hyperkzg-and-mercury) section below for details on loading setup parameters. 
 
 We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit. The preprocessing variant of Spartan is called MicroSpartan and is described in the [MicroNova](https://eprint.iacr.org/2024/2099) paper.
 
@@ -38,6 +38,59 @@ To run an example:
 ```text
 cargo run --release --example minroot
 ```
+
+## Universal Setup for HyperKZG and Mercury
+
+HyperKZG and Mercury polynomial commitment schemes require a universal setup to generate the structured reference string (SRS). The setup is "universal" in the sense that a single setup can be reused across different circuits, and the same setup parameters can be shared with other KZG-based proof systems (such as Plonk and its variants).
+
+For production deployments, you should use parameters from a ceremony such as the [Ethereum Perpetual Powers of Tau](https://github.com/privacy-ethereum/perpetualpowersoftau), which has 80+ participants providing strong security guarantees (only one honest participant needed for security).
+
+### Using Powers of Tau Files
+
+1. **Download PPOT files** from the PSE S3 bucket:
+   ```
+   https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/
+   ```
+   Files are named `ppot_0080_XX.ptau` (powers 15-27) and `ppot_0080_final.ptau` (power 28).
+
+2. **(Optional) Prune files** to reduce size (~18x smaller):
+   ```bash
+   cargo run --example ppot_prune --features io -- --power 20 --output ./ptau_files
+   ```
+   This creates `ppot_pruned_XX.ptau` files containing only the G1/G2 points needed for HyperKZG.
+
+3. **Load in your application**:
+   ```rust
+   use nova_snark::nova::PublicParams;
+   use std::path::Path;
+
+   let pp = PublicParams::setup_with_ptau_dir(
+       &circuit,
+       &*S1::ck_floor(),
+       &*S2::ck_floor(),
+       Path::new("./ptau_files"),
+   )?;
+   ```
+
+The library automatically selects the smallest available file with sufficient capacity for your circuit.
+
+### File Size Reference
+
+| Power | Max Constraints | Pruned Size | Original Size |
+|-------|-----------------|-------------|---------------|
+| 15    | 32K             | 2 MB        | 36 MB         |
+| 18    | 256K            | 16 MB       | 288 MB        |
+| 20    | 1M              | 64 MB       | 1.1 GB        |
+| 23    | 8M              | 512 MB      | 9 GB          |
+| 28    | 256M            | ~16 GB      | 288 GB        |
+
+### Testing Only (Insecure)
+
+For testing purposes only, you can generate keys with a random tau:
+```bash
+cargo run --example ptau_test_setup --features test-utils,io
+```
+**Warning:** These keys are insecure and must not be used in production.
 
 ## References
 The following paper, which appeared at CRYPTO 2022, provides details of the Nova proof system and a proof of security:

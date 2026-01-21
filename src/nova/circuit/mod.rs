@@ -391,7 +391,7 @@ mod tests {
     let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
     let shape1 = cs.r1cs_shape().unwrap();
-    let ck1 = R1CSShape::commitment_key(&[&shape1], &[&*default_ck_hint()]);
+    let ck1 = R1CSShape::commitment_key(&[&shape1], &[&*default_ck_hint()]).unwrap();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     let tc2 = TrivialCircuit::default();
@@ -401,7 +401,7 @@ mod tests {
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
     let shape2 = cs.r1cs_shape().unwrap();
-    let ck2 = R1CSShape::commitment_key(&[&shape2], &[&*default_ck_hint()]);
+    let ck2 = R1CSShape::commitment_key(&[&shape2], &[&*default_ck_hint()]).unwrap();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary

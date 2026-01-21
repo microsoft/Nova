@@ -1253,7 +1253,7 @@ mod tests {
     let _ = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape().unwrap();
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
@@ -1310,7 +1310,7 @@ mod tests {
     let _ = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape().unwrap();
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
@@ -1371,7 +1371,7 @@ mod tests {
     let _ = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add equal"));
     println!("Number of constraints: {}", cs.num_constraints());
     let shape = cs.r1cs_shape().unwrap();
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
 
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();

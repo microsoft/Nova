@@ -257,7 +257,7 @@ mod tests {
     let mut cs: TestShapeCS<E> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let shape = cs.r1cs_shape().unwrap();
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
     let ro_consts = ROConstants::<E>::default();
 
     // Now get the instance and assignment for one instance
@@ -500,7 +500,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]).unwrap();
     let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =
@@ -636,7 +636,7 @@ mod tests {
     };
 
     // generate generators and ro constants
-    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]).unwrap();
     let ro_consts = ROConstants::<E>::default();
 
     let rand_inst_witness_generator =

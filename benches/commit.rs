@@ -25,7 +25,7 @@ fn bench_commit(c: &mut Criterion) {
   let max = 1 << 24;
 
   // sample bases for the purpose of testing
-  let ck = <E as Engine>::CE::setup(b"test_from_label", max);
+  let ck = <E as Engine>::CE::setup(b"test_from_label", max).unwrap();
 
   let zero = <E as Engine>::Scalar::zero();
 

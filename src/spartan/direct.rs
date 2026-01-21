@@ -126,7 +126,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     let _ = circuit.synthesize(&mut cs);
 
     let shape = cs.r1cs_shape()?;
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()])?;
 
     let (pk, vk) = S::setup(&ck, &shape)?;
 

@@ -1,3 +1,91 @@
+//! Powers of Tau (PTAU) file handling for trusted setup.
+//!
+//! This module provides functionality for reading and writing PTAU files,
+//! which contain the structured reference string (SRS) needed for KZG-based
+//! polynomial commitment schemes like HyperKZG and Mercury.
+//!
+//! # Obtaining PTAU Files
+//!
+//! There are two ways to obtain PTAU files:
+//!
+//! ## Option 1: Use Ethereum Powers of Tau Ceremony Files (Recommended for Production)
+//!
+//! For production use, you should use files from the Ethereum [Perpetual Powers of Tau](https://github.com/privacy-ethereum/perpetualpowersoftau)
+//! ceremony. This ceremony has 80+ participants, providing strong security guarantees
+//! (only one honest participant needed).
+//!
+//! ### Downloading Original PPOT Files
+//!
+//! Original PPOT files can be downloaded directly from the PSE S3 bucket:
+//! <https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080/>
+//!
+//! Files are named:
+//! - `ppot_0080_15.ptau` through `ppot_0080_27.ptau` (powers 15-27)
+//! - `ppot_0080_final.ptau` (power 28, ~288GB)
+//!
+//! ### Pruning Files (Optional, Reduces Size ~18x)
+//!
+//! To reduce file size, you can prune files using the `ppot_prune` example:
+//!
+//! ```bash
+//! # Prune power 24 (16M constraints, ~1GB output vs ~18GB original)
+//! cargo run --example ppot_prune --features io -- --power 24
+//!
+//! # Prune power 20 with custom output directory
+//! cargo run --example ppot_prune --features io -- --power 20 --output ./my_ptau
+//! ```
+//!
+//! Pruned files are named `ppot_pruned_XX.ptau`.
+//!
+//! ### Using PTAU Files in Your Application
+//!
+//! Place your PTAU files (either original or pruned) in a directory and use:
+//!
+//! ```ignore
+//! use nova_snark::nova::PublicParams;
+//! use std::path::Path;
+//!
+//! // Load commitment key from ptau directory
+//! // Accepts both ppot_pruned_XX.ptau and ppot_0080_XX.ptau naming conventions
+//! let pp = PublicParams::setup_with_ptau_dir(
+//!     &circuit,
+//!     &*S1::ck_floor(),
+//!     &*S2::ck_floor(),
+//!     Path::new("path/to/ptau_files"),
+//! )?;
+//! ```
+//!
+//! The library automatically selects the smallest available file that provides
+//! enough generators for your circuit.
+//!
+//! ## Option 2: Generate Test PTAU Files (Testing Only)
+//!
+//! For testing purposes only, you can generate PTAU files with a random tau.
+//! **These are insecure and must not be used in production.**
+//!
+//! ```bash
+//! # Requires the test-utils feature
+//! cargo run --example ptau_test_setup --features test-utils,io
+//! ```
+//!
+//! # Supported File Naming Conventions
+//!
+//! The library accepts files with these naming patterns:
+//! - `ppot_pruned_XX.ptau` - Pruned files (preferred, smaller)
+//! - `ppot_0080_XX.ptau` - Original PPOT files from PSE
+//! - `ppot_0080_final.ptau` - Power 28 original file
+//!
+//! # File Format
+//!
+//! PTAU files use a binary format with the following structure:
+//!
+//! - **Header**: Magic ("ptau"), version (1), number of sections
+//! - **Section 1**: n8, prime modulus, power
+//! - **Section 2**: TauG1 - N × G1 points (64 bytes each on BN254)
+//! - **Section 3**: TauG2 - M × G2 points (128 bytes each on BN254)
+//!
+//! Both full (11 sections) and pruned (3 sections) formats are supported.
+
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use halo2curves::CurveAffine;
@@ -43,7 +131,8 @@ struct MetaData {
 }
 
 const PTAU_VERSION: u32 = 1;
-const NUM_SECTIONS: u32 = 11;
+const NUM_SECTIONS_FULL: u32 = 11; // Original PPOT files
+const NUM_SECTIONS_PRUNED: u32 = 3; // Pruned files (header, tau_g1, tau_g2 only)
 
 fn write_header<Base: PrimeField>(
   writer: &mut impl Write,
@@ -54,7 +143,7 @@ fn write_header<Base: PrimeField>(
   writer.write_all(b"ptau")?;
 
   writer.write_u32::<LittleEndian>(PTAU_VERSION)?;
-  writer.write_u32::<LittleEndian>(NUM_SECTIONS)?;
+  writer.write_u32::<LittleEndian>(NUM_SECTIONS_FULL)?;
 
   // * header
   writer.write_u32::<LittleEndian>(1)?;
@@ -101,7 +190,7 @@ where
   writer.write_u32::<LittleEndian>(0)?;
   writer.write_i64::<LittleEndian>(0)?;
 
-  for id in 4..NUM_SECTIONS {
+  for id in 4..NUM_SECTIONS_FULL {
     writer.write_u32::<LittleEndian>(id)?;
     writer.write_i64::<LittleEndian>(0)?;
   }
@@ -154,17 +243,19 @@ fn read_meta_data(reader: &mut (impl Read + Seek)) -> Result<MetaData, PtauFileE
       return Err(PtauFileError::UnsupportedVersion(version));
     }
   }
-  {
+  let num_sections = {
     let num_sections = reader.read_u32::<LittleEndian>()?;
-    if num_sections != NUM_SECTIONS {
+    // Accept both full (11 sections) and pruned (3 sections) ptau files
+    if num_sections != NUM_SECTIONS_FULL && num_sections != NUM_SECTIONS_PRUNED {
       return Err(PtauFileError::InvalidNumSections(num_sections));
     }
-  }
+    num_sections
+  };
   let mut pos_header = 0;
   let mut pos_tau_g1 = 0;
   let mut pos_tau_g2 = 0;
 
-  for _ in 0..NUM_SECTIONS {
+  for _ in 0..num_sections {
     let id = reader.read_u32::<LittleEndian>()?;
     let size = reader.read_i64::<LittleEndian>()?;
 

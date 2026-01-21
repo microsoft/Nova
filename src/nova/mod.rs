@@ -142,7 +142,7 @@ where
     let mut cs: ShapeCS<E1> = ShapeCS::new();
     let _ = circuit_primary.synthesize(&mut cs)?;
     let r1cs_shape_primary = cs.r1cs_shape()?;
-    let ck_primary = R1CSShape::commitment_key(&[&r1cs_shape_primary], &[ck_hint1]);
+    let ck_primary = R1CSShape::commitment_key(&[&r1cs_shape_primary], &[ck_hint1])?;
 
     // Initialize ck for the secondary
     let tc = TrivialCircuit::<E2::Scalar>::default();
@@ -151,7 +151,110 @@ where
     let mut cs: ShapeCS<E2> = ShapeCS::new();
     let _ = circuit_secondary.synthesize(&mut cs)?;
     let r1cs_shape_secondary = cs.r1cs_shape()?;
-    let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2]);
+    let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
+
+    if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
+      return Err(NovaError::InvalidStepCircuitIO);
+    }
+
+    let pp = PublicParams {
+      F_arity,
+
+      ro_consts_primary,
+      ro_consts_circuit_primary,
+
+      ro_consts_secondary,
+      ro_consts_circuit_secondary,
+
+      ck_primary,
+      r1cs_shape_primary,
+
+      ck_secondary,
+      r1cs_shape_secondary,
+
+      digest: OnceCell::new(),
+      _p: Default::default(),
+    };
+
+    // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
+    let _ = pp.digest();
+
+    Ok(pp)
+  }
+
+  /// Creates a new `PublicParams` for a circuit `C` using commitment keys loaded from a ptau directory.
+  ///
+  /// This is designed for use with HyperKZG or Mercury on the primary curve (e.g., BN256).
+  /// The commitment key for the primary circuit is loaded from a Powers of Tau ceremony file,
+  /// while the secondary circuit (which uses a non-pairing-friendly curve like Grumpkin) uses
+  /// standard key generation.
+  ///
+  /// **Note:** This method requires `E1::GE` to implement `PairingGroup`. It is only available
+  /// for pairing-friendly primary curves (BN256, BLS12-381, etc.) and will not compile for
+  /// non-pairing curves.
+  ///
+  /// The function automatically selects the appropriate ptau file from the directory based on
+  /// the circuit size. Files should be named `ppot_pruned_{power}.ptau` (e.g., `ppot_pruned_20.ptau`).
+  ///
+  /// # Arguments
+  ///
+  /// * `c`: The primary circuit of type `C`.
+  /// * `ck_hint1`: A `CommitmentKeyHint` for the primary circuit.
+  /// * `ck_hint2`: A `CommitmentKeyHint` for the secondary circuit.
+  /// * `ptau_dir`: Path to the directory containing pruned ptau files.
+  ///
+  /// # Example
+  ///
+  /// ```ignore
+  /// use std::path::Path;
+  /// use nova_snark::nova::PublicParams;
+  ///
+  /// let pp = PublicParams::setup_with_ptau_dir(
+  ///     &circuit,
+  ///     &*S1::ck_floor(),
+  ///     &*S2::ck_floor(),
+  ///     Path::new("path/to/pruned_ptau_files"),
+  /// )?;
+  /// ```
+  #[cfg(feature = "io")]
+  pub fn setup_with_ptau_dir(
+    c: &C,
+    ck_hint1: &CommitmentKeyHint<E1>,
+    ck_hint2: &CommitmentKeyHint<E2>,
+    ptau_dir: &std::path::Path,
+  ) -> Result<Self, NovaError>
+  where
+    E1::GE: crate::provider::traits::PairingGroup,
+  {
+    let ro_consts_primary: ROConstants<E1> = ROConstants::<E1>::default();
+    let ro_consts_secondary: ROConstants<E2> = ROConstants::<E2>::default();
+
+    let F_arity = c.arity();
+
+    let ro_consts_circuit_primary: ROConstantsCircuit<E2> = ROConstantsCircuit::<E2>::default();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<E1> = ROConstantsCircuit::<E1>::default();
+
+    // Initialize shape for the primary
+    let circuit_primary: NovaAugmentedCircuit<'_, E2, C> =
+      NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
+    let mut cs: ShapeCS<E1> = ShapeCS::new();
+    let _ = circuit_primary.synthesize(&mut cs)?;
+    let r1cs_shape_primary = cs.r1cs_shape()?;
+
+    // Load ck for the primary from ptau directory (auto-selects appropriate file)
+    let ck_primary =
+      R1CSShape::commitment_key_from_ptau_dir(&[&r1cs_shape_primary], &[ck_hint1], ptau_dir)?;
+
+    // Initialize shape for the secondary
+    let tc = TrivialCircuit::<E2::Scalar>::default();
+    let circuit_secondary: NovaAugmentedCircuit<'_, E1, _> =
+      NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
+    let mut cs: ShapeCS<E2> = ShapeCS::new();
+    let _ = circuit_secondary.synthesize(&mut cs)?;
+    let r1cs_shape_secondary = cs.r1cs_shape()?;
+
+    // Generate ck for the secondary using standard method (non-pairing curve)
+    let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
 
     if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
       return Err(NovaError::InvalidStepCircuitIO);
@@ -1493,5 +1596,84 @@ mod tests {
   #[test]
   fn test_setup() {
     test_setup_with::<Bn256EngineKZG, GrumpkinEngine>();
+  }
+
+  /// Test that proves and verifies a circuit using pruned PPOT files.
+  ///
+  /// This test is ignored by default because it requires external PPOT files.
+  /// To run it, download pruned PPOT files to `/tmp/pruned_ptau/` and run:
+  ///
+  /// ```bash
+  /// cargo test --release --features io test_ivc_with_ppot_files -- --ignored
+  /// ```
+  ///
+  /// You can obtain pruned PPOT files by running:
+  /// `cargo run --example ppot_prune --features io -- --power 20 --output /tmp/pruned_ptau`
+  #[test]
+  #[ignore]
+  #[cfg(feature = "io")]
+  fn test_ivc_with_ppot_files() {
+    use std::path::Path;
+
+    type E1 = Bn256EngineKZG;
+    type E2 = GrumpkinEngine;
+
+    let circuit_primary = CubicCircuit::<<E1 as Engine>::Scalar>::default();
+
+    // Path to pruned PPOT files - adjust as needed
+    let ptau_dir = Path::new("/tmp/pruned_ptau");
+
+    if !ptau_dir.exists() {
+      eprintln!(
+        "PPOT directory not found at {:?}. \n\
+         To run this test:\n\
+         1. Create the directory: mkdir -p /tmp/pruned_ptau\n\
+         2. Download or generate pruned PPOT files:\n\
+            cargo run --example ppot_prune --features io -- --power 20 --output /tmp/pruned_ptau\n\
+         3. Run the test: cargo test --release --features io test_ivc_with_ppot_files -- --ignored",
+        ptau_dir
+      );
+      return;
+    }
+
+    // Create public parameters using PPOT files
+    let pp = PublicParams::<E1, E2, CubicCircuit<<E1 as Engine>::Scalar>>::setup_with_ptau_dir(
+      &circuit_primary,
+      &*default_ck_hint(),
+      &*default_ck_hint(),
+      ptau_dir,
+    )
+    .expect("Failed to setup with PPOT files");
+
+    // Verify the digest is computed correctly
+    let _ = pp.digest();
+
+    // Create a recursive SNARK
+    let z0_primary = vec![<E1 as Engine>::Scalar::from(3u64)];
+    let mut recursive_snark = RecursiveSNARK::<E1, E2, CubicCircuit<<E1 as Engine>::Scalar>>::new(
+      &pp,
+      &circuit_primary,
+      &z0_primary,
+    )
+    .expect("Failed to create recursive SNARK");
+
+    // Perform a few iterations
+    let num_steps = 3;
+    for _ in 0..num_steps {
+      recursive_snark
+        .prove_step(&pp, &circuit_primary)
+        .expect("Failed to prove step");
+    }
+
+    // Verify the recursive SNARK
+    let z0_primary = vec![<E1 as Engine>::Scalar::from(3u64)];
+    recursive_snark
+      .verify(&pp, num_steps, &z0_primary)
+      .expect("Failed to verify recursive SNARK");
+
+    println!(
+      "Successfully proved and verified {} steps using PPOT files from {:?}",
+      num_steps, ptau_dir
+    );
   }
 }

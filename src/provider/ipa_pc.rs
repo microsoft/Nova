@@ -49,7 +49,8 @@ where
   fn setup(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
   ) -> (Self::ProverKey, Self::VerifierKey) {
-    let ck_c = E::CE::setup(b"ipa", 1);
+    // IPA only uses Pedersen commitments which always succeed
+    let ck_c = E::CE::setup(b"ipa", 1).expect("Pedersen setup should not fail");
 
     let pk = ProverKey { ck_s: ck_c.clone() };
     let vk = VerifierKey {

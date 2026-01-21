@@ -221,6 +221,7 @@ mod tests {
       Circuit, ConstraintSystem,
     },
     provider::{hyperkzg::EvaluationEngine, Bn256EngineKZG},
+    r1cs::R1CSShape,
     spartan::{direct::DirectCircuit, snark::RelaxedR1CSSNARK},
     spartan::{math::Math, polys::eq::EqPolynomial},
     traits::{circuit::NonTrivialCircuit, snark::RelaxedR1CSSNARKTrait},
@@ -238,7 +239,8 @@ mod tests {
     // synthesize the circuit's shape
     let mut cs: ShapeCS<E> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
-    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
+    let shape = cs.r1cs_shape().unwrap();
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()]).unwrap();
     let S = Structure::new(&shape);
 
     // test default instance-witness pair under the structure

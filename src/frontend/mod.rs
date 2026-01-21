@@ -66,7 +66,7 @@ mod tests {
     let mut cs: ShapeCS<E> = ShapeCS::new();
     synthesize_alloc_bit(&mut cs);
     let shape = cs.r1cs_shape().unwrap();
-    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
 
     // Now get the assignment
     let mut cs = SatisfyingAssignment::<E>::new();

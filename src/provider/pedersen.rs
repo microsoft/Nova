@@ -257,15 +257,15 @@ where
   type Commitment = Commitment<E>;
   type DerandKey = DerandKey<E>;
 
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
+  fn setup(label: &'static [u8], n: usize) -> Result<Self::CommitmentKey, NovaError> {
     let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
 
     let (h, ck) = gens.split_first().unwrap();
 
-    Self::CommitmentKey {
+    Ok(Self::CommitmentKey {
       ck: ck.to_vec(),
       h: *h,
-    }
+    })
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
@@ -500,7 +500,7 @@ mod tests {
 
     const LABEL: &[u8; 4] = b"test";
 
-    let keys = CommitmentEngine::<E>::setup(LABEL, 100);
+    let keys = CommitmentEngine::<E>::setup(LABEL, 100).unwrap();
 
     CommitmentEngine::save_setup(&keys, &mut BufWriter::new(File::create(path).unwrap())).unwrap();
 

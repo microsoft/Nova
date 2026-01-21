@@ -30,9 +30,12 @@ use core::{
   ops::{Add, Mul, MulAssign},
   slice,
 };
-use ff::{Field, PrimeFieldBits};
+use ff::Field;
+#[cfg(any(test, feature = "test-utils"))]
+use ff::PrimeFieldBits;
 use num_integer::Integer;
 use num_traits::ToPrimitive;
+#[cfg(any(test, feature = "test-utils"))]
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -320,12 +323,18 @@ pub struct CommitmentEngine<E: Engine> {
   _p: PhantomData<E>,
 }
 
+/// Test-only methods for generating commitment keys with known tau.
+/// These methods are insecure for production use - use `load_setup` with ptau files instead.
+#[cfg(any(test, feature = "test-utils"))]
 impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
-  /// NOTE: this is for testing purposes and should not be used in production
-  /// This can be used instead of `setup` to generate a reproducible commitment key
+  /// NOTE: this is for testing purposes and should not be used in production.
+  /// In production, use `load_setup` with ptau files from a trusted setup ceremony.
+  ///
+  /// This generates a commitment key with a random tau value. Since the caller
+  /// (or anyone with access to the RNG state) knows tau, this is insecure.
   pub fn setup_from_rng(label: &'static [u8], n: usize, rng: impl rand_core::RngCore) -> Self {
     const T1: usize = 1 << 16;
     const T2: usize = 100_000;
@@ -410,6 +419,8 @@ where
 }
 
 // * Implementation of https://www.weimerskirch.org/files/Weimerskirch_FixedBase.pdf
+// Only used by test-only setup code
+#[cfg(any(test, feature = "test-utils"))]
 fn fixed_base_exp_comb_batch<
   const H: usize,
   const POW_2_H: usize,
@@ -506,9 +517,45 @@ where
   type CommitmentKey = CommitmentKey<E>;
   type DerandKey = DerandKey<E>;
 
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey {
-    // NOTE: this is for testing purposes and should not be used in production
-    Self::CommitmentKey::setup_from_rng(label, n, OsRng)
+  /// Generate a commitment key with a random tau value.
+  ///
+  /// # Availability
+  ///
+  /// This method is only available in test builds or when the `test-utils` feature is enabled.
+  /// In production builds, this will panic.
+  ///
+  /// # Security Warning
+  ///
+  /// This method generates an **insecure** commitment key using a random tau.
+  /// The security of HyperKZG relies on no one knowing the secret tau value.
+  ///
+  /// **For production use**, call [`PublicParams::setup_with_ptau_dir`] or
+  /// [`R1CSShape::commitment_key_from_ptau_dir`] to load commitment keys from
+  /// Powers of Tau ceremony files (e.g., from the Ethereum PPOT ceremony).
+  ///
+  /// # For downstream crates
+  ///
+  /// If you need access to this method in your tests, add `nova-snark` with the
+  /// `test-utils` feature to your `dev-dependencies`:
+  ///
+  /// ```toml
+  /// [dev-dependencies]
+  /// nova-snark = { version = "...", features = ["test-utils"] }
+  /// ```
+  #[cfg(any(test, feature = "test-utils"))]
+  fn setup(label: &'static [u8], n: usize) -> Result<Self::CommitmentKey, NovaError> {
+    Ok(Self::CommitmentKey::setup_from_rng(label, n, OsRng))
+  }
+
+  #[cfg(not(any(test, feature = "test-utils")))]
+  fn setup(_label: &'static [u8], _n: usize) -> Result<Self::CommitmentKey, NovaError> {
+    Err(NovaError::SetupError(
+      "HyperKZG::setup is disabled in production builds. \
+       Use PublicParams::setup_with_ptau_dir or R1CSShape::commitment_key_from_ptau_dir \
+       with ptau files from a trusted setup ceremony. \
+       For tests, enable the 'test-utils' feature."
+        .to_string(),
+    ))
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
@@ -1141,7 +1188,7 @@ mod tests {
   fn test_hyperkzg_eval() {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
     let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
@@ -1202,7 +1249,7 @@ mod tests {
     // eval = 28
     let eval = Fr::from(28);
 
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
     let (pk, vk) = EvaluationEngine::setup(&ck);
 
     // make a commitment
@@ -1264,7 +1311,7 @@ mod tests {
       let point = (0..ell).map(|_| Fr::random(&mut rng)).collect::<Vec<_>>();
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
-      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n);
+      let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
       let (pk, vk) = EvaluationEngine::setup(&ck);
 
       // make a commitment
@@ -1360,7 +1407,7 @@ mod tests {
     let n = 4;
     let filename = "/tmp/kzg_test.ptau";
 
-    let ck: CommitmentKey<E> = CommitmentEngine::setup(LABEL, n);
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(LABEL, n).unwrap();
 
     let file = OpenOptions::new()
       .write(true)
