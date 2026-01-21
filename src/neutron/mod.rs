@@ -515,11 +515,11 @@ mod tests {
 
     let res = recursive_snark.prove_step(&pp, &test_circuit1);
 
-    assert!(res.is_ok());
+    assert!(res.is_ok(), "prove_step failed: {:?}", res.err());
 
     // verify the recursive SNARK
     let res = recursive_snark.verify(&pp, num_steps, &[<E1 as Engine>::Scalar::ZERO]);
-    assert!(res.is_ok());
+    assert!(res.is_ok(), "verify failed: {:?}", res.err());
   }
 
   #[test]

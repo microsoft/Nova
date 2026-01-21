@@ -946,6 +946,10 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
   }
 
   /// Absorb the provided instance in the RO
+  ///
+  /// Note: For curves with B != 0 (e.g., Pallas, Vesta), we only absorb x and y coordinates.
+  /// For curves with B == 0 (e.g., secp256k1), we also absorb is_infinity.
+  /// This matches the native `AbsorbInRO2Trait` implementation in Pedersen.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
@@ -963,7 +967,11 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
       ro.absorb(&limb_num);
     }
 
-    ro.absorb(&self.is_infinity);
+    // Only absorb is_infinity when B == 0 (matching native AbsorbInRO2Trait for Commitment)
+    let (_, b, _, _) = E::GE::group_params();
+    if b == E::Base::ZERO {
+      ro.absorb(&self.is_infinity);
+    }
 
     Ok(())
   }
