@@ -1189,7 +1189,7 @@ mod tests {
     // Test with poly(X1, X2) = 1 + X1 + X2 + X1*X2
     let n = 4;
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
-    let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck);
+    let (pk, vk): (ProverKey<E>, VerifierKey<E>) = EvaluationEngine::setup(&ck).unwrap();
 
     // poly is in eval. representation; evaluated at [(0,0), (0,1), (1,0), (1,1)]
     let poly = vec![Fr::from(1), Fr::from(2), Fr::from(2), Fr::from(4)];
@@ -1250,7 +1250,7 @@ mod tests {
     let eval = Fr::from(28);
 
     let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
-    let (pk, vk) = EvaluationEngine::setup(&ck);
+    let (pk, vk) = EvaluationEngine::setup(&ck).unwrap();
 
     // make a commitment
     let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
@@ -1312,7 +1312,7 @@ mod tests {
       let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
 
       let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", n).unwrap();
-      let (pk, vk) = EvaluationEngine::setup(&ck);
+      let (pk, vk) = EvaluationEngine::setup(&ck).unwrap();
 
       // make a commitment
       let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);
@@ -1355,7 +1355,7 @@ mod tests {
       let mut reader = BufReader::new(std::fs::File::open("/tmp/ppot_0080_13.ptau").unwrap());
 
       let ck: CommitmentKey<E> = CommitmentEngine::load_setup(&mut reader, b"test", n).unwrap();
-      let (pk, vk) = EvaluationEngine::setup(&ck);
+      let (pk, vk) = EvaluationEngine::setup(&ck).unwrap();
 
       // make a commitment
       let C = CommitmentEngine::commit(&ck, &poly, &<E as Engine>::Scalar::ZERO);

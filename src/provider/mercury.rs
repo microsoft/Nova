@@ -1414,7 +1414,7 @@ mod tests {
       b"test", n, OsRng,
     );
 
-    let (pk, vk) = EE::setup(&ck);
+    let (pk, vk) = EE::setup(&ck).unwrap();
 
     let eval = MultilinearPolynomial::new(poly.coeffs.clone()).evaluate(&point);
 
