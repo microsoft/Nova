@@ -1027,7 +1027,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     if ck.length() < Self::ck_floor()(S) {
       return Err(NovaError::InvalidCommitmentKeyLength);
     }
-    let (pk_ee, vk_ee) = EE::setup(ck);
+    let (pk_ee, vk_ee) = EE::setup(ck)?;
 
     // pad the R1CS matrices
     let S = S.pad();

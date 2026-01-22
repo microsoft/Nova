@@ -789,7 +789,7 @@ where
   /// Reuse the setup from hyperkzg
   fn setup(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
-  ) -> (Self::ProverKey, Self::VerifierKey) {
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
     hyperkzg::EvaluationEngine::setup(ck)
   }
 

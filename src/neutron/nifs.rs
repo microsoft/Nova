@@ -448,7 +448,6 @@ mod tests {
     let _ = circuit.synthesize(&mut cs);
     let shape = cs.r1cs_shape().unwrap();
     let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()]).unwrap();
-    let _S = Structure::new(&shape);
 
     // generate a satisfying instance-witness for the r1cs
     let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(

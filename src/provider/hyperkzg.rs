@@ -832,7 +832,7 @@ where
 
   fn setup(
     ck: &<E::CE as CommitmentEngineTrait<E>>::CommitmentKey,
-  ) -> (Self::ProverKey, Self::VerifierKey) {
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
     let pk = ProverKey {
       _p: Default::default(),
     };
@@ -843,7 +843,7 @@ where
       tau_H: ck.tau_H,
     };
 
-    (pk, vk)
+    Ok((pk, vk))
   }
 
   fn prove(
