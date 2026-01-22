@@ -505,18 +505,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   while i < args.len() {
     match args[i].as_str() {
       "--power" | "-p" => {
+        if i + 1 >= args.len() {
+          eprintln!("Missing value for --power");
+          print_usage();
+          return Ok(());
+        }
         i += 1;
         power = Some(args[i].parse()?);
       }
       "--output" | "-o" => {
+        if i + 1 >= args.len() {
+          eprintln!("Missing value for --output");
+          print_usage();
+          return Ok(());
+        }
         i += 1;
         output = PathBuf::from(&args[i]);
       }
       "--download" | "-d" => {
+        if i + 1 >= args.len() {
+          eprintln!("Missing value for --download");
+          print_usage();
+          return Ok(());
+        }
         i += 1;
         download_dir = Some(PathBuf::from(&args[i]));
       }
       "--num-g1" | "-n" => {
+        if i + 1 >= args.len() {
+          eprintln!("Missing value for --num-g1");
+          print_usage();
+          return Ok(());
+        }
         i += 1;
         num_g1_override = Some(args[i].parse()?);
       }
