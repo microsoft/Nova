@@ -265,17 +265,7 @@ impl<E: Engine> R1CSShape<E> {
       )));
     }
 
-    let max_size = shapes
-      .iter()
-      .zip(ck_floors.iter())
-      .map(|(shape, ck_floor)| {
-        let num_cons = shape.num_cons;
-        let num_vars = shape.num_vars;
-        let ck_hint = ck_floor(shape);
-        max(max(num_cons, num_vars), ck_hint)
-      })
-      .max()
-      .unwrap(); // Safe: we checked shapes is non-empty above
+    let max_size = Self::compute_max_ck_size(shapes, ck_floors);
 
     // Find the appropriate ptau file (smallest power of 2 >= max_size)
     let min_power = max_size.next_power_of_two().trailing_zeros();
