@@ -522,7 +522,7 @@ where
   /// # Availability
   ///
   /// This method is only available in test builds or when the `test-utils` feature is enabled.
-  /// In production builds, this will panic.
+  /// In production builds, this will return an error.
   ///
   /// # Security Warning
   ///
