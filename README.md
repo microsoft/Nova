@@ -39,6 +39,31 @@ To run an example:
 cargo run --release --example minroot
 ```
 
+## References
+The following paper, which appeared at CRYPTO 2022, provides details of the Nova proof system and a proof of security:
+
+[Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370) \
+Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
+CRYPTO 2022
+
+For efficiency, our implementation of the Nova proof system is instantiated over a cycle of elliptic curves. The following paper specifies that instantiation and provides a proof of security:
+
+[Revisiting the Nova Proof System on a Cycle of Curves](https://eprint.iacr.org/2023/969) \
+Wilson Nguyen, Dan Boneh, and Srinath Setty \
+IACR ePrint 2023/969
+
+The zero-knowledge property is achieved using an idea described in the following paper:
+
+[HyperNova: Recursive arguments for customizable constraint systems](https://eprint.iacr.org/2023/573) \
+Abhiram Kothapalli and Srinath Setty \
+CRYPTO 2024
+
+The following paper describes an on-chain efficient version of Nova. We have open-sourced components of MicroNova including the HyperKZG polynomial commitment scheme and the MicroSpartan SNARK (which is provided in [ppsnark.rs](https://github.com/microsoft/Nova/blob/main/src/spartan/ppsnark.rs)):
+
+[MicroNova: Folding-based arguments with efficient (on-chain) verification](https://eprint.iacr.org/2024/2099) \
+Jiaxing Zhao, Srinath Setty, Weidong Cui, and Greg Zaverucha \
+IEEE S&P 2025
+
 ## Universal Setup for HyperKZG and Mercury
 
 HyperKZG and Mercury polynomial commitment schemes require a universal setup to generate the structured reference string (SRS). The setup is "universal" in the sense that a single setup can be reused across different circuits, and the same setup parameters can be shared with other KZG-based proof systems (such as Plonk and its variants).
@@ -91,31 +116,6 @@ For testing purposes only, you can generate keys with a random tau:
 cargo run --example ptau_test_setup --features test-utils,io
 ```
 **Warning:** These keys are insecure and must not be used in production.
-
-## References
-The following paper, which appeared at CRYPTO 2022, provides details of the Nova proof system and a proof of security:
-
-[Nova: Recursive Zero-Knowledge Arguments from Folding Schemes](https://eprint.iacr.org/2021/370) \
-Abhiram Kothapalli, Srinath Setty, and Ioanna Tzialla \
-CRYPTO 2022
-
-For efficiency, our implementation of the Nova proof system is instantiated over a cycle of elliptic curves. The following paper specifies that instantiation and provides a proof of security:
-
-[Revisiting the Nova Proof System on a Cycle of Curves](https://eprint.iacr.org/2023/969) \
-Wilson Nguyen, Dan Boneh, and Srinath Setty \
-IACR ePrint 2023/969
-
-The zero-knowledge property is achieved using an idea described in the following paper:
-
-[HyperNova: Recursive arguments for customizable constraint systems](https://eprint.iacr.org/2023/573) \
-Abhiram Kothapalli and Srinath Setty \
-CRYPTO 2024
-
-The following paper describes an on-chain efficient version of Nova. We have open-sourced components of MicroNova including the HyperKZG polynomial commitment scheme and the MicroSpartan SNARK (which is provided in [ppsnark.rs](https://github.com/microsoft/Nova/blob/main/src/spartan/ppsnark.rs)):
-
-[MicroNova: Folding-based arguments with efficient (on-chain) verification](https://eprint.iacr.org/2024/2099) \
-Jiaxing Zhao, Srinath Setty, Weidong Cui, and Greg Zaverucha \
-IEEE S&P 2025
 
 ## Contributing
 
