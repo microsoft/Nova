@@ -70,7 +70,8 @@ const NUM_SECTIONS: u32 = 11;
 const PRUNED_NUM_SECTIONS: u32 = 3;
 
 /// Base URL for downloading PPOT files from PSE S3 bucket
-const PPOT_BASE_URL: &str = "https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080";
+const PPOT_BASE_URL: &str =
+  "https://pse-trusted-setup-ppot.s3.eu-central-1.amazonaws.com/pot28_0080";
 
 /// Error types for the PPOT pruner
 #[derive(Debug)]
@@ -165,10 +166,7 @@ fn download_ptau(power: u32, dest: &PathBuf) -> Result<(), PrunerError> {
   }
 
   let total_size = response.content_length().unwrap_or(0);
-  println!(
-    "Total size: {:.2} MB",
-    total_size as f64 / 1_000_000.0
-  );
+  println!("Total size: {:.2} MB", total_size as f64 / 1_000_000.0);
 
   let mut file = File::create(dest)?;
   let mut downloaded: u64 = 0;
@@ -189,7 +187,11 @@ fn download_ptau(power: u32, dest: &PathBuf) -> Result<(), PrunerError> {
     if total_size > 0 {
       let percent = (downloaded * 100 / total_size) as u32;
       if percent >= last_percent + 10 {
-        println!("  {}% downloaded ({:.2} MB)", percent, downloaded as f64 / 1_000_000.0);
+        println!(
+          "  {}% downloaded ({:.2} MB)",
+          percent,
+          downloaded as f64 / 1_000_000.0
+        );
         last_percent = percent / 10 * 10;
       }
     }

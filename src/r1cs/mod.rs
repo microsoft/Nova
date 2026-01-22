@@ -166,10 +166,7 @@ impl<E: Engine> R1CSShape<E> {
   /// # Panics
   ///
   /// Panics if `shapes` is empty or if `shapes` and `ck_floors` have different lengths.
-  fn compute_max_ck_size(
-    shapes: &[&R1CSShape<E>],
-    ck_floors: &[&CommitmentKeyHint<E>],
-  ) -> usize {
+  fn compute_max_ck_size(shapes: &[&R1CSShape<E>], ck_floors: &[&CommitmentKeyHint<E>]) -> usize {
     assert!(
       !shapes.is_empty(),
       "commitment_key requires at least one R1CS shape"

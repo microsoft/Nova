@@ -80,7 +80,8 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   ///
   /// Returns an error if the setup cannot be performed (e.g., HyperKZG in production
   /// builds without the `test-utils` feature).
-  fn setup(label: &'static [u8], n: usize) -> Result<Self::CommitmentKey, crate::errors::NovaError>;
+  fn setup(label: &'static [u8], n: usize)
+    -> Result<Self::CommitmentKey, crate::errors::NovaError>;
 
   /// Extracts the blinding generator
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey;
