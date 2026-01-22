@@ -51,6 +51,19 @@ jobs:
           command: test
           args: --release --verbose
 
+  test-experimental:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run experimental tests (NeutronNova)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --features experimental neutron --verbose
+
   fmt:
     runs-on: ubuntu-latest
     steps:

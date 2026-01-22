@@ -723,7 +723,7 @@ mod benchmarks {
     type E = Bn256EngineKZG;
 
     let mut criterion = Criterion::default();
-    let num_cons = 1024 * 1024;
+    let num_cons = 1024;
     let (S, ck, W, w, x) = generate_sample_r1cs::<E>(num_cons); // W is R1CSWitness, w is a vector of u8, x is a vector of field elements
     bench_nifs_inner(&mut criterion, "simple", &S, &ck, &W, &w, &x);
   }
@@ -733,7 +733,7 @@ mod benchmarks {
     type E = Bn256EngineKZG;
 
     let mut criterion = Criterion::default();
-    for len in [1024, 2048].iter() {
+    for len in [32, 64].iter() {
       let (S, ck, W, w, x) = generarate_sha_r1cs::<E>(*len);
       bench_nifs_inner(&mut criterion, "sha256", &S, &ck, &W, &w, &x);
     }
