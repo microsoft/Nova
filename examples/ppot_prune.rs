@@ -551,7 +551,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
   std::fs::create_dir_all(&output)?;
 
   // Determine download path
-  let download_dir = download_dir.unwrap_or_else(|| std::env::temp_dir());
+  let download_dir = download_dir.unwrap_or_else(std::env::temp_dir);
   std::fs::create_dir_all(&download_dir)?;
 
   let ptau_filename = get_ptau_filename(power);
