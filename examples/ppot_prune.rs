@@ -55,19 +55,11 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use halo2curves::bn256::{G1Affine, G2Affine};
 use halo2curves::serde::SerdeObject;
+use nova_snark::provider::ptau::{NUM_SECTIONS_FULL, NUM_SECTIONS_PRUNED, PTAU_VERSION};
 use num_bigint::BigUint;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-
-/// PTAU file format version (always 1)
-const PTAU_VERSION: u32 = 1;
-
-/// Number of sections in original PPOT files
-const NUM_SECTIONS: u32 = 11;
-
-/// Number of sections we write in pruned files (header, tau_g1, tau_g2)
-const PRUNED_NUM_SECTIONS: u32 = 3;
 
 /// Base URL for downloading PPOT files from PSE S3 bucket
 const PPOT_BASE_URL: &str =
@@ -221,7 +213,7 @@ fn read_ptau_metadata(reader: &mut (impl Read + Seek)) -> Result<PtauMetadata, P
 
   // Read number of sections
   let num_sections = reader.read_u32::<LittleEndian>()?;
-  if num_sections != NUM_SECTIONS && num_sections != PRUNED_NUM_SECTIONS {
+  if num_sections != NUM_SECTIONS_FULL && num_sections != NUM_SECTIONS_PRUNED {
     return Err(PrunerError::InvalidNumSections(num_sections));
   }
 
@@ -342,7 +334,7 @@ fn write_pruned_ptau(
   writer.write_u32::<LittleEndian>(PTAU_VERSION)?;
 
   // Write number of sections (we only write 3: header, tau_g1, tau_g2)
-  writer.write_u32::<LittleEndian>(PRUNED_NUM_SECTIONS)?;
+  writer.write_u32::<LittleEndian>(NUM_SECTIONS_PRUNED)?;
 
   // Write header section entry
   let header_size = 4 + N8 + 4; // n8 + prime + power

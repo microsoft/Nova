@@ -97,28 +97,47 @@ use std::{
   str::{from_utf8, Utf8Error},
 };
 
+/// Errors that can occur when reading or writing PTAU files.
 #[derive(thiserror::Error, Debug)]
 pub enum PtauFileError {
+  /// Invalid magic string (expected "ptau")
   #[error("Invalid magic string")]
   InvalidHead,
 
+  /// Unsupported PTAU file version
   #[error("Unsupported version")]
   UnsupportedVersion(u32),
 
+  /// Invalid number of sections in the file
   #[error("Invalid number of sections")]
   InvalidNumSections(u32),
 
+  /// Invalid base prime modulus
   #[error("Invalid base prime")]
   InvalidPrime(BigUint),
 
+  /// Insufficient power for the requested number of G1 points
   #[error("Insufficient power for G1")]
-  InsufficientPowerForG1 { power: u32, required: usize },
+  InsufficientPowerForG1 {
+    /// The power in the file
+    power: u32,
+    /// The required number of points
+    required: usize,
+  },
 
+  /// Insufficient power for the requested number of G2 points
   #[error("Insufficient power for G2")]
-  InsufficientPowerForG2 { power: u32, required: usize },
+  InsufficientPowerForG2 {
+    /// The power in the file
+    power: u32,
+    /// The required number of points
+    required: usize,
+  },
 
+  /// IO error during file operations
   #[error(transparent)]
   IoError(#[from] io::Error),
+  /// UTF-8 decoding error
   #[error(transparent)]
   Utf8Error(#[from] Utf8Error),
 }
@@ -130,9 +149,12 @@ struct MetaData {
   pos_tau_g2: u64,
 }
 
-const PTAU_VERSION: u32 = 1;
-const NUM_SECTIONS_FULL: u32 = 11; // Original PPOT files
-const NUM_SECTIONS_PRUNED: u32 = 3; // Pruned files (header, tau_g1, tau_g2 only)
+/// PTAU file format version (always 1)
+pub const PTAU_VERSION: u32 = 1;
+/// Number of sections in original PPOT files
+pub const NUM_SECTIONS_FULL: u32 = 11;
+/// Number of sections in pruned files (header, tau_g1, tau_g2 only)
+pub const NUM_SECTIONS_PRUNED: u32 = 3;
 
 /// Maximum power available from the Ethereum PPOT ceremony (2^28 = 256M constraints)
 pub const MAX_PPOT_POWER: u32 = 28;
