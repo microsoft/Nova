@@ -90,7 +90,7 @@ IEEE S&P 2025
 
 ### Experimental: NeutronNova
 
-The library includes an experimental implementation of NeutronNova, which combines ideas from Nova and Supernova to achieve efficient recursion. Enable with `--features experimental`. Note that experimental features may have breaking changes between releases.
+The library includes an experimental implementation of NeutronNova. Enable with `--features experimental`. Note that experimental features may have breaking changes between releases.
 
 ## Universal Setup for HyperKZG and Mercury
 

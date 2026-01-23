@@ -134,8 +134,8 @@ jobs:
         with:
           command: check
           args: --no-default-features
-      - name: Check with all features
+      - name: Check with all non-GPU features
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --all-features
+          args: --features "io,evm,experimental,test-utils"
