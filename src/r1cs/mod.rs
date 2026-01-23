@@ -271,13 +271,13 @@ impl<E: Engine> R1CSShape<E> {
     let min_power = max_size.next_power_of_two().trailing_zeros();
 
     // Try to find a ptau file with sufficient power, starting from the minimum needed
-    // and going up to power 28 (the maximum from PPOT ceremony).
+    // and going up to MAX_PPOT_POWER (the maximum from PPOT ceremony).
     // We check multiple naming conventions:
     // - Pruned files: ppot_pruned_{power}.ptau (from ppot_prune example)
     // - Original PPOT files: ppot_0080_{power}.ptau (downloaded from PSE S3)
     // - Final PPOT file: ppot_0080_final.ptau (power 28)
     let mut ptau_path = None;
-    for power in min_power..=28 {
+    for power in min_power..=crate::provider::ptau::MAX_PPOT_POWER {
       // Check pruned file naming convention first (smaller files)
       let pruned = ptau_dir.join(format!("ppot_pruned_{:02}.ptau", power));
       if pruned.exists() {
@@ -286,7 +286,7 @@ impl<E: Engine> R1CSShape<E> {
       }
 
       // Check original PPOT file naming convention
-      let original = if power == 28 {
+      let original = if power == crate::provider::ptau::MAX_PPOT_POWER {
         ptau_dir.join("ppot_0080_final.ptau")
       } else {
         ptau_dir.join(format!("ppot_0080_{:02}.ptau", power))

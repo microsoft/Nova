@@ -331,7 +331,8 @@ where
   E::GE: PairingGroup,
 {
   /// NOTE: this is for testing purposes and should not be used in production.
-  /// In production, use `load_setup` with ptau files from a trusted setup ceremony.
+  /// In production, use [`PublicParams::setup_with_ptau_dir`] or
+  /// [`R1CSShape::commitment_key_from_ptau_dir`] with ptau files from a trusted setup ceremony.
   ///
   /// This generates a commitment key with a random tau value. Since the caller
   /// (or anyone with access to the RNG state) knows tau, this is insecure.

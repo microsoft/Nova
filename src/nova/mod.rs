@@ -153,6 +153,8 @@ where
     let r1cs_shape_secondary = cs.r1cs_shape()?;
     let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
 
+    // Nova's augmented circuits always have exactly 2 IO elements:
+    // the hashes of the two running instances (one on primary curve, one on secondary curve)
     if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
       return Err(NovaError::InvalidStepCircuitIO);
     }
@@ -256,6 +258,8 @@ where
     // Generate ck for the secondary using standard method (non-pairing curve)
     let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
 
+    // Nova's augmented circuits always have exactly 2 IO elements:
+    // the hashes of the two running instances (one on primary curve, one on secondary curve)
     if r1cs_shape_primary.num_io != 2 || r1cs_shape_secondary.num_io != 2 {
       return Err(NovaError::InvalidStepCircuitIO);
     }

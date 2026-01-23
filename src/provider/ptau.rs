@@ -134,6 +134,9 @@ const PTAU_VERSION: u32 = 1;
 const NUM_SECTIONS_FULL: u32 = 11; // Original PPOT files
 const NUM_SECTIONS_PRUNED: u32 = 3; // Pruned files (header, tau_g1, tau_g2 only)
 
+/// Maximum power available from the Ethereum PPOT ceremony (2^28 = 256M constraints)
+pub const MAX_PPOT_POWER: u32 = 28;
+
 fn write_header<Base: PrimeField>(
   writer: &mut impl Write,
   power: u32,

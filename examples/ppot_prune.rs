@@ -326,7 +326,7 @@ fn read_g2_points(reader: &mut impl Read, num: usize) -> Result<Vec<G2Affine>, P
 /// The output file contains:
 /// - Header section with power metadata
 /// - TauG1 section with N G1 points
-/// - TauG2 section with 2 G2 points
+/// - TauG2 section with M G2 points
 fn write_pruned_ptau(
   writer: &mut (impl Write + Seek),
   g1_points: &[G1Affine],
@@ -433,11 +433,16 @@ fn prune_ptau(
     return Err(PrunerError::InsufficientPower(metadata.power, num_g1));
   }
 
+  // Validate that we have enough G2 points available
+  if num_g2 > max_g2 {
+    return Err(PrunerError::InsufficientPower(metadata.power, num_g2));
+  }
+
   // Read G1 points
   reader.seek(SeekFrom::Start(metadata.pos_tau_g1))?;
   let g1_points = read_g1_points(&mut reader, num_g1)?;
 
-  // Read G2 points (only need first 2)
+  // Read G2 points
   reader.seek(SeekFrom::Start(metadata.pos_tau_g2))?;
   let g2_points = read_g2_points(&mut reader, num_g2)?;
 
