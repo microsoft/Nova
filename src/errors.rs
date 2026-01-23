@@ -74,6 +74,12 @@ pub enum NovaError {
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,
+  /// returned when there is an error reading/writing a ptau file
+  #[error("PtauFileError: {0}")]
+  PtauFileError(String),
+  /// returned when insecure setup is attempted in production builds
+  #[error("SetupError: {0}")]
+  SetupError(String),
 }
 
 impl From<SynthesisError> for NovaError {

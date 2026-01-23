@@ -21,7 +21,7 @@ pub trait EvaluationEngineTrait<E: Engine>: Clone + Send + Sync {
   /// A method to perform any additional setup needed to produce proofs of evaluations
   fn setup(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
-  ) -> (Self::ProverKey, Self::VerifierKey);
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError>;
 
   /// A method to prove the evaluation of a multilinear polynomial
   fn prove(

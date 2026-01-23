@@ -15,7 +15,7 @@ pub(crate) mod blitzar;
 pub(crate) mod keccak;
 pub(crate) mod pedersen;
 #[cfg(feature = "io")]
-pub(crate) mod ptau;
+pub mod ptau;
 pub(crate) mod traits;
 
 mod msm;

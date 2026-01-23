@@ -48,8 +48,9 @@ where
 
   fn setup(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
-  ) -> (Self::ProverKey, Self::VerifierKey) {
-    let ck_c = E::CE::setup(b"ipa", 1);
+  ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
+    // IPA only uses Pedersen commitments which always succeed
+    let ck_c = E::CE::setup(b"ipa", 1)?;
 
     let pk = ProverKey { ck_s: ck_c.clone() };
     let vk = VerifierKey {
@@ -57,7 +58,7 @@ where
       ck_s: ck_c,
     };
 
-    (pk, vk)
+    Ok((pk, vk))
   }
 
   fn prove(

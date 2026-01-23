@@ -369,6 +369,7 @@ mod tests {
     provider::{
       Bn256EngineKZG, GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
+    r1cs::R1CSShape,
     traits::{circuit::TrivialCircuit, snark::default_ck_hint},
   };
 
@@ -389,7 +390,8 @@ mod tests {
       NovaAugmentedCircuit::new(true, None, &tc1, ro_consts1.clone());
     let mut cs: TestShapeCS<E1> = TestShapeCS::new();
     let _ = circuit1.synthesize(&mut cs);
-    let (shape1, ck1) = cs.r1cs_shape(&*default_ck_hint());
+    let shape1 = cs.r1cs_shape().unwrap();
+    let ck1 = R1CSShape::commitment_key(&[&shape1], &[&*default_ck_hint()]).unwrap();
     assert_eq!(cs.num_constraints(), num_constraints_primary);
 
     let tc2 = TrivialCircuit::default();
@@ -398,7 +400,8 @@ mod tests {
       NovaAugmentedCircuit::new(false, None, &tc2, ro_consts2.clone());
     let mut cs: TestShapeCS<E2> = TestShapeCS::new();
     let _ = circuit2.synthesize(&mut cs);
-    let (shape2, ck2) = cs.r1cs_shape(&*default_ck_hint());
+    let shape2 = cs.r1cs_shape().unwrap();
+    let ck2 = R1CSShape::commitment_key(&[&shape2], &[&*default_ck_hint()]).unwrap();
     assert_eq!(cs.num_constraints(), num_constraints_secondary);
 
     // Execute the base case for the primary

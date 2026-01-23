@@ -446,8 +446,8 @@ mod tests {
     // synthesize the circuit's shape
     let mut cs: ShapeCS<E> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
-    let (shape, ck) = cs.r1cs_shape(&*S::ck_floor());
-    let _S = Structure::new(&shape);
+    let shape = cs.r1cs_shape().unwrap();
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()]).unwrap();
 
     // generate a satisfying instance-witness for the r1cs
     let circuit: DirectCircuit<E, NonTrivialCircuit<E::Scalar>> = DirectCircuit::new(
@@ -560,7 +560,7 @@ mod benchmarks {
     let S = S.pad();
 
     // sample a ck
-    let ck = S.commitment_key(&*default_ck_hint());
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]).unwrap();
 
     // let witness be randomly generated booleans
     let w = (0..S.num_cons)
@@ -636,7 +636,8 @@ mod benchmarks {
 
     let mut cs: ShapeCS<E> = ShapeCS::new();
     let _ = circuit.synthesize(&mut cs);
-    let (S, ck) = cs.r1cs_shape(&*default_ck_hint());
+    let S = cs.r1cs_shape().unwrap();
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]).unwrap();
 
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);

@@ -74,8 +74,14 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     writer: &mut (impl std::io::Write + std::io::Seek),
   ) -> Result<(), PtauFileError>;
 
-  /// Samples a new commitment key of a specified size
-  fn setup(label: &'static [u8], n: usize) -> Self::CommitmentKey;
+  /// Samples a new commitment key of a specified size.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the setup cannot be performed (e.g., HyperKZG in production
+  /// builds without the `test-utils` feature).
+  fn setup(label: &'static [u8], n: usize)
+    -> Result<Self::CommitmentKey, crate::errors::NovaError>;
 
   /// Extracts the blinding generator
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey;

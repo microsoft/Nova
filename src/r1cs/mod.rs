@@ -159,6 +159,37 @@ impl<E: Engine> R1CSShape<E> {
     })
   }
 
+  /// Computes the maximum number of generators needed for a set of R1CS shapes.
+  ///
+  /// This is a helper function used by `commitment_key` and `commitment_key_from_ptau_dir`.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `shapes` is empty or if `shapes` and `ck_floors` have different lengths.
+  fn compute_max_ck_size(shapes: &[&R1CSShape<E>], ck_floors: &[&CommitmentKeyHint<E>]) -> usize {
+    assert!(
+      !shapes.is_empty(),
+      "commitment_key requires at least one R1CS shape"
+    );
+    assert_eq!(
+      shapes.len(),
+      ck_floors.len(),
+      "shapes and ck_floors must have the same length"
+    );
+
+    shapes
+      .iter()
+      .zip(ck_floors.iter())
+      .map(|(shape, ck_floor)| {
+        let num_cons = shape.num_cons;
+        let num_vars = shape.num_vars;
+        let ck_hint = ck_floor(shape);
+        max(max(num_cons, num_vars), ck_hint)
+      })
+      .max()
+      .unwrap() // Safe: we checked shapes is non-empty above
+  }
+
   /// Generates public parameters for a Rank-1 Constraint System (R1CS).
   ///
   /// This function takes into consideration the shape of the R1CS matrices and a hint function
@@ -166,15 +197,125 @@ impl<E: Engine> R1CSShape<E> {
   ///
   /// # Arguments
   ///
-  /// * `S`: The shape of the R1CS matrices.
-  /// * `ck_floor`: A function that provides a floor for the number of generators. A good function
+  /// * `shapes`: A slice of references to R1CS shapes.
+  /// * `ck_floors`: A slice of functions that provide a floor for the number of generators. A good function
   ///   to provide is the ck_floor field defined in the trait `RelaxedR1CSSNARKTrait`.
   ///
-  pub fn commitment_key(&self, ck_floor: &CommitmentKeyHint<E>) -> CommitmentKey<E> {
-    let num_cons = self.num_cons;
-    let num_vars = self.num_vars;
-    let ck_hint = ck_floor(self);
-    E::CE::setup(b"ck", max(max(num_cons, num_vars), ck_hint))
+  /// # Panics
+  ///
+  /// Panics if `shapes` is empty or if `shapes` and `ck_floors` have different lengths.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the underlying commitment engine's setup fails (e.g., HyperKZG
+  /// in production builds without the `test-utils` feature).
+  ///
+  pub fn commitment_key(
+    shapes: &[&R1CSShape<E>],
+    ck_floors: &[&CommitmentKeyHint<E>],
+  ) -> Result<CommitmentKey<E>, crate::errors::NovaError> {
+    let max_size = Self::compute_max_ck_size(shapes, ck_floors);
+    E::CE::setup(b"ck", max_size)
+  }
+
+  /// Generates public parameters for a Rank-1 Constraint System (R1CS) from a ptau directory.
+  ///
+  /// This function is similar to `commitment_key` but loads the commitment key from a
+  /// Powers of Tau ceremony file instead of generating it randomly. This is useful for
+  /// production deployments using trusted setup ceremonies like the Ethereum PPOT.
+  ///
+  /// **Note:** This method is only available for engines with pairing-friendly curves
+  /// (e.g., BN256 with HyperKZG or Mercury). For non-pairing curves (e.g., Grumpkin with
+  /// Pedersen commitments), use the standard `commitment_key` method.
+  ///
+  /// The function automatically selects the appropriate ptau file from the directory based on
+  /// the required number of generators. Files should be named `ppot_pruned_{power}.ptau`.
+  ///
+  /// # Arguments
+  ///
+  /// * `shapes`: A slice of references to R1CS shapes.
+  /// * `ck_floors`: A slice of functions that provide a floor for the number of generators.
+  /// * `ptau_dir`: Path to the directory containing pruned ptau files.
+  ///
+  /// # Returns
+  ///
+  /// A `CommitmentKey` loaded from the appropriate ptau file.
+  #[cfg(feature = "io")]
+  pub fn commitment_key_from_ptau_dir(
+    shapes: &[&R1CSShape<E>],
+    ck_floors: &[&CommitmentKeyHint<E>],
+    ptau_dir: &std::path::Path,
+  ) -> Result<CommitmentKey<E>, crate::errors::NovaError>
+  where
+    E::GE: crate::provider::traits::PairingGroup,
+  {
+    use std::fs::File;
+    use std::io::BufReader;
+
+    if shapes.is_empty() {
+      return Err(crate::errors::NovaError::PtauFileError(
+        "commitment_key_from_ptau_dir requires at least one R1CS shape".to_string(),
+      ));
+    }
+    if shapes.len() != ck_floors.len() {
+      return Err(crate::errors::NovaError::PtauFileError(format!(
+        "Mismatched lengths: shapes.len() = {}, ck_floors.len() = {}",
+        shapes.len(),
+        ck_floors.len(),
+      )));
+    }
+
+    let max_size = Self::compute_max_ck_size(shapes, ck_floors);
+
+    // Find the appropriate ptau file (smallest power of 2 >= max_size)
+    let min_power = max_size.next_power_of_two().trailing_zeros();
+
+    // Try to find a ptau file with sufficient power, starting from the minimum needed
+    // and going up to MAX_PPOT_POWER (the maximum from PPOT ceremony).
+    // We check multiple naming conventions:
+    // - Pruned files: ppot_pruned_{power}.ptau (from ppot_prune example)
+    // - Original PPOT files: ppot_0080_{power}.ptau (downloaded from PSE S3)
+    // - Final PPOT file: ppot_0080_final.ptau (power 28)
+    let mut ptau_path = None;
+    for power in min_power..=crate::provider::ptau::MAX_PPOT_POWER {
+      // Check pruned file naming convention first (smaller files)
+      let pruned = ptau_dir.join(format!("ppot_pruned_{:02}.ptau", power));
+      if pruned.exists() {
+        ptau_path = Some(pruned);
+        break;
+      }
+
+      // Check original PPOT file naming convention
+      let original = if power == crate::provider::ptau::MAX_PPOT_POWER {
+        ptau_dir.join("ppot_0080_final.ptau")
+      } else {
+        ptau_dir.join(format!("ppot_0080_{:02}.ptau", power))
+      };
+      if original.exists() {
+        ptau_path = Some(original);
+        break;
+      }
+    }
+
+    let ptau_path = ptau_path.ok_or_else(|| {
+      crate::errors::NovaError::PtauFileError(format!(
+        "No suitable ptau file found in {:?}. Need at least {} generators (power >= {}). \
+         Expected files named ppot_pruned_XX.ptau or ppot_0080_XX.ptau where XX >= {:02}",
+        ptau_dir, max_size, min_power, min_power
+      ))
+    })?;
+
+    let file = File::open(&ptau_path).map_err(|e| {
+      crate::errors::NovaError::PtauFileError(format!(
+        "Failed to open {}: {}",
+        ptau_path.display(),
+        e
+      ))
+    })?;
+    let mut reader = BufReader::new(file);
+
+    E::CE::load_setup(&mut reader, b"ck", max_size)
+      .map_err(|e| crate::errors::NovaError::PtauFileError(e.to_string()))
   }
 
   /// Returns the digest of the `R1CSShape`
@@ -985,7 +1126,7 @@ mod tests {
 
   fn test_random_sample_with<E: Engine>() {
     let S = tiny_r1cs::<E>(4);
-    let ck = S.commitment_key(&*default_ck_hint());
+    let ck = R1CSShape::commitment_key(&[&S], &[&*default_ck_hint()]).unwrap();
     let (inst, wit) = S.sample_random_instance_witness(&ck).unwrap();
     assert!(S.is_sat_relaxed(&ck, &inst, &wit).is_ok());
   }

@@ -1,3 +1,13 @@
+//! PTAU Test Setup - Insecure Key Generation for Testing
+//!
+//! This example generates commitment keys with a random tau for testing purposes.
+//! **DO NOT USE IN PRODUCTION** - the generated keys are insecure because tau is known.
+//!
+//! For production, use `PublicParams::setup_with_ptau_dir` with ptau files from
+//! the Ethereum Powers of Tau ceremony.
+//!
+//! Run with: `cargo run --example ptau_test_setup --features test-utils,io`
+
 use std::{
   fs::OpenOptions,
   io::{BufReader, BufWriter},
