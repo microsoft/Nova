@@ -16,7 +16,8 @@ pub(crate) mod keccak;
 pub(crate) mod pedersen;
 #[cfg(feature = "io")]
 pub mod ptau;
-pub(crate) mod traits;
+/// Traits for cryptographic groups including pairing-friendly curves
+pub mod traits;
 
 mod msm;
 

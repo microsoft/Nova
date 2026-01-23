@@ -9,11 +9,12 @@ A distinctive aspect of Nova is that it is the simplest recursive proof system i
 ## Details of the library
 This repository provides `nova-snark,` a Rust library implementation of Nova over a cycle of elliptic curves. Our code supports three curve cycles: (1) Pallas/Vesta, (2) BN254/Grumpkin, and (3) secp/secq. 
 
-At its core, Nova relies on a commitment scheme for vectors. Compressing IVC proofs using Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. Our code implements two commitment schemes and evaluation arguments: 
-1. Pedersen commitments with IPA-based evaluation argument (supported on all three curve cycles), and
-2. HyperKZG commitments and evaluation argument (supported on curves with pairings e.g., BN254).
+At its core, Nova relies on a commitment scheme for vectors. Compressing IVC proofs using Spartan relies on interpreting commitments to vectors as commitments to multilinear polynomials and prove evaluations of committed polynomials. Our code implements three commitment schemes and evaluation arguments: 
+1. **Pedersen commitments with IPA-based evaluation argument** (supported on all three curve cycles)
+2. **HyperKZG commitments and evaluation argument** (supported on curves with pairings, e.g., BN254)
+3. **Mercury commitments and evaluation argument** (supported on curves with pairings, e.g., BN254) - Mercury is an optimized variant that provides faster verification than HyperKZG
     
-For more details on using HyperKZG, please see the test `test_ivc_nontrivial_with_compression`. The HyperKZG and Mercury instantiations require a universal setup (the so-called "powers of tau"). See the [Universal Setup](#universal-setup-for-hyperkzg-and-mercury) section below for details on loading setup parameters. 
+For more details on using HyperKZG or Mercury, please see the test `test_ivc_nontrivial_with_compression`. Both HyperKZG and Mercury require a universal setup (the so-called "powers of tau"). See the [Universal Setup](#universal-setup-for-hyperkzg-and-mercury) section below for details on loading setup parameters. 
 
 We also implement a SNARK, based on [Spartan](https://eprint.iacr.org/2019/550.pdf), to compress IVC proofs produced by Nova. There are two variants, one that does *not* use any preprocessing and another that uses preprocessing of circuits to ensure that the verifier's run time does not depend on the size of the step circuit. The preprocessing variant of Spartan is called MicroSpartan and is described in the [MicroNova](https://eprint.iacr.org/2024/2099) paper.
 
@@ -25,6 +26,29 @@ A front-end is a tool to take a high-level program and turn it into an intermedi
 1. The native APIs of Nova accept circuits expressed with bellman-style circuits. See [minroot.rs](https://github.com/microsoft/Nova/blob/main/examples/minroot.rs) or [sha256.rs](https://github.com/microsoft/Nova/blob/main/benches/sha256.rs) for examples.
 
 2. Circom: A DSL and a compiler to transform high-level program expressed in its language into a circuit. There exist middleware to turn output of circom into a form suitable for proving with Nova. See [Nova Scotia](https://github.com/nalinbhardwaj/Nova-Scotia) and [Circom Scotia](https://github.com/lurk-lab/circom-scotia). In the future, we will add examples in the Nova repository to use these tools with Nova.
+
+## Cargo Features
+
+The library provides several optional features:
+
+| Feature | Description |
+|---------|-------------|
+| `io` (default) | Enables loading commitment keys from Powers of Tau files |
+| `evm` | Enables EVM-friendly serialization |
+| `experimental` | Enables experimental features like NeutronNova |
+| `test-utils` | Enables insecure test utilities (random tau generation) - **do not use in production** |
+
+Example usage:
+```bash
+# Default features (includes io)
+cargo build
+
+# With EVM verifier support
+cargo build --features evm
+
+# With experimental NeutronNova
+cargo build --features experimental
+```
 
 ## Tests and examples
 By default, we enable the `asm` feature of an underlying library (which boosts performance by up to 50\%). If the library fails to build or run, one can pass `--no-default-features` to `cargo` commands noted below.
@@ -63,6 +87,10 @@ The following paper describes an on-chain efficient version of Nova. We have ope
 [MicroNova: Folding-based arguments with efficient (on-chain) verification](https://eprint.iacr.org/2024/2099) \
 Jiaxing Zhao, Srinath Setty, Weidong Cui, and Greg Zaverucha \
 IEEE S&P 2025
+
+### Experimental: NeutronNova
+
+The library includes an experimental implementation of NeutronNova. Enable with `--features experimental`. Note that experimental features may have breaking changes between releases.
 
 ## Universal Setup for HyperKZG and Mercury
 
