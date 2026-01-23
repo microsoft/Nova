@@ -40,8 +40,10 @@ impl IOPattern {
   }
 }
 
-// A large 128-bit prime, per https://primes.utm.edu/lists/2small/100bit.html.
-const HASHER_BASE: u128 = (0 - 159) as u128;
+// Large 128-bit constant for sponge construction hashing.
+// Using 2^128 - 159, which provides good distribution properties
+// for the hasher state computation in sponge operations.
+const HASHER_BASE: u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFu128 - 158;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Hasher {
