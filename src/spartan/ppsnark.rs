@@ -304,16 +304,12 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let (eval_point_0, bound_coeff, eval_point_inf) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<2>(
-        &self.poly_masked_eq,
-        &self.poly_W,
-        &self.poly_W, // unused
-      );
+    // masked_eq * W is a quadratic polynomial (A * B)
+    let (eval_point_0, eval_point_inf) =
+      SumcheckProof::<E>::compute_eval_points_quadratic(&self.poly_masked_eq, &self.poly_W);
 
-    assert_eq!(bound_coeff, E::Scalar::ZERO);
-
-    vec![vec![eval_point_0, bound_coeff, eval_point_inf]]
+    // bound_coeff is always 0 for quadratic polynomials
+    vec![vec![eval_point_0, E::Scalar::ZERO, eval_point_inf]]
   }
 
   fn bound(&mut self, r: &E::Scalar) {
