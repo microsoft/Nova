@@ -533,17 +533,15 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
     // inv related evaluation points for linear (A - B) pattern
     // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
-    let (eval_inv_0_row, eval_inv_3_row) =
-      SumcheckProof::<E>::compute_eval_points_linear(
-        &self.t_plus_r_inv_row,
-        &self.w_plus_r_inv_row,
-      );
+    let (eval_inv_0_row, eval_inv_3_row) = SumcheckProof::<E>::compute_eval_points_linear(
+      &self.t_plus_r_inv_row,
+      &self.w_plus_r_inv_row,
+    );
 
-    let (eval_inv_0_col, eval_inv_3_col) =
-      SumcheckProof::<E>::compute_eval_points_linear(
-        &self.t_plus_r_inv_col,
-        &self.w_plus_r_inv_col,
-      );
+    let (eval_inv_0_col, eval_inv_3_col) = SumcheckProof::<E>::compute_eval_points_linear(
+      &self.t_plus_r_inv_col,
+      &self.w_plus_r_inv_col,
+    );
 
     let (
       ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
