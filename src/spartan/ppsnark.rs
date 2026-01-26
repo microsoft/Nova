@@ -535,21 +535,18 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    // inv related evaluation points using DEG=1 (A - B pattern)
-    // Note: For DEG=1, the third polynomial is completely unused, so we pass an existing reference
+    // inv related evaluation points for linear (A - B) pattern
     // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
-    let (eval_inv_0_row, eval_inv_2_row, eval_inv_3_row) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
+    let (eval_inv_0_row, eval_inv_3_row) =
+      SumcheckProof::<E>::compute_eval_points_linear(
         &self.t_plus_r_inv_row,
         &self.w_plus_r_inv_row,
-        &self.t_plus_r_inv_row, // unused for DEG=1, reuse existing ref
       );
 
-    let (eval_inv_0_col, eval_inv_2_col, eval_inv_3_col) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
+    let (eval_inv_0_col, eval_inv_3_col) =
+      SumcheckProof::<E>::compute_eval_points_linear(
         &self.t_plus_r_inv_col,
         &self.w_plus_r_inv_col,
-        &self.t_plus_r_inv_col, // unused for DEG=1, reuse existing ref
       );
 
     let (
@@ -595,8 +592,8 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
     );
 
     vec![
-      vec![eval_inv_0_row, eval_inv_2_row, eval_inv_3_row],
-      vec![eval_inv_0_col, eval_inv_2_col, eval_inv_3_col],
+      vec![eval_inv_0_row, E::Scalar::ZERO, eval_inv_3_row],
+      vec![eval_inv_0_col, E::Scalar::ZERO, eval_inv_3_col],
       vec![eval_T_0_row, eval_T_2_row, eval_T_3_row],
       vec![eval_W_0_row, eval_W_2_row, eval_W_3_row],
       vec![eval_T_0_col, eval_T_2_col, eval_T_3_col],

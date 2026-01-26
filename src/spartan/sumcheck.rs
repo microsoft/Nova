@@ -341,6 +341,34 @@ impl<E: Engine> SumcheckProof<E> {
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))
   }
 
+  /// Computes evaluation points for a linear sumcheck round (poly_A - poly_B).
+  /// Returns (eval_0, eval_inf) since the bound coefficient is always 0 for linear.
+  #[inline]
+  pub fn compute_eval_points_linear(
+    poly_A: &MultilinearPolynomial<E::Scalar>,
+    poly_B: &MultilinearPolynomial<E::Scalar>,
+  ) -> (E::Scalar, E::Scalar) {
+    let len = poly_A.len() / 2;
+    (0..len)
+      .into_par_iter()
+      .map(|i| {
+        // eval 0: A(low) - B(low)
+        let eval_point_0 = poly_A[i] - poly_B[i];
+
+        // eval -1: A(-1) - B(-1)
+        // A(-1) = A(low) - (A(high) - A(low)) = 2*A(low) - A(high)
+        let poly_A_inf_point = poly_A[i] + poly_A[i] - poly_A[len + i];
+        let poly_B_inf_point = poly_B[i] + poly_B[i] - poly_B[len + i];
+        let eval_point_inf = poly_A_inf_point - poly_B_inf_point;
+
+        (eval_point_0, eval_point_inf)
+      })
+      .reduce(
+        || (E::Scalar::ZERO, E::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1),
+      )
+  }
+
   /// Computes evaluation points for a cubic sumcheck round.
   /// DEG1: poly_A - poly_B
   /// DEG2: poly_A * poly_B
