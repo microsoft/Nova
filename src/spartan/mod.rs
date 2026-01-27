@@ -24,13 +24,15 @@ pub mod sumcheck;
 pub use sumcheck::SumcheckEngine;
 
 use crate::{
+  errors::NovaError,
   r1cs::{R1CSShape, SparseMatrix},
   traits::Engine,
   Commitment,
 };
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use rayon::{iter::IntoParallelRefIterator, prelude::*};
+use std::cmp::max;
 
 /// Creates a vector of the first `n` powers of `s`.
 ///
@@ -43,6 +45,103 @@ pub fn powers<E: Engine>(s: &E::Scalar, n: usize) -> Vec<E::Scalar> {
     powers.push(powers[i - 1] * s);
   }
   powers
+}
+
+/// Batch invert a vector of field elements
+///
+/// Uses Montgomery's trick with parallelization for large inputs.
+/// Returns an error if any element is zero.
+pub fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+  const MAX_SIZE_FOR_SERIAL: usize = 4096;
+  const MIN_CHUNK_SIZE: usize = 128;
+
+  if v.len() < MAX_SIZE_FOR_SERIAL {
+    return batch_invert_serial(v);
+  }
+
+  let compute_prod = |beta: &[Scalar]| -> (Vec<Scalar>, Scalar) {
+    let mut prod = vec![Scalar::ZERO; beta.len()];
+    let mut acc = Scalar::ONE;
+    prod.iter_mut().zip(beta).for_each(|(p, e)| {
+      let nxt_acc = acc * *e;
+      *p = acc;
+      acc = nxt_acc;
+    });
+    (prod, acc)
+  };
+
+  let compute_inv = |beta: &mut [Scalar], prod: &[Scalar], init_inv: Scalar| {
+    let mut acc = init_inv;
+    for i in (0..beta.len()).rev() {
+      let nxt_acc = acc * beta[i];
+      beta[i] = acc * prod[i];
+      acc = nxt_acc;
+    }
+  };
+
+  let mut v = v.to_vec();
+
+  let num_chunks = rayon::current_num_threads();
+  let chunk_size = max(MIN_CHUNK_SIZE, v.len() / num_chunks);
+
+  // Phase 1: Compute Product Tree
+  let (prod1, mut beta2, prod2, root) = {
+    let chunks = v
+      .par_chunks(chunk_size)
+      .map(compute_prod)
+      .collect::<Vec<_>>();
+
+    let (prod1, beta2): (Vec<Vec<_>>, Vec<_>) = chunks.into_iter().unzip();
+
+    let (prod2, root) = compute_prod(&beta2);
+
+    (prod1, beta2, prod2, root)
+  };
+
+  if root == Scalar::ZERO {
+    return Err(NovaError::InternalError);
+  }
+  let root_inv = root.invert().unwrap();
+
+  // Phase 2: Compute Inverse Tree
+  compute_inv(&mut beta2, &prod2, root_inv);
+
+  v.par_chunks_mut(chunk_size)
+    .zip(prod1)
+    .zip(beta2)
+    .for_each(|((v, p), b)| {
+      compute_inv(v, &p, b);
+    });
+
+  Ok(v)
+}
+
+/// Serial batch invert for small inputs using Montgomery's trick
+pub fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
+  let mut products = vec![Scalar::ZERO; v.len()];
+  let mut acc = Scalar::ONE;
+
+  for i in 0..v.len() {
+    products[i] = acc;
+    acc *= v[i];
+  }
+
+  // we can compute an inversion only if acc is non-zero
+  if acc == Scalar::ZERO {
+    return Err(NovaError::InternalError);
+  }
+
+  // compute the inverse once for all entries
+  acc = acc.invert().unwrap();
+
+  let mut inv = vec![Scalar::ZERO; v.len()];
+  for i in 0..v.len() {
+    let tmp = acc * v[v.len() - 1 - i];
+    inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
+    acc = tmp;
+  }
+
+  Ok(inv)
 }
 
 /// A type that holds a witness to a polynomial evaluation instance

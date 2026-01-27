@@ -9,6 +9,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   spartan::{
+    batch_invert,
     math::Math,
     polys::{
       eq::EqPolynomial,
@@ -30,7 +31,7 @@ use crate::{
   zip_with, Commitment, CommitmentKey,
 };
 use core::cmp::max;
-use ff::{Field, PrimeField};
+use ff::Field;
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -1619,126 +1620,28 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 }
 
-// Compute the inverse of a batch of field elements in parallel
-// Inspired by https://blog.eryx.co/2024/11/27/The-Power-of-GPU-Parallelization-Applied-to-Cryptography-Primitives.html
-fn batch_invert<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-  const MAX_SIZE_FOR_SERIAL: usize = 4096;
-  const MIN_CHUNK_SIZE: usize = 128;
-
-  if v.len() < MAX_SIZE_FOR_SERIAL {
-    return batch_invert_serial(v);
-  }
-
-  let compute_prod = |beta: &[Scalar]| -> (Vec<Scalar>, Scalar) {
-    let mut prod = vec![Scalar::ZERO; beta.len()];
-    let mut acc = Scalar::ONE;
-    prod.iter_mut().zip(beta).for_each(|(p, e)| {
-      let nxt_acc = acc * *e;
-      *p = acc;
-      acc = nxt_acc;
-    });
-    (prod, acc)
-  };
-
-  let compute_inv = |beta: &mut [Scalar], prod: &[Scalar], init_inv: Scalar| {
-    let mut acc = init_inv;
-    for i in (0..beta.len()).rev() {
-      let nxt_acc = acc * beta[i];
-      beta[i] = acc * prod[i];
-      acc = nxt_acc;
-    }
-  };
-
-  let mut v = v.to_vec();
-
-  let num_chunks = rayon::current_num_threads();
-  let chunk_size = max(MIN_CHUNK_SIZE, v.len() / num_chunks);
-
-  // Phase 1: Compute Product Tree (Depth = 3)
-  let (prod1, mut beta2, prod2, root) = {
-    let chunks = v
-      .par_chunks(chunk_size)
-      .map(compute_prod)
-      .collect::<Vec<_>>();
-
-    let (prod1, beta2): (Vec<Vec<_>>, Vec<_>) = chunks.into_iter().unzip();
-
-    let (prod2, root) = compute_prod(&beta2);
-
-    (prod1, beta2, prod2, root)
-  };
-
-  if root == Scalar::ZERO {
-    return Err(NovaError::InternalError);
-  }
-  let root_inv = root.invert().unwrap();
-
-  // Phase 2: Compute Inverse Tree (Depth = 3)
-  compute_inv(&mut beta2, &prod2, root_inv);
-
-  v.par_chunks_mut(chunk_size)
-    .zip(prod1)
-    .zip(beta2)
-    .for_each(|((v, p), b)| {
-      compute_inv(v, &p, b);
-    });
-
-  Ok(v)
-}
-
-fn batch_invert_serial<Scalar: PrimeField>(v: &[Scalar]) -> Result<Vec<Scalar>, NovaError> {
-  let mut products = vec![Scalar::ZERO; v.len()];
-  let mut acc = Scalar::ONE;
-
-  for i in 0..v.len() {
-    products[i] = acc;
-    acc *= v[i];
-  }
-
-  // we can compute an inversion only if acc is non-zero
-  if acc == Scalar::ZERO {
-    return Err(NovaError::InternalError);
-  }
-
-  // compute the inverse once for all entries
-  acc = acc.invert().unwrap();
-
-  let mut inv = vec![Scalar::ZERO; v.len()];
-  for i in 0..v.len() {
-    let tmp = acc * v[v.len() - 1 - i];
-    inv[v.len() - 1 - i] = products[v.len() - 1 - i] * acc;
-    acc = tmp;
-  }
-
-  Ok(inv)
-}
-
 #[cfg(test)]
 mod batch_invert_tests {
-  use super::*;
+  use crate::spartan::{batch_invert, batch_invert_serial};
+  use ff::Field;
+  use rand::rngs::OsRng;
+  use rayon::iter::IntoParallelIterator;
+  use rayon::prelude::*;
 
-  #[cfg(test)]
-  mod tests {
-    use super::*;
-    use ff::Field;
-    use rand::rngs::OsRng;
-    use rayon::iter::IntoParallelIterator;
+  type F = halo2curves::bn256::Fr;
 
-    type F = halo2curves::bn256::Fr;
+  #[test]
+  fn test_batch_invert() {
+    let n = (1 << 15) + 5;
 
-    #[test]
-    fn test_batch_invert() {
-      let n = (1 << 15) + 5;
+    let v = (0..n)
+      .into_par_iter()
+      .map(|_| F::random(&mut OsRng))
+      .collect::<Vec<_>>();
 
-      let v = (0..n)
-        .into_par_iter()
-        .map(|_| F::random(&mut OsRng))
-        .collect::<Vec<_>>();
+    let res_1 = batch_invert_serial(&v);
+    let res_2 = batch_invert(&v);
 
-      let res_1 = batch_invert_serial(&v);
-      let res_2 = batch_invert(&v);
-
-      assert_eq!(res_1, res_2)
-    }
+    assert_eq!(res_1, res_2)
   }
 }
