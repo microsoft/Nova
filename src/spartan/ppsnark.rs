@@ -49,36 +49,50 @@ fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar>
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSShapeSparkRepr<E: Engine> {
-  N: usize, // size of the vectors
+  /// size of the vectors
+  pub N: usize,
 
-  // dense representation
-  row: Vec<E::Scalar>,
-  col: Vec<E::Scalar>,
-  val_A: Vec<E::Scalar>,
-  val_B: Vec<E::Scalar>,
-  val_C: Vec<E::Scalar>,
+  /// dense representation of row indices
+  pub row: Vec<E::Scalar>,
+  /// dense representation of column indices
+  pub col: Vec<E::Scalar>,
+  /// values from A matrix
+  pub val_A: Vec<E::Scalar>,
+  /// values from B matrix
+  pub val_B: Vec<E::Scalar>,
+  /// values from C matrix
+  pub val_C: Vec<E::Scalar>,
 
-  // timestamp polynomials
-  ts_row: Vec<E::Scalar>,
-  ts_col: Vec<E::Scalar>,
+  /// timestamp polynomial for rows
+  pub ts_row: Vec<E::Scalar>,
+  /// timestamp polynomial for columns
+  pub ts_col: Vec<E::Scalar>,
 }
 
 /// A type that holds a commitment to a sparse polynomial
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct R1CSShapeSparkCommitment<E: Engine> {
-  N: usize, // size of each vector
+  /// size of each vector
+  pub N: usize,
 
   // commitments to the dense representation
-  comm_row: Commitment<E>,
-  comm_col: Commitment<E>,
-  comm_val_A: Commitment<E>,
-  comm_val_B: Commitment<E>,
-  comm_val_C: Commitment<E>,
+  /// commitment to row indices
+  pub comm_row: Commitment<E>,
+  /// commitment to column indices
+  pub comm_col: Commitment<E>,
+  /// commitment to A matrix values
+  pub comm_val_A: Commitment<E>,
+  /// commitment to B matrix values
+  pub comm_val_B: Commitment<E>,
+  /// commitment to C matrix values
+  pub comm_val_C: Commitment<E>,
 
   // commitments to the timestamp polynomials
-  comm_ts_row: Commitment<E>,
-  comm_ts_col: Commitment<E>,
+  /// commitment to row timestamps
+  pub comm_ts_row: Commitment<E>,
+  /// commitment to column timestamps
+  pub comm_ts_col: Commitment<E>,
 }
 
 impl<E: Engine> TranscriptReprTrait<E::GE> for R1CSShapeSparkCommitment<E> {
@@ -174,7 +188,8 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
     }
   }
 
-  fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
+  /// Commits to the R1CSShapeSparkRepr using the provided commitment key
+  pub fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
     let comm_vec: Vec<Commitment<E>> = [
       &self.row,
       &self.col,
@@ -257,7 +272,8 @@ pub struct WitnessBoundSumcheck<E: Engine> {
 }
 
 impl<E: Engine> WitnessBoundSumcheck<E> {
-  fn new(tau: Vec<E::Scalar>, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
+  /// Creates a new WitnessBoundSumcheck instance
+  pub fn new(tau: Vec<E::Scalar>, poly_W_padded: Vec<E::Scalar>, num_vars: usize) -> Self {
     let num_vars_log = num_vars.log_2();
     // When num_vars = num_rounds, we shouldn't have to prove anything
     // but we still want this instance to compute the evaluation of W
@@ -288,16 +304,12 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    let (eval_point_0, bound_coeff, eval_point_inf) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<2>(
-        &self.poly_masked_eq,
-        &self.poly_W,
-        &self.poly_W, // unused
-      );
+    // masked_eq * W is a quadratic polynomial (A * B)
+    let (eval_point_0, eval_point_inf) =
+      SumcheckProof::<E>::compute_eval_points_quadratic(&self.poly_masked_eq, &self.poly_W);
 
-    assert_eq!(bound_coeff, E::Scalar::ZERO);
-
-    vec![vec![eval_point_0, bound_coeff, eval_point_inf]]
+    // bound_coeff is always 0 for quadratic polynomials
+    vec![vec![eval_point_0, E::Scalar::ZERO, eval_point_inf]]
   }
 
   fn bound(&mut self, r: &E::Scalar) {
@@ -326,9 +338,6 @@ pub struct MemorySumcheckInstance<E: Engine> {
   t_plus_r_inv_col: MultilinearPolynomial<E::Scalar>,
   w_plus_r_inv_col: MultilinearPolynomial<E::Scalar>,
   ts_col: MultilinearPolynomial<E::Scalar>,
-
-  // zero polynomial
-  poly_zero: MultilinearPolynomial<E::Scalar>,
 
   eq_sumcheck: EqSumCheckInstance<E>,
 }
@@ -485,8 +494,6 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     let [t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_inv_col, w_plus_r_inv_col] = polys_oracle;
     let [t_plus_r_row, w_plus_r_row, t_plus_r_col, w_plus_r_col] = polys_aux;
 
-    let zero = vec![E::Scalar::ZERO; 1 << rhos.len()];
-
     Self {
       w_plus_r_row: MultilinearPolynomial::new(w_plus_r_row),
       t_plus_r_row: MultilinearPolynomial::new(t_plus_r_row),
@@ -498,7 +505,6 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       t_plus_r_inv_col: MultilinearPolynomial::new(t_plus_r_inv_col),
       w_plus_r_inv_col: MultilinearPolynomial::new(w_plus_r_inv_col),
       ts_col: MultilinearPolynomial::new(ts_col),
-      poly_zero: MultilinearPolynomial::new(zero),
       eq_sumcheck: EqSumCheckInstance::new(rhos),
     }
   }
@@ -525,21 +531,17 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 
   fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    // inv related evaluation points
+    // inv related evaluation points for linear (A - B) pattern
     // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
-    let (eval_inv_0_row, eval_inv_2_row, eval_inv_3_row) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
-        &self.t_plus_r_inv_row,
-        &self.w_plus_r_inv_row,
-        &self.poly_zero,
-      );
+    let (eval_inv_0_row, eval_inv_3_row) = SumcheckProof::<E>::compute_eval_points_linear(
+      &self.t_plus_r_inv_row,
+      &self.w_plus_r_inv_row,
+    );
 
-    let (eval_inv_0_col, eval_inv_2_col, eval_inv_3_col) =
-      SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<1>(
-        &self.t_plus_r_inv_col,
-        &self.w_plus_r_inv_col,
-        &self.poly_zero,
-      );
+    let (eval_inv_0_col, eval_inv_3_col) = SumcheckProof::<E>::compute_eval_points_linear(
+      &self.t_plus_r_inv_col,
+      &self.w_plus_r_inv_col,
+    );
 
     let (
       ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
@@ -584,8 +586,8 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
     );
 
     vec![
-      vec![eval_inv_0_row, eval_inv_2_row, eval_inv_3_row],
-      vec![eval_inv_0_col, eval_inv_2_col, eval_inv_3_col],
+      vec![eval_inv_0_row, E::Scalar::ZERO, eval_inv_3_row],
+      vec![eval_inv_0_col, E::Scalar::ZERO, eval_inv_3_col],
       vec![eval_T_0_row, eval_T_2_row, eval_T_3_row],
       vec![eval_W_0_row, eval_W_2_row, eval_W_3_row],
       vec![eval_T_0_col, eval_T_2_col, eval_T_3_col],
@@ -721,11 +723,33 @@ impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   }
 }
 
-struct InnerSumcheckInstance<E: Engine> {
-  claim: E::Scalar,
-  poly_L_row: MultilinearPolynomial<E::Scalar>,
-  poly_L_col: MultilinearPolynomial<E::Scalar>,
-  poly_val: MultilinearPolynomial<E::Scalar>,
+/// Inner sumcheck instance for PPSNARK
+pub struct InnerSumcheckInstance<E: Engine> {
+  /// The claim value
+  pub claim: E::Scalar,
+  /// Row lookup polynomial
+  pub poly_L_row: MultilinearPolynomial<E::Scalar>,
+  /// Column lookup polynomial
+  pub poly_L_col: MultilinearPolynomial<E::Scalar>,
+  /// Value polynomial
+  pub poly_val: MultilinearPolynomial<E::Scalar>,
+}
+
+impl<E: Engine> InnerSumcheckInstance<E> {
+  /// Create a new inner sumcheck instance
+  pub fn new(
+    claim: E::Scalar,
+    L_row: Vec<E::Scalar>,
+    L_col: Vec<E::Scalar>,
+    val: Vec<E::Scalar>,
+  ) -> Self {
+    Self {
+      claim,
+      poly_L_row: MultilinearPolynomial::new(L_row),
+      poly_L_col: MultilinearPolynomial::new(L_col),
+      poly_val: MultilinearPolynomial::new(val),
+    }
+  }
 }
 
 impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
