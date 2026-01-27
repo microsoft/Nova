@@ -418,3 +418,29 @@ pub fn compute_eval_table_sparse<E: Engine>(
 
   (A_evals, B_evals, C_evals)
 }
+
+#[cfg(test)]
+mod batch_invert_tests {
+  use super::{batch_invert, batch_invert_serial};
+  use ff::Field;
+  use rand::rngs::OsRng;
+  use rayon::iter::IntoParallelIterator;
+  use rayon::prelude::*;
+
+  type F = halo2curves::bn256::Fr;
+
+  #[test]
+  fn test_batch_invert() {
+    let n = (1 << 15) + 5;
+
+    let v = (0..n)
+      .into_par_iter()
+      .map(|_| F::random(&mut OsRng))
+      .collect::<Vec<_>>();
+
+    let res_1 = batch_invert_serial(&v);
+    let res_2 = batch_invert(&v);
+
+    assert_eq!(res_1, res_2)
+  }
+}
