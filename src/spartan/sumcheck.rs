@@ -271,9 +271,12 @@ impl<E: Engine> SumcheckProof<E> {
           if remaining_rounds <= *num_rounds {
             Self::compute_eval_points_quad_prod(poly_A, poly_B)
           } else {
+            // Instance hasn't started yet - contributes a constant (scaled claim)
+            // For replication model: polynomial is constant across early rounds
+            // Constant polynomial: p(x) = scaled, so eval_0 = scaled, quadratic_coeff = 0
             let remaining_variables = remaining_rounds - num_rounds - 1;
             let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
-            (scaled_claim, scaled_claim)
+            (scaled_claim, E::Scalar::ZERO)
           }
         }
       )
