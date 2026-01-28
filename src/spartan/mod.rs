@@ -517,8 +517,7 @@ pub fn batch_eval_reduce<E: Engine>(
   // we now combine evaluation claims at the same point r into one
   let chal = transcript.squeeze(b"c")?;
 
-  let u_joint =
-    PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, chal);
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, chal);
 
   // P = ∑ᵢ γⁱ⋅Pᵢ
   let w_joint = PolyEvalWitness::batch_diff_size(w_vec, chal);
@@ -604,5 +603,80 @@ mod batch_invert_tests {
     let res_2 = batch_invert(&v);
 
     assert_eq!(res_1, res_2)
+  }
+}
+
+#[cfg(test)]
+mod batch_eval_tests {
+  use super::{batch_eval_reduce, batch_eval_verify, PolyEvalInstance, PolyEvalWitness};
+  use crate::provider::Bn256EngineKZG;
+  use crate::spartan::polys::multilinear::MultilinearPolynomial;
+  use crate::traits::{commitment::CommitmentEngineTrait, Engine, TranscriptEngineTrait};
+  use ff::Field;
+
+  type E = Bn256EngineKZG;
+
+  /// Test batch_eval_reduce with polynomials of significantly different sizes
+  /// to verify correctness of the batching protocol.
+  #[test]
+  fn test_batch_eval_reduce_different_sizes() {
+    // Create polynomials of different sizes
+    // P1: 4 variables (16 coefficients)
+    // P2: 2 variables (4 coefficients)
+    let p1: Vec<<E as Engine>::Scalar> = (0..16)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 + 1))
+      .collect();
+    let p2: Vec<<E as Engine>::Scalar> = (0..4)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 + 100))
+      .collect();
+
+    // Evaluation points
+    let x1: Vec<<E as Engine>::Scalar> = (0..4)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 * 7 + 3))
+      .collect();
+    let x2: Vec<<E as Engine>::Scalar> = (0..2)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 * 11 + 5))
+      .collect();
+
+    // Compute evaluations
+    let e1 = MultilinearPolynomial::new(p1.clone()).evaluate(&x1);
+    let e2 = MultilinearPolynomial::new(p2.clone()).evaluate(&x2);
+
+    // Create commitment key
+    let ck = <<E as Engine>::CE as CommitmentEngineTrait<E>>::setup(b"test", 16).unwrap();
+
+    // Commit to polynomials (using trivial blinder)
+    let blinder = <E as Engine>::Scalar::ZERO;
+    let c1 = <<E as Engine>::CE as CommitmentEngineTrait<E>>::commit(&ck, &p1, &blinder);
+    let c2 = <<E as Engine>::CE as CommitmentEngineTrait<E>>::commit(&ck, &p2, &blinder);
+
+    // Create instances and witnesses
+    let u_vec: Vec<PolyEvalInstance<E>> = vec![
+      PolyEvalInstance::new(c1, x1, e1),
+      PolyEvalInstance::new(c2, x2, e2),
+    ];
+    let w_vec: Vec<PolyEvalWitness<E>> = vec![
+      PolyEvalWitness::new(p1.clone()),
+      PolyEvalWitness::new(p2.clone()),
+    ];
+
+    // Run batch_eval_reduce
+    let mut transcript_prover = <E as Engine>::TE::new(b"test_batch_eval");
+    let (u_joint, _w_joint, _chal, sc_proof, evals_batch) =
+      batch_eval_reduce(u_vec.clone(), w_vec, &mut transcript_prover).unwrap();
+
+    // Run batch_eval_verify
+    let mut transcript_verifier = <E as Engine>::TE::new(b"test_batch_eval");
+    let u_joint_verify =
+      batch_eval_verify(u_vec, &mut transcript_verifier, &sc_proof, &evals_batch).unwrap();
+
+    // Check that prover and verifier agree
+    assert_eq!(u_joint.c(), u_joint_verify.c(), "Commitments don't match");
+    assert_eq!(
+      u_joint.x(),
+      u_joint_verify.x(),
+      "Evaluation points don't match"
+    );
+    assert_eq!(u_joint.e(), u_joint_verify.e(), "Evaluations don't match");
   }
 }
