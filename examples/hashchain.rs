@@ -95,7 +95,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
   }
 }
 
-/// cargo run --release --example and
+/// cargo run --release --example hashchain
 fn main() {
   println!("=========================================================");
   println!("Nova-based hashchain example");
@@ -103,7 +103,7 @@ fn main() {
 
   let num_steps = 10;
   for num_elts_per_step in [1024, 2048, 4096] {
-    // number of instances of AND per Nova's recursive step
+    // number of field elements per hash chain node
     let circuit = HashChainCircuit::new(num_elts_per_step);
 
     // produce public parameters
