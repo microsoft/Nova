@@ -467,7 +467,7 @@ pub fn batch_eval_reduce<E: Engine>(
   ),
   NovaError,
 > {
-  use polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial};
+  use polys::multilinear::MultilinearPolynomial;
 
   let num_claims = u_vec.len();
   assert_eq!(w_vec.len(), num_claims);
@@ -485,7 +485,7 @@ pub fn batch_eval_reduce<E: Engine>(
   let rho = transcript.squeeze(b"r")?;
   let powers_of_rho = powers::<E>(&rho, num_claims);
 
-  let (claims, u_xs, comms): (Vec<_>, Vec<_>, Vec<_>) =
+  let (claims, eval_points, comms): (Vec<_>, Vec<_>, Vec<_>) =
     u_vec.into_iter().map(|u| (u.e, u.x, u.c)).multiunzip();
 
   // Create clones of polynomials to be given to Sumcheck
@@ -494,18 +494,14 @@ pub fn batch_eval_reduce<E: Engine>(
     .iter()
     .map(|w| MultilinearPolynomial::new(w.p.clone()))
     .collect();
-  // eq(xᵢ, X)
-  let polys_eq: Vec<MultilinearPolynomial<E::Scalar>> = u_xs
-    .into_iter()
-    .map(|ux| MultilinearPolynomial::new(EqPolynomial::evals_from_points(&ux)))
-    .collect();
 
   // For each i, check eᵢ = ∑ₓ Pᵢ(x)eq(xᵢ,x), where x ∈ {0,1}^nᵢ
-  let (sc_proof_batch, r, claims_batch) = sumcheck::SumcheckProof::prove_quad_batch_prod(
+  // Use split eq representation for memory efficiency (O(sqrt(N)) instead of O(N))
+  let (sc_proof_batch, r, claims_batch) = sumcheck::SumcheckProof::prove_quad_batch_prod_split_eq(
     &claims,
     &num_rounds,
     polys_P,
-    polys_eq,
+    eval_points,
     &powers_of_rho,
     transcript,
   )?;

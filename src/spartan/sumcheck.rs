@@ -344,6 +344,144 @@ impl<E: Engine> SumcheckProof<E> {
     Ok((SumcheckProof::new(quad_polys), r, claims_prod))
   }
 
+  /// Proves a batch of quadratic sumcheck instances over product polynomials
+  /// using split equality polynomial representation for memory efficiency.
+  ///
+  /// Each instance computes the sum over the boolean hypercube of poly_A[i] * eq(x_i, X).
+  /// Instead of materializing full eq polynomials, uses EqSumCheckInstance for O(sqrt(N)) memory.
+  ///
+  /// # Arguments
+  /// * `claims` - The claimed sums for each instance
+  /// * `num_rounds` - Number of variables for each instance
+  /// * `poly_A_vec` - Witness polynomials (will be mutated via binding)
+  /// * `eval_points` - Evaluation points for eq polynomials (tau values)
+  /// * `coeffs` - Random linear combination coefficients
+  /// * `transcript` - The transcript for Fiat-Shamir
+  ///
+  /// # Returns
+  /// A tuple of (proof, challenges, (witness_evals, eq_evals)).
+  pub fn prove_quad_batch_prod_split_eq(
+    claims: &[E::Scalar],
+    num_rounds: &[usize],
+    mut poly_A_vec: Vec<MultilinearPolynomial<E::Scalar>>,
+    eval_points: Vec<Vec<E::Scalar>>,
+    coeffs: &[E::Scalar],
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, (Vec<E::Scalar>, Vec<E::Scalar>)), NovaError> {
+    let num_claims = claims.len();
+
+    assert_eq!(num_rounds.len(), num_claims);
+    assert_eq!(poly_A_vec.len(), num_claims);
+    assert_eq!(eval_points.len(), num_claims);
+    assert_eq!(coeffs.len(), num_claims);
+
+    // Verify polynomial sizes match num_rounds
+    for (i, &n) in num_rounds.iter().enumerate() {
+      assert_eq!(poly_A_vec[i].len(), 1 << n);
+      assert_eq!(eval_points[i].len(), n);
+    }
+
+    let num_rounds_max = *num_rounds.iter().max().unwrap();
+
+    // Create split eq instances for each claim (no padding - each with its actual size)
+    let mut eq_instances: Vec<EqSumCheckInstance<E>> = eval_points
+      .into_iter()
+      .map(|points| EqSumCheckInstance::new(points))
+      .collect();
+
+    // Initial combined claim with scaling for replication
+    let mut e = zip_with!(
+      iter,
+      (claims, num_rounds, coeffs),
+      |claim, num_rounds, coeff| {
+        let scaled_claim = E::Scalar::from((1 << (num_rounds_max - num_rounds)) as u64) * claim;
+        scaled_claim * coeff
+      }
+    )
+    .sum();
+
+    let mut r: Vec<E::Scalar> = Vec::new();
+    let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+
+    for current_round in 0..num_rounds_max {
+      let remaining_rounds = num_rounds_max - current_round;
+
+      // Compute evaluation points using split eq representation
+      let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
+        par_iter,
+        (num_rounds, claims, poly_A_vec, eq_instances),
+        |num_rounds, claim, poly_A, eq_instance| {
+          if remaining_rounds <= *num_rounds {
+            // Instance is active - use split eq computation
+            eq_instance.evaluation_points_quad_prod(poly_A)
+          } else {
+            // Instance hasn't started yet - contributes a constant (scaled claim)
+            let remaining_variables = remaining_rounds - num_rounds - 1;
+            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
+            (scaled_claim, E::Scalar::ZERO)
+          }
+        }
+      )
+      .collect();
+
+      let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
+      let evals_combined_bound_coeff = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
+
+      let evals = vec![
+        evals_combined_0,
+        e - evals_combined_0,
+        evals_combined_bound_coeff,
+      ];
+      let poly = UniPoly::from_evals_deg2(&evals);
+
+      // Append the prover's message to the transcript
+      transcript.absorb(b"p", &poly);
+
+      // Derive the verifier's challenge for the next round
+      let r_i = transcript.squeeze(b"c")?;
+      r.push(r_i);
+
+      // Bind witness polynomials and eq instances only when active
+      zip_with_for_each!(
+        (
+          num_rounds.par_iter(),
+          poly_A_vec.par_iter_mut(),
+          eq_instances.par_iter_mut()
+        ),
+        |num_rounds, poly_A, eq_instance| {
+          if remaining_rounds <= *num_rounds {
+            poly_A.bind_poly_var_top(&r_i);
+            eq_instance.bound(&r_i);
+          }
+        }
+      );
+
+      e = poly.evaluate(&r_i);
+      quad_polys.push(poly.compress());
+    }
+
+    // Extract final evaluations
+    poly_A_vec.iter().for_each(|p| assert_eq!(p.len(), 1));
+    let poly_A_final: Vec<E::Scalar> = poly_A_vec.into_iter().map(|poly| poly[0]).collect();
+    let poly_eq_final: Vec<E::Scalar> = eq_instances
+      .into_iter()
+      .map(|eq| eq.final_evaluation())
+      .collect();
+
+    // Verify final claim
+    let eval_expected = zip_with!(
+      iter,
+      (poly_A_final, poly_eq_final, coeffs),
+      |eA, eEq, coeff| *eA * *eEq * coeff
+    )
+    .sum::<E::Scalar>();
+    assert_eq!(e, eval_expected);
+
+    let claims_prod = (poly_A_final, poly_eq_final);
+
+    Ok((SumcheckProof::new(quad_polys), r, claims_prod))
+  }
+
   /// Computes evaluation points for a linear sumcheck round (poly_A - poly_B).
   /// Returns (eval_0, eval_inf) since the bound coefficient is always 0 for linear.
   #[inline]
@@ -812,6 +950,78 @@ pub mod eq_sumcheck {
       let tau = self.taus[self.round - 1];
       self.eval_eq_left *= E::Scalar::ONE - tau - r + (*r * tau).double();
       self.round += 1;
+    }
+
+    /// Returns the final evaluation eq(tau, r) after all rounds.
+    #[inline]
+    pub fn final_evaluation(&self) -> E::Scalar {
+      debug_assert_eq!(self.round, self.init_num_vars + 1);
+      self.eval_eq_left
+    }
+
+    /// Compute evaluation points for quadratic sumcheck: sum_x poly_A(x) * eq(tau, x)
+    /// Returns (eval_0, bound_coeff) for constructing degree-2 univariate.
+    #[inline]
+    pub fn evaluation_points_quad_prod(
+      &self,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+    ) -> (E::Scalar, E::Scalar) {
+      debug_assert_eq!(poly_A.len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+      let half_p = poly_A.Z.len() / 2;
+
+      let [zip_A] = split_and_zip([&poly_A.Z], half_p);
+
+      // Compute eval_0 and bound_coeff using split eq representation
+      let (mut eval_0, mut bound_coeff) = if in_first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+
+        zip_A
+          .enumerate()
+          .map(|(id, a)| {
+            let (zero_a, one_a) = a;
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+
+            // eval_0: poly_A[low] * eq[i]
+            let e0 = *zero_a * factor;
+            // bound_coeff: (poly_A[high] - poly_A[low]) * (eq[high] - eq[low])
+            // For eq polynomial: eq[high] = eq[i] * tau, eq[low] = eq[i] * (1-tau)
+            // So (eq[high] - eq[low]) = eq[i] * (2*tau - 1)
+            let bc = (*one_a - *zero_a) * factor;
+
+            (e0, bc)
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half().par_iter();
+
+        zip_A
+          .zip_eq(poly_eq_right)
+          .map(|(a, factor)| {
+            let (zero_a, one_a) = a;
+
+            let e0 = *zero_a * *factor;
+            let bc = (*one_a - *zero_a) * *factor;
+
+            (e0, bc)
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      };
+
+      // Apply the eq(tau, 0) and (2*tau - 1) factors for the current round
+      let p = self.eval_eq_left;
+      let eq_tau_0_a_inf = self.eq_tau_0_a_inf[self.round - 1];
+      eval_0 *= eq_tau_0_a_inf.0 * p; // eq(tau, 0) factor
+      bound_coeff *= eq_tau_0_a_inf.1 * p; // (2*tau - 1) factor
+
+      (eval_0, bound_coeff)
     }
 
     #[inline]
