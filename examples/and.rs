@@ -85,7 +85,7 @@ pub fn u64_into_bit_vec_le<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
   Ok(bits)
 }
 
-/// Gets as input the little indian representation of a number and spits out the number
+/// Gets as input the little endian representation of a number and spits out the number
 pub fn le_bits_to_num<Scalar, CS>(
   mut cs: CS,
   bits: &[AllocatedBit],
@@ -167,11 +167,11 @@ impl<G: Group> StepCircuit<G::Scalar> for AndCircuit<G> {
       let mut c_bits = Vec::new();
 
       // perform bitwise AND
-      for i in 0..64 {
+      for bit_idx in 0..64 {
         let c_bit = AllocatedBit::and(
-          cs.namespace(|| format!("and_bit_{i}")),
-          &a_bits[i],
-          &b_bits[i],
+          cs.namespace(|| format!("and_bit_{}_{}", i, bit_idx)),
+          &a_bits[bit_idx],
+          &b_bits[bit_idx],
         )?;
         c_bits.push(c_bit);
       }
