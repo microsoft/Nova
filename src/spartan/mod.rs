@@ -26,7 +26,7 @@ pub use sumcheck::SumcheckEngine;
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, SparseMatrix},
-  traits::Engine,
+  traits::{Engine, TranscriptEngineTrait},
   Commitment,
 };
 use ff::{Field, PrimeField};
@@ -151,6 +151,11 @@ pub struct PolyEvalWitness<E: Engine> {
 }
 
 impl<E: Engine> PolyEvalWitness<E> {
+  /// Creates a new polynomial evaluation witness from polynomial coefficients.
+  pub fn new(p: Vec<E::Scalar>) -> Self {
+    Self { p }
+  }
+
   /// Returns a reference to the polynomial coefficients.
   pub fn p(&self) -> &[E::Scalar] {
     &self.p
@@ -162,7 +167,7 @@ impl<E: Engine> PolyEvalWitness<E> {
   ///
   /// We allow the input polynomials to have different sizes, and interpret smaller ones as
   /// being padded with 0 to the maximum size of all polynomials.
-  fn batch_diff_size(W: Vec<PolyEvalWitness<E>>, s: E::Scalar) -> PolyEvalWitness<E> {
+  pub fn batch_diff_size(W: Vec<PolyEvalWitness<E>>, s: E::Scalar) -> PolyEvalWitness<E> {
     let powers = powers::<E>(&s, W.len());
 
     let size_max = W.iter().map(|w| w.p.len()).max().unwrap();
@@ -175,17 +180,19 @@ impl<E: Engine> PolyEvalWitness<E> {
         .into_par_iter()
         .flat_map_iter(|chunk_index| {
           let mut chunk = vec![E::Scalar::ZERO; chunk_size];
+          let start_idx = chunk_index * chunk_size;
           for (coeff, poly) in powers.iter().zip(W.iter()) {
-            for (rlc, poly_eval) in chunk
-              .iter_mut()
-              .zip(poly.p[chunk_index * chunk_size..].iter())
-            {
-              if *coeff == E::Scalar::ONE {
-                *rlc += *poly_eval;
-              } else {
-                *rlc += *coeff * poly_eval;
-              };
+            // Handle different-sized polynomials by treating indices beyond poly.len() as 0
+            if start_idx < poly.p.len() {
+              for (rlc, poly_eval) in chunk.iter_mut().zip(poly.p[start_idx..].iter()) {
+                if *coeff == E::Scalar::ONE {
+                  *rlc += *poly_eval;
+                } else {
+                  *rlc += *coeff * poly_eval;
+                };
+              }
             }
+            // else: this chunk is beyond poly.p's length, contributes 0 (already initialized)
           }
           chunk
         })
@@ -229,7 +236,7 @@ impl<E: Engine> PolyEvalWitness<E> {
   /// # Panics
   ///
   /// This method panics if the polynomials in `p_vec` are not all of the same length.
-  fn batch(p_vec: &[&Vec<E::Scalar>], s: &E::Scalar) -> PolyEvalWitness<E> {
+  pub fn batch(p_vec: &[&Vec<E::Scalar>], s: &E::Scalar) -> PolyEvalWitness<E> {
     p_vec
       .iter()
       .for_each(|p| assert_eq!(p.len(), p_vec[0].len()));
@@ -286,6 +293,11 @@ pub struct PolyEvalInstance<E: Engine> {
 }
 
 impl<E: Engine> PolyEvalInstance<E> {
+  /// Creates a new polynomial evaluation instance.
+  pub fn new(c: Commitment<E>, x: Vec<E::Scalar>, e: E::Scalar) -> Self {
+    Self { c, x, e }
+  }
+
   /// Returns a reference to the commitment to the polynomial.
   pub fn c(&self) -> &Commitment<E> {
     &self.c
@@ -301,7 +313,12 @@ impl<E: Engine> PolyEvalInstance<E> {
     self.e
   }
 
-  fn batch_diff_size(
+  /// Batches multiple polynomial evaluation instances with different sizes into a single instance.
+  ///
+  /// Given commitments, evaluations, and variable counts for each polynomial,
+  /// combines them using random linear combination with Lagrange correction
+  /// for the replication model.
+  pub fn batch_diff_size(
     c_vec: &[Commitment<E>],
     e_vec: &[E::Scalar],
     num_vars: &[usize],
@@ -345,7 +362,10 @@ impl<E: Engine> PolyEvalInstance<E> {
     }
   }
 
-  fn batch(
+  /// Batches multiple polynomial evaluation instances with the same evaluation point.
+  ///
+  /// All instances must share the same evaluation point `x`.
+  pub fn batch(
     c_vec: &[Commitment<E>],
     x: &[E::Scalar],
     e_vec: &[E::Scalar],
@@ -419,6 +439,143 @@ pub fn compute_eval_table_sparse<E: Engine>(
   (A_evals, B_evals, C_evals)
 }
 
+/// Reduces a batch of polynomial evaluation claims using Sumcheck
+/// to a single claim at the same point.
+///
+/// # Details
+///
+/// We are given as input a list of instance/witness pairs
+/// u = \[(Cᵢ, xᵢ, eᵢ)\], w = \[Pᵢ\], such that
+/// - nᵢ = |xᵢ|
+/// - Cᵢ = Commit(Pᵢ)
+/// - eᵢ = Pᵢ(xᵢ)
+/// - |Pᵢ| = 2^nᵢ
+///
+/// We allow the polynomial Pᵢ to have different sizes, by appropriately scaling
+/// the claims and resulting evaluations from Sumcheck using the replication model.
+pub fn batch_eval_reduce<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  w_vec: Vec<PolyEvalWitness<E>>,
+  transcript: &mut E::TE,
+) -> Result<
+  (
+    PolyEvalInstance<E>,
+    PolyEvalWitness<E>,
+    E::Scalar, // chal used for batching
+    sumcheck::SumcheckProof<E>,
+    Vec<E::Scalar>,
+  ),
+  NovaError,
+> {
+  use polys::multilinear::MultilinearPolynomial;
+
+  let num_claims = u_vec.len();
+  assert_eq!(w_vec.len(), num_claims);
+
+  // Compute nᵢ and n = maxᵢ{nᵢ}
+  let num_rounds = u_vec.iter().map(|u| u.x.len()).collect::<Vec<_>>();
+
+  // Check polynomials match number of variables, i.e. |Pᵢ| = 2^nᵢ
+  w_vec
+    .iter()
+    .zip_eq(num_rounds.iter())
+    .for_each(|(w, num_vars)| assert_eq!(w.p.len(), 1 << num_vars));
+
+  // generate a challenge, and powers of it for random linear combination
+  let rho = transcript.squeeze(b"r")?;
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+
+  let (claims, eval_points, comms): (Vec<_>, Vec<_>, Vec<_>) =
+    u_vec.into_iter().map(|u| (u.e, u.x, u.c)).multiunzip();
+
+  // Create clones of polynomials to be given to Sumcheck
+  // Pᵢ(X)
+  let polys_P: Vec<MultilinearPolynomial<E::Scalar>> = w_vec
+    .iter()
+    .map(|w| MultilinearPolynomial::new(w.p.clone()))
+    .collect();
+
+  // For each i, check eᵢ = ∑ₓ Pᵢ(x)eq(xᵢ,x), where x ∈ {0,1}^nᵢ
+  // Use split eq representation for memory efficiency (O(sqrt(N)) instead of O(N))
+  let (sc_proof_batch, r, claims_batch) = sumcheck::SumcheckProof::prove_quad_batch_prod_split_eq(
+    &claims,
+    &num_rounds,
+    polys_P,
+    eval_points,
+    &powers_of_rho,
+    transcript,
+  )?;
+
+  let (claims_batch_left, _): (Vec<E::Scalar>, Vec<E::Scalar>) = claims_batch;
+
+  transcript.absorb(b"l", &claims_batch_left.as_slice());
+
+  // we now combine evaluation claims at the same point r into one
+  let chal = transcript.squeeze(b"c")?;
+
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, chal);
+
+  // P = ∑ᵢ γⁱ⋅Pᵢ
+  let w_joint = PolyEvalWitness::batch_diff_size(w_vec, chal);
+
+  Ok((u_joint, w_joint, chal, sc_proof_batch, claims_batch_left))
+}
+
+/// Verifies a batch of polynomial evaluation claims using Sumcheck
+/// reducing them to a single claim at the same point.
+pub fn batch_eval_verify<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  transcript: &mut E::TE,
+  sc_proof_batch: &sumcheck::SumcheckProof<E>,
+  evals_batch: &[E::Scalar],
+) -> Result<PolyEvalInstance<E>, NovaError> {
+  use polys::eq::EqPolynomial;
+
+  let num_claims = u_vec.len();
+  assert_eq!(evals_batch.len(), num_claims);
+
+  // generate a challenge
+  let rho = transcript.squeeze(b"r")?;
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+
+  // Compute nᵢ and n = maxᵢ{nᵢ}
+  let num_rounds = u_vec.iter().map(|u| u.x.len()).collect::<Vec<_>>();
+  let num_rounds_max = *num_rounds.iter().max().unwrap();
+
+  let claims = u_vec.iter().map(|u| u.e).collect::<Vec<_>>();
+
+  let (claim_batch_final, r) =
+    sc_proof_batch.verify_batch(&claims, &num_rounds, &powers_of_rho, 2, transcript)?;
+
+  let claim_batch_final_expected = {
+    let evals_r = u_vec.iter().map(|u| {
+      let (_, r_hi) = r.split_at(num_rounds_max - u.x.len());
+      EqPolynomial::new(r_hi.to_vec()).evaluate(&u.x)
+    });
+
+    zip_with!(
+      (evals_r, evals_batch.iter(), powers_of_rho.iter()),
+      |e_i, p_i, rho_i| e_i * *p_i * rho_i
+    )
+    .sum()
+  };
+
+  if claim_batch_final != claim_batch_final_expected {
+    return Err(NovaError::InvalidSumcheckProof);
+  }
+
+  transcript.absorb(b"l", &evals_batch);
+
+  // we now combine evaluation claims at the same point r into one
+  let chal = transcript.squeeze(b"c")?;
+
+  let comms = u_vec.into_iter().map(|u| u.c).collect::<Vec<_>>();
+
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, evals_batch, &num_rounds, r, chal);
+
+  Ok(u_joint)
+}
+
 #[cfg(test)]
 mod batch_invert_tests {
   use super::{batch_invert, batch_invert_serial};
@@ -442,5 +599,80 @@ mod batch_invert_tests {
     let res_2 = batch_invert(&v);
 
     assert_eq!(res_1, res_2)
+  }
+}
+
+#[cfg(test)]
+mod batch_eval_tests {
+  use super::{batch_eval_reduce, batch_eval_verify, PolyEvalInstance, PolyEvalWitness};
+  use crate::provider::Bn256EngineKZG;
+  use crate::spartan::polys::multilinear::MultilinearPolynomial;
+  use crate::traits::{commitment::CommitmentEngineTrait, Engine, TranscriptEngineTrait};
+  use ff::Field;
+
+  type E = Bn256EngineKZG;
+
+  /// Test batch_eval_reduce with polynomials of significantly different sizes
+  /// to verify correctness of the batching protocol.
+  #[test]
+  fn test_batch_eval_reduce_different_sizes() {
+    // Create polynomials of different sizes
+    // P1: 4 variables (16 coefficients)
+    // P2: 2 variables (4 coefficients)
+    let p1: Vec<<E as Engine>::Scalar> = (0..16)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 + 1))
+      .collect();
+    let p2: Vec<<E as Engine>::Scalar> = (0..4)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 + 100))
+      .collect();
+
+    // Evaluation points
+    let x1: Vec<<E as Engine>::Scalar> = (0..4)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 * 7 + 3))
+      .collect();
+    let x2: Vec<<E as Engine>::Scalar> = (0..2)
+      .map(|i| <E as Engine>::Scalar::from(i as u64 * 11 + 5))
+      .collect();
+
+    // Compute evaluations
+    let e1 = MultilinearPolynomial::new(p1.clone()).evaluate(&x1);
+    let e2 = MultilinearPolynomial::new(p2.clone()).evaluate(&x2);
+
+    // Create commitment key
+    let ck = <<E as Engine>::CE as CommitmentEngineTrait<E>>::setup(b"test", 16).unwrap();
+
+    // Commit to polynomials (using trivial blinder)
+    let blinder = <E as Engine>::Scalar::ZERO;
+    let c1 = <<E as Engine>::CE as CommitmentEngineTrait<E>>::commit(&ck, &p1, &blinder);
+    let c2 = <<E as Engine>::CE as CommitmentEngineTrait<E>>::commit(&ck, &p2, &blinder);
+
+    // Create instances and witnesses
+    let u_vec: Vec<PolyEvalInstance<E>> = vec![
+      PolyEvalInstance::new(c1, x1, e1),
+      PolyEvalInstance::new(c2, x2, e2),
+    ];
+    let w_vec: Vec<PolyEvalWitness<E>> = vec![
+      PolyEvalWitness::new(p1.clone()),
+      PolyEvalWitness::new(p2.clone()),
+    ];
+
+    // Run batch_eval_reduce
+    let mut transcript_prover = <E as Engine>::TE::new(b"test_batch_eval");
+    let (u_joint, _w_joint, _chal, sc_proof, evals_batch) =
+      batch_eval_reduce(u_vec.clone(), w_vec, &mut transcript_prover).unwrap();
+
+    // Run batch_eval_verify
+    let mut transcript_verifier = <E as Engine>::TE::new(b"test_batch_eval");
+    let u_joint_verify =
+      batch_eval_verify(u_vec, &mut transcript_verifier, &sc_proof, &evals_batch).unwrap();
+
+    // Check that prover and verifier agree
+    assert_eq!(u_joint.c(), u_joint_verify.c(), "Commitments don't match");
+    assert_eq!(
+      u_joint.x(),
+      u_joint_verify.x(),
+      "Evaluation points don't match"
+    );
+    assert_eq!(u_joint.e(), u_joint_verify.e(), "Evaluations don't match");
   }
 }
