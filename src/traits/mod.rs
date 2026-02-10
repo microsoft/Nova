@@ -164,6 +164,21 @@ pub trait TranscriptEngineTrait<E: Engine>: Send + Sync {
   /// returns a scalar element of the group as a challenge
   fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError>;
 
+  /// Returns a challenge truncated to `num_bits` bits.
+  ///
+  /// If `start_with_one` is true, bit `num_bits - 1` (the MSB of the
+  /// truncated value) is forced to 1, so the result lies in
+  /// `[2^{num_bits-1}, 2^{num_bits} - 1]`.
+  ///
+  /// `num_bits` must be at most `E::Scalar::NUM_BITS - 1` to ensure the
+  /// result is always a valid field element even after setting the MSB.
+  fn squeeze_bits(
+    &mut self,
+    label: &'static [u8],
+    num_bits: usize,
+    start_with_one: bool,
+  ) -> Result<E::Scalar, NovaError>;
+
   /// absorbs any type that implements `TranscriptReprTrait` under a label
   fn absorb<T: TranscriptReprTrait<E::GE>>(&mut self, label: &'static [u8], o: &T);
 
