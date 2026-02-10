@@ -100,6 +100,7 @@ pub trait ROTrait<Base: PrimeField> {
   fn absorb(&mut self, e: Base);
 
   /// Returns a challenge of `num_bits` by hashing the internal state
+  /// If `start_with_one` is true, force bit (num_bits-1) (the MSB) to 1.
   fn squeeze(&mut self, num_bits: usize, start_with_one: bool) -> Base;
 }
 
@@ -119,6 +120,7 @@ pub trait ROCircuitTrait<Base: PrimeField> {
 
   /// Returns a challenge of `num_bits` by hashing the internal state
   /// The `squeeze` method can be called only once
+  /// If `start_with_one` is true, force bit (num_bits-1) (the MSB) to 1.
   fn squeeze<CS: ConstraintSystem<Base>>(
     &mut self,
     cs: CS,
