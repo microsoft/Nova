@@ -1024,6 +1024,52 @@ pub mod eq_sumcheck {
       (eval_0, bound_coeff)
     }
 
+    /// Compute evaluation points for quadratic sumcheck: sum_x poly_A(x) * eq(tau, x) = claim
+    /// Returns (eval_0, eval_2, eval_3) for compatibility with cubic sumcheck batching.
+    ///
+    /// For a degree-2 polynomial g(X) = a + bX + cX², the univariate evals are:
+    /// - g(0) = a
+    /// - g(1) = a + b + c
+    /// - g(2) = a + 2b + 4c
+    /// - g(3) = a + 3b + 9c
+    ///
+    /// The quad_prod returns (eval_0, bound_coeff) where bound_coeff relates to b.
+    /// We compute g(2) and g(3) from the degree-2 polynomial coefficients.
+    #[inline]
+    pub fn evaluation_points_quad_prod_cubic_format(
+      &self,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+      claim: &E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let (eval_0, bound_coeff) = self.evaluation_points_quad_prod(poly_A);
+
+      // For degree-2 polynomial g(X) with g(0) + g(1) = claim:
+      // g(0) = eval_0
+      // g(1) = claim - eval_0
+      // bound_coeff = b (coefficient of X in the univariate)
+      //
+      // From g(0) and g(1), we can derive a and (b+c).
+      // a = eval_0
+      // b + c = g(1) - a = claim - 2*eval_0
+      //
+      // The bound_coeff from quad_prod is b (for the eq*poly case).
+      // So c = (claim - 2*eval_0) - bound_coeff
+      //
+      // Then: g(2) = a + 2b + 4c = eval_0 + 2*bound_coeff + 4*((claim - 2*eval_0) - bound_coeff)
+      //            = eval_0 + 2*bound_coeff + 4*claim - 8*eval_0 - 4*bound_coeff
+      //            = 4*claim - 7*eval_0 - 2*bound_coeff
+      //
+      // g(3) = a + 3b + 9c = eval_0 + 3*bound_coeff + 9*((claim - 2*eval_0) - bound_coeff)
+      //      = eval_0 + 3*bound_coeff + 9*claim - 18*eval_0 - 9*bound_coeff
+      //      = 9*claim - 17*eval_0 - 6*bound_coeff
+
+      let c = *claim - eval_0.double() - bound_coeff;
+      let eval_2 = eval_0 + bound_coeff.double() + c.double().double(); // a + 2b + 4c
+      let eval_3 = eval_0 + bound_coeff.double() + bound_coeff + c * E::Scalar::from(9u64); // a + 3b + 9c
+
+      (eval_0, eval_2, eval_3)
+    }
+
     #[inline]
     fn update_evals(
       &self,
