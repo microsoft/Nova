@@ -139,3 +139,24 @@ jobs:
         with:
           command: check
           args: --features "io,evm,experimental,test-utils"
+
+  # Compile-only check for blitzar GPU feature (requires CUDA toolkit)
+  check-blitzar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.22
+        with:
+          cuda: '12.4.0'
+          method: network
+          sub-packages: '["nvcc"]'
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Check blitzar feature compiles
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features blitzar
