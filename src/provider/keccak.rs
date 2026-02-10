@@ -52,6 +52,41 @@ fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCA
     .unwrap();
 }
 
+impl<E: Engine> Keccak256Transcript<E> {
+  /// Hash the transcript, update internal state, and return the raw 64-byte output.
+  ///
+  /// The only EVM/non-EVM differences (round byte order, output reversal) are
+  /// handled here so that `squeeze` and `squeeze_bits` stay cfg-free.
+  fn squeeze_raw(&mut self, label: &'static [u8]) -> Result<[u8; KECCAK256_STATE_SIZE], NovaError> {
+    #[cfg(not(feature = "evm"))]
+    let round_bytes = self.round.to_le_bytes();
+    #[cfg(feature = "evm")]
+    let round_bytes = self.round.to_be_bytes();
+
+    let input = [
+      DOM_SEP_TAG,
+      round_bytes.as_ref(),
+      self.state.as_ref(),
+      label,
+    ]
+    .concat();
+    #[allow(unused_mut)]
+    let mut output = compute_updated_state(self.transcript.clone(), &input);
+
+    self.round = self
+      .round
+      .checked_add(1)
+      .ok_or(NovaError::InternalTranscriptError)?;
+    self.state.copy_from_slice(&output);
+    self.transcript = Keccak256::new();
+
+    #[cfg(feature = "evm")]
+    output.reverse();
+
+    Ok(output)
+  }
+}
+
 impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
   fn new(label: &'static [u8]) -> Self {
     let keccak_instance = Keccak256::new();
@@ -66,58 +101,8 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
     }
   }
 
-  #[cfg(not(feature = "evm"))]
   fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError> {
-    // we gather the full input from the round, preceded by the current state of the transcript
-    let input = [
-      DOM_SEP_TAG,
-      self.round.to_le_bytes().as_ref(),
-      self.state.as_ref(),
-      label,
-    ]
-    .concat();
-    let output = compute_updated_state(self.transcript.clone(), &input);
-
-    // update state
-    self.round = {
-      if let Some(v) = self.round.checked_add(1) {
-        v
-      } else {
-        return Err(NovaError::InternalTranscriptError);
-      }
-    };
-    self.state.copy_from_slice(&output);
-    self.transcript = Keccak256::new();
-
-    // squeeze out a challenge
-    Ok(E::Scalar::from_uniform(&output))
-  }
-
-  #[cfg(feature = "evm")]
-  fn squeeze(&mut self, label: &'static [u8]) -> Result<E::Scalar, NovaError> {
-    // we gather the full input from the round, preceded by the current state of the transcript
-    let input = [
-      DOM_SEP_TAG,
-      self.round.to_be_bytes().as_ref(),
-      self.state.as_ref(),
-      label,
-    ]
-    .concat();
-    let mut output = compute_updated_state(self.transcript.clone(), &input);
-
-    // update state
-    self.round = {
-      if let Some(v) = self.round.checked_add(1) {
-        v
-      } else {
-        return Err(NovaError::InternalTranscriptError);
-      }
-    };
-    self.state.copy_from_slice(&output);
-    self.transcript = Keccak256::new();
-
-    // squeeze out a challenge
-    output.reverse();
+    let output = self.squeeze_raw(label)?;
     Ok(E::Scalar::from_uniform(&output))
   }
 
@@ -131,7 +116,6 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
     self.transcript.update(bytes);
   }
 
-  #[cfg(not(feature = "evm"))]
   fn squeeze_bits(
     &mut self,
     label: &'static [u8],
@@ -144,21 +128,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
       "num_bits must be < field bit-width to avoid overflow when setting MSB"
     );
 
-    let input = [
-      DOM_SEP_TAG,
-      self.round.to_le_bytes().as_ref(),
-      self.state.as_ref(),
-      label,
-    ]
-    .concat();
-    let output = compute_updated_state(self.transcript.clone(), &input);
-
-    self.round = self
-      .round
-      .checked_add(1)
-      .ok_or(NovaError::InternalTranscriptError)?;
-    self.state.copy_from_slice(&output);
-    self.transcript = Keccak256::new();
+    let output = self.squeeze_raw(label)?;
 
     // Build scalar directly from raw hash bytes (little-endian)
     let mut repr = <E::Scalar as PrimeField>::Repr::default();
@@ -175,54 +145,6 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
       repr_bytes[msb_byte] |= 1u8 << msb_bit;
     }
     // Safe: num_bits < NUM_BITS, so value < 2^(NUM_BITS-1) < field modulus
-    Ok(E::Scalar::from_repr(repr).unwrap())
-  }
-
-  #[cfg(feature = "evm")]
-  fn squeeze_bits(
-    &mut self,
-    label: &'static [u8],
-    num_bits: usize,
-    start_with_one: bool,
-  ) -> Result<E::Scalar, NovaError> {
-    assert!(num_bits >= 2);
-    assert!(
-      num_bits <= (E::Scalar::NUM_BITS - 1) as usize,
-      "num_bits must be < field bit-width to avoid overflow when setting MSB"
-    );
-
-    let input = [
-      DOM_SEP_TAG,
-      self.round.to_be_bytes().as_ref(),
-      self.state.as_ref(),
-      label,
-    ]
-    .concat();
-    let mut output = compute_updated_state(self.transcript.clone(), &input);
-
-    self.round = self
-      .round
-      .checked_add(1)
-      .ok_or(NovaError::InternalTranscriptError)?;
-    self.state.copy_from_slice(&output);
-    self.transcript = Keccak256::new();
-
-    // EVM variant: reverse output before extracting (matches squeeze behavior)
-    output.reverse();
-
-    let mut repr = <E::Scalar as PrimeField>::Repr::default();
-    let repr_bytes = repr.as_mut();
-    let num_full_bytes = num_bits / 8;
-    let remaining_bits = num_bits % 8;
-    repr_bytes[..num_full_bytes].copy_from_slice(&output[..num_full_bytes]);
-    if remaining_bits > 0 {
-      repr_bytes[num_full_bytes] = output[num_full_bytes] & ((1u8 << remaining_bits) - 1);
-    }
-    if start_with_one {
-      let msb_byte = (num_bits - 1) / 8;
-      let msb_bit = (num_bits - 1) % 8;
-      repr_bytes[msb_byte] |= 1u8 << msb_bit;
-    }
     Ok(E::Scalar::from_repr(repr).unwrap())
   }
 }
