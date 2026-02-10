@@ -4,6 +4,7 @@ use crate::{
   traits::{Engine, PrimeFieldExt, TranscriptEngineTrait, TranscriptReprTrait},
 };
 use core::marker::PhantomData;
+use ff::PrimeField;
 use sha3::{Digest, Keccak256};
 
 const PERSONA_TAG: &[u8] = b"NoTR";
@@ -128,6 +129,101 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
   fn dom_sep(&mut self, bytes: &'static [u8]) {
     self.transcript.update(DOM_SEP_TAG);
     self.transcript.update(bytes);
+  }
+
+  #[cfg(not(feature = "evm"))]
+  fn squeeze_bits(
+    &mut self,
+    label: &'static [u8],
+    num_bits: usize,
+    start_with_one: bool,
+  ) -> Result<E::Scalar, NovaError> {
+    assert!(num_bits >= 2);
+    assert!(
+      num_bits <= (E::Scalar::NUM_BITS - 1) as usize,
+      "num_bits must be < field bit-width to avoid overflow when setting MSB"
+    );
+
+    let input = [
+      DOM_SEP_TAG,
+      self.round.to_le_bytes().as_ref(),
+      self.state.as_ref(),
+      label,
+    ]
+    .concat();
+    let output = compute_updated_state(self.transcript.clone(), &input);
+
+    self.round = self
+      .round
+      .checked_add(1)
+      .ok_or(NovaError::InternalTranscriptError)?;
+    self.state.copy_from_slice(&output);
+    self.transcript = Keccak256::new();
+
+    // Build scalar directly from raw hash bytes (little-endian)
+    let mut repr = <E::Scalar as PrimeField>::Repr::default();
+    let repr_bytes = repr.as_mut();
+    let num_full_bytes = num_bits / 8;
+    let remaining_bits = num_bits % 8;
+    repr_bytes[..num_full_bytes].copy_from_slice(&output[..num_full_bytes]);
+    if remaining_bits > 0 {
+      repr_bytes[num_full_bytes] = output[num_full_bytes] & ((1u8 << remaining_bits) - 1);
+    }
+    if start_with_one {
+      let msb_byte = (num_bits - 1) / 8;
+      let msb_bit = (num_bits - 1) % 8;
+      repr_bytes[msb_byte] |= 1u8 << msb_bit;
+    }
+    // Safe: num_bits < NUM_BITS, so value < 2^(NUM_BITS-1) < field modulus
+    Ok(E::Scalar::from_repr(repr).unwrap())
+  }
+
+  #[cfg(feature = "evm")]
+  fn squeeze_bits(
+    &mut self,
+    label: &'static [u8],
+    num_bits: usize,
+    start_with_one: bool,
+  ) -> Result<E::Scalar, NovaError> {
+    assert!(num_bits >= 2);
+    assert!(
+      num_bits <= (E::Scalar::NUM_BITS - 1) as usize,
+      "num_bits must be < field bit-width to avoid overflow when setting MSB"
+    );
+
+    let input = [
+      DOM_SEP_TAG,
+      self.round.to_be_bytes().as_ref(),
+      self.state.as_ref(),
+      label,
+    ]
+    .concat();
+    let mut output = compute_updated_state(self.transcript.clone(), &input);
+
+    self.round = self
+      .round
+      .checked_add(1)
+      .ok_or(NovaError::InternalTranscriptError)?;
+    self.state.copy_from_slice(&output);
+    self.transcript = Keccak256::new();
+
+    // EVM variant: reverse output before extracting (matches squeeze behavior)
+    output.reverse();
+
+    let mut repr = <E::Scalar as PrimeField>::Repr::default();
+    let repr_bytes = repr.as_mut();
+    let num_full_bytes = num_bits / 8;
+    let remaining_bits = num_bits % 8;
+    repr_bytes[..num_full_bytes].copy_from_slice(&output[..num_full_bytes]);
+    if remaining_bits > 0 {
+      repr_bytes[num_full_bytes] = output[num_full_bytes] & ((1u8 << remaining_bits) - 1);
+    }
+    if start_with_one {
+      let msb_byte = (num_bits - 1) / 8;
+      let msb_bit = (num_bits - 1) % 8;
+      repr_bytes[msb_byte] |= 1u8 << msb_bit;
+    }
+    Ok(E::Scalar::from_repr(repr).unwrap())
   }
 }
 
