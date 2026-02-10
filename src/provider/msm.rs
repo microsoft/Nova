@@ -82,9 +82,9 @@ impl<F: Field> BucketXYZZ<F> {
     // Y3 = M*(S - X3) - W*Y1
     self.y = m * (s - self.x) - w * self.y;
     // ZZ3 = V*ZZ1
-    self.zz = self.zz * v;
+    self.zz *= v;
     // ZZZ3 = W*ZZZ1
-    self.zzz = self.zzz * w;
+    self.zzz *= w;
   }
 
   /// XYZZ += XYZZ (full addition, add-2008-s).
@@ -160,8 +160,8 @@ fn bucket_add_affine<C: CurveAffine>(bucket: &mut BucketXYZZ<C::Base>, p: &C) {
   let q = bucket.x * pp;
   bucket.x = r.square() - ppp - q.double();
   bucket.y = r * (q - bucket.x) - bucket.y * ppp;
-  bucket.zz = bucket.zz * pp;
-  bucket.zzz = bucket.zzz * ppp;
+  bucket.zz *= pp;
+  bucket.zzz *= ppp;
 }
 
 /// Mixed subtraction: BucketXYZZ -= CurveAffine point.
@@ -199,8 +199,8 @@ fn bucket_sub_affine<C: CurveAffine>(bucket: &mut BucketXYZZ<C::Base>, p: &C) {
   let q = bucket.x * pp;
   bucket.x = r.square() - ppp - q.double();
   bucket.y = r * (q - bucket.x) - bucket.y * ppp;
-  bucket.zz = bucket.zz * pp;
-  bucket.zzz = bucket.zzz * ppp;
+  bucket.zz *= pp;
+  bucket.zzz *= ppp;
 }
 
 /// Convert XYZZ bucket to projective curve point.
@@ -274,7 +274,7 @@ fn make_wnaf_digits(limbs: &[u64], w: usize, num_bits: usize) -> Vec<i64> {
   let radix: u64 = 1 << w;
   let window_mask: u64 = radix - 1;
   let num_bits = if num_bits == 0 { 1 } else { num_bits };
-  let digits_count = (num_bits + w - 1) / w;
+  let digits_count = num_bits.div_ceil(w);
   let mut carry = 0u64;
   let mut digits = Vec::with_capacity(digits_count);
 
@@ -313,7 +313,7 @@ fn msm_wnaf_serial<C: CurveAffine>(bases: &[C], scalar_reprs: &[Vec<u64>]) -> C:
 
   let c = if size < 32 { 3 } else { compute_ln(size) + 2 };
   let num_bits = C::ScalarExt::NUM_BITS as usize;
-  let digits_count = (num_bits + c - 1) / c;
+  let digits_count = num_bits.div_ceil(c);
 
   // Pre-compute all wNAF digits
   let scalar_digits: Vec<Vec<i64>> = scalar_reprs
@@ -370,7 +370,7 @@ fn msm_wnaf<C: CurveAffine>(bases: &[C], scalar_reprs: &[Vec<u64>]) -> C::CurveE
   // For parallelism, split across threads; each chunk runs msm_wnaf_serial
   // which internally parallelizes over windows
   let num_threads = current_num_threads();
-  let chunk_size = (size + num_threads - 1) / num_threads;
+  let chunk_size = size.div_ceil(num_threads);
   if chunk_size >= size {
     return msm_wnaf_serial(bases, scalar_reprs);
   }
@@ -607,7 +607,7 @@ fn accumulate_bases<C: CurveAffine>(bases: &[C]) -> C::Curve {
     return C::Curve::identity();
   }
   if bases.len() > num_threads {
-    let chunk = (bases.len() + num_threads - 1) / num_threads;
+    let chunk = bases.len().div_ceil(num_threads);
     bases
       .par_chunks(chunk)
       .map(|chunk| {
