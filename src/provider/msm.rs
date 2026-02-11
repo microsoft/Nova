@@ -634,33 +634,8 @@ fn num_bits(n: usize) -> usize {
 }
 
 // ==================================================================================
-// Small-scalar bucket type (for integer MSMs)
+// Small-scalar MSM with XYZZ buckets
 // ==================================================================================
-
-#[derive(Clone, Copy)]
-enum SmallBucket<C: CurveAffine> {
-  None,
-  Affine(C),
-  Projective(C::Curve),
-}
-
-impl<C: CurveAffine> SmallBucket<C> {
-  fn add_assign(&mut self, other: &C) {
-    *self = match *self {
-      SmallBucket::None => SmallBucket::Affine(*other),
-      SmallBucket::Affine(a) => SmallBucket::Projective(a + *other),
-      SmallBucket::Projective(a) => SmallBucket::Projective(a + other),
-    }
-  }
-
-  fn add(self, other: C::Curve) -> C::Curve {
-    match self {
-      SmallBucket::None => other,
-      SmallBucket::Affine(a) => other + a,
-      SmallBucket::Projective(a) => other + a,
-    }
-  }
-}
 
 /// Multi-scalar multiplication using the best algorithm for the given scalars.
 pub fn msm_small<C: CurveAffine, T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
@@ -717,7 +692,7 @@ fn msm_binary<C: CurveAffine, T: Integer + Sync>(scalars: &[T], bases: &[C]) -> 
   }
 }
 
-/// MSM optimized for up to 10-bit scalars
+/// MSM optimized for up to 10-bit scalars, using XYZZ bucket coordinates.
 fn msm_10<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
   scalars: &[T],
   bases: &[C],
@@ -729,7 +704,7 @@ fn msm_10<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
     max_num_bits: usize,
   ) -> C::Curve {
     let num_buckets: usize = 1 << max_num_bits;
-    let mut buckets = vec![SmallBucket::None; num_buckets];
+    let mut buckets: Vec<BucketXYZZ<C::Base>> = vec![BucketXYZZ::zero(); num_buckets];
 
     scalars
       .iter()
@@ -737,16 +712,16 @@ fn msm_10<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
       .filter(|(scalar, _base)| !scalar.is_zero())
       .for_each(|(scalar, base)| {
         let bucket_index: u64 = (*scalar).into();
-        buckets[bucket_index as usize].add_assign(base);
+        bucket_add_affine::<C>(&mut buckets[bucket_index as usize], base);
       });
 
-    let mut result = C::Curve::identity();
-    let mut running_sum = C::Curve::identity();
-    buckets.iter().skip(1).rev().for_each(|exp| {
-      running_sum = exp.add(running_sum);
-      result += &running_sum;
-    });
-    result
+    let mut result: BucketXYZZ<C::Base> = BucketXYZZ::zero();
+    let mut running_sum: BucketXYZZ<C::Base> = BucketXYZZ::zero();
+    for b in buckets.into_iter().skip(1).rev() {
+      running_sum.add_assign_bucket(&b);
+      result.add_assign_bucket(&running_sum);
+    }
+    bucket_to_curve::<C>(&result)
   }
 
   let num_threads = current_num_threads();
@@ -782,19 +757,18 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
       c = 8;
     }
 
-    let zero = C::Curve::identity();
-
     let scalars_and_bases_iter = scalars.iter().zip(bases).filter(|(s, _base)| !s.is_zero());
-    let window_starts = (0..max_num_bits).step_by(c);
+    let window_starts: Vec<usize> = (0..max_num_bits).step_by(c).collect();
 
     // Each window is of size `c`.
     // We divide up the bits 0..num_bits into windows of size `c`, and
-    // in parallel process each such window.
-    let window_sums: Vec<_> = window_starts
-      .map(|w_start| {
-        let mut res = zero;
+    // process each such window.
+    let window_sums: Vec<C::CurveExt> = window_starts
+      .iter()
+      .map(|&w_start| {
+        let mut res: BucketXYZZ<C::Base> = BucketXYZZ::zero();
         // We don't need the "zero" bucket, so we only have 2^c - 1 buckets.
-        let mut buckets = vec![zero; (1 << c) - 1];
+        let mut buckets: Vec<BucketXYZZ<C::Base>> = vec![BucketXYZZ::zero(); (1 << c) - 1];
         // This clone is cheap, because the iterator contains just a
         // pointer and an index into the original vectors.
         scalars_and_bases_iter.clone().for_each(|(&scalar, base)| {
@@ -802,7 +776,7 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
           if scalar == 1 {
             // We only process unit scalars once in the first window.
             if w_start == 0 {
-              res += base;
+              bucket_add_affine::<C>(&mut res, base);
             }
           } else {
             let mut scalar = scalar;
@@ -818,31 +792,18 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
             // bucket.
             // (Recall that `buckets` doesn't have a zero bucket.)
             if scalar != 0 {
-              buckets[(scalar - 1) as usize] += base;
+              bucket_add_affine::<C>(&mut buckets[(scalar - 1) as usize], base);
             }
           }
         });
 
-        // Compute sum_{i in 0..num_buckets} (sum_{j in i..num_buckets} bucket[j])
-        // This is computed below for b buckets, using 2b curve additions.
-        //
-        // We could first normalize `buckets` and then use mixed-addition
-        // here, but that's slower for the kinds of groups we care about
-        // (Short Weierstrass curves and Twisted Edwards curves).
-        // In the case of Short Weierstrass curves,
-        // mixed addition saves ~4 field multiplications per addition.
-        // However normalization (with the inversion batched) takes ~6
-        // field multiplications per element,
-        // hence batch normalization is a slowdown.
-
-        // `running_sum` = sum_{j in i..num_buckets} bucket[j],
-        // where we iterate backward from i = num_buckets to 0.
-        let mut running_sum = C::Curve::identity();
-        buckets.into_iter().rev().for_each(|b| {
-          running_sum += &b;
-          res += &running_sum;
-        });
-        res
+        // Prefix sum using XYZZ coordinates
+        let mut running_sum: BucketXYZZ<C::Base> = BucketXYZZ::zero();
+        for b in buckets.into_iter().rev() {
+          running_sum.add_assign_bucket(&b);
+          res.add_assign_bucket(&running_sum);
+        }
+        bucket_to_curve::<C>(&res)
       })
       .collect();
 
@@ -854,7 +815,7 @@ fn msm_small_rest<C: CurveAffine, T: Into<u64> + Zero + Copy + Sync>(
       + window_sums[1..]
         .iter()
         .rev()
-        .fold(zero, |mut total, sum_i| {
+        .fold(C::CurveExt::identity(), |mut total, sum_i| {
           total += sum_i;
           for _ in 0..c {
             total = total.double();
