@@ -2,9 +2,7 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{
-  AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError,
-};
+use crate::frontend::{AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;

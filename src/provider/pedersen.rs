@@ -239,7 +239,7 @@ where
   pub fn to_coordinates(&self) -> Vec<(E::Base, E::Base)> {
     self
       .ck
-      .iter()
+      .par_iter()
       .map(|c| {
         let (x, y, is_infinity) = <E::GE as DlogGroup>::group(c).to_coordinates();
         assert!(!is_infinity);
@@ -353,6 +353,10 @@ where
 
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
+  }
+
+  fn ck_to_group_elements(ck: &Self::CommitmentKey) -> Vec<E::GE> {
+    ck.ck.par_iter().map(|g| E::GE::group(g)).collect()
   }
 
   #[cfg(feature = "io")]
