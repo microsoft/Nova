@@ -730,17 +730,27 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   {
     let mut scalar_bits = vec![];
 
+    // Ensure limb_width does not exceed the field's byte representation.
+    assert!(
+      self.params.limb_width <= Scalar::NUM_BITS as usize,
+      "limb_width ({}) exceeds Scalar::NUM_BITS ({})",
+      self.params.limb_width,
+      Scalar::NUM_BITS
+    );
+
     for i in 0..self.params.n_limbs {
+      // Precompute the byte representation of this limb once (not per bit).
+      let limb_bytes: Option<Vec<u8>> = self.limb_values.as_ref().map(|lv| {
+        let repr = lv[i].to_repr();
+        repr.as_ref().to_vec()
+      });
+
       // Allocate only limb_width boolean-constrained bits from the witness.
       let bits: Vec<AllocatedBit> = (0..self.params.limb_width)
         .map(|j| {
           AllocatedBit::alloc(
             cs.namespace(|| format!("limb_{i}_bit_{j}")),
-            self.limb_values.as_ref().map(|lv| {
-              let repr = lv[i].to_repr();
-              let bytes = repr.as_ref();
-              (bytes[j / 8] >> (j % 8)) & 1 == 1
-            }),
+            limb_bytes.as_ref().map(|bytes| (bytes[j / 8] >> (j % 8)) & 1 == 1),
           )
         })
         .collect::<Result<Vec<_>, _>>()?;

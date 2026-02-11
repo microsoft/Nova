@@ -356,7 +356,17 @@ where
   }
 
   fn ck_to_group_elements(ck: &Self::CommitmentKey) -> Vec<E::GE> {
-    ck.ck.par_iter().map(|g| E::GE::group(g)).collect()
+    ck.ck
+      .par_iter()
+      .map(|g| {
+        let ge = E::GE::group(g);
+        assert!(
+          ge != E::GE::zero(),
+          "CommitmentKey contains a generator at infinity"
+        );
+        ge
+      })
+      .collect()
   }
 
   #[cfg(feature = "io")]
