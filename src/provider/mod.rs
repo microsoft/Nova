@@ -1,25 +1,21 @@
 //! This module implements Nova's traits using the following several different combinations
 
-// public modules to be used as an evaluation engine with Spartan
 pub mod bn256_grumpkin;
 pub mod hyperkzg;
 pub mod ipa_pc;
+pub mod keccak;
 pub mod mercury;
+pub mod msm;
 pub mod pasta;
+pub mod pedersen;
 pub mod poseidon;
 pub mod secp_secq;
-
-// crate-private modules
-#[cfg(feature = "blitzar")]
-pub(crate) mod blitzar;
-pub(crate) mod keccak;
-pub(crate) mod pedersen;
-#[cfg(feature = "io")]
-pub mod ptau;
-/// Traits for cryptographic groups including pairing-friendly curves
 pub mod traits;
 
-mod msm;
+#[cfg(feature = "blitzar")]
+pub mod blitzar;
+#[cfg(feature = "io")]
+pub mod ptau;
 
 use crate::{
   provider::{
