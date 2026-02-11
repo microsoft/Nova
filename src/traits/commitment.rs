@@ -156,4 +156,11 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   ///
   /// Panics if any generator point is the point at infinity.
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)>;
+
+  /// Returns the generators as projective group elements.
+  ///
+  /// This provides full group-operation access (add, double, scalar mul)
+  /// on the commitment key generators, useful for precomputing correction
+  /// points in circuit optimizations.
+  fn ck_to_group_elements(ck: &Self::CommitmentKey) -> Vec<E::GE>;
 }

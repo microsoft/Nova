@@ -2,9 +2,7 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{
-  num::AllocatedNum, AllocatedBit, Boolean, ConstraintSystem, LinearCombination, SynthesisError,
-};
+use crate::frontend::{AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -708,7 +706,21 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     Ok(())
   }
 
-  /// Break `self` up into an allocated bit-vector.
+  /// Decompose this BigNat into boolean-constrained [`AllocatedBit`]s (little-endian).
+  ///
+  /// Returns `n_limbs * limb_width` bits whose packed value equals the BigNat.
+  ///
+  /// # Cost
+  /// `limb_width` boolean constraints + 1 packing/equality constraint per limb.
+  /// For 4×64-bit limbs this is **260 constraints per scalar**.
+  ///
+  /// # Precondition
+  /// Each limb must fit in `limb_width` bits (i.e. the BigNat must be reduced /
+  /// well-formed). This is always the case for outputs of [`mult_mod`](Self::mult_mod),
+  /// [`red_mod`](Self::red_mod), [`sub_mod`](Self::sub_mod), and
+  /// [`alloc_from_nat`](Self::alloc_from_nat). Calling this on an unreduced
+  /// BigNat (e.g. one produced by [`add`](Self::add) without a subsequent
+  /// reduction) will cause the constraint system to be unsatisfiable.
   pub fn decompose_allocated<CS: ConstraintSystem<Scalar>>(
     &self,
     mut cs: CS,
@@ -718,33 +730,49 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   {
     let mut scalar_bits = vec![];
 
-    for i in 0..self.params.n_limbs {
-      let limb = AllocatedNum::alloc(cs.namespace(|| format!("allocate scalar limb_{i}")), || {
-        self
-          .limb_values
-          .as_ref()
-          .map(|limb_values| limb_values[i])
-          .ok_or(SynthesisError::AssignmentMissing)
-      })?;
+    // Ensure limb_width does not exceed the field's byte representation.
+    assert!(
+      self.params.limb_width <= Scalar::NUM_BITS as usize,
+      "limb_width ({}) exceeds Scalar::NUM_BITS ({})",
+      self.params.limb_width,
+      Scalar::NUM_BITS
+    );
 
+    for i in 0..self.params.n_limbs {
+      // Precompute the byte representation of this limb once (not per bit).
+      let limb_bytes: Option<Vec<u8>> = self.limb_values.as_ref().map(|lv| {
+        let repr = lv[i].to_repr();
+        repr.as_ref().to_vec()
+      });
+
+      // Allocate only limb_width boolean-constrained bits from the witness.
+      let bits: Vec<AllocatedBit> = (0..self.params.limb_width)
+        .map(|j| {
+          AllocatedBit::alloc(
+            cs.namespace(|| format!("limb_{i}_bit_{j}")),
+            limb_bytes
+              .as_ref()
+              .map(|bytes| (bytes[j / 8] >> (j % 8)) & 1 == 1),
+          )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+      // Single constraint: pack bits and check equality with the existing limb.
+      // sum(bits[j] * 2^j) == self.limbs[i]
+      let mut coeff = Scalar::ONE;
+      let packed_lc = bits.iter().fold(LinearCombination::zero(), |lc, bit| {
+        let c = coeff;
+        coeff = coeff.double();
+        lc + (c, bit.get_variable())
+      });
       cs.enforce(
-        || format!("eq scalar limb_{i}"),
-        |lc| lc + limb.get_variable(),
+        || format!("pack_eq limb_{i}"),
+        |_| packed_lc,
         |lc| lc + CS::one(),
         |_| self.limbs[i].clone(),
       );
 
-      let limb_bits = limb
-        .to_bits_le(cs.namespace(|| format!("scalar limb_{i} to le")))?
-        .iter()
-        .take(self.params.limb_width)
-        .map(|b| match b {
-          Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Unreachable: expected Boolean::Is variant from to_bits_le when constructing scalar limb bits"),
-        })
-        .collect::<Vec<AllocatedBit>>();
-
-      scalar_bits.extend(limb_bits);
+      scalar_bits.extend(bits);
     }
 
     Ok(scalar_bits)
