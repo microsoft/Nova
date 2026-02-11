@@ -750,7 +750,9 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
         .map(|j| {
           AllocatedBit::alloc(
             cs.namespace(|| format!("limb_{i}_bit_{j}")),
-            limb_bytes.as_ref().map(|bytes| (bytes[j / 8] >> (j % 8)) & 1 == 1),
+            limb_bytes
+              .as_ref()
+              .map(|bytes| (bytes[j / 8] >> (j % 8)) & 1 == 1),
           )
         })
         .collect::<Result<Vec<_>, _>>()?;
