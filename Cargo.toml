@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.56.0"
+version = "0.57.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "High-speed recursive arguments from folding schemes"
@@ -54,6 +54,7 @@ proptest = "1.6.0"
 rand = "0.8.5"
 expect-test = "1.5.1"
 reqwest = { version = "0.12", features = ["blocking"] }
+serde_json = "1.0"
 
 [[bench]]
 name = "recursive-snark"
