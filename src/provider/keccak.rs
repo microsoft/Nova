@@ -5,8 +5,8 @@ use crate::{
 };
 use core::marker::PhantomData;
 use ff::PrimeField;
-use sha3::{Digest, Keccak256};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use sha3::{Digest, Keccak256};
 
 const PERSONA_TAG: &[u8] = b"NoTR";
 const DOM_SEP_TAG: &[u8] = b"NoDS";
