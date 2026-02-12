@@ -5,6 +5,7 @@ use crate::{
 };
 use core::marker::PhantomData;
 use ff::PrimeField;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha3::{Digest, Keccak256};
 
 const PERSONA_TAG: &[u8] = b"NoTR";
@@ -19,7 +20,49 @@ pub struct Keccak256Transcript<E: Engine> {
   round: u16,
   state: [u8; KECCAK256_STATE_SIZE],
   transcript: Keccak256,
+  /// Bytes absorbed since the last squeeze (used to reconstruct `transcript` on deserialize)
+  transcript_buffer: Vec<u8>,
   _p: PhantomData<E>,
+}
+
+impl<E: Engine> Serialize for Keccak256Transcript<E> {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    use serde::ser::SerializeStruct;
+    let mut s = serializer.serialize_struct("Keccak256Transcript", 3)?;
+    s.serialize_field("round", &self.round)?;
+    s.serialize_field("state", &self.state.as_slice())?;
+    s.serialize_field("transcript_buffer", &self.transcript_buffer)?;
+    s.end()
+  }
+}
+
+impl<'de, E: Engine> Deserialize<'de> for Keccak256Transcript<E> {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    #[derive(Deserialize)]
+    struct Helper {
+      round: u16,
+      state: Vec<u8>,
+      #[serde(default)]
+      transcript_buffer: Vec<u8>,
+    }
+    let h = Helper::deserialize(deserializer)?;
+    let state: [u8; KECCAK256_STATE_SIZE] = h
+      .state
+      .try_into()
+      .map_err(|_| serde::de::Error::custom("invalid state length"))?;
+
+    // Replay buffered absorbs into a fresh Keccak256 to restore the hasher state
+    let mut transcript = Keccak256::new();
+    transcript.update(&h.transcript_buffer);
+
+    Ok(Keccak256Transcript {
+      round: h.round,
+      state,
+      transcript,
+      transcript_buffer: h.transcript_buffer,
+      _p: PhantomData,
+    })
+  }
 }
 
 fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCAK256_STATE_SIZE] {
@@ -79,6 +122,7 @@ impl<E: Engine> Keccak256Transcript<E> {
       .ok_or(NovaError::InternalTranscriptError)?;
     self.state.copy_from_slice(&output);
     self.transcript = Keccak256::new();
+    self.transcript_buffer.clear();
 
     #[cfg(feature = "evm")]
     output.reverse();
@@ -97,6 +141,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
       round: 0u16,
       state: output,
       transcript: keccak_instance,
+      transcript_buffer: Vec::new(),
       _p: PhantomData,
     }
   }
@@ -108,12 +153,17 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
 
   fn absorb<T: TranscriptReprTrait<E::GE>>(&mut self, label: &'static [u8], o: &T) {
     self.transcript.update(label);
-    self.transcript.update(o.to_transcript_bytes());
+    self.transcript_buffer.extend_from_slice(label);
+    let repr = o.to_transcript_bytes();
+    self.transcript.update(&repr);
+    self.transcript_buffer.extend_from_slice(&repr);
   }
 
   fn dom_sep(&mut self, bytes: &'static [u8]) {
     self.transcript.update(DOM_SEP_TAG);
+    self.transcript_buffer.extend_from_slice(DOM_SEP_TAG);
     self.transcript.update(bytes);
+    self.transcript_buffer.extend_from_slice(bytes);
   }
 
   fn squeeze_bits(
@@ -351,5 +401,127 @@ mod tests {
     test_keccak_transcript_incremental_vs_explicit_with::<GrumpkinEngine>();
     test_keccak_transcript_incremental_vs_explicit_with::<Secp256k1Engine>();
     test_keccak_transcript_incremental_vs_explicit_with::<Secq256k1Engine>();
+  }
+
+  /// Test that a fresh transcript round-trips through serde (JSON).
+  fn test_keccak_transcript_serde_fresh_with<E: Engine>() {
+    let transcript: Keccak256Transcript<E> = Keccak256Transcript::new(b"serde_test");
+    let json = serde_json::to_string(&transcript).unwrap();
+    let restored: Keccak256Transcript<E> = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(transcript.round, restored.round);
+    assert_eq!(transcript.state, restored.state);
+  }
+
+  /// Test that round and state survive serialization after absorb + squeeze.
+  fn test_keccak_transcript_serde_after_ops_with<E: Engine>() {
+    let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(b"serde_test");
+
+    let s1 = <E as Engine>::Scalar::from(42u64);
+    let s2 = <E as Engine>::Scalar::from(99u64);
+    transcript.absorb(b"s1", &s1);
+    transcript.absorb(b"s2", &s2);
+    let _c1: <E as Engine>::Scalar = transcript.squeeze(b"c1").unwrap();
+
+    // Capture state after operations
+    let round_before = transcript.round;
+    let state_before = transcript.state;
+
+    let json = serde_json::to_string(&transcript).unwrap();
+    let restored: Keccak256Transcript<E> = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(round_before, restored.round);
+    assert_eq!(state_before, restored.state);
+  }
+
+  /// Test that pending absorbs survive serialization (squeeze after deserialize
+  /// must produce the same challenge as without the round-trip).
+  fn test_keccak_transcript_serde_mid_absorb_with<E: Engine>() {
+    let mut t1: Keccak256Transcript<E> = Keccak256Transcript::new(b"mid_absorb");
+    let s1 = <E as Engine>::Scalar::from(11u64);
+    let s2 = <E as Engine>::Scalar::from(22u64);
+    t1.absorb(b"a", &s1);
+    t1.absorb(b"b", &s2);
+    // Do NOT squeeze yet — there are pending absorbs in the hasher.
+
+    let json = serde_json::to_string(&t1).unwrap();
+    let mut t2: Keccak256Transcript<E> = serde_json::from_str(&json).unwrap();
+
+    // Now squeeze both and verify they produce the same challenge
+    let c1: <E as Engine>::Scalar = t1.squeeze(b"ch").unwrap();
+    let c2: <E as Engine>::Scalar = t2.squeeze(b"ch").unwrap();
+    assert_eq!(c1, c2);
+  }
+
+  /// Test that a transcript deserialized from JSON with a wrong-length state
+  /// produces an error instead of panicking.
+  fn test_keccak_transcript_serde_bad_state_with<E: Engine>() {
+    // Craft JSON with a state array of wrong length (32 instead of 64)
+    let bad_json = r#"{"round":0,"state":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"transcript_buffer":[]}"#;
+    let result = serde_json::from_str::<Keccak256Transcript<E>>(bad_json);
+    assert!(result.is_err());
+  }
+
+  /// Test bincode round-trip (used by Nova for proof serialization).
+  fn test_keccak_transcript_serde_bincode_with<E: Engine>() {
+    let mut transcript: Keccak256Transcript<E> = Keccak256Transcript::new(b"bincode_test");
+
+    let s = <E as Engine>::Scalar::from(7u64);
+    transcript.absorb(b"val", &s);
+    let _c: <E as Engine>::Scalar = transcript.squeeze(b"ch").unwrap();
+
+    let encoded = bincode::serde::encode_to_vec(&transcript, bincode::config::standard()).unwrap();
+    let (restored, _): (Keccak256Transcript<E>, _) =
+      bincode::serde::decode_from_slice(&encoded, bincode::config::standard()).unwrap();
+
+    assert_eq!(transcript.round, restored.round);
+    assert_eq!(transcript.state, restored.state);
+  }
+
+  #[test]
+  fn test_keccak_transcript_serde_fresh() {
+    test_keccak_transcript_serde_fresh_with::<PallasEngine>();
+    test_keccak_transcript_serde_fresh_with::<VestaEngine>();
+    test_keccak_transcript_serde_fresh_with::<Bn256EngineKZG>();
+    test_keccak_transcript_serde_fresh_with::<GrumpkinEngine>();
+    test_keccak_transcript_serde_fresh_with::<Secp256k1Engine>();
+    test_keccak_transcript_serde_fresh_with::<Secq256k1Engine>();
+  }
+
+  #[test]
+  fn test_keccak_transcript_serde_after_ops() {
+    test_keccak_transcript_serde_after_ops_with::<PallasEngine>();
+    test_keccak_transcript_serde_after_ops_with::<VestaEngine>();
+    test_keccak_transcript_serde_after_ops_with::<Bn256EngineKZG>();
+    test_keccak_transcript_serde_after_ops_with::<GrumpkinEngine>();
+    test_keccak_transcript_serde_after_ops_with::<Secp256k1Engine>();
+    test_keccak_transcript_serde_after_ops_with::<Secq256k1Engine>();
+  }
+
+  #[test]
+  fn test_keccak_transcript_serde_mid_absorb() {
+    test_keccak_transcript_serde_mid_absorb_with::<PallasEngine>();
+    test_keccak_transcript_serde_mid_absorb_with::<VestaEngine>();
+    test_keccak_transcript_serde_mid_absorb_with::<Bn256EngineKZG>();
+    test_keccak_transcript_serde_mid_absorb_with::<GrumpkinEngine>();
+    test_keccak_transcript_serde_mid_absorb_with::<Secp256k1Engine>();
+    test_keccak_transcript_serde_mid_absorb_with::<Secq256k1Engine>();
+  }
+
+  #[test]
+  fn test_keccak_transcript_serde_bad_state() {
+    test_keccak_transcript_serde_bad_state_with::<PallasEngine>();
+    test_keccak_transcript_serde_bad_state_with::<Bn256EngineKZG>();
+    test_keccak_transcript_serde_bad_state_with::<Secp256k1Engine>();
+  }
+
+  #[test]
+  fn test_keccak_transcript_serde_bincode() {
+    test_keccak_transcript_serde_bincode_with::<PallasEngine>();
+    test_keccak_transcript_serde_bincode_with::<VestaEngine>();
+    test_keccak_transcript_serde_bincode_with::<Bn256EngineKZG>();
+    test_keccak_transcript_serde_bincode_with::<GrumpkinEngine>();
+    test_keccak_transcript_serde_bincode_with::<Secp256k1Engine>();
+    test_keccak_transcript_serde_bincode_with::<Secq256k1Engine>();
   }
 }
