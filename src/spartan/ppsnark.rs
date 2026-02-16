@@ -1159,7 +1159,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
 
     // we now need to prove four claims
-    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
+    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = (Az+c*Bz+c^2*Cz)(tau)
     // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
     // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
     // (4) Check that the witness polynomial W is well-formed e.g., it is padded with only zeros
@@ -1176,8 +1176,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           (0..Cz.len())
             .map(|i| U.u * Cz[i] + E[i])
             .collect::<Vec<E::Scalar>>(),
-          w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
-          &u.e,        // eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau
+          w.p.clone(), // Mz = Az + c * Bz + c^2 * Cz
+          &u.e,        // eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau
         );
 
         // a sum-check instance to prove the second claim
