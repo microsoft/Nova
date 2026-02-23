@@ -46,7 +46,7 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
       return Err(NovaError::InvalidInputLength);
     }
     // Normalize by trimming trailing zeros, but keep at least one coefficient.
-    while coeffs.len() > 1 && coeffs.last().map_or(false, |c| bool::from(c.is_zero())) {
+    while coeffs.len() > 1 && coeffs.last().is_some_and(|c| bool::from(c.is_zero())) {
       coeffs.pop();
     }
     Ok(Self { coeffs })
