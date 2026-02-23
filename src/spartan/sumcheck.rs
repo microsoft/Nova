@@ -126,7 +126,7 @@ impl<E: Engine> SumcheckProof<E> {
       .zip(num_rounds.iter())
       .zip(coeffs.iter())
       .map(|((claim, &nr), coeff)| {
-        let scale = E::Scalar::from((1 << (num_rounds_max - nr)) as u64);
+        let scale = E::Scalar::from(2u64).pow_vartime([(num_rounds_max - nr) as u64]);
         *claim * scale * coeff
       })
       .sum();
@@ -252,7 +252,7 @@ impl<E: Engine> SumcheckProof<E> {
       iter,
       (claims, num_rounds, coeffs),
       |claim, num_rounds, coeff| {
-        let scaled_claim = E::Scalar::from((1 << (num_rounds_max - num_rounds)) as u64) * claim;
+        let scaled_claim = E::Scalar::from(2u64).pow_vartime([(num_rounds_max - num_rounds) as u64]) * claim;
         scaled_claim * coeff
       }
     )
@@ -270,7 +270,7 @@ impl<E: Engine> SumcheckProof<E> {
             Self::compute_eval_points_quad_prod(poly_A, poly_B)
           } else {
             let remaining_variables = remaining_rounds - num_rounds - 1;
-            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
+            let scaled_claim = E::Scalar::from(2u64).pow_vartime([remaining_variables as u64]) * claim;
             (scaled_claim, scaled_claim)
           }
         }
