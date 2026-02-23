@@ -77,7 +77,7 @@ impl<E: Engine> SumcheckProof<E> {
       let poly = self.compressed_polys[i].decompress(&e);
 
       // verify degree bound
-      if poly.degree() != degree_bound {
+      if poly.degree() > degree_bound {
         return Err(NovaError::InvalidSumcheckProof);
       }
 
@@ -121,17 +121,19 @@ impl<E: Engine> SumcheckProof<E> {
     // where each claim is scaled by 2^{n-nᵢ} to account for the padding.
     //
     // claim = ∑ᵢ coeffᵢ⋅2^{n-nᵢ}⋅cᵢ
-    let claim = zip_with!(
-      (
-        zip_with!(iter, (claims, num_rounds), |claim, num_rounds| {
-          let scaling_factor = 1 << (num_rounds_max - num_rounds);
-          E::Scalar::from(scaling_factor as u64) * claim
-        }),
-        coeffs.iter()
-      ),
-      |scaled_claim, coeff| scaled_claim * coeff
-    )
-    .sum();
+    let two = E::Scalar::from(2u64);
+    let claim = claims
+      .iter()
+      .zip(num_rounds.iter())
+      .zip(coeffs.iter())
+      .map(|((claim, &nr), coeff)| {
+        let mut scale = E::Scalar::ONE;
+        for _ in 0..(num_rounds_max - nr) {
+          scale *= two;
+        }
+        *claim * scale * coeff
+      })
+      .sum();
 
     self.verify(claim, num_rounds_max, degree_bound, transcript)
   }
