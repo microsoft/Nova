@@ -439,30 +439,20 @@ mod tests {
   }
 
   fn test_from_coeffs_with<F: PrimeField + CustomSerdeTrait>() {
-    // Valid case: returns Ok with normalized coefficients
-    let coeffs = vec![F::from(1), F::from(2), F::from(3)];
-    let poly = UniPoly::from_coeffs(coeffs).unwrap();
+    // polynomial is 2x^2 + 3x + 1, stored little-endian as [1, 3, 2]
+    let poly = UniPoly::from_coeffs(vec![F::ONE, F::from(3), F::from(2)]).unwrap();
+
+    // Verify coefficient ordering (little-endian: constant term first)
     assert_eq!(poly.coeffs.len(), 3);
-    assert_eq!(poly.coeffs[2], F::from(3));
+    assert_eq!(poly.coeffs[0], F::ONE); // constant term
+    assert_eq!(poly.coeffs[1], F::from(3)); // linear term
+    assert_eq!(poly.coeffs[2], F::from(2)); // quadratic term
 
-    // Trailing zeros are trimmed
-    let coeffs_with_trailing_zeros = vec![F::from(1), F::from(2), F::ZERO, F::ZERO];
-    let poly2 = UniPoly::from_coeffs(coeffs_with_trailing_zeros).unwrap();
-    assert_eq!(poly2.coeffs.len(), 2);
-
-    // Zero polynomial: single zero coefficient is kept
-    let zero_poly = UniPoly::from_coeffs(vec![F::ZERO]).unwrap();
-    assert_eq!(zero_poly.coeffs.len(), 1);
-    assert!(bool::from(zero_poly.coeffs[0].is_zero()));
-
-    // All-zero coefficients: collapses to single zero
-    let all_zeros = vec![F::ZERO, F::ZERO, F::ZERO];
-    let poly3 = UniPoly::from_coeffs(all_zeros).unwrap();
-    assert_eq!(poly3.coeffs.len(), 1);
-
-    // Empty input returns Err
-    let result: Result<UniPoly<F>, _> = UniPoly::from_coeffs(vec![]);
-    assert!(result.is_err());
+    // Verify evaluations are consistent with the stored coefficients
+    assert_eq!(poly.eval_at_zero(), F::ONE); // P(0) = 1
+    assert_eq!(poly.eval_at_one(), F::from(6)); // P(1) = 2 + 3 + 1 = 6
+    assert_eq!(poly.evaluate(&F::from(2)), F::from(15)); // P(2) = 8 + 6 + 1 = 15
+    assert_eq!(poly.evaluate(&F::from(3)), F::from(28)); // P(3) = 18 + 9 + 1 = 28
   }
 
   #[test]
@@ -470,5 +460,34 @@ mod tests {
     test_from_coeffs_with::<pallas::Scalar>();
     test_from_coeffs_with::<bn256::Scalar>();
     test_from_coeffs_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_coeffs_edge_cases_with<F: PrimeField + CustomSerdeTrait>() {
+    // Edge case: empty vector — from_coeffs returns an error
+    let result: Result<UniPoly<F>, _> = UniPoly::from_coeffs(vec![]);
+    assert!(result.is_err());
+
+    // Edge case: trailing zeros are normalized away
+    // 2x^2 + 3x + 1 with an appended zero coefficient (i.e., 0*x^3 term)
+    let poly = UniPoly::from_coeffs(vec![F::ONE, F::from(3), F::from(2), F::ZERO]).unwrap();
+    assert_eq!(poly.coeffs.len(), 3); // trailing zero is trimmed
+    assert_eq!(poly.coeffs[2], F::from(2)); // highest non-zero coefficient
+
+    // Evaluation is still correct after normalization
+    assert_eq!(poly.eval_at_zero(), F::ONE); // P(0) = 1
+    assert_eq!(poly.eval_at_one(), F::from(6)); // P(1) = 1 + 3 + 2 = 6
+    assert_eq!(poly.evaluate(&F::from(2)), F::from(15)); // P(2) = 8 + 6 + 1 = 15
+
+    // All-zero coefficients: collapses to a single zero coefficient
+    let zero_poly = UniPoly::from_coeffs(vec![F::ZERO, F::ZERO, F::ZERO]).unwrap();
+    assert_eq!(zero_poly.coeffs.len(), 1);
+    assert!(bool::from(zero_poly.coeffs[0].is_zero()));
+  }
+
+  #[test]
+  fn test_from_coeffs_edge_cases() {
+    test_from_coeffs_edge_cases_with::<pallas::Scalar>();
+    test_from_coeffs_edge_cases_with::<bn256::Scalar>();
+    test_from_coeffs_edge_cases_with::<secp256k1::Scalar>();
   }
 }
