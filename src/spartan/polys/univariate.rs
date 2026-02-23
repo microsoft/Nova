@@ -1,11 +1,13 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{
-  evm_serde::{CustomSerdeTrait, EvmCompatSerde},
-  AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+use crate::{
+  errors::NovaError,
+  traits::{
+    evm_serde::{CustomSerdeTrait, EvmCompatSerde},
+    AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+  },
 };
-use core::panic;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -32,8 +34,22 @@ pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
 impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
   /// Constructs a polynomial directly from its coefficients (little endian).
   /// For example, ax^2 + bx + c should be passed as vec![c, b, a].
-  pub fn from_coeffs(coeffs: Vec<Scalar>) -> Self {
-    Self { coeffs }
+  ///
+  /// Trailing zero coefficients are removed, keeping at least one coefficient
+  /// so that the zero polynomial is represented as `[Scalar::ZERO]`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`NovaError::InvalidInputLength`] if `coeffs` is empty.
+  pub fn from_coeffs(mut coeffs: Vec<Scalar>) -> Result<Self, NovaError> {
+    if coeffs.is_empty() {
+      return Err(NovaError::InvalidInputLength);
+    }
+    // Normalize by trimming trailing zeros, but keep at least one coefficient.
+    while coeffs.len() > 1 && coeffs.last().map_or(false, |c| bool::from(c.is_zero())) {
+      coeffs.pop();
+    }
+    Ok(Self { coeffs })
   }
 
   /// Constructs a polynomial from its evaluations using Gaussian elimination.
@@ -420,5 +436,39 @@ mod tests {
     test_from_evals_quartic_with::<pallas::Scalar>();
     test_from_evals_quartic_with::<bn256::Scalar>();
     test_from_evals_quartic_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_coeffs_with<F: PrimeField + CustomSerdeTrait>() {
+    // Valid case: returns Ok with normalized coefficients
+    let coeffs = vec![F::from(1), F::from(2), F::from(3)];
+    let poly = UniPoly::from_coeffs(coeffs).unwrap();
+    assert_eq!(poly.coeffs.len(), 3);
+    assert_eq!(poly.coeffs[2], F::from(3));
+
+    // Trailing zeros are trimmed
+    let coeffs_with_trailing_zeros = vec![F::from(1), F::from(2), F::ZERO, F::ZERO];
+    let poly2 = UniPoly::from_coeffs(coeffs_with_trailing_zeros).unwrap();
+    assert_eq!(poly2.coeffs.len(), 2);
+
+    // Zero polynomial: single zero coefficient is kept
+    let zero_poly = UniPoly::from_coeffs(vec![F::ZERO]).unwrap();
+    assert_eq!(zero_poly.coeffs.len(), 1);
+    assert!(bool::from(zero_poly.coeffs[0].is_zero()));
+
+    // All-zero coefficients: collapses to single zero
+    let all_zeros = vec![F::ZERO, F::ZERO, F::ZERO];
+    let poly3 = UniPoly::from_coeffs(all_zeros).unwrap();
+    assert_eq!(poly3.coeffs.len(), 1);
+
+    // Empty input returns Err
+    let result: Result<UniPoly<F>, _> = UniPoly::from_coeffs(vec![]);
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_from_coeffs() {
+    test_from_coeffs_with::<pallas::Scalar>();
+    test_from_coeffs_with::<bn256::Scalar>();
+    test_from_coeffs_with::<secp256k1::Scalar>();
   }
 }
