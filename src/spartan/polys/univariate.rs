@@ -30,6 +30,12 @@ pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
 }
 
 impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
+  /// Constructs a polynomial directly from its coefficients (little endian).
+  /// For example, ax^2 + bx + c should be passed as vec![c, b, a].
+  pub fn from_coeffs(coeffs: Vec<Scalar>) -> Self {
+    Self { coeffs }
+  }
+
   /// Constructs a polynomial from its evaluations using Gaussian elimination.
   /// Given evals: [P(0), P(1), ..., P(n-1)], constructs the polynomial P(x).
   pub fn from_evals(evals: &[Scalar]) -> Self {
