@@ -109,6 +109,11 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
     }
   }
 
+  /// Returns a reference to the coefficients (little-endian order).
+  pub fn coeffs(&self) -> &[Scalar] {
+    &self.coeffs
+  }
+
   /// Returns the degree of the polynomial.
   pub fn degree(&self) -> usize {
     self.coeffs.len() - 1
