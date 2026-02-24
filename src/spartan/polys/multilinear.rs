@@ -380,4 +380,92 @@ mod tests {
     bind_and_evaluate_with::<bn256::Scalar>();
     bind_and_evaluate_with::<secp256k1::Scalar>();
   }
+
+  fn test_multi_evaluate_with_matches_single<F: PrimeField>() {
+    let mut rng = ChaCha20Rng::from_seed([42u8; 32]);
+    let num_vars = 6;
+
+    // Create multiple random polynomials
+    let poly1 = random::<_, F>(num_vars, &mut rng);
+    let poly2 = random::<_, F>(num_vars, &mut rng);
+    let poly3 = random::<_, F>(num_vars, &mut rng);
+
+    // Draw a random evaluation point
+    let pt: Vec<F> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      .take(num_vars)
+      .collect();
+
+    // Evaluate each polynomial individually
+    let expected: Vec<F> = [&poly1, &poly2, &poly3]
+      .iter()
+      .map(|p| MultilinearPolynomial::evaluate_with(&p.Z, &pt))
+      .collect();
+
+    // Evaluate all at once using multi_evaluate_with
+    let zs: Vec<&[F]> = vec![&poly1.Z, &poly2.Z, &poly3.Z];
+    let result = MultilinearPolynomial::multi_evaluate_with(&zs, &pt);
+
+    assert_eq!(result, expected);
+  }
+
+  fn test_multi_evaluate_with_single_poly<F: PrimeField>() {
+    let mut rng = ChaCha20Rng::from_seed([7u8; 32]);
+    let num_vars = 4;
+    let poly = random::<_, F>(num_vars, &mut rng);
+    let pt: Vec<F> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      .take(num_vars)
+      .collect();
+
+    let expected = MultilinearPolynomial::evaluate_with(&poly.Z, &pt);
+    let zs: Vec<&[F]> = vec![&poly.Z];
+    let result = MultilinearPolynomial::multi_evaluate_with(&zs, &pt);
+
+    assert_eq!(result, vec![expected]);
+  }
+
+  fn test_multi_evaluate_with_known_values<F: PrimeField>() {
+    // p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Evaluations are indexed with x_1 as the MSB and x_3 as the LSB
+    // (i.e., index = x_1 * 4 + x_2 * 2 + x_3):
+    // index 0 = (x_1=0,x_2=0,x_3=0)=0, index 1 = (x_1=0,x_2=0,x_3=1)=0,
+    // index 2 = (x_1=0,x_2=1,x_3=0)=0, index 3 = (x_1=0,x_2=1,x_3=1)=1,
+    // index 4 = (x_1=1,x_2=0,x_3=0)=0, index 5 = (x_1=1,x_2=0,x_3=1)=1,
+    // index 6 = (x_1=1,x_2=1,x_3=0)=0, index 7 = (x_1=1,x_2=1,x_3=1)=2
+    let two = F::from(2);
+    let z1 = vec![
+      F::ZERO,
+      F::ZERO,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
+      two,
+    ];
+    // Constant polynomial with all evaluations equal to 5
+    let z2 = vec![F::from(5); 8];
+
+    let pt = vec![F::ONE, F::ONE, F::ONE];
+
+    let result =
+      MultilinearPolynomial::multi_evaluate_with(&[z1.as_slice(), z2.as_slice()], &pt);
+
+    assert_eq!(result[0], two); // (1+1)*1 = 2
+    assert_eq!(result[1], F::from(5)); // constant poly evaluates to 5 everywhere
+  }
+
+  #[test]
+  fn test_multi_evaluate_with() {
+    test_multi_evaluate_with_matches_single::<pallas::Scalar>();
+    test_multi_evaluate_with_matches_single::<bn256::Scalar>();
+    test_multi_evaluate_with_matches_single::<secp256k1::Scalar>();
+
+    test_multi_evaluate_with_single_poly::<pallas::Scalar>();
+    test_multi_evaluate_with_single_poly::<bn256::Scalar>();
+    test_multi_evaluate_with_single_poly::<secp256k1::Scalar>();
+
+    test_multi_evaluate_with_known_values::<pallas::Scalar>();
+    test_multi_evaluate_with_known_values::<bn256::Scalar>();
+    test_multi_evaluate_with_known_values::<secp256k1::Scalar>();
+  }
 }
