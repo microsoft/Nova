@@ -447,8 +447,7 @@ mod tests {
 
     let pt = vec![F::ONE, F::ONE, F::ONE];
 
-    let result =
-      MultilinearPolynomial::multi_evaluate_with(&[z1.as_slice(), z2.as_slice()], &pt);
+    let result = MultilinearPolynomial::multi_evaluate_with(&[z1.as_slice(), z2.as_slice()], &pt);
 
     assert_eq!(result[0], two); // (1+1)*1 = 2
     assert_eq!(result[1], F::from(5)); // constant poly evaluates to 5 everywhere
