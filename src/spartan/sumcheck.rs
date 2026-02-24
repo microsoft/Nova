@@ -5,6 +5,7 @@ use crate::{
       multilinear::MultilinearPolynomial,
       univariate::{CompressedUniPoly, UniPoly},
     },
+    scalar_ops::ScalarMulAccum,
     sumcheck::eq_sumcheck::EqSumCheckInstance,
   },
   traits::{Engine, TranscriptEngineTrait},
@@ -42,7 +43,7 @@ pub struct SumcheckProof<E: Engine> {
   compressed_polys: Vec<CompressedUniPoly<E::Scalar>>,
 }
 
-impl<E: Engine> SumcheckProof<E> {
+impl<E: Engine + ScalarMulAccum> SumcheckProof<E> {
   /// Creates a new `SumcheckProof` from compressed univariate polynomials.
   pub fn new(compressed_polys: Vec<CompressedUniPoly<E::Scalar>>) -> Self {
     Self { compressed_polys }
@@ -141,22 +142,23 @@ impl<E: Engine> SumcheckProof<E> {
     poly_B: &MultilinearPolynomial<E::Scalar>,
   ) -> (E::Scalar, E::Scalar) {
     let len = poly_A.len() / 2;
-    (0..len)
+    let (eval_point_0, bound_coeff) = (0..len)
       .into_par_iter()
       .map(|i| {
         // eval 0: bound_func is A(low)
-        let eval_point_0 = poly_A[i] * poly_B[i];
+        let eval_point_0 = E::mul_accum(&poly_A[i], &poly_B[i]);
 
         // eval quadratic coefficient: (A(high)-A(low)) * (B(high)-B(low))
         let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
         let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
-        let bound_coeff = poly_A_bound_coeff * poly_B_bound_coeff;
+        let bound_coeff = E::mul_accum(&poly_A_bound_coeff, &poly_B_bound_coeff);
         (eval_point_0, bound_coeff)
       })
       .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO),
+        || (E::MulAccum::default(), E::MulAccum::default()),
         |a, b| (a.0 + b.0, a.1 + b.1),
-      )
+      );
+    (E::reduce(eval_point_0), E::reduce(bound_coeff))
   }
 
   /// Proves a sumcheck for `sum_x poly_A(x) * poly_B(x)`.
@@ -377,24 +379,25 @@ impl<E: Engine> SumcheckProof<E> {
     poly_B: &MultilinearPolynomial<E::Scalar>,
   ) -> (E::Scalar, E::Scalar) {
     let len = poly_A.len() / 2;
-    (0..len)
+    let (eval_point_0, eval_point_inf) = (0..len)
       .into_par_iter()
       .map(|i| {
         // eval 0: A(low) * B(low)
-        let eval_point_0 = poly_A[i] * poly_B[i];
+        let eval_point_0 = E::mul_accum(&poly_A[i], &poly_B[i]);
 
         // eval -1: A(-1) * B(-1)
         // A(-1) = A(low) - (A(high) - A(low)) = 2*A(low) - A(high)
         let poly_A_inf_point = poly_A[i] + poly_A[i] - poly_A[len + i];
         let poly_B_inf_point = poly_B[i] + poly_B[i] - poly_B[len + i];
-        let eval_point_inf = poly_A_inf_point * poly_B_inf_point;
+        let eval_point_inf = E::mul_accum(&poly_A_inf_point, &poly_B_inf_point);
 
         (eval_point_0, eval_point_inf)
       })
       .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO),
+        || (E::MulAccum::default(), E::MulAccum::default()),
         |a, b| (a.0 + b.0, a.1 + b.1),
-      )
+      );
+    (E::reduce(eval_point_0), E::reduce(eval_point_inf))
   }
 
   /// Computes evaluation points for a cubic sumcheck round.
@@ -408,39 +411,60 @@ impl<E: Engine> SumcheckProof<E> {
     poly_C: &MultilinearPolynomial<E::Scalar>,
   ) -> (E::Scalar, E::Scalar, E::Scalar) {
     let len = poly_A.len() / 2;
+
+    // DEG=1: linear (subtraction only), no multiplies to defer reduction on
+    if DEG == 1 {
+      return (0..len)
+        .into_par_iter()
+        .map(|i| {
+          let eval_point_0 = poly_A[i] - poly_B[i];
+          let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
+          let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
+          let poly_A_inf_point = poly_A[i] - poly_A_bound_coeff;
+          let poly_B_inf_point = poly_B[i] - poly_B_bound_coeff;
+          let eval_point_inf = poly_A_inf_point - poly_B_inf_point;
+          (eval_point_0, E::Scalar::ZERO, eval_point_inf)
+        })
+        .reduce(
+          || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+          |a, b| (a.0 + b.0, E::Scalar::ZERO, a.2 + b.2),
+        );
+    }
+
+    // DEG=2,3: use unreduced accumulation for multiplies
     let (eval_0, bound_coeff, eval_inf) = (0..len)
       .into_par_iter()
       .map(|i| {
-        // eval 0: bound_func is A(low)
         let eval_point_0 = match DEG {
-          1 => poly_A[i] - poly_B[i],
-          2 => poly_A[i] * poly_B[i],
-          3 => poly_A[i] * poly_B[i] * poly_C[i],
-          _ => unreachable!(),
-        };
-
-        // eval cubic coefficient: (A(high)-A(low)) * (B(high)-B(low)) * (C(high)-C(low)) if DEG = 3
-        let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
-        let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
-        let mut poly_C_bound_coeff = E::Scalar::ZERO;
-        let bound_coeff = match DEG {
-          1 | 2 => E::Scalar::ZERO,
+          2 => E::mul_accum(&poly_A[i], &poly_B[i]),
           3 => {
-            poly_C_bound_coeff = poly_C[len + i] - poly_C[i];
-            poly_A_bound_coeff * poly_B_bound_coeff * poly_C_bound_coeff
+            let ab = poly_A[i] * poly_B[i];
+            E::mul_accum(&ab, &poly_C[i])
           }
           _ => unreachable!(),
         };
 
-        // eval -1: comb_func(A(-1), B(-1), C(-1))
+        let poly_A_bound_coeff = poly_A[len + i] - poly_A[i];
+        let poly_B_bound_coeff = poly_B[len + i] - poly_B[i];
+        let bound_coeff = match DEG {
+          2 => E::MulAccum::default(),
+          3 => {
+            let poly_C_bound_coeff = poly_C[len + i] - poly_C[i];
+            let da_db = poly_A_bound_coeff * poly_B_bound_coeff;
+            E::mul_accum(&da_db, &poly_C_bound_coeff)
+          }
+          _ => unreachable!(),
+        };
+
         let poly_A_inf_point = poly_A[i] - poly_A_bound_coeff;
         let poly_B_inf_point = poly_B[i] - poly_B_bound_coeff;
         let eval_point_inf = match DEG {
-          1 => poly_A_inf_point - poly_B_inf_point,
-          2 => poly_A_inf_point * poly_B_inf_point,
+          2 => E::mul_accum(&poly_A_inf_point, &poly_B_inf_point),
           3 => {
+            let poly_C_bound_coeff = poly_C[len + i] - poly_C[i];
             let poly_C_inf_point = poly_C[i] - poly_C_bound_coeff;
-            poly_A_inf_point * poly_B_inf_point * poly_C_inf_point
+            let ab_inf = poly_A_inf_point * poly_B_inf_point;
+            E::mul_accum(&ab_inf, &poly_C_inf_point)
           }
           _ => unreachable!(),
         };
@@ -448,21 +472,15 @@ impl<E: Engine> SumcheckProof<E> {
         (eval_point_0, bound_coeff, eval_point_inf)
       })
       .reduce(
-        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
-        |a, b| {
-          (
-            a.0 + b.0,
-            match DEG {
-              1 | 2 => E::Scalar::ZERO,
-              3 => a.1 + b.1,
-              _ => unreachable!(),
-            },
-            a.2 + b.2,
-          )
-        },
+        || (
+          E::MulAccum::default(),
+          E::MulAccum::default(),
+          E::MulAccum::default(),
+        ),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
       );
 
-    (eval_0, bound_coeff, eval_inf)
+    (E::reduce(eval_0), E::reduce(bound_coeff), E::reduce(eval_inf))
   }
 
   /// Prove poly_A * poly_B - poly_C
@@ -533,7 +551,10 @@ impl<E: Engine> SumcheckProof<E> {
 pub mod eq_sumcheck {
   //! Sumcheck optimization for equality polynomials, implementing the optimized
   //! protocol described in Section 5 (Algorithm 5) of <https://eprint.iacr.org/2025/1117>.
-  use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
+  use crate::{
+    spartan::{polys::multilinear::MultilinearPolynomial, scalar_ops::ScalarMulAccum},
+    traits::Engine,
+  };
   use ff::{Field, PrimeField};
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};
 
@@ -551,7 +572,7 @@ pub mod eq_sumcheck {
     eq_tau_0_a_inf: Vec<(E::Scalar, E::Scalar, E::Scalar)>,
   }
 
-  impl<E: Engine> EqSumCheckInstance<E> {
+  impl<E: Engine + ScalarMulAccum> EqSumCheckInstance<E> {
     /// Creates a new EqSumCheckInstance from tau values.
     pub fn new(taus: Vec<E::Scalar>) -> Self {
       let l = taus.len();
@@ -630,7 +651,7 @@ pub mod eq_sumcheck {
       let (mut eval_0, mut bound_coeff, mut eval_inf) = if in_first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
 
-        zip_A
+        let (e0, bc, einf) = zip_A
           .zip_eq(zip_B)
           .zip_eq(zip_C)
           .enumerate()
@@ -644,16 +665,25 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
 
-            (eval_0 * factor, bound_coeff * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, &factor),
+              E::mul_accum(&bound_coeff, &factor),
+              E::mul_accum(&eval_inf, &factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+            || (
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+            ),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          )
+          );
+        (E::reduce(e0), E::reduce(bc), E::reduce(einf))
       } else {
         let poly_eq_right = self.poly_eq_right_last_half().par_iter();
 
-        zip_A
+        let (e0, bc, einf) = zip_A
           .zip_eq(zip_B)
           .zip_eq(zip_C)
           .zip_eq(poly_eq_right)
@@ -667,12 +697,21 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_right;
 
-            (eval_0 * factor, bound_coeff * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, factor),
+              E::mul_accum(&bound_coeff, factor),
+              E::mul_accum(&eval_inf, factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+            || (
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+            ),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          )
+          );
+        (E::reduce(e0), E::reduce(bc), E::reduce(einf))
       };
 
       self.update_evals(&mut eval_0, &mut bound_coeff, &mut eval_inf);
@@ -698,7 +737,7 @@ pub mod eq_sumcheck {
       let (mut eval_0, mut bound_coeff, mut eval_inf) = if in_first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
 
-        zip_A
+        let (e0, bc, einf) = zip_A
           .zip_eq(zip_B)
           .enumerate()
           .map(|(id, (a, b))| {
@@ -710,16 +749,25 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
 
-            (eval_0 * factor, bound_coeff * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, &factor),
+              E::mul_accum(&bound_coeff, &factor),
+              E::mul_accum(&eval_inf, &factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+            || (
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+            ),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          )
+          );
+        (E::reduce(e0), E::reduce(bc), E::reduce(einf))
       } else {
         let poly_eq_right = self.poly_eq_right_last_half().par_iter();
 
-        zip_A
+        let (e0, bc, einf) = zip_A
           .zip_eq(zip_B)
           .zip_eq(poly_eq_right)
           .map(|((a, b), poly_eq_right)| {
@@ -731,12 +779,21 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_right;
 
-            (eval_0 * factor, bound_coeff * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, factor),
+              E::mul_accum(&bound_coeff, factor),
+              E::mul_accum(&eval_inf, factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+            || (
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+              E::MulAccum::default(),
+            ),
             |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
-          )
+          );
+        (E::reduce(e0), E::reduce(bc), E::reduce(einf))
       };
 
       self.update_evals(&mut eval_0, &mut bound_coeff, &mut eval_inf);
@@ -761,7 +818,7 @@ pub mod eq_sumcheck {
       let (mut eval_0, mut eval_inf) = if in_first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
 
-        zip_A
+        let (e0, einf) = zip_A
           .enumerate()
           .map(|(id, a)| {
             let (zero_a, one_a) = a;
@@ -770,16 +827,20 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
 
-            (eval_0 * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, &factor),
+              E::mul_accum(&eval_inf, &factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            || (E::MulAccum::default(), E::MulAccum::default()),
             |a, b| (a.0 + b.0, a.1 + b.1),
-          )
+          );
+        (E::reduce(e0), E::reduce(einf))
       } else {
         let poly_eq_right = self.poly_eq_right_last_half().par_iter();
 
-        zip_A
+        let (e0, einf) = zip_A
           .zip_eq(poly_eq_right)
           .map(|(a, poly_eq_right)| {
             let (zero_a, one_a) = a;
@@ -788,12 +849,16 @@ pub mod eq_sumcheck {
 
             let factor = poly_eq_right;
 
-            (eval_0 * factor, eval_inf * factor)
+            (
+              E::mul_accum(&eval_0, factor),
+              E::mul_accum(&eval_inf, factor),
+            )
           })
           .reduce(
-            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            || (E::MulAccum::default(), E::MulAccum::default()),
             |a, b| (a.0 + b.0, a.1 + b.1),
-          )
+          );
+        (E::reduce(e0), E::reduce(einf))
       };
 
       let mut bound_coeff = E::Scalar::ZERO;

@@ -13,6 +13,7 @@ use crate::{
     math::Math,
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
     powers,
+    scalar_ops::ScalarMulAccum,
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,
   },
@@ -89,7 +90,9 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for RelaxedR1CSSNARK<E, EE> {
+impl<E: Engine + ScalarMulAccum, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E>
+  for RelaxedR1CSSNARK<E, EE>
+{
   type ProverKey = ProverKey<E, EE>;
   type VerifierKey = VerifierKey<E, EE>;
 
@@ -406,7 +409,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 ///
 /// We allow the polynomial Pᵢ to have different sizes, by appropriately scaling
 /// the claims and resulting evaluations from Sumcheck.
-fn batch_eval_reduce<E: Engine>(
+fn batch_eval_reduce<E: Engine + ScalarMulAccum>(
   u_vec: Vec<PolyEvalInstance<E>>,
   w_vec: Vec<PolyEvalWitness<E>>,
   transcript: &mut E::TE,
@@ -478,7 +481,7 @@ fn batch_eval_reduce<E: Engine>(
 
 /// Verifies a batch of polynomial evaluation claims using Sumcheck
 /// reducing them to a single claim at the same point.
-fn batch_eval_verify<E: Engine>(
+fn batch_eval_verify<E: Engine + ScalarMulAccum>(
   u_vec: Vec<PolyEvalInstance<E>>,
   transcript: &mut E::TE,
   sc_proof_batch: &SumcheckProof<E>,

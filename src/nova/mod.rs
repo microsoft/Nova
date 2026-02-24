@@ -1035,6 +1035,7 @@ mod tests {
       GrumpkinEngine, PallasEngine, Secp256k1Engine, Secq256k1Engine, VestaEngine,
     },
     traits::{circuit::TrivialCircuit, evaluation::EvaluationEngineTrait, snark::default_ck_hint},
+    spartan::scalar_ops::ScalarMulAccum,
   };
   use core::{fmt::Write, marker::PhantomData};
   use expect_test::{expect, Expect};
@@ -1095,8 +1096,8 @@ mod tests {
 
   fn test_pp_digest_with<E1, E2, C>(circuit: &C, expected: &Expect)
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<Base = <E2 as Engine>::Scalar> + ScalarMulAccum,
+    E2: Engine<Base = <E1 as Engine>::Scalar> + ScalarMulAccum,
     E1::GE: DlogGroup,
     E2::GE: DlogGroup,
     C: StepCircuit<E1::Scalar>,
@@ -1234,8 +1235,8 @@ mod tests {
 
   fn test_ivc_nontrivial_with_compression_with<E1, E2, EE1, EE2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<Base = <E2 as Engine>::Scalar> + ScalarMulAccum,
+    E2: Engine<Base = <E1 as Engine>::Scalar> + ScalarMulAccum,
     EE1: EvaluationEngineTrait<E1>,
     EE2: EvaluationEngineTrait<E2>,
   {
@@ -1308,8 +1309,8 @@ mod tests {
 
   fn test_ivc_nontrivial_with_spark_compression_with<E1, E2, EE1, EE2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<Base = <E2 as Engine>::Scalar> + ScalarMulAccum,
+    E2: Engine<Base = <E1 as Engine>::Scalar> + ScalarMulAccum,
     EE1: EvaluationEngineTrait<E1>,
     EE2: EvaluationEngineTrait<E2>,
   {
@@ -1386,8 +1387,8 @@ mod tests {
 
   fn test_ivc_nondet_with_compression_with<E1, E2, EE1, EE2>()
   where
-    E1: Engine<Base = <E2 as Engine>::Scalar>,
-    E2: Engine<Base = <E1 as Engine>::Scalar>,
+    E1: Engine<Base = <E2 as Engine>::Scalar> + ScalarMulAccum,
+    E2: Engine<Base = <E1 as Engine>::Scalar> + ScalarMulAccum,
     EE1: EvaluationEngineTrait<E1>,
     EE2: EvaluationEngineTrait<E2>,
   {

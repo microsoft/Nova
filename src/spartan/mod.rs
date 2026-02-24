@@ -21,6 +21,10 @@ pub mod polys;
 /// Module providing sumcheck protocol implementation.
 pub mod sumcheck;
 
+/// Module providing deferred-reduction multiply-accumulate for sumcheck.
+pub mod scalar_ops;
+
+pub use scalar_ops::ScalarMulAccum;
 pub use sumcheck::SumcheckEngine;
 
 use crate::{

@@ -645,6 +645,11 @@ impl<E: Engine> R1CSWitness<E> {
     &self.W
   }
 
+  /// Returns the blinding factor for the witness commitment.
+  pub fn r_W(&self) -> &E::Scalar {
+    &self.r_W
+  }
+
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)

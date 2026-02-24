@@ -22,6 +22,7 @@ use crate::{
     sumcheck::{eq_sumcheck::EqSumCheckInstance, SumcheckEngine, SumcheckProof},
     PolyEvalInstance, PolyEvalWitness,
   },
+  spartan::scalar_ops::ScalarMulAccum,
   traits::{
     commitment::{CommitmentEngineTrait, Len},
     evaluation::EvaluationEngineTrait,
@@ -290,7 +291,7 @@ impl<E: Engine> WitnessBoundSumcheck<E> {
     }
   }
 }
-impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
+impl<E: Engine + ScalarMulAccum> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
   fn initial_claims(&self) -> Vec<E::Scalar> {
     vec![E::Scalar::ZERO]
   }
@@ -343,7 +344,7 @@ pub struct MemorySumcheckInstance<E: Engine> {
   eq_sumcheck: EqSumCheckInstance<E>,
 }
 
-impl<E: Engine> MemorySumcheckInstance<E> {
+impl<E: Engine + ScalarMulAccum> MemorySumcheckInstance<E> {
   /// Computes witnesses for MemoryInstanceSumcheck
   ///
   /// # Description
@@ -511,7 +512,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
   }
 }
 
-impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
+impl<E: Engine + ScalarMulAccum> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   fn initial_claims(&self) -> Vec<E::Scalar> {
     vec![E::Scalar::ZERO; 6]
   }
@@ -644,7 +645,7 @@ pub struct OuterSumcheckInstance<E: Engine> {
   eq_sumcheck: EqSumCheckInstance<E>,
 }
 
-impl<E: Engine> OuterSumcheckInstance<E> {
+impl<E: Engine + ScalarMulAccum> OuterSumcheckInstance<E> {
   /// Create a new outer sumcheck instance
   pub fn new(
     tau: Vec<E::Scalar>,
@@ -665,7 +666,7 @@ impl<E: Engine> OuterSumcheckInstance<E> {
   }
 }
 
-impl<E: Engine> SumcheckEngine<E> for OuterSumcheckInstance<E> {
+impl<E: Engine + ScalarMulAccum> SumcheckEngine<E> for OuterSumcheckInstance<E> {
   fn initial_claims(&self) -> Vec<E::Scalar> {
     vec![E::Scalar::ZERO, self.eval_Mz_at_tau]
   }
@@ -753,7 +754,7 @@ impl<E: Engine> InnerSumcheckInstance<E> {
   }
 }
 
-impl<E: Engine> SumcheckEngine<E> for InnerSumcheckInstance<E> {
+impl<E: Engine + ScalarMulAccum> SumcheckEngine<E> for InnerSumcheckInstance<E> {
   fn initial_claims(&self) -> Vec<E::Scalar> {
     vec![self.claim]
   }
@@ -893,7 +894,7 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
   eval_arg: EE::EvaluationArgument,
 }
 
-impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
+impl<E: Engine + ScalarMulAccum, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
   fn prove_helper<T1, T2, T3, T4>(
     mem: &mut T1,
     outer: &mut T2,
@@ -1033,7 +1034,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> DigestHelperTrait<E> for VerifierK
   }
 }
 
-impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for RelaxedR1CSSNARK<E, EE> {
+impl<E: Engine + ScalarMulAccum, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E>
+  for RelaxedR1CSSNARK<E, EE>
+{
   type ProverKey = ProverKey<E, EE>;
   type VerifierKey = VerifierKey<E, EE>;
 
