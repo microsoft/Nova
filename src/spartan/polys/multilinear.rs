@@ -77,31 +77,76 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   /// Evaluates the polynomial at the given point.
-  /// Returns Z(r) in O(n) time.
+  /// Returns Z(r) in O(n) time using O(sqrt(n)) memory for eq tables.
   ///
   /// The point must have a value for each variable.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
-    // r must have a value for each variable
     assert_eq!(r.len(), self.get_num_vars());
-    let chis = EqPolynomial::evals_from_points(r);
+    Self::evaluate_with(&self.Z, r)
+  }
 
+  /// Evaluates the polynomial with the given evaluations and point.
+  /// Uses sqrt-decomposition: splits r into two halves, builds two O(sqrt(n))
+  /// eq tables, reduces Z to sqrt(n), then dots with the other eq table.
+  pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
+    let s = r.len();
+    let s_right = s / 2;
+    let s_left = s - s_right;
+    let n_left = 1 << s_left;
+    let n_right = 1 << s_right;
+
+    let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
+    let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
+
+    // reduce Z from 2^s to 2^s_left by dotting each row with eq_right
+    let reduced: Vec<Scalar> = (0..n_left)
+      .into_par_iter()
+      .map(|i| {
+        let chunk = &Z[i * n_right..(i + 1) * n_right];
+        chunk
+          .iter()
+          .zip(eq_right.iter())
+          .map(|(z, e)| *z * *e)
+          .sum()
+      })
+      .collect();
+
+    // dot reduced with eq_left
     zip_with!(
-      (chis.into_par_iter(), self.Z.par_iter()),
-      |chi_i, Z_i| chi_i * Z_i
+      (eq_left.into_par_iter(), reduced.into_par_iter()),
+      |a, b| a * b
     )
     .sum()
   }
 
-  /// Evaluates the polynomial with the given evaluations and point.
-  pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
-    zip_with!(
-      (
-        EqPolynomial::evals_from_points(r).into_par_iter(),
-        Z.par_iter()
-      ),
-      |a, b| a * b
-    )
-    .sum()
+  /// Evaluates multiple polynomials at the same point, reusing sqrt-sized eq tables.
+  pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
+    let s = r.len();
+    let s_right = s / 2;
+    let s_left = s - s_right;
+    let n_left = 1 << s_left;
+    let n_right = 1 << s_right;
+
+    let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
+    let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
+
+    Zs.iter()
+      .map(|Z| {
+        let reduced: Vec<Scalar> = (0..n_left)
+          .into_par_iter()
+          .map(|i| {
+            let chunk = &Z[i * n_right..(i + 1) * n_right];
+            chunk
+              .iter()
+              .zip(eq_right.iter())
+              .map(|(z, e)| *z * *e)
+              .sum()
+          })
+          .collect();
+
+        zip_with!((eq_left.par_iter(), reduced.into_par_iter()), |a, b| *a * b).sum()
+      })
+      .collect()
   }
 }
 

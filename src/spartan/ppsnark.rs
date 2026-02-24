@@ -1128,10 +1128,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       (Az, Bz, Cz, W, E)
     };
     let (eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau) = {
-      let evals_at_tau = [&Az, &Bz, &Cz]
-        .into_par_iter()
-        .map(|p| MultilinearPolynomial::evaluate_with(p, &tau))
-        .collect::<Vec<E::Scalar>>();
+      let evals_at_tau = MultilinearPolynomial::multi_evaluate_with(&[&Az, &Bz, &Cz], &tau);
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
 
@@ -1267,18 +1264,18 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // compute the remaining claims that did not come for free from the sum-check prover
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
-      let e = [
-        &Cz,
-        &E,
-        &pk.S_repr.val_A,
-        &pk.S_repr.val_B,
-        &pk.S_repr.val_C,
-        &pk.S_repr.row,
-        &pk.S_repr.col,
-      ]
-      .into_par_iter()
-      .map(|p| MultilinearPolynomial::evaluate_with(p, &rand_sc))
-      .collect::<Vec<E::Scalar>>();
+      let e = MultilinearPolynomial::multi_evaluate_with(
+        &[
+          &Cz,
+          &E,
+          &pk.S_repr.val_A,
+          &pk.S_repr.val_B,
+          &pk.S_repr.val_C,
+          &pk.S_repr.row,
+          &pk.S_repr.col,
+        ],
+        &rand_sc,
+      );
       (e[0], e[1], e[2], e[3], e[4], e[5], e[6])
     };
 
