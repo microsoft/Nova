@@ -400,7 +400,8 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
           if g10_start >= g10_end {
             return C::Curve::identity();
           }
-          let (large_bases, large_coeffs): (Vec<C>, Vec<C::Scalar>) = classified[g10_start..g10_end]
+          let (large_bases, large_coeffs): (Vec<C>, Vec<C::Scalar>) = classified
+            [g10_start..g10_end]
             .iter()
             .map(|&v| {
               let idx = extract_index(v);
