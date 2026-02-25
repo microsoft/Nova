@@ -489,7 +489,16 @@ pub fn msm_small_with_max_num_bits<
     0 => C::identity().into(),
     1 => msm_binary(scalars, bases),
     2..=10 => msm_10(scalars, bases, max_num_bits),
-    _ => msm_small_rest(scalars, bases, max_num_bits),
+    11..=32 => msm_small_rest(scalars, bases, max_num_bits),
+    _ => {
+      // For >32-bit scalars, halo2curves' msm_best is faster than our
+      // bucket-sort Pippenger (e.g., 192ms vs 244ms at u64, 2^20 points).
+      let field_scalars: Vec<C::ScalarExt> = scalars
+        .iter()
+        .map(|s| C::ScalarExt::from((*s).into()))
+        .collect();
+      halo2curves::msm::msm_best(&field_scalars, bases)
+    }
   }
 }
 
