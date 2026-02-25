@@ -164,45 +164,6 @@ fn bucket_add_affine<C: CurveAffine>(bucket: &mut BucketXYZZ<C::Base>, p: &C) {
   bucket.zzz *= ppp;
 }
 
-/// Mixed subtraction: BucketXYZZ -= CurveAffine point.
-#[inline]
-fn bucket_sub_affine<C: CurveAffine>(bucket: &mut BucketXYZZ<C::Base>, p: &C) {
-  if bool::from(p.is_identity()) {
-    return;
-  }
-  let coords = p.coordinates().unwrap();
-  let px = *coords.x();
-  let py = -(*coords.y()); // negate y to subtract
-
-  if bucket.is_zero() {
-    bucket.x = px;
-    bucket.y = py;
-    bucket.zz = C::Base::ONE;
-    bucket.zzz = C::Base::ONE;
-    return;
-  }
-  let u2 = px * bucket.zz;
-  let s2 = py * bucket.zzz;
-
-  if bucket.x == u2 {
-    if bucket.y == s2 {
-      bucket.double_in_place();
-    } else {
-      *bucket = BucketXYZZ::zero();
-    }
-    return;
-  }
-  let p_val = u2 - bucket.x;
-  let r = s2 - bucket.y;
-  let pp = p_val.square();
-  let ppp = p_val * pp;
-  let q = bucket.x * pp;
-  bucket.x = r.square() - ppp - q.double();
-  bucket.y = r * (q - bucket.x) - bucket.y * ppp;
-  bucket.zz *= pp;
-  bucket.zzz *= ppp;
-}
-
 /// Convert XYZZ bucket to projective curve point.
 ///
 /// Computes affine coordinates `(X/ZZ, Y/ZZZ)` then converts to projective.
@@ -249,139 +210,6 @@ fn repr_low_u64<F: PrimeField>(s: &F) -> u64 {
   u64::from_le_bytes(buf)
 }
 
-/// Convert little-endian bytes to u64 limbs.
-#[inline]
-fn bytes_to_limbs(bytes: &[u8]) -> Vec<u64> {
-  bytes
-    .chunks(8)
-    .map(|chunk| {
-      let mut buf = [0u8; 8];
-      buf[..chunk.len()].copy_from_slice(chunk);
-      u64::from_le_bytes(buf)
-    })
-    .collect()
-}
-
-// ==================================================================================
-// wNAF MSM (for large scalars, >64 bits)
-// ==================================================================================
-
-/// Extract wNAF (windowed non-adjacent form) signed digits from a scalar.
-///
-/// Given a scalar represented as u64 limbs, window size `w`, and `num_bits`,
-/// produces signed digits in `[-(2^(w-1)), ..., 2^(w-1)]`.
-fn make_wnaf_digits(limbs: &[u64], w: usize, num_bits: usize) -> Vec<i64> {
-  let radix: u64 = 1 << w;
-  let window_mask: u64 = radix - 1;
-  let num_bits = if num_bits == 0 { 1 } else { num_bits };
-  let digits_count = num_bits.div_ceil(w);
-  let mut carry = 0u64;
-  let mut digits = Vec::with_capacity(digits_count);
-
-  for i in 0..digits_count {
-    let bit_offset = i * w;
-    let u64_idx = bit_offset / 64;
-    let bit_idx = bit_offset % 64;
-
-    let bit_buf = if u64_idx >= limbs.len() {
-      0u64
-    } else if bit_idx + w <= 64 || u64_idx == limbs.len() - 1 {
-      limbs[u64_idx] >> bit_idx
-    } else {
-      (limbs[u64_idx] >> bit_idx) | (limbs[u64_idx + 1] << (64 - bit_idx))
-    };
-
-    let coef = carry + (bit_buf & window_mask);
-    carry = (coef + radix / 2) >> w;
-    let mut digit = (coef as i64) - (carry << w) as i64;
-
-    if i == digits_count - 1 {
-      digit += (carry << w) as i64;
-    }
-    digits.push(digit);
-  }
-  digits
-}
-
-/// wNAF MSM using XYZZ buckets. For large scalars (>64 bits).
-/// Parallel over windows for a single chunk of bases/scalars.
-fn msm_wnaf_serial<C: CurveAffine>(bases: &[C], scalar_reprs: &[Vec<u64>]) -> C::CurveExt {
-  let size = bases.len().min(scalar_reprs.len());
-  if size == 0 {
-    return C::CurveExt::identity();
-  }
-
-  let c = if size < 32 { 3 } else { compute_ln(size) + 2 };
-  let num_bits = C::ScalarExt::NUM_BITS as usize;
-  let digits_count = num_bits.div_ceil(c);
-
-  // Pre-compute all wNAF digits
-  let scalar_digits: Vec<Vec<i64>> = scalar_reprs
-    .iter()
-    .map(|limbs| make_wnaf_digits(limbs, c, num_bits))
-    .collect();
-
-  // Process each window in parallel, using XYZZ buckets
-  let window_sums: Vec<C::CurveExt> = (0..digits_count)
-    .into_par_iter()
-    .map(|i| {
-      let mut buckets: Vec<BucketXYZZ<C::Base>> = vec![BucketXYZZ::zero(); 1 << c];
-      for (digits, base) in scalar_digits.iter().zip(bases.iter()) {
-        let digit = digits[i];
-        if digit > 0 {
-          bucket_add_affine::<C>(&mut buckets[(digit - 1) as usize], base);
-        } else if digit < 0 {
-          bucket_sub_affine::<C>(&mut buckets[(-digit - 1) as usize], base);
-        }
-      }
-      // Prefix sum
-      let mut running_sum: BucketXYZZ<C::Base> = BucketXYZZ::zero();
-      let mut res: BucketXYZZ<C::Base> = BucketXYZZ::zero();
-      for b in buckets.into_iter().rev() {
-        running_sum.add_assign_bucket(&b);
-        res.add_assign_bucket(&running_sum);
-      }
-      bucket_to_curve::<C>(&res)
-    })
-    .collect();
-
-  // Combine window sums: lowest + Horner evaluation for higher windows
-  let lowest = *window_sums.first().unwrap();
-  lowest
-    + window_sums[1..]
-      .iter()
-      .rev()
-      .fold(C::CurveExt::identity(), |mut total, sum_i| {
-        total += sum_i;
-        for _ in 0..c {
-          total = total.double();
-        }
-        total
-      })
-}
-
-/// Parallel wNAF MSM: chunks the input for better parallelism.
-fn msm_wnaf<C: CurveAffine>(bases: &[C], scalar_reprs: &[Vec<u64>]) -> C::CurveExt {
-  let size = bases.len().min(scalar_reprs.len());
-  if size == 0 {
-    return C::CurveExt::identity();
-  }
-
-  // For parallelism, split across threads; each chunk runs msm_wnaf_serial
-  // which internally parallelizes over windows
-  let num_threads = current_num_threads();
-  let chunk_size = size.div_ceil(num_threads);
-  if chunk_size >= size {
-    return msm_wnaf_serial(bases, scalar_reprs);
-  }
-
-  bases
-    .par_chunks(chunk_size)
-    .zip(scalar_reprs.par_chunks(chunk_size))
-    .map(|(b, s)| msm_wnaf_serial(b, s))
-    .reduce(C::CurveExt::identity, |sum, evl| sum + evl)
-}
-
 // ==================================================================================
 // Main MSM with signed decomposition + bit-width partitioning
 // ==================================================================================
@@ -390,6 +218,8 @@ fn msm_wnaf<C: CurveAffine>(bases: &[C], scalar_reprs: &[Vec<u64>]) -> C::CurveE
 ///
 /// This function uses signed scalar decomposition to halve the effective scalar range,
 /// then partitions scalars by bit-width to route each group to the optimal MSM algorithm.
+/// Small scalars (≤64 bits) use Nova's bucket-sort MSMs; large scalars delegate to
+/// halo2curves' `msm_best`.
 ///
 /// Adapted from the Jolt MSM implementation, with optimizations for Nova's use cases.
 pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
@@ -566,21 +396,19 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
           r8 + r16 + r32 + r64
         },
         || {
-          // Large scalars: wNAF
+          // Large scalars: delegate to halo2curves' optimized MSM
           if g10_start >= g10_end {
             return C::Curve::identity();
           }
-          let (large_bases, large_reprs): (Vec<C>, Vec<Vec<u64>>) = classified[g10_start..g10_end]
+          let (large_bases, large_coeffs): (Vec<C>, Vec<C::Scalar>) = classified
+            [g10_start..g10_end]
             .iter()
             .map(|&v| {
               let idx = extract_index(v);
-              let b = bases[idx];
-              let s = coeffs[idx];
-              let repr = bytes_to_limbs(s.to_repr().as_ref());
-              (b, repr)
+              (bases[idx], coeffs[idx])
             })
             .unzip();
-          msm_wnaf::<C>(&large_bases, &large_reprs)
+          halo2curves::msm::msm_best(&large_coeffs, &large_bases)
         },
       );
       small_result + large_result
@@ -661,7 +489,16 @@ pub fn msm_small_with_max_num_bits<
     0 => C::identity().into(),
     1 => msm_binary(scalars, bases),
     2..=10 => msm_10(scalars, bases, max_num_bits),
-    _ => msm_small_rest(scalars, bases, max_num_bits),
+    11..=32 => msm_small_rest(scalars, bases, max_num_bits),
+    _ => {
+      // For >32-bit scalars, halo2curves' msm_best is faster than our
+      // bucket-sort Pippenger (e.g., 192ms vs 244ms at u64, 2^20 points).
+      let field_scalars: Vec<C::ScalarExt> = scalars
+        .iter()
+        .map(|s| C::ScalarExt::from((*s).into()))
+        .collect();
+      halo2curves::msm::msm_best(&field_scalars, bases)
+    }
   }
 }
 
