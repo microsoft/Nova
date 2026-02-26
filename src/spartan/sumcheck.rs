@@ -77,7 +77,7 @@ impl<E: Engine> SumcheckProof<E> {
       let poly = self.compressed_polys[i].decompress(&e);
 
       // verify degree bound
-      if poly.degree() != degree_bound {
+      if poly.degree() > degree_bound {
         return Err(NovaError::InvalidSumcheckProof);
       }
 
@@ -121,17 +121,15 @@ impl<E: Engine> SumcheckProof<E> {
     // where each claim is scaled by 2^{n-nᵢ} to account for the padding.
     //
     // claim = ∑ᵢ coeffᵢ⋅2^{n-nᵢ}⋅cᵢ
-    let claim = zip_with!(
-      (
-        zip_with!(iter, (claims, num_rounds), |claim, num_rounds| {
-          let scaling_factor = 1 << (num_rounds_max - num_rounds);
-          E::Scalar::from(scaling_factor as u64) * claim
-        }),
-        coeffs.iter()
-      ),
-      |scaled_claim, coeff| scaled_claim * coeff
-    )
-    .sum();
+    let claim = claims
+      .iter()
+      .zip(num_rounds.iter())
+      .zip(coeffs.iter())
+      .map(|((claim, &nr), coeff)| {
+        let scale = E::Scalar::from(2u64).pow_vartime([(num_rounds_max - nr) as u64]);
+        *claim * scale * coeff
+      })
+      .sum();
 
     self.verify(claim, num_rounds_max, degree_bound, transcript)
   }
@@ -254,7 +252,8 @@ impl<E: Engine> SumcheckProof<E> {
       iter,
       (claims, num_rounds, coeffs),
       |claim, num_rounds, coeff| {
-        let scaled_claim = E::Scalar::from((1 << (num_rounds_max - num_rounds)) as u64) * claim;
+        let scaled_claim =
+          E::Scalar::from(2u64).pow_vartime([(num_rounds_max - num_rounds) as u64]) * claim;
         scaled_claim * coeff
       }
     )
@@ -275,8 +274,9 @@ impl<E: Engine> SumcheckProof<E> {
             // For replication model: polynomial is constant across early rounds
             // Constant polynomial: p(x) = scaled, so eval_0 = scaled, quadratic_coeff = 0
             let remaining_variables = remaining_rounds - num_rounds - 1;
-            let scaled_claim = E::Scalar::from((1 << remaining_variables) as u64) * claim;
-            (scaled_claim, E::Scalar::ZERO)
+            let scaled_claim =
+              E::Scalar::from(2u64).pow_vartime([remaining_variables as u64]) * claim;
+            (scaled_claim, scaled_claim)
           }
         }
       )

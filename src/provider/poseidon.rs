@@ -73,18 +73,20 @@ where
     let bits = hash[0].to_le_bits();
     let mut res = Base::ZERO;
     let mut coeff = Base::ONE;
-    let start_idx = if start_with_one {
-      res = coeff;
-      coeff += coeff;
-      1
-    } else {
-      0
-    };
-    for bit in bits[start_idx..num_bits].into_iter() {
+    for bit in bits[..num_bits].into_iter() {
       if *bit {
         res += coeff;
       }
       coeff += coeff;
+    }
+    // If start_with_one, force MSB (bit num_bits-1) to 1
+    if start_with_one {
+      // coeff is now 2^num_bits; we need 2^(num_bits-1)
+      let msb_coeff = coeff * Base::from(2u64).invert().unwrap();
+      // Check if MSB is not already set
+      if !bits[num_bits - 1] {
+        res += msb_coeff;
+      }
     }
     res
   }
@@ -167,10 +169,11 @@ where
       .to_vec();
 
     if start_with_one {
-      bits[0] = AllocatedBit::alloc(ns.namespace(|| "set first bit to 1"), Some(true))?;
+      let msb_idx = num_bits - 1;
+      bits[msb_idx] = AllocatedBit::alloc(ns.namespace(|| "set msb to 1"), Some(true))?;
       ns.enforce(
-        || "check bits[0] = 1",
-        |lc| lc + bits[0].get_variable(),
+        || "check bits[msb] = 1",
+        |lc| lc + bits[msb_idx].get_variable(),
         |lc| lc + CS::one(),
         |lc| lc + CS::one(),
       );

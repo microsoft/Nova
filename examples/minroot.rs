@@ -30,7 +30,8 @@ struct MinRootIteration<G: Group> {
 impl<G: Group> MinRootIteration<G> {
   // produces a sample non-deterministic advice, executing one invocation of MinRoot per step
   fn new(num_iters: usize, x_0: &G::Scalar, y_0: &G::Scalar) -> (Vec<G::Scalar>, Vec<Self>) {
-    // exp = (p - 3 / 5), where p is the order of the group
+    // exp = (p - 3) * 5^(-1) mod p, where p is the order of the group
+    // This computes the exponent such that x^exp ≡ x^(1/5) (mod p)
     // x^{exp} mod p provides the fifth root of x
     let exp = {
       let p = G::group_params().2.to_biguint().unwrap();
@@ -89,8 +90,10 @@ impl<G: Group> StepCircuit<G::Scalar> for MinRootCircuit<G> {
     cs: &mut CS,
     z: &[AllocatedNum<G::Scalar>],
   ) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> {
-    let mut z_out: Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> =
-      Err(SynthesisError::AssignmentMissing);
+    // Handle empty sequence case
+    if self.seq.is_empty() {
+      return Ok(z.to_vec());
+    }
 
     // use the provided inputs
     let x_0 = z[0].clone();
@@ -121,16 +124,13 @@ impl<G: Group> StepCircuit<G::Scalar> for MinRootCircuit<G> {
         |lc| lc + x_i.get_variable() + y_i.get_variable(),
       );
 
-      if i == self.seq.len() - 1 {
-        z_out = Ok(vec![x_i_plus_1.clone(), x_i.clone()]);
-      }
-
       // update x_i and y_i for the next iteration
       y_i = x_i;
       x_i = x_i_plus_1;
     }
 
-    z_out
+    // Return final state
+    Ok(vec![x_i, y_i])
   }
 }
 

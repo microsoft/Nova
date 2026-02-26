@@ -23,6 +23,19 @@ impl AllocatedBit {
     self.variable
   }
 
+  /// Construct an [`AllocatedBit`] from a variable and value without adding constraints.
+  ///
+  /// # Safety (Logical)
+  /// The caller MUST ensure that:
+  /// 1. The variable has already been constrained to be boolean (0 or 1) elsewhere
+  /// 2. The value correctly reflects the variable's assignment
+  ///
+  /// This is useful when a variable is known to be boolean due to constraints
+  /// added separately (e.g., via linear combinations that enforce 0/1).
+  pub fn from_parts_unchecked(variable: Variable, value: Option<bool>) -> Self {
+    AllocatedBit { variable, value }
+  }
+
   /// Allocate a variable in the constraint system which can only be a
   /// boolean value. Further, constrain that the boolean is false
   /// unless the condition is false.

@@ -77,31 +77,76 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   /// Evaluates the polynomial at the given point.
-  /// Returns Z(r) in O(n) time.
+  /// Returns Z(r) in O(n) time using O(sqrt(n)) memory for eq tables.
   ///
   /// The point must have a value for each variable.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
-    // r must have a value for each variable
     assert_eq!(r.len(), self.get_num_vars());
-    let chis = EqPolynomial::evals_from_points(r);
+    Self::evaluate_with(&self.Z, r)
+  }
 
+  /// Evaluates the polynomial with the given evaluations and point.
+  /// Uses sqrt-decomposition: splits r into two halves, builds two O(sqrt(n))
+  /// eq tables, reduces Z to sqrt(n), then dots with the other eq table.
+  pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
+    let s = r.len();
+    let s_right = s / 2;
+    let s_left = s - s_right;
+    let n_left = 1 << s_left;
+    let n_right = 1 << s_right;
+
+    let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
+    let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
+
+    // reduce Z from 2^s to 2^s_left by dotting each row with eq_right
+    let reduced: Vec<Scalar> = (0..n_left)
+      .into_par_iter()
+      .map(|i| {
+        let chunk = &Z[i * n_right..(i + 1) * n_right];
+        chunk
+          .iter()
+          .zip(eq_right.iter())
+          .map(|(z, e)| *z * *e)
+          .sum()
+      })
+      .collect();
+
+    // dot reduced with eq_left
     zip_with!(
-      (chis.into_par_iter(), self.Z.par_iter()),
-      |chi_i, Z_i| chi_i * Z_i
+      (eq_left.into_par_iter(), reduced.into_par_iter()),
+      |a, b| a * b
     )
     .sum()
   }
 
-  /// Evaluates the polynomial with the given evaluations and point.
-  pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
-    zip_with!(
-      (
-        EqPolynomial::evals_from_points(r).into_par_iter(),
-        Z.par_iter()
-      ),
-      |a, b| a * b
-    )
-    .sum()
+  /// Evaluates multiple polynomials at the same point, reusing sqrt-sized eq tables.
+  pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
+    let s = r.len();
+    let s_right = s / 2;
+    let s_left = s - s_right;
+    let n_left = 1 << s_left;
+    let n_right = 1 << s_right;
+
+    let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
+    let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
+
+    Zs.iter()
+      .map(|Z| {
+        let reduced: Vec<Scalar> = (0..n_left)
+          .into_par_iter()
+          .map(|i| {
+            let chunk = &Z[i * n_right..(i + 1) * n_right];
+            chunk
+              .iter()
+              .zip(eq_right.iter())
+              .map(|(z, e)| *z * *e)
+              .sum()
+          })
+          .collect();
+
+        zip_with!((eq_left.par_iter(), reduced.into_par_iter()), |a, b| *a * b).sum()
+      })
+      .collect()
   }
 }
 
@@ -334,5 +379,92 @@ mod tests {
     bind_and_evaluate_with::<pallas::Scalar>();
     bind_and_evaluate_with::<bn256::Scalar>();
     bind_and_evaluate_with::<secp256k1::Scalar>();
+  }
+
+  fn test_multi_evaluate_with_matches_single<F: PrimeField>() {
+    let mut rng = ChaCha20Rng::from_seed([42u8; 32]);
+    let num_vars = 6;
+
+    // Create multiple random polynomials
+    let poly1 = random::<_, F>(num_vars, &mut rng);
+    let poly2 = random::<_, F>(num_vars, &mut rng);
+    let poly3 = random::<_, F>(num_vars, &mut rng);
+
+    // Draw a random evaluation point
+    let pt: Vec<F> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      .take(num_vars)
+      .collect();
+
+    // Evaluate each polynomial individually
+    let expected: Vec<F> = [&poly1, &poly2, &poly3]
+      .iter()
+      .map(|p| MultilinearPolynomial::evaluate_with(&p.Z, &pt))
+      .collect();
+
+    // Evaluate all at once using multi_evaluate_with
+    let zs: Vec<&[F]> = vec![&poly1.Z, &poly2.Z, &poly3.Z];
+    let result = MultilinearPolynomial::multi_evaluate_with(&zs, &pt);
+
+    assert_eq!(result, expected);
+  }
+
+  fn test_multi_evaluate_with_single_poly<F: PrimeField>() {
+    let mut rng = ChaCha20Rng::from_seed([7u8; 32]);
+    let num_vars = 4;
+    let poly = random::<_, F>(num_vars, &mut rng);
+    let pt: Vec<F> = std::iter::from_fn(|| Some(F::random(&mut rng)))
+      .take(num_vars)
+      .collect();
+
+    let expected = MultilinearPolynomial::evaluate_with(&poly.Z, &pt);
+    let zs: Vec<&[F]> = vec![&poly.Z];
+    let result = MultilinearPolynomial::multi_evaluate_with(&zs, &pt);
+
+    assert_eq!(result, vec![expected]);
+  }
+
+  fn test_multi_evaluate_with_known_values<F: PrimeField>() {
+    // p(x_1, x_2, x_3) = (x_1 + x_2) * x_3
+    // Evaluations are indexed with x_1 as the MSB and x_3 as the LSB
+    // (i.e., index = x_1 * 4 + x_2 * 2 + x_3):
+    // index 0 = (x_1=0,x_2=0,x_3=0)=0, index 1 = (x_1=0,x_2=0,x_3=1)=0,
+    // index 2 = (x_1=0,x_2=1,x_3=0)=0, index 3 = (x_1=0,x_2=1,x_3=1)=1,
+    // index 4 = (x_1=1,x_2=0,x_3=0)=0, index 5 = (x_1=1,x_2=0,x_3=1)=1,
+    // index 6 = (x_1=1,x_2=1,x_3=0)=0, index 7 = (x_1=1,x_2=1,x_3=1)=2
+    let two = F::from(2);
+    let z1 = vec![
+      F::ZERO,
+      F::ZERO,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
+      F::ONE,
+      F::ZERO,
+      two,
+    ];
+    // Constant polynomial with all evaluations equal to 5
+    let z2 = vec![F::from(5); 8];
+
+    let pt = vec![F::ONE, F::ONE, F::ONE];
+
+    let result = MultilinearPolynomial::multi_evaluate_with(&[z1.as_slice(), z2.as_slice()], &pt);
+
+    assert_eq!(result[0], two); // (1+1)*1 = 2
+    assert_eq!(result[1], F::from(5)); // constant poly evaluates to 5 everywhere
+  }
+
+  #[test]
+  fn test_multi_evaluate_with() {
+    test_multi_evaluate_with_matches_single::<pallas::Scalar>();
+    test_multi_evaluate_with_matches_single::<bn256::Scalar>();
+    test_multi_evaluate_with_matches_single::<secp256k1::Scalar>();
+
+    test_multi_evaluate_with_single_poly::<pallas::Scalar>();
+    test_multi_evaluate_with_single_poly::<bn256::Scalar>();
+    test_multi_evaluate_with_single_poly::<secp256k1::Scalar>();
+
+    test_multi_evaluate_with_known_values::<pallas::Scalar>();
+    test_multi_evaluate_with_known_values::<bn256::Scalar>();
+    test_multi_evaluate_with_known_values::<secp256k1::Scalar>();
   }
 }

@@ -1,11 +1,13 @@
 //! Main components:
 //! - `UniPoly`: an univariate dense polynomial in coefficient form (big endian),
 //! - `CompressedUniPoly`: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
-use crate::traits::{
-  evm_serde::{CustomSerdeTrait, EvmCompatSerde},
-  AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+use crate::{
+  errors::NovaError,
+  traits::{
+    evm_serde::{CustomSerdeTrait, EvmCompatSerde},
+    AbsorbInRO2Trait, Engine, Group, ROTrait, TranscriptReprTrait,
+  },
 };
-use core::panic;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -30,6 +32,26 @@ pub struct CompressedUniPoly<Scalar: PrimeField + CustomSerdeTrait> {
 }
 
 impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
+  /// Constructs a polynomial directly from its coefficients (little endian).
+  /// For example, ax^2 + bx + c should be passed as vec![c, b, a].
+  ///
+  /// Trailing zero coefficients are removed, keeping at least one coefficient
+  /// so that the zero polynomial is represented as `[Scalar::ZERO]`.
+  ///
+  /// # Errors
+  ///
+  /// Returns [`NovaError::InvalidInputLength`] if `coeffs` is empty.
+  pub fn from_coeffs(mut coeffs: Vec<Scalar>) -> Result<Self, NovaError> {
+    if coeffs.is_empty() {
+      return Err(NovaError::InvalidInputLength);
+    }
+    // Normalize by trimming trailing zeros, but keep at least one coefficient.
+    while coeffs.len() > 1 && coeffs.last().is_some_and(|c| bool::from(c.is_zero())) {
+      coeffs.pop();
+    }
+    Ok(Self { coeffs })
+  }
+
   /// Constructs a polynomial from its evaluations using Gaussian elimination.
   /// Given evals: [P(0), P(1), ..., P(n-1)], constructs the polynomial P(x).
   pub fn from_evals(evals: &[Scalar]) -> Self {
@@ -85,6 +107,11 @@ impl<Scalar: PrimeField + CustomSerdeTrait> UniPoly<Scalar> {
     Self {
       coeffs: vec![d, c, b, a],
     }
+  }
+
+  /// Returns a reference to the coefficients (little-endian order).
+  pub fn coeffs(&self) -> &[Scalar] {
+    &self.coeffs
   }
 
   /// Returns the degree of the polynomial.
@@ -414,5 +441,58 @@ mod tests {
     test_from_evals_quartic_with::<pallas::Scalar>();
     test_from_evals_quartic_with::<bn256::Scalar>();
     test_from_evals_quartic_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_coeffs_with<F: PrimeField + CustomSerdeTrait>() {
+    // polynomial is 2x^2 + 3x + 1, stored little-endian as [1, 3, 2]
+    let poly = UniPoly::from_coeffs(vec![F::ONE, F::from(3), F::from(2)]).unwrap();
+
+    // Verify coefficient ordering (little-endian: constant term first)
+    assert_eq!(poly.coeffs.len(), 3);
+    assert_eq!(poly.coeffs[0], F::ONE); // constant term
+    assert_eq!(poly.coeffs[1], F::from(3)); // linear term
+    assert_eq!(poly.coeffs[2], F::from(2)); // quadratic term
+
+    // Verify evaluations are consistent with the stored coefficients
+    assert_eq!(poly.eval_at_zero(), F::ONE); // P(0) = 1
+    assert_eq!(poly.eval_at_one(), F::from(6)); // P(1) = 2 + 3 + 1 = 6
+    assert_eq!(poly.evaluate(&F::from(2)), F::from(15)); // P(2) = 8 + 6 + 1 = 15
+    assert_eq!(poly.evaluate(&F::from(3)), F::from(28)); // P(3) = 18 + 9 + 1 = 28
+  }
+
+  #[test]
+  fn test_from_coeffs() {
+    test_from_coeffs_with::<pallas::Scalar>();
+    test_from_coeffs_with::<bn256::Scalar>();
+    test_from_coeffs_with::<secp256k1::Scalar>();
+  }
+
+  fn test_from_coeffs_edge_cases_with<F: PrimeField + CustomSerdeTrait>() {
+    // Edge case: empty vector — from_coeffs returns an error
+    let result: Result<UniPoly<F>, _> = UniPoly::from_coeffs(vec![]);
+    assert!(result.is_err());
+
+    // Edge case: trailing zeros are normalized away
+    // 2x^2 + 3x + 1 with an appended zero coefficient (i.e., 0*x^3 term)
+    let poly = UniPoly::from_coeffs(vec![F::ONE, F::from(3), F::from(2), F::ZERO]).unwrap();
+    assert_eq!(poly.coeffs.len(), 3); // trailing zero is trimmed
+    assert_eq!(poly.coeffs[2], F::from(2)); // highest non-zero coefficient
+
+    // Evaluation is still correct after normalization
+    assert_eq!(poly.eval_at_zero(), F::ONE); // P(0) = 1
+    assert_eq!(poly.eval_at_one(), F::from(6)); // P(1) = 1 + 3 + 2 = 6
+    assert_eq!(poly.evaluate(&F::from(2)), F::from(15)); // P(2) = 8 + 6 + 1 = 15
+
+    // All-zero coefficients: collapses to a single zero coefficient
+    let zero_poly = UniPoly::from_coeffs(vec![F::ZERO, F::ZERO, F::ZERO]).unwrap();
+    assert_eq!(zero_poly.coeffs.len(), 1);
+    assert!(bool::from(zero_poly.coeffs[0].is_zero()));
+  }
+
+  #[test]
+  fn test_from_coeffs_edge_cases() {
+    test_from_coeffs_edge_cases_with::<pallas::Scalar>();
+    test_from_coeffs_edge_cases_with::<bn256::Scalar>();
+    test_from_coeffs_edge_cases_with::<secp256k1::Scalar>();
   }
 }

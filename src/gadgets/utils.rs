@@ -28,13 +28,9 @@ where
   let mut fe = Some(Scalar::ZERO);
   for bit in bits.iter() {
     lc = lc + (coeff, bit.get_variable());
-    fe = bit.get_value().map(|val| {
-      if val {
-        fe.unwrap() + coeff
-      } else {
-        fe.unwrap()
-      }
-    });
+    fe = bit
+      .get_value()
+      .and_then(|val| fe.map(|f| if val { f + coeff } else { f }));
     coeff = coeff.double();
   }
   let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
