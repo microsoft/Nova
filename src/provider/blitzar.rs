@@ -8,7 +8,7 @@ use blitzar::compute::{
   SwMsmHandle,
 };
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 use std::sync::{Arc, OnceLock, RwLock};
 
 type Bn254MsmHandle = MsmHandle<ElementP2<ark_bn254::g1::Config>>;
@@ -67,10 +67,14 @@ pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
   let handle = get_or_create_handle(bases);
 
   // Lay out scalars as contiguous bytes: n scalars × 32 bytes each
-  let scalar_bytes: Vec<u8> = scalars
-    .par_iter()
-    .flat_map_iter(|s| s.to_bytes())
-    .collect();
+  let n = scalars.len();
+  let mut scalar_bytes = vec![0u8; n * 32];
+  scalar_bytes
+    .par_chunks_mut(32)
+    .zip(scalars.par_iter())
+    .for_each(|(chunk, s)| {
+      chunk.copy_from_slice(&s.to_bytes());
+    });
 
   let mut results = vec![ark_bn254::G1Affine::default(); 1];
   handle.affine_msm(&mut results, 32, &scalar_bytes);
@@ -105,19 +109,22 @@ pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) 
     // Layout: for each generator i, all m scalars for that generator are contiguous
     // s_11, s_21, ..., s_m1, s_12, s_22, ..., s_m2, ..., s_mn
     let mut scalar_bytes = vec![0u8; num_outputs * max_len * 32];
-    for gen_idx in 0..max_len {
-      for (out_idx, scalar_vec) in scalars.iter().enumerate() {
-        let src = scalar_vec[gen_idx].to_bytes();
-        let dst_offset = (gen_idx * num_outputs + out_idx) * 32;
-        scalar_bytes[dst_offset..dst_offset + 32].copy_from_slice(&src);
-      }
-    }
+    scalar_bytes
+      .par_chunks_mut(num_outputs * 32)
+      .enumerate()
+      .for_each(|(gen_idx, gen_chunk)| {
+        for (out_idx, scalar_vec) in scalars.iter().enumerate() {
+          let src = scalar_vec[gen_idx].to_bytes();
+          let dst_offset = out_idx * 32;
+          gen_chunk[dst_offset..dst_offset + 32].copy_from_slice(&src);
+        }
+      });
 
     let mut results = vec![ark_bn254::G1Affine::default(); num_outputs];
     handle.affine_msm(&mut results, 32, &scalar_bytes);
 
     results
-      .iter()
+      .par_iter()
       .map(|r| convert_to_halo2_bn256_g1_affine(r).into())
       .collect()
   } else {
@@ -131,15 +138,18 @@ pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) 
 
     // Layout: interleaved column-major, padded to max_len
     let mut scalar_bytes = vec![0u8; num_outputs * max_len * 32];
-    for gen_idx in 0..max_len {
-      for (sorted_idx, (_, scalar_vec)) in indexed.iter().enumerate() {
-        if gen_idx < scalar_vec.len() {
-          let src = scalar_vec[gen_idx].to_bytes();
-          let dst_offset = (gen_idx * num_outputs + sorted_idx) * 32;
-          scalar_bytes[dst_offset..dst_offset + 32].copy_from_slice(&src);
+    scalar_bytes
+      .par_chunks_mut(num_outputs * 32)
+      .enumerate()
+      .for_each(|(gen_idx, gen_chunk)| {
+        for (sorted_idx, (_, scalar_vec)) in indexed.iter().enumerate() {
+          if gen_idx < scalar_vec.len() {
+            let src = scalar_vec[gen_idx].to_bytes();
+            let dst_offset = sorted_idx * 32;
+            gen_chunk[dst_offset..dst_offset + 32].copy_from_slice(&src);
+          }
         }
-      }
-    }
+      });
 
     let mut results = vec![ark_bn254::G1Affine::default(); num_outputs];
     handle.affine_vlen_msm(&mut results, &output_bit_table, &output_lengths, &scalar_bytes);
