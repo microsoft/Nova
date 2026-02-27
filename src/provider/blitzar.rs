@@ -24,30 +24,22 @@ static GPU_HANDLE: Mutex<Option<(usize, Arc<Bn254MsmHandle>)>> = Mutex::new(None
 /// Returns a cached `MsmHandle` that covers at least `bases.len()` generators.
 /// On first call (or when the bases grow), converts halo2 generators to arkworks and
 /// installs them on the GPU. Subsequent calls reuse the cached handle.
+///
+/// The handle is built under the Mutex to prevent multiple threads from concurrently
+/// creating GPU handles, which can cause CUDA resource contention and corruption.
 fn get_or_create_handle(bases: &[Affine]) -> Arc<Bn254MsmHandle> {
   let n = bases.len();
-
-  // Check if existing handle is big enough
-  {
-    let guard = GPU_HANDLE.lock().unwrap();
-    if let Some((cached_n, ref handle)) = *guard {
-      if cached_n >= n {
-        return Arc::clone(handle);
-      }
-    }
-  }
-  // Mutex is released here before the heavy GPU work
-
-  // Build handle outside any lock to avoid blocking rayon threads
-  let handle = Arc::new(build_handle(bases));
-
   let mut guard = GPU_HANDLE.lock().unwrap();
-  // Double-check: another thread may have built a sufficient handle while we were building
-  if let Some((cached_n, ref existing)) = *guard {
+
+  if let Some((cached_n, ref handle)) = *guard {
     if cached_n >= n {
-      return Arc::clone(existing);
+      return Arc::clone(handle);
     }
   }
+
+  // Build handle under lock — only one thread creates the GPU handle at a time.
+  // build_handle is sequential (no rayon), so holding the Mutex won't deadlock.
+  let handle = Arc::new(build_handle(bases));
   *guard = Some((n, Arc::clone(&handle)));
   handle
 }
