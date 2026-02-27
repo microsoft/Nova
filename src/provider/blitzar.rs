@@ -1,42 +1,156 @@
-//! This module implements variable time multi-scalar multiplication using Blitzar's GPU acceleration
-use blitzar;
+//! This module implements variable time multi-scalar multiplication using Blitzar's GPU acceleration.
+//!
+//! It uses Blitzar's `MsmHandle` (fixed-base MSM) to precompute and cache generator tables on the GPU.
+//! This avoids redundant generator-to-GPU transfers and halo2↔arkworks conversions across multiple
+//! MSM calls that share the same commitment key, which is the common case in ppsnark proving.
+use blitzar::compute::{
+  convert_to_ark_bn254_g1_affine, convert_to_halo2_bn256_g1_affine, ElementP2, MsmHandle,
+  SwMsmHandle,
+};
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::sync::{Arc, OnceLock, RwLock};
 
-/// A trait that provides the ability to perform multi-scalar multiplication in variable time
-pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
-  let mut blitzar_commitments = vec![Point::default(); 1];
+type Bn254MsmHandle = MsmHandle<ElementP2<ark_bn254::g1::Config>>;
 
-  let scalar_bytes: Vec<[u8; 32]> = scalars.par_iter().map(|s| s.to_bytes()).collect();
+/// Cached GPU handle: stores (generator_count, handle).
+/// The handle is reused as long as the requested MSM length fits within the cached generator count.
+/// If a longer MSM is requested, the handle is rebuilt with the new (larger) set of generators.
+static GPU_HANDLE: OnceLock<RwLock<(usize, Arc<Bn254MsmHandle>)>> = OnceLock::new();
 
-  blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
-    &mut blitzar_commitments,
-    &[(&scalar_bytes).into()],
-    bases,
-  );
+/// Returns a cached `MsmHandle` that covers at least `bases.len()` generators.
+/// On first call (or when the bases grow), converts halo2 generators to arkworks and
+/// installs them on the GPU. Subsequent calls reuse the cached handle.
+fn get_or_create_handle(bases: &[Affine]) -> Arc<Bn254MsmHandle> {
+  let n = bases.len();
+  let cache = GPU_HANDLE.get_or_init(|| {
+    let handle = build_handle(bases);
+    RwLock::new((n, Arc::new(handle)))
+  });
 
-  blitzar_commitments[0]
+  // Fast path: read lock to check if existing handle is big enough
+  {
+    let read = cache.read().unwrap();
+    if read.0 >= n {
+      return Arc::clone(&read.1);
+    }
+  }
+
+  // Slow path: need a bigger handle
+  let handle = build_handle(bases);
+  let handle = Arc::new(handle);
+  let mut write = cache.write().unwrap();
+  // Double-check in case another thread beat us
+  if write.0 < n {
+    *write = (n, Arc::clone(&handle));
+  }
+  Arc::clone(&write.1)
 }
 
-/// A trait that provides the ability to perform a batch of multi-scalar multiplication in variable time
-pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) -> Vec<Point> {
-  let mut blitzar_commitments = vec![Point::default(); scalars.len()];
-
-  let scalar_bytes: Vec<Vec<[u8; 32]>> = scalars
+/// Converts halo2 generators to arkworks affine points and creates an `MsmHandle`.
+fn build_handle(bases: &[Affine]) -> Bn254MsmHandle {
+  let ark_generators: Vec<ark_bn254::G1Affine> = bases
     .par_iter()
-    .map(|s| s.par_iter().map(|v| v.to_bytes()).collect())
+    .map(|g| convert_to_ark_bn254_g1_affine(g))
+    .collect();
+  MsmHandle::new_with_affine(&ark_generators)
+}
+
+/// Performs a single multi-scalar multiplication using GPU-cached generators.
+///
+/// The generators (bases) are installed on the GPU once and reused across calls.
+pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
+  if scalars.is_empty() {
+    return Point::default();
+  }
+
+  let handle = get_or_create_handle(bases);
+
+  // Lay out scalars as contiguous bytes: n scalars × 32 bytes each
+  let scalar_bytes: Vec<u8> = scalars
+    .par_iter()
+    .flat_map_iter(|s| s.to_bytes())
     .collect();
 
-  let scalars_table: Vec<blitzar::sequence::Sequence<'_>> =
-    scalar_bytes.par_iter().map(|s| s.into()).collect();
+  let mut results = vec![ark_bn254::G1Affine::default(); 1];
+  handle.affine_msm(&mut results, 32, &scalar_bytes);
 
-  blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
-    &mut blitzar_commitments,
-    &scalars_table,
-    bases,
-  );
+  convert_to_halo2_bn256_g1_affine(&results[0]).into()
+}
 
-  blitzar_commitments
+/// Performs a batch of multi-scalar multiplications using GPU-cached generators.
+///
+/// All MSMs in the batch share the same generator set. The generators are installed
+/// on the GPU once and reused across calls.
+pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) -> Vec<Point> {
+  if scalars.is_empty() {
+    return vec![];
+  }
+
+  let handle = get_or_create_handle(bases);
+  let num_outputs = scalars.len();
+
+  // Find the max scalar vector length (they may differ across outputs)
+  let max_len = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
+
+  if max_len == 0 {
+    return vec![Point::default(); num_outputs];
+  }
+
+  // Check if all scalar vectors have the same length (uniform case)
+  let all_same_len = scalars.iter().all(|s| s.len() == max_len);
+
+  if all_same_len {
+    // Uniform length: use regular msm with interleaved scalars
+    // Layout: for each generator i, all m scalars for that generator are contiguous
+    // s_11, s_21, ..., s_m1, s_12, s_22, ..., s_m2, ..., s_mn
+    let mut scalar_bytes = vec![0u8; num_outputs * max_len * 32];
+    for gen_idx in 0..max_len {
+      for (out_idx, scalar_vec) in scalars.iter().enumerate() {
+        let src = scalar_vec[gen_idx].to_bytes();
+        let dst_offset = (gen_idx * num_outputs + out_idx) * 32;
+        scalar_bytes[dst_offset..dst_offset + 32].copy_from_slice(&src);
+      }
+    }
+
+    let mut results = vec![ark_bn254::G1Affine::default(); num_outputs];
+    handle.affine_msm(&mut results, 32, &scalar_bytes);
+
+    results
+      .iter()
+      .map(|r| convert_to_halo2_bn256_g1_affine(r).into())
+      .collect()
+  } else {
+    // Variable length: use vlen_msm
+    // First, sort by length (vlen_msm requires ascending order)
+    let mut indexed: Vec<(usize, &Vec<Scalar>)> = scalars.iter().enumerate().collect();
+    indexed.sort_by_key(|(_, s)| s.len());
+
+    let output_lengths: Vec<u32> = indexed.iter().map(|(_, s)| s.len() as u32).collect();
+    let output_bit_table: Vec<u32> = vec![256; num_outputs];
+
+    // Layout: interleaved column-major, padded to max_len
+    let mut scalar_bytes = vec![0u8; num_outputs * max_len * 32];
+    for gen_idx in 0..max_len {
+      for (sorted_idx, (_, scalar_vec)) in indexed.iter().enumerate() {
+        if gen_idx < scalar_vec.len() {
+          let src = scalar_vec[gen_idx].to_bytes();
+          let dst_offset = (gen_idx * num_outputs + sorted_idx) * 32;
+          scalar_bytes[dst_offset..dst_offset + 32].copy_from_slice(&src);
+        }
+      }
+    }
+
+    let mut results = vec![ark_bn254::G1Affine::default(); num_outputs];
+    handle.affine_vlen_msm(&mut results, &output_bit_table, &output_lengths, &scalar_bytes);
+
+    // Unsort the results back to original order
+    let mut final_results = vec![Point::default(); num_outputs];
+    for (sorted_idx, (orig_idx, _)) in indexed.iter().enumerate() {
+      final_results[*orig_idx] = convert_to_halo2_bn256_g1_affine(&results[sorted_idx]).into();
+    }
+    final_results
+  }
 }
 
 #[cfg(test)]
