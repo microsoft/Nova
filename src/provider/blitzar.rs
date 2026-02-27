@@ -9,48 +9,54 @@ use blitzar::compute::{
 };
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
 use rayon::prelude::*;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex};
 
 type Bn254MsmHandle = MsmHandle<ElementP2<ark_bn254::g1::Config>>;
 
 /// Cached GPU handle: stores (generator_count, handle).
 /// The handle is reused as long as the requested MSM length fits within the cached generator count.
 /// If a longer MSM is requested, the handle is rebuilt with the new (larger) set of generators.
-static GPU_HANDLE: OnceLock<RwLock<(usize, Arc<Bn254MsmHandle>)>> = OnceLock::new();
+///
+/// Uses `Mutex<Option<...>>` rather than `OnceLock` to avoid deadlocks when called from
+/// within rayon parallel contexts (e.g., `rayon::join` or `par_iter` in ppsnark).
+static GPU_HANDLE: Mutex<Option<(usize, Arc<Bn254MsmHandle>)>> = Mutex::new(None);
 
 /// Returns a cached `MsmHandle` that covers at least `bases.len()` generators.
 /// On first call (or when the bases grow), converts halo2 generators to arkworks and
 /// installs them on the GPU. Subsequent calls reuse the cached handle.
 fn get_or_create_handle(bases: &[Affine]) -> Arc<Bn254MsmHandle> {
   let n = bases.len();
-  let cache = GPU_HANDLE.get_or_init(|| {
-    let handle = build_handle(bases);
-    RwLock::new((n, Arc::new(handle)))
-  });
 
-  // Fast path: read lock to check if existing handle is big enough
+  // Check if existing handle is big enough
   {
-    let read = cache.read().unwrap();
-    if read.0 >= n {
-      return Arc::clone(&read.1);
+    let guard = GPU_HANDLE.lock().unwrap();
+    if let Some((cached_n, ref handle)) = *guard {
+      if cached_n >= n {
+        return Arc::clone(handle);
+      }
     }
   }
+  // Mutex is released here before the heavy GPU work
 
-  // Slow path: need a bigger handle
-  let handle = build_handle(bases);
-  let handle = Arc::new(handle);
-  let mut write = cache.write().unwrap();
-  // Double-check in case another thread beat us
-  if write.0 < n {
-    *write = (n, Arc::clone(&handle));
+  // Build handle outside any lock to avoid blocking rayon threads
+  let handle = Arc::new(build_handle(bases));
+
+  let mut guard = GPU_HANDLE.lock().unwrap();
+  // Double-check: another thread may have built a sufficient handle while we were building
+  if let Some((cached_n, ref existing)) = *guard {
+    if cached_n >= n {
+      return Arc::clone(existing);
+    }
   }
-  Arc::clone(&write.1)
+  *guard = Some((n, Arc::clone(&handle)));
+  handle
 }
 
 /// Converts halo2 generators to arkworks affine points and creates an `MsmHandle`.
+/// Uses sequential iteration to avoid rayon nesting issues when called from parallel contexts.
 fn build_handle(bases: &[Affine]) -> Bn254MsmHandle {
   let ark_generators: Vec<ark_bn254::G1Affine> = bases
-    .par_iter()
+    .iter()
     .map(|g| convert_to_ark_bn254_g1_affine(g))
     .collect();
   MsmHandle::new_with_affine(&ark_generators)
