@@ -133,7 +133,7 @@ pub fn batch_vartime_multiscalar_mul_small<T: num_integer::Integer + Into<u64> +
   let ark_generators = get_ark_generators(bases);
   let sequences: Vec<Sequence<'_>> = scalars
     .iter()
-    .map(|s| Sequence::from_raw_parts(s.as_slice(), false))
+    .map(|s| Sequence::from_raw_parts(*s, false))
     .collect();
   let mut commitments = vec![ark_bn254::G1Affine::default(); num_outputs];
 
@@ -205,10 +205,11 @@ mod tests {
 
   #[test]
   fn test_batch_vartime_multiscalar_mul_empty() {
-    let scalars = vec![vec![]];
+    let scalars: Vec<Vec<Scalar>> = vec![vec![]];
     let bases = vec![];
+    let scalar_slices: Vec<&[Scalar]> = scalars.iter().map(|s| s.as_slice()).collect();
 
-    let result = batch_vartime_multiscalar_mul(&scalars, &bases);
+    let result = batch_vartime_multiscalar_mul(&scalar_slices, &bases);
 
     assert_eq!(result, [Point::default(); 1]);
   }
@@ -236,8 +237,9 @@ mod tests {
       vec![Scalar::random(&mut rng), Scalar::random(&mut rng)],
     ];
     let bases = vec![Affine::random(&mut rng), Affine::random(&mut rng)];
+    let scalar_slices: Vec<&[Scalar]> = scalars.iter().map(|s| s.as_slice()).collect();
 
-    let result = batch_vartime_multiscalar_mul(&scalars, &bases);
+    let result = batch_vartime_multiscalar_mul(&scalar_slices, &bases);
 
     assert_eq!(
       result[0],
@@ -279,8 +281,9 @@ mod tests {
       .collect();
 
     let bases: Vec<Affine> = (0..sample_len).map(|_| Affine::random(&mut rng)).collect();
+    let scalar_slices: Vec<&[Scalar]> = scalars.iter().map(|s| s.as_slice()).collect();
 
-    let result = batch_vartime_multiscalar_mul(&scalars, &bases);
+    let result = batch_vartime_multiscalar_mul(&scalar_slices, &bases);
 
     let expected: Vec<Point> = scalars
       .iter()
@@ -322,8 +325,9 @@ mod tests {
       .collect();
 
     let bases: Vec<Affine> = (0..sample_len).map(|_| Affine::random(&mut rng)).collect();
+    let scalar_slices: Vec<&[Scalar]> = scalars.iter().map(|s| s.as_slice()).collect();
 
-    let result = batch_vartime_multiscalar_mul(&scalars, &bases);
+    let result = batch_vartime_multiscalar_mul(&scalar_slices, &bases);
 
     let expected = scalars
       .iter()
@@ -350,8 +354,9 @@ mod tests {
     let bases: Vec<Affine> = (0..sample_lens[batch_len - 1])
       .map(|_| Affine::random(&mut rng))
       .collect();
+    let scalar_slices: Vec<&[Scalar]> = scalars.iter().map(|s| s.as_slice()).collect();
 
-    let result = batch_vartime_multiscalar_mul(&scalars, &bases);
+    let result = batch_vartime_multiscalar_mul(&scalar_slices, &bases);
 
     let expected = scalars
       .iter()
