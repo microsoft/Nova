@@ -92,7 +92,7 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Batch commits to the provided vectors using the provided generators and random blind
   fn batch_commit(
     ck: &Self::CommitmentKey,
-    v: &[Vec<E::Scalar>],
+    v: &[&[E::Scalar]],
     r: &[E::Scalar],
   ) -> Vec<Self::Commitment> {
     assert!(v.len() == r.len());
@@ -128,7 +128,7 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// Batch commits to the provided vectors of "small" scalars (at most 64 bits) using the provided generators and random blind
   fn batch_commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     ck: &Self::CommitmentKey,
-    v: &[Vec<T>],
+    v: &[&[T]],
     r: &[E::Scalar],
   ) -> Vec<Self::Commitment> {
     assert!(v.len() == r.len());

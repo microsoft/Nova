@@ -1,42 +1,190 @@
-//! This module implements variable time multi-scalar multiplication using Blitzar's GPU acceleration
-use blitzar;
+//! GPU-accelerated multi-scalar multiplication using Blitzar.
+//!
+//! Optimizations over the naive per-call approach:
+//! 1. **Cached generator conversion**: The halo2→arkworks generator conversion is done once
+//!    and cached globally via `Arc`, avoiding repeated conversion on every MSM call.
+//! 2. **Batch MSM**: Multiple MSMs are batched into a single GPU call using the
+//!    `compute_bn254_g1_uncompressed_commitments_with_generators` API with multiple `Sequence` entries.
+use blitzar::compute::{
+  compute_bn254_g1_uncompressed_commitments_with_generators, convert_to_ark_bn254_g1_affine,
+};
+use blitzar::sequence::Sequence;
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
-/// A trait that provides the ability to perform multi-scalar multiplication in variable time
+/// Cached arkworks generators: (pointer address, generator count, first gen x-coord, arc-wrapped generators).
+/// The Arc allows multiple threads to share the generators without cloning the data.
+static CACHED_GENERATORS: Mutex<Option<(usize, usize, [u8; 32], Arc<Vec<ark_bn254::G1Affine>>)>> =
+  Mutex::new(None);
+
+/// Compute a fingerprint from the first and last generators for cache invalidation.
+fn generator_fingerprint(bases: &[Affine]) -> [u8; 32] {
+  use ff::PrimeField;
+  if bases.is_empty() {
+    return [0u8; 32];
+  }
+  // Use first generator's x-coordinate as fingerprint
+  let repr = bases[0].x.to_repr();
+  let bytes: &[u8] = repr.as_ref();
+  let mut fp = [0u8; 32];
+  let len = bytes.len().min(32);
+  fp[..len].copy_from_slice(&bytes[..len]);
+  // Mix in last generator to reduce collision probability
+  if bases.len() > 1 {
+    let last_repr = bases[bases.len() - 1].x.to_repr();
+    let last_bytes: &[u8] = last_repr.as_ref();
+    for i in 0..len.min(last_bytes.len()) {
+      fp[i] ^= last_bytes[i];
+    }
+  }
+  fp
+}
+
+/// Returns cached arkworks generators, converting and caching if necessary.
+/// Returns an Arc to avoid cloning the generator vector (~64MB at 2^20).
+fn get_ark_generators(bases: &[Affine]) -> Arc<Vec<ark_bn254::G1Affine>> {
+  let n = bases.len();
+  let fp = generator_fingerprint(bases);
+
+  {
+    let guard = CACHED_GENERATORS.lock().unwrap();
+    if let Some((_, cached_n, cached_fp, ref gens)) = *guard {
+      if cached_n >= n && cached_fp == fp {
+        return Arc::clone(gens);
+      }
+    }
+  }
+
+  // Convert all generators (parallel for speed)
+  let ark_generators: Vec<ark_bn254::G1Affine> = bases
+    .par_iter()
+    .map(|g| convert_to_ark_bn254_g1_affine(g))
+    .collect();
+  let arc = Arc::new(ark_generators);
+
+  let mut guard = CACHED_GENERATORS.lock().unwrap();
+  *guard = Some((bases.as_ptr() as usize, n, fp, Arc::clone(&arc)));
+  arc
+}
+
+/// Performs a single multi-scalar multiplication using GPU acceleration.
 pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
-  let mut blitzar_commitments = vec![Point::default(); 1];
+  if scalars.is_empty() {
+    return Point::default();
+  }
+
+  let ark_generators = get_ark_generators(bases);
 
   let scalar_bytes: Vec<[u8; 32]> = scalars.par_iter().map(|s| s.to_bytes()).collect();
 
-  blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
-    &mut blitzar_commitments,
-    &[(&scalar_bytes).into()],
-    bases,
+  let mut commitments = vec![ark_bn254::G1Affine::default(); 1];
+  let sequences = [Sequence::from_raw_parts(&scalar_bytes, false)];
+
+  compute_bn254_g1_uncompressed_commitments_with_generators(
+    &mut commitments,
+    &sequences,
+    &ark_generators[..scalars.len()],
   );
 
-  blitzar_commitments[0]
+  blitzar::compute::convert_to_halo2_bn256_g1_affine(&commitments[0]).into()
 }
 
-/// A trait that provides the ability to perform a batch of multi-scalar multiplication in variable time
-pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) -> Vec<Point> {
-  let mut blitzar_commitments = vec![Point::default(); scalars.len()];
+/// Performs a single multi-scalar multiplication with small (≤64-bit) scalars using GPU acceleration.
+/// The scalars are passed to the GPU at their native byte width (e.g., 2 bytes for u16),
+/// reducing data transfer and allowing the GPU to skip high-order zero buckets.
+pub fn vartime_multiscalar_mul_small<T: num_integer::Integer + Into<u64> + Copy + Sync>(
+  scalars: &[T],
+  bases: &[Affine],
+) -> Point {
+  if scalars.is_empty() {
+    return Point::default();
+  }
 
+  let ark_generators = get_ark_generators(bases);
+
+  let mut commitments = vec![ark_bn254::G1Affine::default(); 1];
+  let sequences = [Sequence::from_raw_parts(scalars, false)];
+
+  compute_bn254_g1_uncompressed_commitments_with_generators(
+    &mut commitments,
+    &sequences,
+    &ark_generators[..scalars.len()],
+  );
+
+  blitzar::compute::convert_to_halo2_bn256_g1_affine(&commitments[0]).into()
+}
+
+/// Performs a batch of multi-scalar multiplications with small (≤64-bit) scalars using GPU acceleration.
+/// All MSMs are sent to the GPU in a single call for maximum throughput.
+pub fn batch_vartime_multiscalar_mul_small<T: num_integer::Integer + Into<u64> + Copy + Sync>(
+  scalars: &[&[T]],
+  bases: &[Affine],
+) -> Vec<Point> {
+  if scalars.is_empty() {
+    return vec![];
+  }
+  let num_outputs = scalars.len();
+  let max_len = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
+  if max_len == 0 {
+    return vec![Point::default(); num_outputs];
+  }
+
+  let ark_generators = get_ark_generators(bases);
+  let sequences: Vec<Sequence<'_>> = scalars
+    .iter()
+    .map(|s| Sequence::from_raw_parts(s.as_slice(), false))
+    .collect();
+  let mut commitments = vec![ark_bn254::G1Affine::default(); num_outputs];
+
+  compute_bn254_g1_uncompressed_commitments_with_generators(
+    &mut commitments,
+    &sequences,
+    &ark_generators[..max_len],
+  );
+
+  commitments
+    .par_iter()
+    .map(|c| blitzar::compute::convert_to_halo2_bn256_g1_affine(c).into())
+    .collect()
+}
+
+/// Performs a batch of multi-scalar multiplications using GPU acceleration.
+/// All MSMs are sent to the GPU in a single call for maximum throughput.
+pub fn batch_vartime_multiscalar_mul(scalars: &[&[Scalar]], bases: &[Affine]) -> Vec<Point> {
+  if scalars.is_empty() {
+    return vec![];
+  }
+
+  let num_outputs = scalars.len();
+  let max_len = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
+  if max_len == 0 {
+    return vec![Point::default(); num_outputs];
+  }
+
+  let ark_generators = get_ark_generators(bases);
+
+  // Convert scalars to byte arrays (parallel)
   let scalar_bytes: Vec<Vec<[u8; 32]>> = scalars
     .par_iter()
     .map(|s| s.par_iter().map(|v| v.to_bytes()).collect())
     .collect();
 
-  let scalars_table: Vec<blitzar::sequence::Sequence<'_>> =
-    scalar_bytes.par_iter().map(|s| s.into()).collect();
+  // Create Sequence descriptors for each MSM
+  let sequences: Vec<Sequence<'_>> = scalar_bytes.iter().map(|s| s.into()).collect();
 
-  blitzar::compute::compute_bn254_g1_uncompressed_commitments_with_halo2_generators(
-    &mut blitzar_commitments,
-    &scalars_table,
-    bases,
+  let mut commitments = vec![ark_bn254::G1Affine::default(); num_outputs];
+
+  compute_bn254_g1_uncompressed_commitments_with_generators(
+    &mut commitments,
+    &sequences,
+    &ark_generators,
   );
 
-  blitzar_commitments
+  commitments
+    .par_iter()
+    .map(|c| blitzar::compute::convert_to_halo2_bn256_g1_affine(c).into())
+    .collect()
 }
 
 #[cfg(test)]

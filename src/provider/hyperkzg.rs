@@ -574,7 +574,7 @@ where
 
   fn batch_commit(
     ck: &Self::CommitmentKey,
-    v: &[Vec<<E as Engine>::Scalar>],
+    v: &[&[<E as Engine>::Scalar]],
     r: &[<E as Engine>::Scalar],
   ) -> Vec<Self::Commitment> {
     assert!(v.len() == r.len());
@@ -607,7 +607,7 @@ where
 
   fn batch_commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     ck: &Self::CommitmentKey,
-    v: &[Vec<T>],
+    v: &[&[T]],
     r: &[E::Scalar],
   ) -> Vec<Self::Commitment> {
     assert!(v.len() == r.len());
@@ -873,73 +873,44 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
-      // Divides polynomial f(x) by (x - u) to obtain the witness polynomial h(x) = f(x)/(x - u)
-      // for KZG opening.
-      //
-      // This implementation uses a chunking strategy to enable parallelization:
-      // - Divides the polynomial into chunks
-      // - Processes chunks in parallel using Rayon's par_chunks_exact_mut
-      // - Within each chunk, maintains a "running" partial result
-      // - Combines results across chunk boundaries
-      //
-      // While this adds more total computation than the standard Horner's method,
-      // the parallel execution provides significant speedup for large polynomials.
-      //
-      // Original sequential algorithm using Horner's method:
-      // ```
-      // let mut h = vec![E::Scalar::ZERO; d];
-      // for i in (1..d).rev() {
-      //   h[i - 1] = f[i] + h[i] * u;
-      // }
-      // ```
-      //
-      // The resulting polynomial h(x) satisfies: f(x) = h(x) * (x - u)
-      // The degree of h(x) is one less than the degree of f(x).
-      let div_by_monomial =
-        |f: &[E::Scalar], u: E::Scalar, target_chunks: usize| -> Vec<E::Scalar> {
-          assert!(!f.is_empty());
-          let target_chunk_size = f.len() / target_chunks;
-          let log2_chunk_size = target_chunk_size.max(1).ilog2();
-          let chunk_size = 1 << log2_chunk_size;
+    // Divides polynomial f(x) by (x - u) to obtain the witness polynomial h(x) = f(x)/(x - u)
+    let div_by_monomial = |f: &[E::Scalar], u: E::Scalar, target_chunks: usize| -> Vec<E::Scalar> {
+      assert!(!f.is_empty());
+      let target_chunk_size = f.len() / target_chunks;
+      let log2_chunk_size = target_chunk_size.max(1).ilog2();
+      let chunk_size = 1 << log2_chunk_size;
 
-          let u_to_the_chunk_size = (0..log2_chunk_size).fold(u, |u_pow, _| u_pow.square());
-          let mut result = f.to_vec();
-          result
-            .par_chunks_mut(chunk_size)
-            .zip(f.par_chunks(chunk_size))
-            .for_each(|(chunk, f_chunk)| {
-              for i in (0..chunk.len() - 1).rev() {
-                chunk[i] = f_chunk[i] + u * chunk[i + 1];
-              }
-            });
-
-          let mut iter = result.chunks_mut(chunk_size).rev();
-          if let Some(last_chunk) = iter.next() {
-            let mut prev_partial = last_chunk[0];
-            for chunk in iter {
-              prev_partial = chunk[0] + u_to_the_chunk_size * prev_partial;
-              chunk[0] = prev_partial;
-            }
+      let u_to_the_chunk_size = (0..log2_chunk_size).fold(u, |u_pow, _| u_pow.square());
+      let mut result = f.to_vec();
+      result
+        .par_chunks_mut(chunk_size)
+        .zip(f.par_chunks(chunk_size))
+        .for_each(|(chunk, f_chunk)| {
+          for i in (0..chunk.len() - 1).rev() {
+            chunk[i] = f_chunk[i] + u * chunk[i + 1];
           }
+        });
 
-          result[1..]
-            .par_chunks_exact_mut(chunk_size)
-            .rev()
-            .for_each(|chunk| {
-              let mut prev_partial = chunk[chunk_size - 1];
-              for e in chunk.iter_mut().rev().skip(1) {
-                prev_partial *= u;
-                *e += prev_partial;
-              }
-            });
-          result[1..].to_vec()
-        };
+      let mut iter = result.chunks_mut(chunk_size).rev();
+      if let Some(last_chunk) = iter.next() {
+        let mut prev_partial = last_chunk[0];
+        for chunk in iter {
+          prev_partial = chunk[0] + u_to_the_chunk_size * prev_partial;
+          chunk[0] = prev_partial;
+        }
+      }
 
-      let target_chunks = DEFAULT_TARGET_CHUNKS;
-      let h = &div_by_monomial(f, u, target_chunks);
-
-      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
+      result[1..]
+        .par_chunks_exact_mut(chunk_size)
+        .rev()
+        .for_each(|chunk| {
+          let mut prev_partial = chunk[chunk_size - 1];
+          for e in chunk.iter_mut().rev().skip(1) {
+            prev_partial *= u;
+            *e += prev_partial;
+          }
+        });
+      result[1..].to_vec()
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
@@ -996,11 +967,17 @@ where
       let q = Self::get_batch_challenge(&v, transcript);
       let B = kzg_compute_batch_polynomial(f, q);
 
-      // Now open B at u0, ..., u_{t-1}
-      let w = u
+      // Open B at u0, ..., u_{t-1}
+      // Compute all witness polynomials (CPU-parallel), then batch commit
+      let div_results: Vec<Vec<E::Scalar>> = u
         .into_par_iter()
-        .map(|ui| kzg_open(&B, *ui))
-        .collect::<Vec<G1Affine<E>>>();
+        .map(|ui| div_by_monomial(&B, *ui, DEFAULT_TARGET_CHUNKS))
+        .collect();
+      let div_refs: Vec<&[E::Scalar]> = div_results.iter().map(|v| v.as_slice()).collect();
+      let w: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &div_refs, &[E::Scalar::ZERO; 3])
+        .iter()
+        .map(|c| c.comm.affine())
+        .collect();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
@@ -1035,7 +1012,8 @@ where
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
     let r = vec![E::Scalar::ZERO; ell - 1];
-    let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
+    let poly_refs: Vec<&[E::Scalar]> = polys[1..].iter().map(|p| p.as_slice()).collect();
+    let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &poly_refs, r.as_slice())
       .par_iter()
       .map(|i| i.comm.affine())
       .collect();

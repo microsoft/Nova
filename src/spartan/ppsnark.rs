@@ -191,18 +191,19 @@ impl<E: Engine> R1CSShapeSparkRepr<E> {
 
   /// Commits to the R1CSShapeSparkRepr using the provided commitment key
   pub fn commit(&self, ck: &CommitmentKey<E>) -> R1CSShapeSparkCommitment<E> {
-    let comm_vec: Vec<Commitment<E>> = [
-      &self.row,
-      &self.col,
-      &self.val_A,
-      &self.val_B,
-      &self.val_C,
-      &self.ts_row,
-      &self.ts_col,
-    ]
-    .par_iter()
-    .map(|v| E::CE::commit(ck, v, &E::Scalar::ZERO))
-    .collect();
+    let comm_vec = E::CE::batch_commit(
+      ck,
+      &[
+        &self.row,
+        &self.col,
+        &self.val_A,
+        &self.val_B,
+        &self.val_C,
+        &self.ts_row,
+        &self.ts_col,
+      ],
+      &[E::Scalar::ZERO; 7],
+    );
 
     R1CSShapeSparkCommitment {
       N: self.row.len(),
@@ -447,37 +448,18 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     let (t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_row, w_plus_r_row) = row?;
     let (t_plus_r_inv_col, w_plus_r_inv_col, t_plus_r_col, w_plus_r_col) = col?;
 
-    let (
-      (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
-      (comm_t_plus_r_inv_col, comm_w_plus_r_inv_col),
-    ) = rayon::join(
-      || {
-        rayon::join(
-          || E::CE::commit(ck, &t_plus_r_inv_row, &E::Scalar::ZERO),
-          || E::CE::commit(ck, &w_plus_r_inv_row, &E::Scalar::ZERO),
-        )
-      },
-      || {
-        rayon::join(
-          || E::CE::commit(ck, &t_plus_r_inv_col, &E::Scalar::ZERO),
-          || E::CE::commit(ck, &w_plus_r_inv_col, &E::Scalar::ZERO),
-        )
-      },
-    );
-
-    let comm_vec = [
-      comm_t_plus_r_inv_row,
-      comm_w_plus_r_inv_row,
-      comm_t_plus_r_inv_col,
-      comm_w_plus_r_inv_col,
-    ];
-
     let poly_vec = [
       t_plus_r_inv_row,
       w_plus_r_inv_row,
       t_plus_r_inv_col,
       w_plus_r_inv_col,
     ];
+    let comms = E::CE::batch_commit(
+      ck,
+      &[&poly_vec[0], &poly_vec[1], &poly_vec[2], &poly_vec[3]],
+      &[E::Scalar::ZERO; 4],
+    );
+    let comm_vec = [comms[0], comms[1], comms[2], comms[3]];
 
     let aux_poly_vec = [t_plus_r_row, w_plus_r_row, t_plus_r_col, w_plus_r_col];
 
@@ -1099,15 +1081,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
 
     // commit to Az, Bz, Cz
-    let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
-      || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
-      || {
-        rayon::join(
-          || E::CE::commit(ck, &Bz, &E::Scalar::ZERO),
-          || E::CE::commit(ck, &Cz, &E::Scalar::ZERO),
-        )
-      },
-    );
+    let comms = E::CE::batch_commit(ck, &[&Az, &Bz, &Cz], &[E::Scalar::ZERO; 3]);
+    let (comm_Az, comm_Bz, comm_Cz) = (comms[0], comms[1], comms[2]);
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
@@ -1136,10 +1111,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // L_row(i) = eq(tau, row(i)) for all i
     // L_col(i) = z(col(i)) for all i
     let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
-    let (comm_L_row, comm_L_col) = rayon::join(
-      || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
-      || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
-    );
+
+    let comms = E::CE::batch_commit(ck, &[&L_row, &L_col], &[E::Scalar::ZERO; 2]);
+    let (comm_L_row, comm_L_col) = (comms[0], comms[1]);
 
     // since all the three polynomials are opened at tau,
     // we can combine them into a single polynomial opened at tau

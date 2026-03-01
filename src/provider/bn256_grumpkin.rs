@@ -46,11 +46,27 @@ impl DlogGroupExt for bn256::Point {
     msm(scalars, bases)
   }
 
+  #[cfg(not(feature = "blitzar"))]
   fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     scalars: &[T],
     bases: &[Self::AffineGroupElement],
   ) -> Self {
     msm_small(scalars, bases)
+  }
+
+  #[cfg(feature = "blitzar")]
+  fn vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[T],
+    bases: &[Self::AffineGroupElement],
+  ) -> Self {
+    // GPU is only faster for >32-bit scalars (u64+); for ≤32-bit, Nova's
+    // specialized CPU msm_small (binary/bucket-sort) is faster than GPU
+    // due to generator transfer overhead.
+    if std::mem::size_of::<T>() > 4 {
+      super::blitzar::vartime_multiscalar_mul_small(scalars, bases)
+    } else {
+      msm_small(scalars, bases)
+    }
   }
 
   fn vartime_multiscalar_mul_small_with_max_num_bits<
@@ -70,10 +86,25 @@ impl DlogGroupExt for bn256::Point {
 
   #[cfg(feature = "blitzar")]
   fn batch_vartime_multiscalar_mul(
-    scalars: &[Vec<Self::Scalar>],
+    scalars: &[&[Self::Scalar]],
     bases: &[Self::AffineGroupElement],
   ) -> Vec<Self> {
     super::blitzar::batch_vartime_multiscalar_mul(scalars, bases)
+  }
+
+  #[cfg(feature = "blitzar")]
+  fn batch_vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
+    scalars: &[&[T]],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    if std::mem::size_of::<T>() > 4 {
+      super::blitzar::batch_vartime_multiscalar_mul_small(scalars, bases)
+    } else {
+      scalars
+        .par_iter()
+        .map(|scalar| Self::vartime_multiscalar_mul_small(scalar, &bases[..scalar.len()]))
+        .collect::<Vec<_>>()
+    }
   }
 }
 

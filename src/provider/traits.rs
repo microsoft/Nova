@@ -79,7 +79,7 @@ pub trait DlogGroupExt: DlogGroup {
 
   /// A method to compute a batch of multiexponentations
   fn batch_vartime_multiscalar_mul(
-    scalars: &[Vec<Self::Scalar>],
+    scalars: &[&[Self::Scalar]],
     bases: &[Self::AffineGroupElement],
   ) -> Vec<Self> {
     scalars
@@ -105,7 +105,7 @@ pub trait DlogGroupExt: DlogGroup {
 
   /// A method to compute a batch of multiexponentations with small scalars
   fn batch_vartime_multiscalar_mul_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
-    scalars: &[Vec<T>],
+    scalars: &[&[T]],
     bases: &[Self::AffineGroupElement],
   ) -> Vec<Self> {
     scalars
