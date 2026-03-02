@@ -94,5 +94,7 @@ flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
 evm = []
 io = []
+# GPU MSM via sppark's sort-based Pippenger kernel (requires libsppark_msm.so)
+sppark-msm = []
 # Enables insecure setup methods that generate random tau. Only for testing!
 test-utils = []

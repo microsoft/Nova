@@ -41,7 +41,7 @@ crate::impl_traits_no_dlog_ext!(
 );
 
 impl DlogGroupExt for bn256::Point {
-  #[cfg(not(feature = "blitzar"))]
+  #[cfg(not(any(feature = "blitzar", feature = "sppark-msm")))]
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
     msm(scalars, bases)
   }
@@ -74,6 +74,19 @@ impl DlogGroupExt for bn256::Point {
     bases: &[Self::AffineGroupElement],
   ) -> Vec<Self> {
     super::blitzar::batch_vartime_multiscalar_mul(scalars, bases)
+  }
+
+  #[cfg(feature = "sppark-msm")]
+  fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
+    super::sppark_msm::vartime_multiscalar_mul(scalars, bases)
+  }
+
+  #[cfg(feature = "sppark-msm")]
+  fn batch_vartime_multiscalar_mul(
+    scalars: &[Vec<Self::Scalar>],
+    bases: &[Self::AffineGroupElement],
+  ) -> Vec<Self> {
+    super::sppark_msm::batch_vartime_multiscalar_mul(scalars, bases)
   }
 }
 

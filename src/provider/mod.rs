@@ -14,6 +14,8 @@ pub mod traits;
 
 #[cfg(feature = "blitzar")]
 pub mod blitzar;
+#[cfg(feature = "sppark-msm")]
+pub mod sppark_msm;
 #[cfg(feature = "io")]
 pub mod ptau;
 
