@@ -59,8 +59,4 @@ fn main() {
   let avg = times.iter().sum::<f64>() / times.len() as f64;
   let min = times.iter().cloned().fold(f64::INFINITY, f64::min);
   println!("\nProve avg={:.3}s min={:.3}s", avg, min);
-
-  // Print GPU stats if available
-  #[cfg(feature = "sppark-msm")]
-  nova_snark::provider::sppark_msm::print_stats();
 }
