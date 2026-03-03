@@ -457,4 +457,20 @@ void eq_expand_kernel(
     }
 }
 
+// Gather chunk-end values for batch inversion
+__global__
+void gather_chunk_ends_kernel(
+    const fr_t* __restrict__ products,
+    fr_t* __restrict__ ends,
+    uint32_t num_chunks,
+    uint32_t chunk_size,
+    uint32_t total_n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gid >= num_chunks) return;
+    uint32_t idx = (gid+1)*chunk_size - 1;
+    if (idx >= total_n) idx = total_n - 1;
+    ends[gid] = products[idx];
+}
+
 #endif // __SUMCHECK_KERNELS_CUH__

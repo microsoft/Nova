@@ -861,6 +861,7 @@ where
     Ok((pk, vk))
   }
 
+  #[allow(unsafe_code)]
   fn prove(
     ck: &CommitmentKey<E>,
     _pk: &Self::ProverKey,
@@ -979,28 +980,28 @@ where
       ///////// END kzg_open_batch closure helpers
 
       let k = f.len();
-      // Note: u.len() is always 3.
 
-      // The verifier needs f_i(u_j), so we compute them here
-      // (V will compute B(u_j) itself)
+      let _t_ob = std::time::Instant::now();
       let mut v = vec![[E::Scalar::ZERO; 3]; k];
       v.par_iter_mut().zip_eq(f).for_each(|(v_j, f)| {
-        // for each poly f
-        // for each poly f (except the last one - since it is constant)
         v_j.par_iter_mut().enumerate().for_each(|(i, v_ij)| {
-          // for each point u
           *v_ij = poly_eval(f, u[i]);
         });
       });
+      eprintln!("[hkzg]   poly_eval all: {:?}", _t_ob.elapsed());
 
       let q = Self::get_batch_challenge(&v, transcript);
+      let _t_ob = std::time::Instant::now();
       let B = kzg_compute_batch_polynomial(f, q);
+      eprintln!("[hkzg]   batch_poly: {:?}", _t_ob.elapsed());
 
       // Now open B at u0, ..., u_{t-1}
+      let _t_ob = std::time::Instant::now();
       let w = u
         .into_par_iter()
         .map(|ui| kzg_open(&B, *ui))
         .collect::<Vec<G1Affine<E>>>();
+      eprintln!("[hkzg]   3x kzg_open: {:?}", _t_ob.elapsed());
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
@@ -1015,39 +1016,161 @@ where
     let n = hat_P.len();
     assert_eq!(n, 1 << ell); // Below we assume that n is a power of two
 
+    // Check if we can use GPU acceleration (BN254 + sppark feature)
+    #[cfg(feature = "sppark")]
+    let use_gpu = {
+      use std::any::TypeId;
+      TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>()
+    };
+    #[cfg(not(feature = "sppark"))]
+    let use_gpu = false;
+
     // Phase 1  -- create commitments com_1, ..., com_\ell
-    // We do not compute final Pi (and its commitment) as it is constant and equals to 'eval'
-    // also known to verifier, so can be derived on its side as well
+    // GPU path: fold on GPU, commit from device memory
+    // CPU path: fold on CPU, commit via batch_commit
+    let _t_hkzg = std::time::Instant::now();
+
+    #[cfg(feature = "sppark")]
+    let gpu_hkzg = if use_gpu {
+      use crate::spartan::gpu_sumcheck;
+      type Fr = halo2curves::bn256::Fr;
+
+      // Prepare fold challenges: x[ell-1], x[ell-2], ..., x[1]
+      let fold_challenges: Vec<Fr> = (1..ell).rev().map(|i| {
+        unsafe { *(&x[i] as *const E::Scalar as *const Fr) }
+      }).collect();
+
+      let hat_p_fr: &[Fr] = unsafe {
+        std::slice::from_raw_parts(hat_P.as_ptr() as *const Fr, hat_P.len())
+      };
+
+      Some(gpu_sumcheck::GpuHkzgState::fold(hat_p_fr, &fold_challenges)
+        .map_err(|_| NovaError::InternalError)?)
+    } else {
+      None
+    };
+
     let mut polys: Vec<Vec<E::Scalar>> = Vec::new();
     polys.push(hat_P.to_vec());
-    for i in 0..ell - 1 {
-      let Pi_len = polys[i].len() / 2;
-      let mut Pi = vec![E::Scalar::ZERO; Pi_len];
+    if !use_gpu {
+      for i in 0..ell - 1 {
+        let Pi_len = polys[i].len() / 2;
+        let mut Pi = vec![E::Scalar::ZERO; Pi_len];
 
-      #[allow(clippy::needless_range_loop)]
-      Pi.par_iter_mut().enumerate().for_each(|(j, Pi_j)| {
-        *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
-      });
+        #[allow(clippy::needless_range_loop)]
+        Pi.par_iter_mut().enumerate().for_each(|(j, Pi_j)| {
+          *Pi_j = x[ell - i - 1] * (polys[i][2 * j + 1] - polys[i][2 * j]) + polys[i][2 * j];
+        });
 
-      polys.push(Pi);
+        polys.push(Pi);
+      }
+    }
+    eprintln!("[hkzg] phase1 fold: {:?}", _t_hkzg.elapsed());
+
+    // Compute commitments
+    let _t_hkzg = std::time::Instant::now();
+    #[allow(unused_assignments)]
+    let mut com: Vec<G1Affine<E>> = Vec::new();
+
+    #[cfg(feature = "sppark")]
+    if let Some(ref hkzg_state) = gpu_hkzg {
+      // Commit folded polynomials from GPU device memory
+      use halo2curves::bn256::{G1, G1Affine as BnG1Affine};
+
+      // Ensure GPU generators are cached (may not be if HyperKZG is called standalone)
+      let bases: &[BnG1Affine] = unsafe {
+        std::slice::from_raw_parts(ck.ck.as_ptr() as *const BnG1Affine, ck.ck.len())
+      };
+      crate::provider::sppark::ensure_generators_cached(bases);
+
+      let mut comms = Vec::with_capacity(ell - 1);
+      for level in 1..ell as u32 {
+        let d_ptr = hkzg_state.get_level_ptr(level);
+        let level_len = n >> level as usize;
+        let point: G1 = crate::provider::sppark::msm_from_device(d_ptr, level_len);
+        let bn_affine: BnG1Affine = point.into();
+        let affine: G1Affine<E> = unsafe {
+          std::ptr::read(&bn_affine as *const BnG1Affine as *const G1Affine<E>)
+        };
+        comms.push(affine);
+      }
+      com = comms;
+    } else {
+      let r_blind = vec![E::Scalar::ZERO; ell - 1];
+      com = E::CE::batch_commit(ck, &polys[1..], r_blind.as_slice())
+        .par_iter()
+        .map(|i| i.comm.affine())
+        .collect();
     }
 
-    // We do not need to commit to the first polynomial as it is already committed.
-    // Compute commitments in parallel
-    let r = vec![E::Scalar::ZERO; ell - 1];
-    let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
-      .par_iter()
-      .map(|i| i.comm.affine())
-      .collect();
+    #[cfg(not(feature = "sppark"))]
+    {
+      let r_blind = vec![E::Scalar::ZERO; ell - 1];
+      com = E::CE::batch_commit(ck, &polys[1..], r_blind.as_slice())
+        .par_iter()
+        .map(|i| i.comm.affine())
+        .collect();
+    }
+    eprintln!("[hkzg] phase1 batch_commit: {:?}", _t_hkzg.elapsed());
 
-    // Phase 2
-    // We do not need to add x to the transcript, because in our context x was obtained from the transcript.
-    // We also do not need to absorb `C` and `eval` as they are already absorbed by the transcript by the caller
     let r = Self::compute_challenge(&com, transcript);
     let u = [r, -r, r * r];
 
     // Phase 3 -- create response
+    let _t_hkzg = std::time::Instant::now();
+
+    #[cfg(feature = "sppark")]
+    let (w, v) = if let Some(ref hkzg_state) = gpu_hkzg {
+      type Fr = halo2curves::bn256::Fr;
+
+      // Evaluate all folded polynomials at u points using GPU
+      let _t = std::time::Instant::now();
+      let u_fr: [Fr; 3] = unsafe {
+        [std::ptr::read(&u[0] as *const E::Scalar as *const Fr),
+         std::ptr::read(&u[1] as *const E::Scalar as *const Fr),
+         std::ptr::read(&u[2] as *const E::Scalar as *const Fr)]
+      };
+      let v_gpu = hkzg_state.eval(&u_fr)
+        .map_err(|_| NovaError::InternalError)?;
+      // Convert from [Fr; 3] back to [E::Scalar; 3]
+      let v: Vec<[E::Scalar; 3]> = v_gpu.into_iter().map(|row| unsafe {
+        [std::ptr::read(&row[0] as *const Fr as *const E::Scalar),
+         std::ptr::read(&row[1] as *const Fr as *const E::Scalar),
+         std::ptr::read(&row[2] as *const Fr as *const E::Scalar)]
+      }).collect();
+      eprintln!("[hkzg]   poly_eval (GPU): {:?}", _t.elapsed());
+
+      let q = Self::get_batch_challenge(&v, transcript);
+
+      // Compute batch polynomial B on GPU
+      let _t = std::time::Instant::now();
+      let q_fr: Fr = unsafe { std::ptr::read(&q as *const E::Scalar as *const Fr) };
+      let b_fr = hkzg_state.batch_poly(&q_fr)
+        .map_err(|_| NovaError::InternalError)?;
+      let B: Vec<E::Scalar> = unsafe {
+        let mut b = std::mem::ManuallyDrop::new(b_fr);
+        Vec::from_raw_parts(b.as_mut_ptr() as *mut E::Scalar, b.len(), b.capacity())
+      };
+      eprintln!("[hkzg]   batch_poly (GPU): {:?}", _t.elapsed());
+
+      // kzg_open: div_by_monomial + commit (still on CPU)
+      let _t = std::time::Instant::now();
+      let w: Vec<G1Affine<E>> = (0..3)
+        .into_par_iter()
+        .map(|i| kzg_open(&B, u[i]))
+        .collect();
+      eprintln!("[hkzg]   3x kzg_open: {:?}", _t.elapsed());
+
+      let _d_0 = Self::verifier_second_challenge(&w, transcript);
+      (w, v)
+    } else {
+      kzg_open_batch(&polys, &u, transcript)
+    };
+
+    #[cfg(not(feature = "sppark"))]
     let (w, v) = kzg_open_batch(&polys, &u, transcript);
+
+    eprintln!("[hkzg] phase3 kzg_open_batch: {:?}", _t_hkzg.elapsed());
 
     Ok(EvaluationArgument {
       com,

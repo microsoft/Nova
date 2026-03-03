@@ -91,8 +91,38 @@ int sppark_msm_with_generators(const void* points, const void* scalars,
                       (size_t)n_scalars, label);
 }
 
+// MSM using device-side scalars (already on GPU).
+// Generators must be cached from a prior sppark_msm_with_generators call
+// or sppark_ensure_generators call with sufficient n.
+int sppark_msm_from_device(void* d_scalars, void* result, int n) {
+    if (!g_gens || g_gens_n < (size_t)n) {
+        return -1;
+    }
+
+    msm_par_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, (size_t)n};
+    msm.d_points = g_gens;
+    msm.npoints = (size_t)n;
+    msm.d_scalars = reinterpret_cast<scalar_t*>(d_scalars);
+
+    point_t out;
+    RustError err = msm.invoke(out, (const affine_t*)nullptr, (size_t)n,
+                               (const scalar_t*)nullptr, true);
+
+    msm.d_points = nullptr;
+    msm.npoints = 0;
+    msm.d_scalars = nullptr;
+
+    memcpy(result, &out, sizeof(out));
+    return err.code;
+}
+
 void sppark_msm_free() {
     if (g_gens) { cudaFree(g_gens); g_gens = nullptr; g_gens_n = 0; }
+}
+
+// Ensure generators are cached with at least n elements.
+void sppark_ensure_generators(const void* points, int n) {
+    ensure_generators(points, (size_t)n);
 }
 
 } // extern "C"

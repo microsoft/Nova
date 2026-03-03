@@ -58,6 +58,16 @@ extern "C" {
   fn gpu_sumcheck_bind(r: *const u8, half_n: u32) -> i32;
   fn gpu_sumcheck_get_final(poly_id: u32, result: *mut u8) -> i32;
   fn gpu_sumcheck_free();
+
+  // Device pointer access
+  fn gpu_get_poly_device_ptr(poly_id: u32) -> *mut u8;
+
+  // HyperKZG GPU operations
+  fn gpu_hkzg_fold(hat_P: *const u8, n: u32, x_challenges: *const u8, ell: u32) -> i32;
+  fn gpu_hkzg_get_level_ptr(level: u32) -> *mut u8;
+  fn gpu_hkzg_eval(u_points: *const u8, v_out: *mut u8, ell: u32) -> i32;
+  fn gpu_hkzg_batch_poly(q: *const u8, B_out: *mut u8, k_count: u32) -> i32;
+  fn gpu_hkzg_free();
 }
 
 /// Raw bytes of a scalar in Montgomery form (no conversion).
@@ -270,5 +280,91 @@ impl Drop for GpuSumcheckState {
 pub fn static_free() {
   if let Ok(_lock) = GPU_SC_LOCK.lock() {
     unsafe { gpu_static_free() };
+  }
+}
+
+/// Get device pointer for a sumcheck polynomial (for device-side MSM).
+pub fn get_poly_device_ptr(poly_id: u32) -> *mut u8 {
+  unsafe { gpu_get_poly_device_ptr(poly_id) }
+}
+
+/// HyperKZG GPU state for fold, evaluate, and batch polynomial operations.
+pub struct GpuHkzgState {
+  ell: u32,
+  n: u32,
+}
+
+impl GpuHkzgState {
+  /// Upload hat_P to GPU and fold ell-1 times.
+  /// x_challenges[i] corresponds to the challenge used for fold level i
+  /// (caller provides x[ell-1-i] from the original point vector).
+  pub fn fold(hat_p: &[Scalar], x_challenges: &[Scalar]) -> Result<Self, String> {
+    let n = hat_p.len() as u32;
+    let ell = x_challenges.len() as u32 + 1;
+    let _lock = GPU_SC_LOCK.lock().unwrap();
+    let ret = unsafe {
+      gpu_hkzg_fold(
+        hat_p.as_ptr() as *const u8,
+        n,
+        x_challenges.as_ptr() as *const u8,
+        ell,
+      )
+    };
+    if ret != 0 {
+      return Err("gpu_hkzg_fold failed".to_string());
+    }
+    Ok(GpuHkzgState { ell, n })
+  }
+
+  /// Get device pointer for a folded polynomial level (for device-side MSM commit).
+  pub fn get_level_ptr(&self, level: u32) -> *mut u8 {
+    unsafe { gpu_hkzg_get_level_ptr(level) }
+  }
+
+  /// Evaluate all folded polynomials at 3 points. Returns v[i][j] = polys[i](u[j]).
+  pub fn eval(&self, u: &[Scalar; 3]) -> Result<Vec<[Scalar; 3]>, String> {
+    let mut raw = vec![0u8; self.ell as usize * 3 * SCALAR_BYTES];
+    let _lock = GPU_SC_LOCK.lock().unwrap();
+    let ret = unsafe {
+      gpu_hkzg_eval(u.as_ptr() as *const u8, raw.as_mut_ptr(), self.ell)
+    };
+    if ret != 0 {
+      return Err("gpu_hkzg_eval failed".to_string());
+    }
+    let mut results = Vec::with_capacity(self.ell as usize);
+    for i in 0..self.ell as usize {
+      let base = i * 3 * SCALAR_BYTES;
+      results.push([
+        scalar_from_raw(&raw[base..base + SCALAR_BYTES]),
+        scalar_from_raw(&raw[base + SCALAR_BYTES..base + 2 * SCALAR_BYTES]),
+        scalar_from_raw(&raw[base + 2 * SCALAR_BYTES..base + 3 * SCALAR_BYTES]),
+      ]);
+    }
+    Ok(results)
+  }
+
+  /// Compute batch polynomial B = sum(q^k * f[k]) on GPU, download to CPU.
+  pub fn batch_poly(&self, q: &Scalar) -> Result<Vec<Scalar>, String> {
+    let mut b = vec![Scalar::default(); self.n as usize];
+    let _lock = GPU_SC_LOCK.lock().unwrap();
+    let ret = unsafe {
+      gpu_hkzg_batch_poly(
+        scalar_to_raw(q).as_ptr(),
+        b.as_mut_ptr() as *mut u8,
+        self.ell,
+      )
+    };
+    if ret != 0 {
+      return Err("gpu_hkzg_batch_poly failed".to_string());
+    }
+    Ok(b)
+  }
+}
+
+impl Drop for GpuHkzgState {
+  fn drop(&mut self) {
+    if let Ok(_lock) = GPU_SC_LOCK.lock() {
+      unsafe { gpu_hkzg_free() };
+    }
   }
 }

@@ -1338,28 +1338,30 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         ).map_err(|_| NovaError::InternalError)?;
         eprintln!("[prove/gpu] phase2 (construct): {:?}", _t.elapsed());
 
-        // Download memory oracle polys for commitment
+        // Commit 4 memory oracle polys directly from GPU device memory
+        let _t = std::time::Instant::now();
+        let comm_mem_oracles = {
+          type G1 = halo2curves::bn256::G1;
+          debug_assert_eq!(std::mem::size_of::<G1>(), std::mem::size_of_val(&comm_Az));
+
+          // poly IDs: t_inv_row=1, w_inv_row=3, t_inv_col=6, w_inv_col=8
+          let poly_ids = [1u32, 3, 6, 8];
+          let comms: Vec<crate::Commitment<E>> = poly_ids.iter().map(|&id| {
+            let d_ptr = gpu_sumcheck::get_poly_device_ptr(id);
+            let point: G1 = crate::provider::sppark::msm_from_device(d_ptr, n);
+            unsafe { std::ptr::read(&point as *const G1 as *const crate::Commitment<E>) }
+          }).collect();
+          [comms[0], comms[1], comms[2], comms[3]]
+        };
+        eprintln!("[prove/gpu] 4 mem commits (device): {:?}", _t.elapsed());
+
+        // Download memory oracle polys (needed later for HyperKZG witness)
         let _t = std::time::Instant::now();
         let (oracle_fr, aux_fr) = gpu_sumcheck::phase2_download_mem_oracles(n)
           .map_err(|_| NovaError::InternalError)?;
         let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
         let _mem_aux: [Vec<E::Scalar>; 4] = aux_fr.map(fr_vec_to_scalar);
         eprintln!("[prove/gpu] download mem oracles: {:?}", _t.elapsed());
-
-        // Commit 4 memory oracle polys
-        let _t = std::time::Instant::now();
-        let ((comm_0, comm_1), (comm_2, comm_3)) = rayon::join(
-          || rayon::join(
-            || E::CE::commit(ck, &mem_oracles[0], &E::Scalar::ZERO),
-            || E::CE::commit(ck, &mem_oracles[1], &E::Scalar::ZERO),
-          ),
-          || rayon::join(
-            || E::CE::commit(ck, &mem_oracles[2], &E::Scalar::ZERO),
-            || E::CE::commit(ck, &mem_oracles[3], &E::Scalar::ZERO),
-          ),
-        );
-        let comm_mem_oracles = [comm_0, comm_1, comm_2, comm_3];
-        eprintln!("[prove/gpu] 4 mem commits: {:?}", _t.elapsed());
 
         // Absorb commitments, squeeze rho
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());

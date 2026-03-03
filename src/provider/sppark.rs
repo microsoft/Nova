@@ -29,6 +29,17 @@ extern "C" {
   /// Called automatically on process exit, but can be invoked explicitly
   /// to release GPU memory earlier (e.g., after proving is done).
   fn sppark_msm_free();
+
+  fn sppark_msm_from_device(
+    d_scalars: *mut u8,
+    result: *mut u64,
+    n: i32,
+  ) -> i32;
+
+  fn sppark_ensure_generators(
+    points: *const u64,
+    n: i32,
+  );
 }
 
 /// GPU access must be serialized — sppark's kernels are not thread-safe
@@ -145,6 +156,31 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
   }
 }
 
+/// Perform MSM using scalars already on GPU device memory.
+/// Generators must be cached from a prior MSM call.
+/// Caller must hold GPU_LOCK.
+fn gpu_msm_device(d_scalars: *mut u8, n: usize) -> Point {
+  let mut result = [0u64; 12];
+  let err = unsafe { sppark_msm_from_device(d_scalars, result.as_mut_ptr(), n as i32) };
+  assert_eq!(err, 0, "sppark MSM from device failed with error code {}", err);
+  jacobian_to_point(&result)
+}
+
+/// Ensure generators are cached on GPU at the specified size.
+/// Must be called before `msm_from_device` if no prior `vartime_multiscalar_mul` has been done.
+pub fn ensure_generators_cached(bases: &[Affine]) {
+  let _gpu = GPU_LOCK.lock().unwrap();
+  unsafe { sppark_ensure_generators(bases.as_ptr() as *const u64, bases.len() as i32) };
+}
+
+/// Perform MSM using scalars already on GPU (device pointer).
+/// Generators must be cached from a prior GPU MSM call or `ensure_generators_cached`.
+/// Acquires GPU lock internally.
+pub fn msm_from_device(d_scalars: *mut u8, n: usize) -> Point {
+  let _gpu = GPU_LOCK.lock().unwrap();
+  gpu_msm_device(d_scalars, n)
+}
+
 /// Perform MSM using sppark's GPU kernel with cached generators.
 /// Falls back to CPU for small inputs.
 pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
@@ -166,6 +202,9 @@ pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
   }
 
   if effective_len < GPU_MSM_THRESHOLD {
+    // Still cache generators at full bases length for future device-side MSM calls
+    let _gpu = GPU_LOCK.lock().unwrap();
+    unsafe { sppark_ensure_generators(bases.as_ptr() as *const u64, bases.len() as i32) };
     return msm(&scalars[..effective_len], &bases[..effective_len]);
   }
 
@@ -174,10 +213,16 @@ pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
 }
 
 /// Perform batch MSM — each scalar vector is a separate MSM with the same generators.
+/// Uses a higher GPU threshold than single MSMs to avoid per-call GPU overhead
+/// when processing many small polynomials (e.g., HyperKZG folded polynomials).
 pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) -> Vec<Point> {
   if scalars.is_empty() {
     return vec![];
   }
+
+  // Higher threshold for batch: GPU kernel launch overhead (~5ms) dominates for small MSMs.
+  // CPU MSM for <64K elements is faster than GPU when called in a batch of many MSMs.
+  const BATCH_GPU_THRESHOLD: usize = 1 << 16; // 65536
 
   let _gpu = GPU_LOCK.lock().unwrap();
 
@@ -197,7 +242,7 @@ pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) 
       if effective_len == 0 {
         return Point::default();
       }
-      if effective_len < GPU_MSM_THRESHOLD {
+      if effective_len < BATCH_GPU_THRESHOLD {
         return msm(&s[..effective_len], &bases[..effective_len]);
       }
       gpu_msm(s, bases, effective_len)

@@ -51,6 +51,54 @@ static uint32_t g_num_blocks = 0;
 static int g_grid = 0;
 static fr_t* h_block_results = nullptr;
 
+// ============== HyperKZG GPU operations ==============
+// Kernels must be outside #ifndef __CUDA_ARCH__ to compile for both device and host.
+
+static fr_t* d_hkzg_poly = nullptr;
+static fr_t* d_hkzg_scratch = nullptr;
+static fr_t** d_hkzg_levels = nullptr;
+static uint32_t hkzg_ell = 0;
+static uint32_t hkzg_n = 0;
+
+// Fold kernel: out[j] = in[2j] + x * (in[2j+1] - in[2j])
+__global__
+void hkzg_fold_kernel(const fr_t* __restrict__ in, fr_t* __restrict__ out,
+                       const fr_t x, uint32_t half_n)
+{
+    uint32_t j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= half_n) return;
+    out[j] = in[2*j] + x * (in[2*j+1] - in[2*j]);
+}
+
+// Chunked Horner: each thread evaluates one chunk via Horner's method
+__global__
+void hkzg_chunked_horner_kernel(const fr_t* __restrict__ f, fr_t* __restrict__ chunk_results,
+                                 const fr_t u, uint32_t n, uint32_t chunk_sz)
+{
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t start = tid * chunk_sz;
+    if (start >= n) return;
+    uint32_t end = start + chunk_sz;
+    if (end > n) end = n;
+    fr_t acc;
+    acc = f[end - 1];
+    for (uint32_t i = end - 1; i > start; ) {
+        --i;
+        acc = acc * u + f[i];
+    }
+    chunk_results[tid] = acc;
+}
+
+// SAXPY: out[i] = a[i] + s * b[i] (out may alias a or b)
+__global__
+void hkzg_saxpy_kernel(fr_t* out, const fr_t* __restrict__ a,
+                        const fr_t* __restrict__ b, const fr_t s, uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = a[i] + s * b[i];
+}
+
 #ifndef __CUDA_ARCH__
 
 extern "C" {
@@ -179,13 +227,15 @@ int gpu_phase2_construct(
         uint32_t csz = 4096;
         uint32_t nc = (len + csz - 1) / csz;
         batch_invert_prefix_kernel<<<(nc+255)/256, 256>>>(d_arr, d_products, len, csz);
-        CHECK_CUDA(cudaDeviceSynchronize());
 
+        // Gather chunk ends using GPU kernel, then single bulk download
+        fr_t* d_ends_tmp;
+        CHECK_CUDA(cudaMalloc(&d_ends_tmp, nc * sizeof(fr_t)));
+        gather_chunk_ends_kernel<<<(nc+255)/256, 256>>>(d_products, d_ends_tmp, nc, csz, len);
         fr_t* h_ends = (fr_t*)malloc(nc * sizeof(fr_t));
-        for (uint32_t i = 0; i < nc; i++) {
-            uint32_t idx = (i+1)*csz - 1; if (idx >= len) idx = len-1;
-            CHECK_CUDA(cudaMemcpy(&h_ends[i], d_products+idx, sizeof(fr_t), cudaMemcpyDeviceToHost));
-        }
+        CHECK_CUDA(cudaMemcpy(h_ends, d_ends_tmp, nc * sizeof(fr_t), cudaMemcpyDeviceToHost));
+        cudaFree(d_ends_tmp);
+
         fr_t* h_prods = (fr_t*)malloc(nc * sizeof(fr_t));
         h_prods[0] = h_ends[0];
         for (uint32_t i = 1; i < nc; i++) h_prods[i] = h_prods[i-1] * h_ends[i];
@@ -299,6 +349,12 @@ int gpu_sumcheck_get_final(uint32_t poly_id, void* result) {
     return 0;
 }
 
+// Return device pointer for a sumcheck polynomial (for device-side MSM).
+void* gpu_get_poly_device_ptr(uint32_t poly_id) {
+    if (poly_id >= NUM_POLYS) return nullptr;
+    return (void*)d_polys[poly_id];
+}
+
 void gpu_sumcheck_free() {
     if (d_poly_data)     { cudaFree(d_poly_data);     d_poly_data = nullptr; }
     if (d_poly_ptrs)     { cudaFree(d_poly_ptrs);     d_poly_ptrs = nullptr; }
@@ -309,6 +365,151 @@ void gpu_sumcheck_free() {
     if (d_products)      { cudaFree(d_products);      d_products = nullptr; }
     if (h_block_results) { free(h_block_results);     h_block_results = nullptr; }
     g_n = 0; g_num_blocks = 0;
+}
+
+// Upload hat_P and fold ell-1 times. Stores device pointers for each level.
+// x_challenges[i] is used for fold level i (applied as x[ell-1-i] in caller).
+void gpu_hkzg_free(); // forward declaration
+int gpu_hkzg_fold(const void* hat_P, uint32_t n, const void* x_challenges, uint32_t ell) {
+    // Free any prior allocation (safe for parallel test runs)
+    gpu_hkzg_free();
+
+    hkzg_ell = ell;
+    hkzg_n = n;
+
+    // Allocate levels array on host
+    d_hkzg_levels = (fr_t**)malloc(ell * sizeof(fr_t*));
+    if (!d_hkzg_levels) return -1;
+
+    // Allocate device memory for all levels
+    // Level 0: n elements, Level 1: n/2, ..., Level ell-1: 1
+    // Total: 2n - 1 elements. Allocate 2n for safety.
+    CHECK_CUDA(cudaMalloc(&d_hkzg_poly, 2 * (size_t)n * sizeof(fr_t)));
+
+    // Level 0 starts at offset 0
+    d_hkzg_levels[0] = d_hkzg_poly;
+    CHECK_CUDA(cudaMemcpy(d_hkzg_levels[0], hat_P, (size_t)n * sizeof(fr_t), cudaMemcpyHostToDevice));
+
+    // Set up pointers for subsequent levels (contiguous after level 0)
+    size_t offset = n;
+    for (uint32_t i = 1; i < ell; i++) {
+        d_hkzg_levels[i] = d_hkzg_poly + offset;
+        offset += n >> i;
+    }
+
+    // Fold ell-1 times
+    const fr_t* x = reinterpret_cast<const fr_t*>(x_challenges);
+    for (uint32_t i = 0; i < ell - 1; i++) {
+        uint32_t half = n >> (i + 1);
+        uint32_t blocks = (half + 255) / 256;
+        hkzg_fold_kernel<<<blocks, 256>>>(d_hkzg_levels[i], d_hkzg_levels[i+1], x[i], half);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+    return 0;
+}
+
+// Get device pointer for a folded level (for device-side MSM commit).
+void* gpu_hkzg_get_level_ptr(uint32_t level) {
+    if (!d_hkzg_levels || level >= hkzg_ell) return nullptr;
+    return (void*)d_hkzg_levels[level];
+}
+
+// Evaluate all folded polynomials at 3 points u[0], u[1], u[2].
+// Output: v[i][j] = polys[i](u[j]), stored as v[i*3+j] in row-major order.
+// Returns ell * 3 scalars.
+int gpu_hkzg_eval(const void* u_host, void* v_host, uint32_t ell) {
+    if (!d_hkzg_levels) return -1;
+
+    const fr_t* u = reinterpret_cast<const fr_t*>(u_host);
+    fr_t* v = reinterpret_cast<fr_t*>(v_host);
+
+    // For each level and each point, do chunked Horner evaluation
+    const uint32_t CHUNK_SZ = 1024;
+
+    for (uint32_t i = 0; i < ell; i++) {
+        uint32_t poly_len = hkzg_n >> i;
+        if (poly_len <= 1) {
+            // Single element — just copy
+            for (int p = 0; p < 3; p++) {
+                CHECK_CUDA(cudaMemcpy(&v[i*3+p], d_hkzg_levels[i], sizeof(fr_t), cudaMemcpyDeviceToHost));
+            }
+            continue;
+        }
+
+        uint32_t num_chunks = (poly_len + CHUNK_SZ - 1) / CHUNK_SZ;
+
+        // Allocate chunk results buffer on device
+        fr_t* d_chunks;
+        CHECK_CUDA(cudaMalloc(&d_chunks, num_chunks * sizeof(fr_t)));
+
+        for (int p = 0; p < 3; p++) {
+            // Phase 1: each thread evaluates a chunk using Horner
+            uint32_t blocks = (num_chunks + 255) / 256;
+            hkzg_chunked_horner_kernel<<<blocks, 256>>>(
+                d_hkzg_levels[i], d_chunks, u[p], poly_len, CHUNK_SZ);
+            CHECK_CUDA(cudaDeviceSynchronize());
+
+            // Phase 2: combine chunk results on CPU
+            // f(u) = c[0] + c[1]*u^chunk_sz + c[2]*u^(2*chunk_sz) + ...
+            fr_t* h_chunks = (fr_t*)malloc(num_chunks * sizeof(fr_t));
+            CHECK_CUDA(cudaMemcpy(h_chunks, d_chunks, num_chunks * sizeof(fr_t), cudaMemcpyDeviceToHost));
+
+            // Compute u^chunk_sz
+            fr_t u_pow = u[p];
+            for (uint32_t k = 1; k < CHUNK_SZ; k++) u_pow = u_pow * u[p];
+
+            // Horner combination of chunks (from last to first)
+            fr_t result = h_chunks[num_chunks - 1];
+            for (uint32_t k = num_chunks - 1; k > 0; ) {
+                --k;
+                result = result * u_pow + h_chunks[k];
+            }
+            v[i*3+p] = result;
+            free(h_chunks);
+        }
+        cudaFree(d_chunks);
+    }
+    return 0;
+}
+
+// Compute batch polynomial B = sum(q^k * f[k]) on GPU.
+// f[k] = d_hkzg_levels[k], each with length n >> k.
+// B has length n (= hkzg_n), zero-padded for shorter polynomials.
+int gpu_hkzg_batch_poly(const void* q_host, void* B_host, uint32_t k_count) {
+    if (!d_hkzg_levels) return -1;
+
+    fr_t q = *reinterpret_cast<const fr_t*>(q_host);
+    uint32_t n = hkzg_n;
+
+    // Allocate output buffer on GPU
+    fr_t* d_B;
+    CHECK_CUDA(cudaMalloc(&d_B, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMemset(d_B, 0, (size_t)n * sizeof(fr_t)));
+
+    // B = sum(q^k * f[k]) — accumulate with Horner: B = f[0] + q*(f[1] + q*(f[2] + ...))
+    // Process from last to first for Horner
+    // Start with B = f[k_count-1] (smallest poly)
+    uint32_t last_len = n >> (k_count - 1);
+    CHECK_CUDA(cudaMemcpy(d_B, d_hkzg_levels[k_count - 1], last_len * sizeof(fr_t), cudaMemcpyDeviceToDevice));
+
+    for (int k = (int)k_count - 2; k >= 0; k--) {
+        uint32_t len_k = n >> k;
+        uint32_t blocks = (len_k + 255) / 256;
+        // B[0..len_k] = f[k][0..len_k] + q * B[0..len_k]
+        hkzg_saxpy_kernel<<<blocks, 256>>>(d_B, d_hkzg_levels[k], d_B, q, len_k);
+    }
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    // Download result
+    CHECK_CUDA(cudaMemcpy(B_host, d_B, (size_t)n * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    cudaFree(d_B);
+    return 0;
+}
+
+void gpu_hkzg_free() {
+    if (d_hkzg_poly) { cudaFree(d_hkzg_poly); d_hkzg_poly = nullptr; }
+    if (d_hkzg_levels) { free(d_hkzg_levels); d_hkzg_levels = nullptr; }
+    hkzg_ell = 0; hkzg_n = 0;
 }
 
 } // extern "C"
