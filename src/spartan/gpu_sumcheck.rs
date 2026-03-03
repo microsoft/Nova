@@ -35,6 +35,8 @@ extern "C" {
   // Phase 1: After tau
   fn gpu_phase1_init(eq_tau: *const u8, z_padded: *const u8, n: u32) -> i32;
   fn gpu_download_L(L_row: *mut u8, L_col: *mut u8) -> i32;
+  fn gpu_start_async_L_download(n: u32) -> i32;
+  fn gpu_finish_async_L_download(L_row_out: *mut *const u8, L_col_out: *mut *const u8) -> i32;
   fn gpu_upload_to_poly(host_data: *const u8, poly_id: u32, n: u32, d_ptr_out: *mut *mut u8) -> i32;
 
   // Phase 2: After c, gamma, r — v2 computes uCz_E and Mz on GPU
@@ -209,6 +211,37 @@ pub fn phase1_download_l(n: usize) -> Result<(Vec<Scalar>, Vec<Scalar>), String>
   if ret != 0 {
     return Err("gpu_download_L failed".to_string());
   }
+  Ok((l_row, l_col))
+}
+
+/// Start async D2D + DtoH download of L_row/L_col.
+/// Overlaps with subsequent MSM compute on the default stream.
+pub fn start_async_l_download(n: usize) -> Result<(), String> {
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe { gpu_start_async_L_download(n as u32) };
+  if ret != 0 {
+    return Err("gpu_start_async_L_download failed".to_string());
+  }
+  Ok(())
+}
+
+/// Wait for async L download and return slices into pinned GPU host memory.
+/// The returned slices are valid until the next `start_async_l_download` call.
+pub fn finish_async_l_download(n: usize) -> Result<(&'static [Scalar], &'static [Scalar]), String> {
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let mut row_ptr: *const u8 = std::ptr::null();
+  let mut col_ptr: *const u8 = std::ptr::null();
+  let ret = unsafe {
+    gpu_finish_async_L_download(
+      &mut row_ptr as *mut *const u8,
+      &mut col_ptr as *mut *const u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_finish_async_L_download failed".to_string());
+  }
+  let l_row = unsafe { std::slice::from_raw_parts(row_ptr as *const Scalar, n) };
+  let l_col = unsafe { std::slice::from_raw_parts(col_ptr as *const Scalar, n) };
   Ok((l_row, l_col))
 }
 

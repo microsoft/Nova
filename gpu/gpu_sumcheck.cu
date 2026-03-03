@@ -57,6 +57,11 @@ static uint32_t g_num_blocks = 0;
 static int g_grid = 0;
 static fr_t* h_block_results = nullptr;
 
+// Async L download staging
+static fr_t* h_L_pinned[2] = {nullptr, nullptr};   // Pinned host buffers
+static cudaStream_t s_download_stream = nullptr;
+static uint32_t g_L_staging_n = 0;
+
 // ============== HyperKZG CUDA kernels ==============
 // Must be outside #ifndef __CUDA_ARCH__ to compile for both device and host.
 
@@ -557,6 +562,49 @@ int gpu_download_L(void* L_row_host, void* L_col_host) {
     return 0;
 }
 
+// Start async DtoH download of L_row/L_col directly from d_polys[14,15].
+// Both the download (on s_download_stream) and subsequent MSMs (on compute streams)
+// read the same data concurrently — safe since both are reads.
+int gpu_start_async_L_download(uint32_t n) {
+    size_t fr_bytes = (size_t)n * sizeof(fr_t);
+
+    // Allocate pinned host buffers + stream (once)
+    if (g_L_staging_n != n || !h_L_pinned[0]) {
+        for (int i = 0; i < 2; i++) {
+            if (h_L_pinned[i]) cudaFreeHost(h_L_pinned[i]);
+            CHECK_CUDA(cudaMallocHost(&h_L_pinned[i], fr_bytes));
+        }
+        if (!s_download_stream) {
+            CHECK_CUDA(cudaStreamCreateWithFlags(&s_download_stream, cudaStreamNonBlocking));
+        }
+        g_L_staging_n = n;
+    }
+
+    // Record event after phase1 kernels complete on default stream
+    cudaEvent_t phase1_done;
+    CHECK_CUDA(cudaEventCreate(&phase1_done));
+    CHECK_CUDA(cudaEventRecord(phase1_done, 0));
+    CHECK_CUDA(cudaStreamWaitEvent(s_download_stream, phase1_done, 0));
+
+    // Async DtoH directly from d_polys[14,15] on non-blocking download stream
+    CHECK_CUDA(cudaMemcpyAsync(h_L_pinned[0], d_polys[14], fr_bytes,
+                                cudaMemcpyDeviceToHost, s_download_stream));
+    CHECK_CUDA(cudaMemcpyAsync(h_L_pinned[1], d_polys[15], fr_bytes,
+                                cudaMemcpyDeviceToHost, s_download_stream));
+
+    CHECK_CUDA(cudaEventDestroy(phase1_done));
+    return 0;
+}
+
+// Wait for async L download and return pointers to pinned host buffers.
+// Caller must use data before next start_async_L_download call.
+int gpu_finish_async_L_download(void** L_row_out, void** L_col_out) {
+    CHECK_CUDA(cudaStreamSynchronize(s_download_stream));
+    *L_row_out = h_L_pinned[0];
+    *L_col_out = h_L_pinned[1];
+    return 0;
+}
+
 // Upload a host array to a specific poly slot and return device pointer for MSM.
 // Used to pre-upload Az/Bz/Cz for both MSM and phase2_construct.
 int gpu_upload_to_poly(const void* host_data, uint32_t poly_id, uint32_t n, void** d_ptr_out) {
@@ -784,6 +832,11 @@ void gpu_sumcheck_free_all() {
     if (h_ends_buf)      { free(h_ends_buf);          h_ends_buf = nullptr; }
     if (h_prods_buf)     { free(h_prods_buf);         h_prods_buf = nullptr; }
     if (h_invs_buf)      { free(h_invs_buf);          h_invs_buf = nullptr; }
+    for (int i = 0; i < 2; i++) {
+        if (h_L_pinned[i])  { cudaFreeHost(h_L_pinned[i]); h_L_pinned[i] = nullptr; }
+    }
+    if (s_download_stream) { cudaStreamDestroy(s_download_stream); s_download_stream = nullptr; }
+    g_L_staging_n = 0;
     g_n = 0; g_num_blocks = 0; g_nc = 0;
 }
 

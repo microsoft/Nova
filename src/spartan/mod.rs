@@ -233,7 +233,7 @@ impl<E: Engine> PolyEvalWitness<E> {
   /// # Panics
   ///
   /// This method panics if the polynomials in `p_vec` are not all of the same length.
-  fn batch(p_vec: &[&Vec<E::Scalar>], s: &E::Scalar) -> PolyEvalWitness<E> {
+  fn batch(p_vec: &[&[E::Scalar]], s: &E::Scalar) -> PolyEvalWitness<E> {
     p_vec
       .iter()
       .for_each(|p| assert_eq!(p.len(), p_vec[0].len()));

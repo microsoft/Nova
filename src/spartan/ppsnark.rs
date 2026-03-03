@@ -1281,15 +1281,20 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let mem_col = padded::<E>(&z, n, &E::Scalar::ZERO);
         gpu_sumcheck::phase1_init(as_fr(&mem_row), as_fr(&mem_col))
           .map_err(|_| NovaError::InternalError)?;
-        let (l_row_fr, l_col_fr) = gpu_sumcheck::phase1_download_l(n)
-          .map_err(|_| NovaError::InternalError)?;
-        let L_row = fr_vec_to_scalar(l_row_fr);
-        let L_col = fr_vec_to_scalar(l_col_fr);
+        eprintln!("[ppsnark]     phase1_init_with_tau: {:?}", _ts.elapsed());
 
-        // Commit L_row/L_col — use device-side MSM since data is already on GPU
+        // Start async L download (D2D copy on default stream, then DtoH on download stream)
+        // This overlaps the DtoH transfer with the L commit MSMs below.
+        let use_device_msm = n >= 256;
+        if use_device_msm {
+          gpu_sumcheck::start_async_l_download(n)
+            .map_err(|_| NovaError::InternalError)?;
+        }
+
+        // Commit L_row/L_col — use device-side MSM since data is still in d_polys[14,15]
         eprintln!("[ppsnark] static_upload + phase1: {:?}", _t.elapsed());
         let _t = std::time::Instant::now();
-        let (comm_L_row, comm_L_col) = if n >= 256 {
+        let (comm_L_row, comm_L_col) = if use_device_msm {
           type G1 = halo2curves::bn256::G1;
           let d_l_row = gpu_sumcheck::get_poly_device_ptr(14);
           let d_l_col = gpu_sumcheck::get_poly_device_ptr(15);
@@ -1301,12 +1306,34 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             unsafe { std::ptr::read(&p_col as *const G1 as *const crate::Commitment<E>) };
           (c_row, c_col)
         } else {
+          let (l_row_fr, l_col_fr) = gpu_sumcheck::phase1_download_l(n)
+            .map_err(|_| NovaError::InternalError)?;
+          let l_row_s = fr_vec_to_scalar(l_row_fr);
+          let l_col_s = fr_vec_to_scalar(l_col_fr);
           rayon::join(
-            || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
-            || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
+            || E::CE::commit(ck, &l_row_s, &E::Scalar::ZERO),
+            || E::CE::commit(ck, &l_col_s, &E::Scalar::ZERO),
           )
         };
         eprintln!("[ppsnark]   L commit: {:?}", _t.elapsed());
+
+        // Finish async L download (waits for DtoH to complete, overlapped with MSMs above)
+        let _ts = std::time::Instant::now();
+        let (L_row, L_col): (std::borrow::Cow<'_, [E::Scalar]>, std::borrow::Cow<'_, [E::Scalar]>) = if use_device_msm {
+          let (l_row_ref, l_col_ref) = gpu_sumcheck::finish_async_l_download(n)
+            .map_err(|_| NovaError::InternalError)?;
+          // Borrow pinned GPU memory directly (same repr as E::Scalar)
+          unsafe {
+            (std::borrow::Cow::Borrowed(std::mem::transmute(l_row_ref)),
+             std::borrow::Cow::Borrowed(std::mem::transmute(l_col_ref)))
+          }
+        } else {
+          let (l_row_fr, l_col_fr) = gpu_sumcheck::phase1_download_l(n)
+            .map_err(|_| NovaError::InternalError)?;
+          (std::borrow::Cow::Owned(fr_vec_to_scalar(l_row_fr)),
+           std::borrow::Cow::Owned(fr_vec_to_scalar(l_col_fr)))
+        };
+        eprintln!("[ppsnark]     L download (async): {:?}", _ts.elapsed());
 
         // Transcript: absorb evals + L commits, squeeze c
         let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
@@ -1346,7 +1373,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             )
           },
           || {
-            let poly_vec = vec![&Az, &Bz, &Cz];
+            let poly_vec: Vec<&[E::Scalar]> = vec![&Az, &Bz, &Cz];
             PolyEvalWitness::batch(&poly_vec, &c)
           },
         );
@@ -1442,7 +1469,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       transcript.absorb(b"e", &eval_vec.as_slice());
       transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
       let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
-      let poly_vec = vec![&Az, &Bz, &Cz];
+      let poly_vec: Vec<&[E::Scalar]> = vec![&Az, &Bz, &Cz];
       let c = transcript.squeeze(b"c")?;
       let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
       let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
@@ -1510,7 +1537,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         )?;
 
       (
-        L_row, L_col,
+        std::borrow::Cow::Owned(L_row), std::borrow::Cow::Owned(L_col),
         comm_L_row, comm_L_col,
         w, u,
         comm_mem_oracles, mem_oracles,
@@ -1599,7 +1626,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       comm_mem_oracles[3],
       pk.S_comm.comm_ts_col,
     ];
-    let poly_vec = [
+    let poly_vec: [&[E::Scalar]; 18] = [
       &W,
       &Az,
       &Bz,
