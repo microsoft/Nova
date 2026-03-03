@@ -9,11 +9,16 @@ use std::sync::Mutex;
 
 #[allow(unsafe_code)]
 extern "C" {
+  /// `n_bases`:  number of generators to upload (full slice length).
+  /// `n_scalars`: number of scalars for this MSM (≤ n_bases).
+  /// `label`:    identity of the generator set (pointer of the backing `Vec`).
   fn sppark_msm_with_generators(
     points: *const u64,
     scalars: *const u64,
     result: *mut u64,
-    n: i32,
+    n_bases: i32,
+    n_scalars: i32,
+    label: u64,
   ) -> i32;
 }
 
@@ -70,18 +75,29 @@ fn trim_trailing_zeros(scalars: &[Scalar]) -> usize {
 /// Perform GPU MSM with cached generators and parallel accumulate kernel.
 /// Caller must hold GPU_LOCK.
 /// Falls back to CPU MSM on any GPU error rather than panicking.
+///
+/// The generator identity is `bases.as_ptr()` — the address of the backing
+/// `Vec` inside `CommitmentKey`.  Every prefix slice `&ck.ck[..v.len()]`
+/// shares the same base pointer, so the GPU can recognise the same
+/// generator set even when the slice length varies between calls.
 #[allow(unsafe_code)]
 fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point {
+  // Use the slice's base pointer as the label.  All prefix slices of the
+  // same CommitmentKey share the same pointer, so the GPU recognises
+  // them as the same generator set regardless of slice length.
+  let label = bases.as_ptr() as u64;
   let mut result = [0u64; 12];
-  // SAFETY: `bases` and `scalars` point to contiguous slices of at least
-  // `effective_len` elements. The FFI function reads `effective_len` elements
-  // from each pointer and writes 12 u64s to `result`.
+  // SAFETY: `bases` points to `bases.len()` contiguous Affine elements
+  // (for upload).  `scalars` points to at least `effective_len` elements
+  // (for MSM).  The FFI function writes 12 u64s to `result`.
   let err = unsafe {
     sppark_msm_with_generators(
       bases.as_ptr() as *const u64,
       scalars.as_ptr() as *const u64,
       result.as_mut_ptr(),
+      bases.len() as i32,
       effective_len as i32,
+      label,
     )
   };
   if err != 0 {
