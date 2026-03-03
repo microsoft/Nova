@@ -4,7 +4,11 @@
 //! pathological scalar distributions via parallel tree reduction for large buckets.
 //! Generators are cached on GPU across calls (Nova's commitment key is fixed).
 
-use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
+use ff::Field;
+use halo2curves::{
+  bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point},
+  CurveAffine,
+};
 use std::sync::Mutex;
 
 #[allow(unsafe_code)]
@@ -37,7 +41,6 @@ static GPU_LOCK: Mutex<()> = Mutex::new(());
 /// Returns `None` if the GPU output is malformed (zero Z after `from_raw`,
 /// non-invertible Z, or off-curve affine point).
 fn jacobian_to_point(result: &[u64; 12]) -> Option<Point> {
-  use ff::Field;
   use halo2curves::bn256::Fq;
 
   // Interpret input limbs as three Fq elements X, Y, Z using the public API.
