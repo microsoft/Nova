@@ -1,5 +1,3 @@
-use std::env;
-
 fn main() {
   #[cfg(feature = "sppark")]
   build_sppark_msm();
@@ -7,6 +5,7 @@ fn main() {
 
 #[cfg(feature = "sppark")]
 fn build_sppark_msm() {
+  use std::env;
   use std::path::PathBuf;
 
   // Find nvcc: NVCC env > PATH > /usr/local/cuda/bin/nvcc
