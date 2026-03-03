@@ -911,6 +911,8 @@ where
     let _t = std::time::Instant::now();
     #[allow(unused_mut)]
     let mut _d_quot_ptr: *mut u8 = std::ptr::null_mut();
+    #[allow(unused_mut)]
+    let mut _d_f_ptr: *mut u8 = std::ptr::null_mut();
     let (mut q_poly, g_poly) = {
       #[cfg(feature = "sppark")]
       {
@@ -921,10 +923,11 @@ where
           let f_as_fr = unsafe { &*(f_poly.as_slice() as *const [E::Scalar] as *const [Fr]) };
           let alpha_as_fr = unsafe { &*(&alpha as *const E::Scalar as *const Fr) };
 
-          let (mut quot_fr, mut rem_fr, d_ptr) =
+          let (mut quot_fr, mut rem_fr, d_ptr, d_f) =
             crate::spartan::gpu_sumcheck::gpu_poly_divide_by_binomial(f_as_fr, b, alpha_as_fr)
               .map_err(|_| NovaError::InternalError)?;
           _d_quot_ptr = d_ptr;
+          _d_f_ptr = d_f;
 
           // Reinterpret back to E::Scalar
           let q = UniPoly {
@@ -1175,10 +1178,11 @@ where
           let zeta_fr = unsafe { &*(&zeta as *const E::Scalar as *const Fr) };
 
           let (mut quot_fr, rem, d_ptr) = crate::spartan::gpu_sumcheck::gpu_mercury_compute_quot_f(
-            f_as_fr, q_as_fr, scale_fr, gz_fr, zeta_fr,
+            f_as_fr, q_as_fr, scale_fr, gz_fr, zeta_fr, _d_f_ptr,
           )
           .map_err(|_| NovaError::InternalError)?;
           _d_quotf_ptr = d_ptr;
+          _d_f_ptr = std::ptr::null_mut(); // consumed by quot_f
 
           let rem_e = unsafe { std::ptr::read(&rem as *const Fr as *const E::Scalar) };
           assert_eq!(rem_e, E::Scalar::ZERO);
@@ -1193,6 +1197,11 @@ where
             },
           }
         } else {
+          // Free device f if it was retained from divide_by_binomial
+          if !_d_f_ptr.is_null() {
+            crate::spartan::gpu_sumcheck::free_device_ptr(_d_f_ptr);
+            _d_f_ptr = std::ptr::null_mut();
+          }
           let mut quot_f = UniPoly {
             coeffs: f_poly.to_vec(),
           };

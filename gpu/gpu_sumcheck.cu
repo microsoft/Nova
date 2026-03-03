@@ -853,6 +853,49 @@ int gpu_memcpy_dtoh(void* dst, const void* d_src, size_t bytes) {
     return err == cudaSuccess ? 0 : -1;
 }
 
+// Async download: start device-to-host transfers on a dedicated stream.
+// Uses page-locked staging buffer for truly async behavior.
+static cudaStream_t g_download_stream = nullptr;
+static void* g_pinned_staging = nullptr;
+static size_t g_pinned_staging_size = 0;
+
+// Start async downloads of 4 oracle polynomials.
+// Returns immediately; call gpu_finish_async_download to get the data.
+int gpu_start_async_download_oracles(uint32_t poly_ids[4], uint32_t n) {
+    size_t bytes = (size_t)n * sizeof(fr_t);
+    size_t total = 4 * bytes;
+
+    if (!g_download_stream) {
+        CHECK_CUDA(cudaStreamCreate(&g_download_stream));
+    }
+
+    // Ensure pinned staging buffer is large enough
+    if (g_pinned_staging_size < total) {
+        if (g_pinned_staging) cudaFreeHost(g_pinned_staging);
+        CHECK_CUDA(cudaHostAlloc(&g_pinned_staging, total, cudaHostAllocDefault));
+        g_pinned_staging_size = total;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        void* d_src = d_polys[poly_ids[i]];
+        void* dst = (uint8_t*)g_pinned_staging + i * bytes;
+        CHECK_CUDA(cudaMemcpyAsync(dst, d_src, bytes, cudaMemcpyDeviceToHost, g_download_stream));
+    }
+    return 0;
+}
+
+// Finish async download: sync the download stream and copy to user buffers.
+int gpu_finish_async_download_oracles(void* dst0, void* dst1, void* dst2, void* dst3,
+                                       uint32_t n) {
+    CHECK_CUDA(cudaStreamSynchronize(g_download_stream));
+    size_t bytes = (size_t)n * sizeof(fr_t);
+    memcpy(dst0, (uint8_t*)g_pinned_staging + 0 * bytes, bytes);
+    memcpy(dst1, (uint8_t*)g_pinned_staging + 1 * bytes, bytes);
+    memcpy(dst2, (uint8_t*)g_pinned_staging + 2 * bytes, bytes);
+    memcpy(dst3, (uint8_t*)g_pinned_staging + 3 * bytes, bytes);
+    return 0;
+}
+
 // ============== Mercury C API ==============
 
 // Mercury: divide polynomial by (X - a) using GPU parallel prefix scan.
@@ -943,17 +986,17 @@ int gpu_mercury_divide_by_linear(const void* h_coeffs, uint32_t poly_len,
 // If d_quot_out is non-null, stores a COPY of the device quotient pointer there (caller must cudaFree)
 int gpu_mercury_divide_by_binomial(const void* h_coeffs, uint32_t b,
                                     const void* h_alpha, void* h_quotient, void* h_remainder,
-                                    void** d_quot_out) {
+                                    void** d_quot_out, void** d_f_out) {
     uint32_t n = b * b;
     const fr_t alpha = *(const fr_t*)h_alpha;
     
+    // Use async allocations (same pool as sppark MSM) to avoid fragmentation
     fr_t* d_in;
     fr_t* d_quot;
     fr_t* d_rem;
-    fr_t* d_transposed = nullptr;
-    CHECK_CUDA(cudaMalloc(&d_in, (size_t)n * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_quot, (size_t)n * sizeof(fr_t)));  // b cols * (b-1) rows, padded
-    CHECK_CUDA(cudaMalloc(&d_rem, (size_t)b * sizeof(fr_t)));
+    CHECK_CUDA(cudaMallocAsync(&d_in, (size_t)n * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_quot, (size_t)n * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_rem, (size_t)b * sizeof(fr_t), 0));
     CHECK_CUDA(cudaMemcpy(d_in, h_coeffs, (size_t)n * sizeof(fr_t), cudaMemcpyHostToDevice));
     
     // Launch batch Horner: one thread per column
@@ -1025,12 +1068,16 @@ int gpu_mercury_divide_by_binomial(const void* h_coeffs, uint32_t b,
     if (d_quot_out) {
         *d_quot_out = d_quot;
     } else {
-        cudaFree(d_quot);
+        cudaFreeAsync(d_quot, 0);
     }
     
-    cudaFree(d_in);
+    // Keep d_in on device if caller wants it (for subsequent quot_f)
+    if (d_f_out) {
+        *d_f_out = d_in;
+    } else {
+        cudaFree(d_in);
+    }
     cudaFree(d_rem);
-    cudaFree(d_transposed);
     return 0;
 }
 
@@ -1047,25 +1094,30 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
                        const void* h_zeta,
                        void* h_quotient,
                        void* h_remainder,
-                       void** d_quot_out) {
+                       void** d_quot_out,
+                       void* d_f_in) {
     const fr_t scale = *(const fr_t*)h_scale;
     const fr_t g_zeta = *(const fr_t*)h_g_zeta;
     const fr_t zeta = *(const fr_t*)h_zeta;
     
-    // Upload f and q
+    // Use device f if provided (kept from divide_by_binomial), else upload from host
     fr_t* d_f;
-    fr_t* d_q;
-    CHECK_CUDA(cudaMalloc(&d_f, (size_t)f_len * sizeof(fr_t)));
-    CHECK_CUDA(cudaMemcpy(d_f, h_f, (size_t)f_len * sizeof(fr_t), cudaMemcpyHostToDevice));
+    if (d_f_in) {
+        d_f = (fr_t*)d_f_in;
+    } else {
+        CHECK_CUDA(cudaMalloc(&d_f, (size_t)f_len * sizeof(fr_t)));
+        CHECK_CUDA(cudaMemcpy(d_f, h_f, (size_t)f_len * sizeof(fr_t), cudaMemcpyHostToDevice));
+    }
     
+    fr_t* d_q;
     if (q_len > 0) {
-        CHECK_CUDA(cudaMalloc(&d_q, (size_t)q_len * sizeof(fr_t)));
+        CHECK_CUDA(cudaMallocAsync(&d_q, (size_t)q_len * sizeof(fr_t), 0));
         CHECK_CUDA(cudaMemcpy(d_q, h_q, (size_t)q_len * sizeof(fr_t), cudaMemcpyHostToDevice));
         
         // f += scale * q (element-wise, only for first q_len elements)
         uint32_t blocks = (q_len + 255) / 256;
         mercury_poly_sub_scaled_kernel<<<blocks, 256>>>(d_f, d_q, scale, q_len);
-        cudaFree(d_q);
+        cudaFreeAsync(d_q, 0);
     }
     
     // f[0] -= g_zeta
@@ -1085,11 +1137,11 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
     fr_t* d_local_m, *d_local_b;
     fr_t* d_block_m, *d_block_b;
     fr_t* d_quotient;
-    CHECK_CUDA(cudaMalloc(&d_local_m, (size_t)n * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_local_b, (size_t)n * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_block_m, (size_t)num_blocks * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_block_b, (size_t)num_blocks * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_quotient, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMallocAsync(&d_local_m, (size_t)n * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_local_b, (size_t)n * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_block_m, (size_t)num_blocks * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_block_b, (size_t)num_blocks * sizeof(fr_t), 0));
+    CHECK_CUDA(cudaMallocAsync(&d_quotient, (size_t)n * sizeof(fr_t), 0));
     
     mercury_horner_scan_phase1<<<num_blocks, BLOCK>>>(d_f, d_block_m, d_block_b,
                                                        d_local_m, d_local_b, zeta, n);
@@ -1133,9 +1185,10 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
     if (d_quot_out) {
         *d_quot_out = d_quotient;
     } else {
-        cudaFree(d_quotient);
+        cudaFreeAsync(d_quotient, 0);
     }
     
+    // Always free d_f (either we allocated it or caller passed it for us to consume)
     cudaFree(d_f);
     cudaFree(d_local_m);
     cudaFree(d_local_b);
@@ -1146,7 +1199,7 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
 
 // Free a device pointer allocated by the above functions
 void gpu_free_device(void* d_ptr) {
-    if (d_ptr) cudaFree(d_ptr);
+    if (d_ptr) cudaFreeAsync(d_ptr, 0);
 }
 
 } // extern "C"

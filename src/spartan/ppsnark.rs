@@ -1353,15 +1353,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         phase2_result.map_err(|_| NovaError::InternalError)?;
         eprintln!("[ppsnark]   phase2_construct: {:?}", _t2.elapsed());
 
-        // Commit 4 memory oracle polys
+        // Commit 4 memory oracle polys, then download for EE witness
         let _t2 = std::time::Instant::now();
-
-        // Download memory oracle polys first (needed later for EE witness)
-        // Download only the 4 oracle polys (skip aux — not needed in GPU path)
-        let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
-          .map_err(|_| NovaError::InternalError)?;
-        let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
-        eprintln!("[ppsnark]     mem download: {:?}", _t2.elapsed());
 
         let _t3 = std::time::Instant::now();
         let comm_mem_oracles = if n >= 256 {
@@ -1376,15 +1369,22 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           }).collect();
           [comms[0], comms[1], comms[2], comms[3]]
         } else {
-          // Small circuit: CPU commit from downloaded data
+          let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
+            .map_err(|_| NovaError::InternalError)?;
+          let mo: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
           [
-            E::CE::commit(ck, &mem_oracles[0], &E::Scalar::ZERO),
-            E::CE::commit(ck, &mem_oracles[1], &E::Scalar::ZERO),
-            E::CE::commit(ck, &mem_oracles[2], &E::Scalar::ZERO),
-            E::CE::commit(ck, &mem_oracles[3], &E::Scalar::ZERO),
+            E::CE::commit(ck, &mo[0], &E::Scalar::ZERO),
+            E::CE::commit(ck, &mo[1], &E::Scalar::ZERO),
+            E::CE::commit(ck, &mo[2], &E::Scalar::ZERO),
+            E::CE::commit(ck, &mo[3], &E::Scalar::ZERO),
           ]
         };
         eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
+
+        // Download oracle polys (needed for EE witness later)
+        let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
+          .map_err(|_| NovaError::InternalError)?;
+        let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
         eprintln!("[ppsnark]   mem oracle download+commit: {:?}", _t2.elapsed());
 
         // Absorb commitments, squeeze rho

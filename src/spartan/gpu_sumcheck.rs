@@ -87,6 +87,7 @@ extern "C" {
     quotient: *mut u8,
     remainder: *mut u8,
     d_quot_out: *mut *mut u8,
+    d_f_out: *mut *mut u8,
   ) -> i32;
 
   fn gpu_mercury_quot_f(
@@ -100,9 +101,17 @@ extern "C" {
     quotient: *mut u8,
     remainder: *mut u8,
     d_quot_out: *mut *mut u8,
+    d_f_in: *mut u8,
   ) -> i32;
 
   fn gpu_free_device(d_ptr: *mut u8);
+
+  // Async oracle download
+  fn gpu_start_async_download_oracles(poly_ids: *const u32, n: u32) -> i32;
+  fn gpu_finish_async_download_oracles(
+    dst0: *mut u8, dst1: *mut u8, dst2: *mut u8, dst3: *mut u8,
+    n: u32,
+  ) -> i32;
 }
 
 /// Raw bytes of a scalar in Montgomery form (no conversion).
@@ -257,6 +266,39 @@ pub fn phase2_download_mem_oracles_only(n: usize) -> Result<[Vec<Scalar>; 4], St
     unsafe { v.set_len(n) };
     v
   });
+  Ok(oracle)
+}
+
+/// Start async download of 4 oracle polys on a dedicated CUDA stream.
+/// Returns immediately. Call `finish_async_download_oracles` after MSMs complete.
+pub fn start_async_download_oracles(n: usize) -> Result<(), String> {
+  let poly_ids = [1u32, 3, 6, 8];
+  let ret = unsafe { gpu_start_async_download_oracles(poly_ids.as_ptr(), n as u32) };
+  if ret != 0 {
+    return Err("gpu_start_async_download_oracles failed".to_string());
+  }
+  Ok(())
+}
+
+/// Finish async download: sync download stream, copy to returned Vecs.
+pub fn finish_async_download_oracles(n: usize) -> Result<[Vec<Scalar>; 4], String> {
+  let mut oracle: [Vec<Scalar>; 4] = std::array::from_fn(|_| {
+    let mut v = Vec::<Scalar>::with_capacity(n);
+    unsafe { v.set_len(n) };
+    v
+  });
+  let ret = unsafe {
+    gpu_finish_async_download_oracles(
+      oracle[0].as_mut_ptr() as *mut u8,
+      oracle[1].as_mut_ptr() as *mut u8,
+      oracle[2].as_mut_ptr() as *mut u8,
+      oracle[3].as_mut_ptr() as *mut u8,
+      n as u32,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_finish_async_download_oracles failed".to_string());
+  }
   Ok(oracle)
 }
 
@@ -514,13 +556,14 @@ pub fn gpu_poly_divide_by_binomial(
   coeffs: &[Scalar],
   b: usize,
   alpha: &Scalar,
-) -> Result<(Vec<Scalar>, Vec<Scalar>, *mut u8), String> {
+) -> Result<(Vec<Scalar>, Vec<Scalar>, *mut u8, *mut u8), String> {
   assert_eq!(coeffs.len(), b * b);
 
   let quot_len = (b - 1) * b;
   let mut quotient = vec![Scalar::default(); quot_len];
   let mut remainder = vec![Scalar::default(); b];
   let mut d_quot: *mut u8 = std::ptr::null_mut();
+  let mut d_f: *mut u8 = std::ptr::null_mut();
 
   let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
   let ret = unsafe {
@@ -531,12 +574,13 @@ pub fn gpu_poly_divide_by_binomial(
       quotient.as_mut_ptr() as *mut u8,
       remainder.as_mut_ptr() as *mut u8,
       &mut d_quot,
+      &mut d_f,
     )
   };
   if ret != 0 {
     return Err("gpu_mercury_divide_by_binomial failed".to_string());
   }
-  Ok((quotient, remainder, d_quot))
+  Ok((quotient, remainder, d_quot, d_f))
 }
 
 /// GPU-accelerated quot_f computation:
@@ -548,6 +592,7 @@ pub fn gpu_mercury_compute_quot_f(
   scale: &Scalar,
   g_zeta: &Scalar,
   zeta: &Scalar,
+  d_f_in: *mut u8,
 ) -> Result<(Vec<Scalar>, Scalar, *mut u8), String> {
   let f_len = f_coeffs.len();
   if f_len < 2 {
@@ -571,6 +616,7 @@ pub fn gpu_mercury_compute_quot_f(
       quotient.as_mut_ptr() as *mut u8,
       &mut remainder as *mut Scalar as *mut u8,
       &mut d_quot,
+      d_f_in,
     )
   };
   if ret != 0 {
