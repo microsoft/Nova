@@ -2,36 +2,61 @@
 
 //! GPU-accelerated sumcheck for BN254 ppsnark.
 //!
-//! Uploads all 21 polynomials to GPU once, then runs evaluation + bind
-//! rounds without re-uploading. Per-round communication is ~1KB.
+//! Three-phase design matching transcript ordering:
+//! - Phase 0: Static upload (row, col, val_A/B/C, ts_row, ts_col) — once per circuit.
+//! - Phase 1: After tau — compute L_row, L_col via GPU gather.
+//! - Phase 2: After c, gamma, r — compute val, memory hash, batch inversion.
+//! - Phase 3: After rho — construct eq polynomials, setup sumcheck.
 //!
-//! IMPORTANT: All scalars are transferred in Montgomery form (raw internal
-//! representation), NOT standard form. sppark's fr_t (mont_t) uses the same
-//! Montgomery representation as halo2curves::bn256::Fr.
+//! All scalars transferred in Montgomery form (raw internal representation).
 
 use halo2curves::bn256;
 use std::sync::Mutex;
 
 type Scalar = bn256::Fr;
 
-/// Size of a BN254 scalar in bytes (256 bits = 32 bytes).
 const SCALAR_BYTES: usize = 32;
-
-/// Number of polynomials in the GPU sumcheck (19 data + 2 eq).
-const NUM_POLYS: usize = 21;
-
-/// Number of claims (10 claims × 3 values = 30 results per round).
 const NUM_CLAIMS: usize = 10;
 const RESULTS_PER_ROUND: usize = NUM_CLAIMS * 3;
 
 static GPU_SC_LOCK: Mutex<()> = Mutex::new(());
 
 extern "C" {
-  fn gpu_sumcheck_setup(poly_ptrs: *const *const u8, n: u32) -> i32;
+  // Phase 0: Static upload
+  fn gpu_static_upload(
+    row_int: *const u32, col_int: *const u32,
+    row_fr: *const u8, col_fr: *const u8,
+    val_A: *const u8, val_B: *const u8, val_C: *const u8,
+    ts_row: *const u8, ts_col: *const u8,
+    n: u32,
+  ) -> i32;
+  fn gpu_static_free();
+
+  // Phase 1: After tau
+  fn gpu_phase1_init(eq_tau: *const u8, z_padded: *const u8, n: u32) -> i32;
+  fn gpu_download_L(L_row: *mut u8, L_col: *mut u8) -> i32;
+
+  // Phase 2: After c, gamma, r
+  fn gpu_phase2_construct(
+    Az: *const u8, Bz: *const u8, uCz_E: *const u8, Mz: *const u8,
+    W: *const u8, masked_eq: *const u8,
+    c: *const u8, gamma: *const u8, r: *const u8,
+    n: u32,
+  ) -> i32;
+  fn gpu_download_mem_oracles(
+    t_plus_r_inv_row: *mut u8, w_plus_r_inv_row: *mut u8,
+    t_plus_r_inv_col: *mut u8, w_plus_r_inv_col: *mut u8,
+    t_plus_r_row: *mut u8, w_plus_r_row: *mut u8,
+    t_plus_r_col: *mut u8, w_plus_r_col: *mut u8,
+  ) -> i32;
+
+  // Phase 3: After rho
+  fn gpu_phase3_setup_sumcheck(rho: *const u8, tau: *const u8, num_rounds: u32) -> i32;
+
+  // Sumcheck operations
   fn gpu_sumcheck_eval_round(half_n: u32, results: *mut u8) -> i32;
   fn gpu_sumcheck_bind(r: *const u8, half_n: u32) -> i32;
   fn gpu_sumcheck_get_final(poly_id: u32, result: *mut u8) -> i32;
-  fn gpu_sumcheck_get_element(poly_id: u32, idx: u32, result: *mut u8) -> i32;
   fn gpu_sumcheck_free();
 }
 
@@ -48,7 +73,122 @@ fn scalar_from_raw(bytes: &[u8]) -> Scalar {
   unsafe { std::ptr::read(bytes.as_ptr() as *const Scalar) }
 }
 
-/// State for a GPU sumcheck session.
+/// Upload static circuit data to GPU (called once per circuit).
+pub fn static_upload(
+  row_int: &[u32],
+  col_int: &[u32],
+  row_fr: &[Scalar],
+  col_fr: &[Scalar],
+  val_a: &[Scalar],
+  val_b: &[Scalar],
+  val_c: &[Scalar],
+  ts_row: &[Scalar],
+  ts_col: &[Scalar],
+) -> Result<(), String> {
+  let n = row_int.len();
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_static_upload(
+      row_int.as_ptr(), col_int.as_ptr(),
+      row_fr.as_ptr() as *const u8, col_fr.as_ptr() as *const u8,
+      val_a.as_ptr() as *const u8, val_b.as_ptr() as *const u8, val_c.as_ptr() as *const u8,
+      ts_row.as_ptr() as *const u8, ts_col.as_ptr() as *const u8,
+      n as u32,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_static_upload failed".to_string());
+  }
+  Ok(())
+}
+
+/// Phase 1: Upload eq(tau) and z, compute L_row/L_col via GPU gather.
+pub fn phase1_init(eq_tau: &[Scalar], z_padded: &[Scalar]) -> Result<(), String> {
+  let n = eq_tau.len() as u32;
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_phase1_init(
+      eq_tau.as_ptr() as *const u8,
+      z_padded.as_ptr() as *const u8,
+      n,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_phase1_init failed".to_string());
+  }
+  Ok(())
+}
+
+/// Download L_row and L_col computed by phase 1.
+pub fn phase1_download_l(n: usize) -> Result<(Vec<Scalar>, Vec<Scalar>), String> {
+  let mut l_row = vec![Scalar::default(); n];
+  let mut l_col = vec![Scalar::default(); n];
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_download_L(
+      l_row.as_mut_ptr() as *mut u8,
+      l_col.as_mut_ptr() as *mut u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_download_L failed".to_string());
+  }
+  Ok((l_row, l_col))
+}
+
+/// Phase 2: Upload dynamic polynomials, compute val/hash/batch_invert on GPU.
+pub fn phase2_construct(
+  az: &[Scalar], bz: &[Scalar], ucz_e: &[Scalar], mz: &[Scalar],
+  w: &[Scalar], masked_eq: &[Scalar],
+  c: &Scalar, gamma: &Scalar, r: &Scalar,
+) -> Result<(), String> {
+  let n = az.len() as u32;
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_phase2_construct(
+      az.as_ptr() as *const u8, bz.as_ptr() as *const u8,
+      ucz_e.as_ptr() as *const u8, mz.as_ptr() as *const u8,
+      w.as_ptr() as *const u8, masked_eq.as_ptr() as *const u8,
+      scalar_to_raw(c).as_ptr(), scalar_to_raw(gamma).as_ptr(), scalar_to_raw(r).as_ptr(),
+      n,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_phase2_construct failed".to_string());
+  }
+  Ok(())
+}
+
+/// Download memory oracle + auxiliary polynomials from phase 2.
+pub fn phase2_download_mem_oracles(n: usize) -> Result<([Vec<Scalar>; 4], [Vec<Scalar>; 4]), String> {
+  let mut oracle = [
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+  ];
+  let mut aux = [
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+  ];
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_download_mem_oracles(
+      oracle[0].as_mut_ptr() as *mut u8, oracle[1].as_mut_ptr() as *mut u8,
+      oracle[2].as_mut_ptr() as *mut u8, oracle[3].as_mut_ptr() as *mut u8,
+      aux[0].as_mut_ptr() as *mut u8, aux[1].as_mut_ptr() as *mut u8,
+      aux[2].as_mut_ptr() as *mut u8, aux[3].as_mut_ptr() as *mut u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_download_mem_oracles failed".to_string());
+  }
+  Ok((oracle, aux))
+}
+
+/// State for a GPU sumcheck session (created by phase 3).
 pub struct GpuSumcheckState {
   #[allow(dead_code)]
   n: usize,
@@ -56,49 +196,26 @@ pub struct GpuSumcheckState {
 }
 
 impl GpuSumcheckState {
-  /// Upload all 21 polynomials to GPU.
-  ///
-  /// Polynomial order (matching gpu_sumcheck.cu):
-  ///   0-9:   Memory instance (t_row, t_inv_row, w_row, w_inv_row, ts_row,
-  ///                           t_col, t_inv_col, w_col, w_inv_col, ts_col)
-  ///   10-13: Outer instance (Az, Bz, uCz_E, Mz)
-  ///   14-16: Inner instance (L_row, L_col, val)
-  ///   17-18: Witness instance (W, masked_eq)
-  ///   19-20: Eq polynomials (eq_memory, eq_outer)
-  pub fn setup(polys: &[&[Scalar]; NUM_POLYS]) -> Result<Self, String> {
-    let n = polys[0].len();
-    for (i, p) in polys.iter().enumerate() {
-      if p.len() != n {
-        return Err(format!("polynomial {} has size {} but expected {}", i, p.len(), n));
-      }
-    }
-
-    // Pass pointers directly to GPU — no intermediate flat buffer
-    let ptrs: [*const u8; NUM_POLYS] = std::array::from_fn(|i| polys[i].as_ptr() as *const u8);
-
+  /// Phase 3: Construct eq polynomials from rho/tau, setup sumcheck.
+  pub fn phase3_setup(rho: &[Scalar], tau: &[Scalar], n: usize) -> Result<Self, String> {
+    let num_rounds = rho.len() as u32;
     let _lock = GPU_SC_LOCK.lock().unwrap();
-    let ret = unsafe { gpu_sumcheck_setup(ptrs.as_ptr(), n as u32) };
+    let ret = unsafe {
+      gpu_phase3_setup_sumcheck(
+        rho.as_ptr() as *const u8,
+        tau.as_ptr() as *const u8,
+        num_rounds,
+      )
+    };
     if ret != 0 {
-      return Err("gpu_sumcheck_setup failed".to_string());
+      return Err("gpu_phase3_setup_sumcheck failed".to_string());
     }
-
-    Ok(GpuSumcheckState {
-      n,
-      current_half_n: n / 2,
-    })
+    Ok(GpuSumcheckState { n, current_half_n: n / 2 })
   }
 
   /// Compute evaluation points for one sumcheck round.
-  ///
-  /// Returns 10 triples of (eval_0, bound_coeff, eval_inf), in claim order:
-  ///   [0] = linear row, [1] = linear col,
-  ///   [2] = cubic3in row, [3] = cubic2in row,
-  ///   [4] = cubic3in col, [5] = cubic2in col,
-  ///   [6] = cubic3in outer, [7] = cubic1in outer,
-  ///   [8] = cubic_deg3 inner, [9] = quadratic witness
   pub fn eval_round(&self) -> Result<Vec<[Scalar; 3]>, String> {
     let mut raw = vec![0u8; RESULTS_PER_ROUND * SCALAR_BYTES];
-
     let _lock = GPU_SC_LOCK.lock().unwrap();
     let ret = unsafe {
       gpu_sumcheck_eval_round(self.current_half_n as u32, raw.as_mut_ptr())
@@ -106,17 +223,15 @@ impl GpuSumcheckState {
     if ret != 0 {
       return Err("gpu_sumcheck_eval_round failed".to_string());
     }
-
-    // Parse 30 scalars into 10 triples
     let mut results = Vec::with_capacity(NUM_CLAIMS);
     for c in 0..NUM_CLAIMS {
       let base = c * 3 * SCALAR_BYTES;
-      let s0 = scalar_from_raw(&raw[base..base + SCALAR_BYTES]);
-      let s1 = scalar_from_raw(&raw[base + SCALAR_BYTES..base + 2 * SCALAR_BYTES]);
-      let s2 = scalar_from_raw(&raw[base + 2 * SCALAR_BYTES..base + 3 * SCALAR_BYTES]);
-      results.push([s0, s1, s2]);
+      results.push([
+        scalar_from_raw(&raw[base..base + SCALAR_BYTES]),
+        scalar_from_raw(&raw[base + SCALAR_BYTES..base + 2 * SCALAR_BYTES]),
+        scalar_from_raw(&raw[base + 2 * SCALAR_BYTES..base + 3 * SCALAR_BYTES]),
+      ]);
     }
-
     Ok(results)
   }
 
@@ -127,7 +242,6 @@ impl GpuSumcheckState {
     if ret != 0 {
       return Err("gpu_sumcheck_bind failed".to_string());
     }
-
     self.current_half_n /= 2;
     Ok(())
   }
@@ -135,23 +249,10 @@ impl GpuSumcheckState {
   /// Get the final scalar value of polynomial `poly_id` (after all rounds).
   pub fn get_final(&self, poly_id: usize) -> Result<Scalar, String> {
     let mut raw = [0u8; SCALAR_BYTES];
-
     let _lock = GPU_SC_LOCK.lock().unwrap();
     let ret = unsafe { gpu_sumcheck_get_final(poly_id as u32, raw.as_mut_ptr()) };
     if ret != 0 {
       return Err(format!("gpu_sumcheck_get_final({}) failed", poly_id));
-    }
-
-    Ok(scalar_from_raw(&raw))
-  }
-  /// Read element [idx] from polynomial [poly_id] on GPU (for debugging).
-  pub fn get_element(&self, poly_id: usize, idx: usize) -> Result<Scalar, String> {
-    let mut raw = [0u8; SCALAR_BYTES];
-    let _lock = GPU_SC_LOCK.lock().unwrap();
-    let ret =
-      unsafe { gpu_sumcheck_get_element(poly_id as u32, idx as u32, raw.as_mut_ptr()) };
-    if ret != 0 {
-      return Err(format!("gpu_sumcheck_get_element({},{}) failed", poly_id, idx));
     }
     Ok(scalar_from_raw(&raw))
   }
@@ -165,7 +266,9 @@ impl Drop for GpuSumcheckState {
   }
 }
 
-/// Materialize eq(tau, x) for all x in {0,1}^n as a vector of N scalars.
-pub fn materialize_eq(tau: &[Scalar]) -> Vec<Scalar> {
-  crate::spartan::polys::eq::EqPolynomial::evals_from_points(tau)
+/// Free static GPU data.
+pub fn static_free() {
+  if let Ok(_lock) = GPU_SC_LOCK.lock() {
+    unsafe { gpu_static_free() };
+  }
 }

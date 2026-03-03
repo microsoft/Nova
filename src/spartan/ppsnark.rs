@@ -377,6 +377,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     L_col: &[E::Scalar],
     ts_col: &[E::Scalar],
   ) -> Result<([Commitment<E>; 4], [Vec<E::Scalar>; 4], [Vec<E::Scalar>; 4]), NovaError> {
+    let _t0 = std::time::Instant::now();
     // hash the tuples of (addr,val) memory contents and read responses into a single field element using `hash_func`
     let hash_func_vec = |mem: &[E::Scalar],
                          addr: &[E::Scalar],
@@ -402,7 +403,9 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       || hash_func_vec(mem_row, addr_row, L_row),
       || hash_func_vec(mem_col, addr_col, L_col),
     );
+    eprintln!("[compute_oracles] hash: {:?}", _t0.elapsed());
 
+    let _t1 = std::time::Instant::now();
     // compute vectors TS[i]/(T[i] + r) and 1/(W[i] + r)
     let helper = |T: &[E::Scalar],
                   W: &[E::Scalar],
@@ -446,7 +449,9 @@ impl<E: Engine> MemorySumcheckInstance<E> {
 
     let (t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_row, w_plus_r_row) = row?;
     let (t_plus_r_inv_col, w_plus_r_inv_col, t_plus_r_col, w_plus_r_col) = col?;
+    eprintln!("[compute_oracles] batch_invert+add_r: {:?}", _t1.elapsed());
 
+    let _t2 = std::time::Instant::now();
     let (
       (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
       (comm_t_plus_r_inv_col, comm_w_plus_r_inv_col),
@@ -464,6 +469,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
         )
       },
     );
+    eprintln!("[compute_oracles] 4 commits: {:?}", _t2.elapsed());
 
     let comm_vec = [
       comm_t_plus_r_inv_row,
@@ -1002,19 +1008,13 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
     ))
   }
 
-  /// GPU-accelerated sumcheck for BN254.
-  ///
-  /// Uploads all 21 polynomials to GPU once, runs eval+bind rounds with only
-  /// ~1KB per-round host↔device communication (challenge scalar + 30 results).
+  /// Run GPU sumcheck rounds, returning (proof, rand, claims_per_instance).
   #[cfg(feature = "sppark")]
   #[allow(unsafe_code)]
-  fn gpu_prove_helper(
-    mem: &MemorySumcheckInstance<E>,
-    outer: &OuterSumcheckInstance<E>,
-    inner: &InnerSumcheckInstance<E>,
-    witness: &WitnessBoundSumcheck<E>,
-    rho: &[E::Scalar],
-    tau: &[E::Scalar],
+  fn gpu_sumcheck_rounds(
+    gpu: &mut super::gpu_sumcheck::GpuSumcheckState,
+    claims: &[E::Scalar],
+    num_rounds: usize,
     transcript: &mut E::TE,
   ) -> Result<
     (
@@ -1027,69 +1027,19 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
     ),
     NovaError,
   > {
-    use super::gpu_sumcheck::{self, GpuSumcheckState};
     type Fr = halo2curves::bn256::Fr;
-
-    // SAFETY: Caller guarantees E::Scalar == Fr via TypeId check.
-    let as_fr = |s: &[E::Scalar]| -> &[Fr] {
-      unsafe { std::slice::from_raw_parts(s.as_ptr() as *const Fr, s.len()) }
-    };
     let fr_to_scalar = |f: Fr| -> E::Scalar { unsafe { std::mem::transmute_copy(&f) } };
-
-    // Materialize eq polynomials as full vectors
-    let eq_memory = gpu_sumcheck::materialize_eq(as_fr(rho));
-    let eq_outer = gpu_sumcheck::materialize_eq(as_fr(tau));
-
-    // Polynomial layout matching gpu_sumcheck.cu claim dispatch
-    let polys: [&[Fr]; 21] = [
-      as_fr(&mem.t_plus_r_row.Z),       // 0
-      as_fr(&mem.t_plus_r_inv_row.Z),   // 1
-      as_fr(&mem.w_plus_r_row.Z),       // 2
-      as_fr(&mem.w_plus_r_inv_row.Z),   // 3
-      as_fr(&mem.ts_row.Z),             // 4
-      as_fr(&mem.t_plus_r_col.Z),       // 5
-      as_fr(&mem.t_plus_r_inv_col.Z),   // 6
-      as_fr(&mem.w_plus_r_col.Z),       // 7
-      as_fr(&mem.w_plus_r_inv_col.Z),   // 8
-      as_fr(&mem.ts_col.Z),             // 9
-      as_fr(&outer.poly_Az.Z),          // 10
-      as_fr(&outer.poly_Bz.Z),          // 11
-      as_fr(&outer.poly_uCz_E.Z),       // 12
-      as_fr(&outer.poly_Mz.Z),          // 13
-      as_fr(&inner.poly_L_row.Z),       // 14
-      as_fr(&inner.poly_L_col.Z),       // 15
-      as_fr(&inner.poly_val.Z),         // 16
-      as_fr(&witness.poly_W.Z),         // 17
-      as_fr(&witness.poly_masked_eq.Z), // 18
-      &eq_memory,                        // 19
-      &eq_outer,                         // 20
-    ];
-
-    let mut gpu =
-      GpuSumcheckState::setup(&polys).map_err(|_| NovaError::InternalError)?;
-
-    // Initial claims + random linear combination (identical to CPU path)
-    let claims = mem
-      .initial_claims()
-      .into_iter()
-      .chain(outer.initial_claims())
-      .chain(inner.initial_claims())
-      .chain(witness.initial_claims())
-      .collect::<Vec<E::Scalar>>();
 
     let s = transcript.squeeze(b"r")?;
     let coeffs = powers::<E>(&s, claims.len());
-    let claim = zip_with!((claims.iter(), coeffs.iter()), |c_1, c_2| *c_1 * c_2).sum();
+    let claim: E::Scalar = zip_with!((claims.iter(), coeffs.iter()), |c_1, c_2| *c_1 * c_2).sum();
 
     let mut e = claim;
     let mut r_vec: Vec<E::Scalar> = Vec::new();
     let mut cubic_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
-    let num_rounds = mem.size().log_2();
 
     for _round in 0..num_rounds {
-      let gpu_evals = gpu
-        .eval_round()
-        .map_err(|_| NovaError::InternalError)?;
+      let gpu_evals = gpu.eval_round().map_err(|_| NovaError::InternalError)?;
 
       let evals_combined_0: E::Scalar = (0..gpu_evals.len())
         .map(|i| fr_to_scalar(gpu_evals[i][0]) * coeffs[i])
@@ -1114,9 +1064,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
       r_vec.push(r_i);
 
       let r_fr: Fr = unsafe { std::mem::transmute_copy(&r_i) };
-      gpu
-        .bind(&r_fr)
-        .map_err(|_| NovaError::InternalError)?;
+      gpu.bind(&r_fr).map_err(|_| NovaError::InternalError)?;
 
       e = poly.evaluate(&r_i);
       cubic_polys.push(poly.compress());
@@ -1124,19 +1072,16 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
 
     // Extract final polynomial values from GPU
     let get = |poly_id: usize| -> Result<E::Scalar, NovaError> {
-      gpu
-        .get_final(poly_id)
-        .map(|f| fr_to_scalar(f))
-        .map_err(|_| NovaError::InternalError)
+      gpu.get_final(poly_id).map(|f| fr_to_scalar(f)).map_err(|_| NovaError::InternalError)
     };
 
     let mem_claims = vec![
-      vec![get(1)?, get(3)?, get(4)?], // t_inv_row, w_inv_row, ts_row
-      vec![get(6)?, get(8)?, get(9)?], // t_inv_col, w_inv_col, ts_col
+      vec![get(1)?, get(3)?, get(4)?],
+      vec![get(6)?, get(8)?, get(9)?],
     ];
-    let outer_claims = vec![vec![get(10)?, get(11)?]]; // Az, Bz
-    let inner_claims = vec![vec![get(14)?, get(15)?]]; // L_row, L_col
-    let witness_claims = vec![vec![get(17)?, get(18)?]]; // W, masked_eq
+    let outer_claims = vec![vec![get(10)?, get(11)?]];
+    let inner_claims = vec![vec![get(14)?, get(15)?]];
+    let witness_claims = vec![vec![get(17)?, get(18)?]];
 
     Ok((
       SumcheckProof::new(cubic_polys),
@@ -1219,6 +1164,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 
   /// produces a succinct proof of satisfiability of a `RelaxedR1CS` instance
+  #[allow(unsafe_code)]
   fn prove(
     ck: &CommitmentKey<E>,
     pk: &Self::ProverKey,
@@ -1226,10 +1172,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     U: &RelaxedR1CSInstance<E>,
     W: &RelaxedR1CSWitness<E>,
   ) -> Result<Self, NovaError> {
+    let _prove_start = std::time::Instant::now();
     // pad the R1CSShape
     let S = S.pad();
     // sanity check that R1CSShape has all required size characteristics
     assert!(S.is_regular_shape());
+    eprintln!("[prove] N = {}", pk.S_repr.N);
 
     let W = W.pad(&S); // pad the witness
     let mut transcript = E::TE::new(b"RelaxedR1CSSNARK");
@@ -1241,10 +1189,13 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
+    let _t = std::time::Instant::now();
     // compute Az, Bz, Cz
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
+    eprintln!("[prove] multiply_vec: {:?}", _t.elapsed());
 
     // commit to Az, Bz, Cz
+    let _t = std::time::Instant::now();
     let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
       || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
       || {
@@ -1254,6 +1205,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         )
       },
     );
+    eprintln!("[prove] commit Az,Bz,Cz: {:?}", _t.elapsed());
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
@@ -1264,6 +1216,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .collect::<Result<Vec<_>, NovaError>>()?;
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
+    let _t = std::time::Instant::now();
     let (Az, Bz, Cz, W, E) = {
       Az.resize(pk.S_repr.N, E::Scalar::ZERO);
       Bz.resize(pk.S_repr.N, E::Scalar::ZERO);
@@ -1278,149 +1231,275 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       (evals_at_tau[0], evals_at_tau[1], evals_at_tau[2])
     };
 
-    // (2) send commitments to the following two oracles
-    // L_row(i) = eq(tau, row(i)) for all i
-    // L_col(i) = z(col(i)) for all i
-    let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
-    let (comm_L_row, comm_L_col) = rayon::join(
-      || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
-      || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
-    );
+    // (2) compute L_row, L_col and memory oracle polynomials, then run sumcheck
+    // GPU path: construct all polynomials on GPU in 3 phases matching transcript ordering
+    // CPU path: existing sequential computation
+    #[cfg(feature = "sppark")]
+    let is_gpu_bn254 = {
+      use std::any::TypeId;
+      TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>()
+    };
+    #[cfg(not(feature = "sppark"))]
+    let is_gpu_bn254 = false;
 
-    // since all the three polynomials are opened at tau,
-    // we can combine them into a single polynomial opened at tau
-    let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
+    #[allow(unused_variables)]
+    let (
+      L_row, L_col,
+      comm_L_row, comm_L_col,
+      w, u,
+      comm_mem_oracles, mem_oracles,
+      sc, rand_sc,
+      claims_mem, claims_outer, claims_inner, claims_witness,
+    ) = if is_gpu_bn254 {
+      #[cfg(feature = "sppark")]
+      {
+        use super::gpu_sumcheck;
+        type Fr = halo2curves::bn256::Fr;
 
-    // absorb the claimed evaluations into the transcript
-    transcript.absorb(b"e", &eval_vec.as_slice());
-    // absorb commitments to L_row and L_col in the transcript
-    transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
-    let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
-    let poly_vec = vec![&Az, &Bz, &Cz];
-    let c = transcript.squeeze(b"c")?;
-    let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
-    let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
-
-    // we now need to prove four claims
-    // (1) 0 = \sum_x poly_tau(x) * (poly_Az(x) * poly_Bz(x) - poly_uCz_E(x)), and eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau = (Az+r*Bz+r^2*Cz)(tau)
-    // (2) eval_Az_at_tau + c * eval_Bz_at_tau + c^2 * eval_Cz_at_tau = \sum_y L_row(y) * (val_A(y) + c * val_B(y) + c^2 * val_C(y)) * L_col(y)
-    // (3) L_row(i) = eq(tau, row(i)) and L_col(i) = z(col(i))
-    // (4) Check that the witness polynomial W is well-formed e.g., it is padded with only zeros
-    let gamma = transcript.squeeze(b"g")?;
-    let r = transcript.squeeze(b"r")?;
-
-    let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
-      || {
-        // a sum-check instance to prove the first claim
-        let outer_sc_inst = OuterSumcheckInstance::new(
-          tau.clone(),
-          Az.clone(),
-          Bz.clone(),
-          (0..Cz.len())
-            .map(|i| U.u * Cz[i] + E[i])
-            .collect::<Vec<E::Scalar>>(),
-          w.p.clone(), // Mz = Az + r * Bz + r^2 * Cz
-          &u.e,        // eval_Az_at_tau + r * eval_Bz_at_tau + r^2 * eval_Cz_at_tau
-        );
-
-        // a sum-check instance to prove the second claim
-        let val = zip_with!(
-          par_iter,
-          (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
-          |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
-        )
-        .collect::<Vec<E::Scalar>>();
-        let inner_sc_inst = InnerSumcheckInstance {
-          claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
-          poly_L_row: MultilinearPolynomial::new(L_row.clone()),
-          poly_L_col: MultilinearPolynomial::new(L_col.clone()),
-          poly_val: MultilinearPolynomial::new(val),
+        let as_fr = |s: &[E::Scalar]| -> &[Fr] {
+          unsafe { std::slice::from_raw_parts(s.as_ptr() as *const Fr, s.len()) }
+        };
+        let fr_vec_to_scalar = |v: Vec<Fr>| -> Vec<E::Scalar> {
+          let mut v = std::mem::ManuallyDrop::new(v);
+          unsafe { Vec::from_raw_parts(v.as_mut_ptr() as *mut E::Scalar, v.len(), v.capacity()) }
         };
 
-        (outer_sc_inst, inner_sc_inst)
-      },
-      || {
-        // a third sum-check instance to prove the read-only memory claim
-        // we now need to prove that L_row and L_col are well-formed
+        let n = pk.S_repr.N;
+        let num_rounds = n.log_2();
 
-        // hash the tuples of (addr,val) memory contents and read responses into a single field element using `hash_func`
+        // Static upload: extract integer row/col indices and upload circuit data to GPU
+        let _t = std::time::Instant::now();
+        {
+          let mut row_int = vec![0u32; n];
+          let mut col_int = vec![(n - 1) as u32; n];
+          for (i, (r, c, _)) in S.A.iter().chain(S.B.iter()).chain(S.C.iter()).enumerate() {
+            row_int[i] = r as u32;
+            col_int[i] = c as u32;
+          }
+          gpu_sumcheck::static_upload(
+            &row_int, &col_int,
+            as_fr(&pk.S_repr.row), as_fr(&pk.S_repr.col),
+            as_fr(&pk.S_repr.val_A), as_fr(&pk.S_repr.val_B), as_fr(&pk.S_repr.val_C),
+            as_fr(&pk.S_repr.ts_row), as_fr(&pk.S_repr.ts_col),
+          ).map_err(|_| NovaError::InternalError)?;
+        }
+        eprintln!("[prove/gpu] static_upload: {:?}", _t.elapsed());
 
-        let (comm_mem_oracles, mem_oracles, mem_aux) =
-          MemorySumcheckInstance::<E>::compute_oracles(
-            ck,
-            &r,
-            &gamma,
-            &mem_row,
-            &pk.S_repr.row,
-            &L_row,
-            &pk.S_repr.ts_row,
-            &mem_col,
-            &pk.S_repr.col,
-            &L_col,
-            &pk.S_repr.ts_col,
-          )?;
-        // absorb the commitments
+        // Phase 1: compute L_row/L_col via GPU gather
+        let _t = std::time::Instant::now();
+        let mem_row = EqPolynomial::new(tau.clone()).evals();
+        let mem_col = padded::<E>(&z, n, &E::Scalar::ZERO);
+        gpu_sumcheck::phase1_init(as_fr(&mem_row), as_fr(&mem_col))
+          .map_err(|_| NovaError::InternalError)?;
+        let (l_row_fr, l_col_fr) = gpu_sumcheck::phase1_download_l(n)
+          .map_err(|_| NovaError::InternalError)?;
+        let L_row = fr_vec_to_scalar(l_row_fr);
+        let L_col = fr_vec_to_scalar(l_col_fr);
+        eprintln!("[prove/gpu] phase1 (L_row/L_col): {:?}", _t.elapsed());
+
+        // Commit L_row/L_col
+        let _t = std::time::Instant::now();
+        let (comm_L_row, comm_L_col) = rayon::join(
+          || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
+          || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
+        );
+        eprintln!("[prove/gpu] commit L_row/L_col: {:?}", _t.elapsed());
+
+        // Transcript: absorb evals + L commits, squeeze c
+        let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
+        transcript.absorb(b"e", &eval_vec.as_slice());
+        transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
+        let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
+        let poly_vec = vec![&Az, &Bz, &Cz];
+        let c = transcript.squeeze(b"c")?;
+        let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
+        let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
+
+        let gamma = transcript.squeeze(b"g")?;
+        let r = transcript.squeeze(b"r")?;
+
+        // Prepare dynamic polynomials for phase 2
+        let _t = std::time::Instant::now();
+        let uCz_E: Vec<E::Scalar> = (0..Cz.len())
+          .map(|i| U.u * Cz[i] + E[i])
+          .collect();
+        let masked_eq_evals = {
+          let num_vars_log = S.num_vars.log_2();
+          MaskedEqPolynomial::new(&EqPolynomial::new(tau.clone()), num_vars_log).evals()
+        };
+
+        // Phase 2: compute val, memory hash, batch_invert on GPU
+        gpu_sumcheck::phase2_construct(
+          as_fr(&Az), as_fr(&Bz), as_fr(&uCz_E), as_fr(&w.p),
+          as_fr(&W), as_fr(&masked_eq_evals),
+          unsafe { &*(&c as *const E::Scalar as *const Fr) },
+          unsafe { &*(&gamma as *const E::Scalar as *const Fr) },
+          unsafe { &*(&r as *const E::Scalar as *const Fr) },
+        ).map_err(|_| NovaError::InternalError)?;
+        eprintln!("[prove/gpu] phase2 (construct): {:?}", _t.elapsed());
+
+        // Download memory oracle polys for commitment
+        let _t = std::time::Instant::now();
+        let (oracle_fr, aux_fr) = gpu_sumcheck::phase2_download_mem_oracles(n)
+          .map_err(|_| NovaError::InternalError)?;
+        let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
+        let _mem_aux: [Vec<E::Scalar>; 4] = aux_fr.map(fr_vec_to_scalar);
+        eprintln!("[prove/gpu] download mem oracles: {:?}", _t.elapsed());
+
+        // Commit 4 memory oracle polys
+        let _t = std::time::Instant::now();
+        let ((comm_0, comm_1), (comm_2, comm_3)) = rayon::join(
+          || rayon::join(
+            || E::CE::commit(ck, &mem_oracles[0], &E::Scalar::ZERO),
+            || E::CE::commit(ck, &mem_oracles[1], &E::Scalar::ZERO),
+          ),
+          || rayon::join(
+            || E::CE::commit(ck, &mem_oracles[2], &E::Scalar::ZERO),
+            || E::CE::commit(ck, &mem_oracles[3], &E::Scalar::ZERO),
+          ),
+        );
+        let comm_mem_oracles = [comm_0, comm_1, comm_2, comm_3];
+        eprintln!("[prove/gpu] 4 mem commits: {:?}", _t.elapsed());
+
+        // Absorb commitments, squeeze rho
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());
-
-        let rho = (0..num_rounds_sc)
+        let rho = (0..num_rounds)
           .map(|_| transcript.squeeze(b"r"))
           .collect::<Result<Vec<_>, NovaError>>()?;
 
-        let rho_for_gpu = rho.clone();
-        Ok::<_, NovaError>((
-          MemorySumcheckInstance::new(
-            mem_oracles.clone(),
-            mem_aux,
-            rho,
-            pk.S_repr.ts_row.clone(),
-            pk.S_repr.ts_col.clone(),
-          ),
-          comm_mem_oracles,
-          mem_oracles,
-          rho_for_gpu,
-        ))
-      },
-    );
+        // Phase 3: construct eq polynomials, setup sumcheck
+        let _t = std::time::Instant::now();
+        let mut gpu = gpu_sumcheck::GpuSumcheckState::phase3_setup(
+          as_fr(&rho), as_fr(&tau), n,
+        ).map_err(|_| NovaError::InternalError)?;
+        eprintln!("[prove/gpu] phase3 (eq+setup): {:?}", _t.elapsed());
 
-    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles, sc_rho) = mem_res?;
+        // Compute initial claims for sumcheck
+        let inner_claim = eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau;
+        let claims: Vec<E::Scalar> = vec![
+          E::Scalar::ZERO, E::Scalar::ZERO,  // mem row: t_inv-w_inv (LogUp sum = 0)
+          E::Scalar::ZERO, E::Scalar::ZERO,  // mem col: t_inv-w_inv (LogUp sum = 0)
+          E::Scalar::ZERO, E::Scalar::ZERO,  // mem cubic extra claims
+          E::Scalar::ZERO, u.e,              // outer: [0, eval_at_tau]
+          inner_claim,                        // inner
+          E::Scalar::ZERO,                   // witness bound
+        ];
 
-    let sc_tau = tau.clone();
-    let mut witness_sc_inst = WitnessBoundSumcheck::new(tau, W.clone(), S.num_vars);
+        // Run GPU sumcheck rounds
+        let _t = std::time::Instant::now();
+        let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) =
+          Self::gpu_sumcheck_rounds(&mut gpu, &claims, num_rounds, &mut transcript)?;
+        eprintln!("[prove/gpu] sumcheck rounds: {:?}", _t.elapsed());
 
-    #[cfg(feature = "sppark")]
-    let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) = {
-      use std::any::TypeId;
-      if TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>() {
-        Self::gpu_prove_helper(
-          &mem_sc_inst,
-          &outer_sc_inst,
-          &inner_sc_inst,
-          &witness_sc_inst,
-          &sc_rho,
-          &sc_tau,
-          &mut transcript,
-        )?
-      } else {
+        (
+          L_row, L_col,
+          comm_L_row, comm_L_col,
+          w, u,
+          comm_mem_oracles, mem_oracles,
+          sc, rand_sc,
+          claims_mem, claims_outer, claims_inner, claims_witness,
+        )
+      }
+      #[cfg(not(feature = "sppark"))]
+      unreachable!()
+    } else {
+      // CPU path
+      let _t = std::time::Instant::now();
+      let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
+      eprintln!("[prove] eval_oracles + multi_eval: {:?}", _t.elapsed());
+
+      let _t = std::time::Instant::now();
+      let (comm_L_row, comm_L_col) = rayon::join(
+        || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
+        || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
+      );
+      eprintln!("[prove] commit L_row,L_col: {:?}", _t.elapsed());
+
+      let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
+      transcript.absorb(b"e", &eval_vec.as_slice());
+      transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
+      let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
+      let poly_vec = vec![&Az, &Bz, &Cz];
+      let c = transcript.squeeze(b"c")?;
+      let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
+      let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
+      let gamma = transcript.squeeze(b"g")?;
+      let r = transcript.squeeze(b"r")?;
+
+      let _t = std::time::Instant::now();
+      let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
+        || {
+          let outer_sc_inst = OuterSumcheckInstance::new(
+            tau.clone(),
+            Az.clone(),
+            Bz.clone(),
+            (0..Cz.len())
+              .map(|i| U.u * Cz[i] + E[i])
+              .collect::<Vec<E::Scalar>>(),
+            w.p.clone(),
+            &u.e,
+          );
+          let val = zip_with!(
+            par_iter,
+            (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
+            |v_a, v_b, v_c| *v_a + c * *v_b + c * c * *v_c
+          )
+          .collect::<Vec<E::Scalar>>();
+          let inner_sc_inst = InnerSumcheckInstance {
+            claim: eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau,
+            poly_L_row: MultilinearPolynomial::new(L_row.clone()),
+            poly_L_col: MultilinearPolynomial::new(L_col.clone()),
+            poly_val: MultilinearPolynomial::new(val),
+          };
+          (outer_sc_inst, inner_sc_inst)
+        },
+        || {
+          let (comm_mem_oracles, mem_oracles, mem_aux) =
+            MemorySumcheckInstance::<E>::compute_oracles(
+              ck, &r, &gamma,
+              &mem_row, &pk.S_repr.row, &L_row, &pk.S_repr.ts_row,
+              &mem_col, &pk.S_repr.col, &L_col, &pk.S_repr.ts_col,
+            )?;
+          transcript.absorb(b"l", &comm_mem_oracles.as_slice());
+          let rho = (0..num_rounds_sc)
+            .map(|_| transcript.squeeze(b"r"))
+            .collect::<Result<Vec<_>, NovaError>>()?;
+          Ok::<_, NovaError>((
+            MemorySumcheckInstance::new(
+              mem_oracles.clone(), mem_aux, rho,
+              pk.S_repr.ts_row.clone(), pk.S_repr.ts_col.clone(),
+            ),
+            comm_mem_oracles,
+            mem_oracles,
+          ))
+        },
+      );
+      eprintln!("[prove] sc_instances + mem_oracles + 4 commits: {:?}", _t.elapsed());
+
+      let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
+      let mut witness_sc_inst = WitnessBoundSumcheck::new(tau, W.clone(), S.num_vars);
+
+      let _t = std::time::Instant::now();
+      let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) =
         Self::prove_helper(
           &mut mem_sc_inst,
           &mut outer_sc_inst,
           &mut inner_sc_inst,
           &mut witness_sc_inst,
           &mut transcript,
-        )?
-      }
+        )?;
+      eprintln!("[prove] sumcheck: {:?}", _t.elapsed());
+
+      (
+        L_row, L_col,
+        comm_L_row, comm_L_col,
+        w, u,
+        comm_mem_oracles, mem_oracles,
+        sc, rand_sc,
+        claims_mem, claims_outer, claims_inner, claims_witness,
+      )
     };
-    #[cfg(not(feature = "sppark"))]
-    let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) = {
-      let _ = (sc_rho, sc_tau);
-      Self::prove_helper(
-        &mut mem_sc_inst,
-        &mut outer_sc_inst,
-        &mut inner_sc_inst,
-        &mut witness_sc_inst,
-        &mut transcript,
-      )?
-    };
+    eprintln!("[prove] sumcheck total: {:?}", _t.elapsed());
 
     // claims from the end of the sum-check
     let eval_Az = claims_outer[0][0];
@@ -1439,6 +1518,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_W = claims_witness[0][0];
 
     // compute the remaining claims that did not come for free from the sum-check prover
+    let _t = std::time::Instant::now();
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
       let e = MultilinearPolynomial::multi_evaluate_with(
         &[
@@ -1454,6 +1534,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       );
       (e[0], e[1], e[2], e[3], e[4], e[5], e[6])
     };
+    eprintln!("[prove] multi_evaluate_with: {:?}", _t.elapsed());
 
     // all the evaluations are at rand_sc, we can fold them into one claim
     let eval_vec = vec![
@@ -1521,10 +1602,15 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     ];
     transcript.absorb(b"e", &eval_vec.as_slice()); // comm_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
+    let _t = std::time::Instant::now();
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &rand_sc, &eval_vec, &c);
+    eprintln!("[prove] batch witness+instance: {:?}", _t.elapsed());
 
+    let _t = std::time::Instant::now();
     let eval_arg = EE::prove(ck, &pk.pk_ee, &mut transcript, &u.c, &w.p, &rand_sc, &u.e)?;
+    eprintln!("[prove] EE::prove (HyperKZG): {:?}", _t.elapsed());
+    eprintln!("[prove] TOTAL: {:?}", _prove_start.elapsed());
 
     Ok(RelaxedR1CSSNARK {
       comm_Az,

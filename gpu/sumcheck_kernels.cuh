@@ -288,4 +288,173 @@ void sumcheck_bind_kernel(
     }
 }
 
+// ============== Polynomial construction kernels ==============
+
+// Gather: out[i] = data[indices[i]]
+// Used for L_row[i] = eq_tau[row[i]], L_col[i] = z_padded[col[i]]
+__global__
+void gather_kernel(
+    const fr_t* __restrict__ data,
+    const uint32_t* __restrict__ indices,
+    fr_t* __restrict__ out,
+    uint32_t n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    for (uint32_t i = gid; i < n; i += stride) {
+        out[i] = data[indices[i]];
+    }
+}
+
+// Compute val = val_A + c*val_B + c²*val_C
+__global__
+void compute_val_kernel(
+    const fr_t* __restrict__ val_A,
+    const fr_t* __restrict__ val_B,
+    const fr_t* __restrict__ val_C,
+    const fr_t* __restrict__ d_c,
+    fr_t* __restrict__ out,
+    uint32_t n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    fr_t c = d_c[0];
+    fr_t c2 = c * c;
+    for (uint32_t i = gid; i < n; i += stride) {
+        out[i] = val_A[i] + c * val_B[i] + c2 * val_C[i];
+    }
+}
+
+// Convert integer to Montgomery form on device
+__device__ __forceinline__
+fr_t fr_from_uint(uint32_t val) {
+    fr_t r = fr_zero();
+    // Access underlying storage via pointer cast (operator[] is private)
+    uint32_t* limbs = reinterpret_cast<uint32_t*>(&r);
+    limbs[0] = val;
+    r.to();      // convert to Montgomery form
+    return r;
+}
+
+// Memory hash: T[i] = mem[i]*gamma + i, W[i] = lookup[i]*gamma + addr[i]
+// Both outputs written to T_out and W_out
+__global__
+void mem_hash_kernel(
+    const fr_t* __restrict__ mem,
+    const fr_t* __restrict__ addr,
+    const fr_t* __restrict__ lookup,
+    const fr_t* __restrict__ d_gamma,
+    fr_t* __restrict__ T_out,
+    fr_t* __restrict__ W_out,
+    uint32_t n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    fr_t gamma = d_gamma[0];
+    for (uint32_t i = gid; i < n; i += stride) {
+        // T[i] = mem[i] * gamma + i
+        T_out[i] = mem[i] * gamma + fr_from_uint(i);
+        // W[i] = lookup[i] * gamma + addr[i]
+        W_out[i] = lookup[i] * gamma + addr[i];
+    }
+}
+
+// Add scalar r to every element: out[i] = in[i] + r
+__global__
+void add_scalar_kernel(
+    fr_t* __restrict__ data,
+    const fr_t* __restrict__ d_r,
+    uint32_t n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    fr_t r = d_r[0];
+    for (uint32_t i = gid; i < n; i += stride) {
+        data[i] = data[i] + r;
+    }
+}
+
+// Element-wise multiply: out[i] = a[i] * b[i]
+__global__
+void elemwise_mul_kernel(
+    const fr_t* __restrict__ a,
+    const fr_t* __restrict__ b,
+    fr_t* __restrict__ out,
+    uint32_t n)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    for (uint32_t i = gid; i < n; i += stride) {
+        out[i] = a[i] * b[i];
+    }
+}
+
+// ============== Batch inversion (Montgomery's trick) ==============
+// Phase 1: prefix product. products[i] = a[0]*a[1]*...*a[i]
+__global__
+void batch_invert_prefix_kernel(
+    const fr_t* __restrict__ a,
+    fr_t* __restrict__ products,
+    uint32_t n,
+    uint32_t chunk_size)
+{
+    uint32_t chunk_id = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t start = chunk_id * chunk_size;
+    if (start >= n) return;
+    uint32_t end = min(start + chunk_size, n);
+
+    fr_t acc = a[start];
+    products[start] = acc;
+    for (uint32_t i = start + 1; i < end; i++) {
+        acc = acc * a[i];
+        products[i] = acc;
+    }
+}
+
+// Phase 3: back-propagate inverses.
+// Given products[] and inv of product suffix, compute inverses.
+__global__
+void batch_invert_back_kernel(
+    const fr_t* __restrict__ a,
+    const fr_t* __restrict__ products,
+    const fr_t* __restrict__ chunk_invs,
+    fr_t* __restrict__ out,
+    uint32_t n,
+    uint32_t chunk_size)
+{
+    uint32_t chunk_id = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t start = chunk_id * chunk_size;
+    if (start >= n) return;
+    uint32_t end = min(start + chunk_size, n);
+
+    fr_t inv = chunk_invs[chunk_id];
+    // Back-propagate within chunk
+    for (uint32_t i = end; i > start + 1; ) {
+        --i;
+        out[i] = inv * products[i - 1];
+        inv = inv * a[i];
+    }
+    out[start] = inv;
+}
+
+// Compute eq(tau, x) for all x in {0,1}^n.
+// eq(tau, x) = prod_{i} (tau_i * x_i + (1-tau_i)*(1-x_i))
+// Built iteratively: start with [1], each round doubles the size.
+__global__
+void eq_expand_kernel(
+    fr_t* __restrict__ eq,
+    const fr_t* __restrict__ d_tau_i,
+    uint32_t prev_size)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = blockDim.x * gridDim.x;
+    fr_t tau_i = d_tau_i[0];
+    fr_t one_minus_tau = fr_t::one() - tau_i;
+    for (uint32_t j = gid; j < prev_size; j += stride) {
+        fr_t val = eq[j];
+        eq[j] = val * one_minus_tau;
+        eq[j + prev_size] = val * tau_i;
+    }
+}
+
 #endif // __SUMCHECK_KERNELS_CUH__
