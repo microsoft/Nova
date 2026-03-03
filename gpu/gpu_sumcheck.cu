@@ -360,6 +360,27 @@ void mercury_h_poly_kernel(const fr_t* __restrict__ f, const fr_t* __restrict__ 
     h[row] = acc;
 }
 
+// axpy: out[i] = a * x[i] + y[i]
+__global__
+void axpy_kernel(fr_t* __restrict__ out, const fr_t* __restrict__ x,
+                  const fr_t* __restrict__ y, const fr_t a, uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = a * x[i] + y[i];
+}
+
+// batch_lincomb_3: out[i] = x[i] + c * y[i] + c2 * z[i]
+__global__
+void batch_lincomb_3_kernel(fr_t* __restrict__ out, const fr_t* __restrict__ x,
+                             const fr_t* __restrict__ y, const fr_t* __restrict__ z,
+                             const fr_t c, const fr_t c2, uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = x[i] + c * y[i] + c2 * z[i];
+}
+
 #ifndef __CUDA_ARCH__
 
 // HyperKZG host-side state
@@ -452,18 +473,50 @@ int gpu_download_L(void* L_row_host, void* L_col_host) {
     return 0;
 }
 
+// Upload a host array to a specific poly slot and return device pointer for MSM.
+// Used to pre-upload Az/Bz/Cz for both MSM and phase2_construct.
+int gpu_upload_to_poly(const void* host_data, uint32_t poly_id, uint32_t n, void** d_ptr_out) {
+    size_t fr_bytes = (size_t)n * sizeof(fr_t);
+    CHECK_CUDA(cudaMemcpy(d_polys[poly_id], host_data, fr_bytes, cudaMemcpyHostToDevice));
+    if (d_ptr_out) *d_ptr_out = d_polys[poly_id];
+    return 0;
+}
+
 // ============== Phase 2: After c, gamma, r ==============
-int gpu_phase2_construct(
-    const void* Az_host, const void* Bz_host, const void* uCz_E_host, const void* Mz_host,
+// Phase 2 v2: accept raw Az, Bz, Cz, E, W, masked_eq and scalars
+// Computes uCz_E = u*Cz + E and Mz = Az + c*Bz + c^2*Cz on GPU
+// This saves 2 CPU computations + 2 array uploads vs the original API
+int gpu_phase2_construct_v2(
+    const void* Az_host, const void* Bz_host, const void* Cz_host, const void* E_host,
     const void* W_host, const void* masked_eq_host,
-    const void* c_host, const void* gamma_host, const void* r_host, uint32_t n)
+    const void* u_host, const void* c_host, const void* gamma_host, const void* r_host, uint32_t n)
 {
     size_t fr_bytes = (size_t)n * sizeof(fr_t);
+    const fr_t u_val = *(const fr_t*)u_host;
+    const fr_t c_val = *(const fr_t*)c_host;
+    const fr_t c2_val = c_val * c_val;
 
+    // Upload Az, Bz, Cz, E to GPU
     CHECK_CUDA(cudaMemcpy(d_polys[10], Az_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_polys[11], Bz_host, fr_bytes, cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_polys[12], uCz_E_host, fr_bytes, cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_polys[13], Mz_host, fr_bytes, cudaMemcpyHostToDevice));
+    
+    // Need temp space for Cz and E on GPU
+    fr_t* d_Cz;
+    fr_t* d_E;
+    CHECK_CUDA(cudaMalloc(&d_Cz, fr_bytes));
+    CHECK_CUDA(cudaMalloc(&d_E, fr_bytes));
+    CHECK_CUDA(cudaMemcpy(d_Cz, Cz_host, fr_bytes, cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_E, E_host, fr_bytes, cudaMemcpyHostToDevice));
+
+    // Compute uCz_E = u * Cz + E → store in d_polys[12]
+    axpy_kernel<<<g_grid, 256>>>(d_polys[12], d_Cz, d_E, u_val, n);
+    
+    // Compute Mz = Az + c * Bz + c^2 * Cz → store in d_polys[13]
+    batch_lincomb_3_kernel<<<g_grid, 256>>>(d_polys[13], d_polys[10], d_polys[11], d_Cz, c_val, c2_val, n);
+    
+    cudaFree(d_Cz);
+    cudaFree(d_E);
+
     CHECK_CUDA(cudaMemcpy(d_polys[17], W_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_polys[18], masked_eq_host, fr_bytes, cudaMemcpyHostToDevice));
 

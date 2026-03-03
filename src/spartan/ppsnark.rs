@@ -1187,6 +1187,14 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let _t = std::time::Instant::now();
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
 
+    #[cfg(feature = "sppark")]
+    let is_gpu_bn254 = {
+      use std::any::TypeId;
+      TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>()
+    };
+    #[cfg(not(feature = "sppark"))]
+    let is_gpu_bn254 = false;
+
     // commit to Az, Bz, Cz
     let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
       || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
@@ -1225,13 +1233,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // (2) compute L_row, L_col and memory oracle polynomials, then run sumcheck
     // GPU path: construct all polynomials on GPU in 3 phases matching transcript ordering
     // CPU path: existing sequential computation
-    #[cfg(feature = "sppark")]
-    let is_gpu_bn254 = {
-      use std::any::TypeId;
-      TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>()
-    };
-    #[cfg(not(feature = "sppark"))]
-    let is_gpu_bn254 = false;
 
     #[allow(unused_variables)]
     let (
@@ -1312,51 +1313,57 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         transcript.absorb(b"e", &eval_vec.as_slice());
         transcript.absorb(b"e", &vec![comm_L_row, comm_L_col].as_slice());
         let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
-        let poly_vec = vec![&Az, &Bz, &Cz];
         let c = transcript.squeeze(b"c")?;
-        let _t2 = std::time::Instant::now();
-        let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
         let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
-        eprintln!("[ppsnark]   batch(Az,Bz,Cz): {:?}", _t2.elapsed());
 
         let gamma = transcript.squeeze(b"g")?;
         let r = transcript.squeeze(b"r")?;
 
-        // Prepare dynamic polynomials for phase 2
-        let _t2 = std::time::Instant::now();
-        let uCz_E: Vec<E::Scalar> = (0..Cz.len())
-          .into_par_iter()
-          .map(|i| U.u * Cz[i] + E[i])
-          .collect();
+        // Compute masked_eq_evals on CPU (small, O(N))
         let masked_eq_evals = {
           let num_vars_log = S.num_vars.log_2();
           MaskedEqPolynomial::new(&EqPolynomial::new(tau.clone()), num_vars_log).evals()
         };
-        eprintln!("[ppsnark]   uCz_E + masked_eq: {:?}", _t2.elapsed());
 
-        // Phase 2: compute val, memory hash, batch_invert on GPU
+        // Phase 2 v2: upload Az/Bz/Cz/E, compute uCz_E and Mz on GPU
+        // Saves CPU batch+uCz_E computation (~65ms) + 2 array uploads
         let _t2 = std::time::Instant::now();
         eprintln!("[ppsnark] L commit + challenges: {:?}", _t.elapsed());
         let _t = std::time::Instant::now();
-        gpu_sumcheck::phase2_construct(
-          as_fr(&Az), as_fr(&Bz), as_fr(&uCz_E), as_fr(&w.p),
-          as_fr(&W), as_fr(&masked_eq_evals),
-          unsafe { &*(&c as *const E::Scalar as *const Fr) },
-          unsafe { &*(&gamma as *const E::Scalar as *const Fr) },
-          unsafe { &*(&r as *const E::Scalar as *const Fr) },
-        ).map_err(|_| NovaError::InternalError)?;
+
+        // Run phase2 GPU construct and CPU batch in parallel
+        // GPU: upload Az/Bz/Cz/E, compute uCz_E, Mz, val, hash, batch_invert
+        // CPU: compute w.p = Az + c*Bz + c²*Cz (needed for later batch_witness)
+        let (phase2_result, w) = rayon::join(
+          || {
+            gpu_sumcheck::phase2_construct(
+              as_fr(&Az), as_fr(&Bz), as_fr(&Cz), as_fr(&E),
+              as_fr(&W), as_fr(&masked_eq_evals),
+              unsafe { &*(&U.u as *const E::Scalar as *const Fr) },
+              unsafe { &*(&c as *const E::Scalar as *const Fr) },
+              unsafe { &*(&gamma as *const E::Scalar as *const Fr) },
+              unsafe { &*(&r as *const E::Scalar as *const Fr) },
+            )
+          },
+          || {
+            let poly_vec = vec![&Az, &Bz, &Cz];
+            PolyEvalWitness::batch(&poly_vec, &c)
+          },
+        );
+        phase2_result.map_err(|_| NovaError::InternalError)?;
         eprintln!("[ppsnark]   phase2_construct: {:?}", _t2.elapsed());
 
         // Commit 4 memory oracle polys
         let _t2 = std::time::Instant::now();
 
-        // Download memory oracle polys first (needed later for HyperKZG witness AND
-        // for CPU commit when N is small)
+        // Download memory oracle polys first (needed later for EE witness)
         // Download only the 4 oracle polys (skip aux — not needed in GPU path)
         let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
           .map_err(|_| NovaError::InternalError)?;
         let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
+        eprintln!("[ppsnark]     mem download: {:?}", _t2.elapsed());
 
+        let _t3 = std::time::Instant::now();
         let comm_mem_oracles = if n >= 256 {
           // Device MSM: generators already cached from prior commit calls
           type G1 = halo2curves::bn256::G1;
@@ -1377,6 +1384,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             E::CE::commit(ck, &mem_oracles[3], &E::Scalar::ZERO),
           ]
         };
+        eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
         eprintln!("[ppsnark]   mem oracle download+commit: {:?}", _t2.elapsed());
 
         // Absorb commitments, squeeze rho

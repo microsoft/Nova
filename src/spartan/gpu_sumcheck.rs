@@ -35,12 +35,13 @@ extern "C" {
   // Phase 1: After tau
   fn gpu_phase1_init(eq_tau: *const u8, z_padded: *const u8, n: u32) -> i32;
   fn gpu_download_L(L_row: *mut u8, L_col: *mut u8) -> i32;
+  fn gpu_upload_to_poly(host_data: *const u8, poly_id: u32, n: u32, d_ptr_out: *mut *mut u8) -> i32;
 
-  // Phase 2: After c, gamma, r
-  fn gpu_phase2_construct(
-    Az: *const u8, Bz: *const u8, uCz_E: *const u8, Mz: *const u8,
+  // Phase 2: After c, gamma, r — v2 computes uCz_E and Mz on GPU
+  fn gpu_phase2_construct_v2(
+    Az: *const u8, Bz: *const u8, Cz: *const u8, E: *const u8,
     W: *const u8, masked_eq: *const u8,
-    c: *const u8, gamma: *const u8, r: *const u8,
+    u: *const u8, c: *const u8, gamma: *const u8, r: *const u8,
     n: u32,
   ) -> i32;
   fn gpu_download_mem_oracles(
@@ -202,49 +203,60 @@ pub fn phase1_download_l(n: usize) -> Result<(Vec<Scalar>, Vec<Scalar>), String>
   Ok((l_row, l_col))
 }
 
-/// Phase 2: Upload dynamic polynomials, compute val/hash/batch_invert on GPU.
+/// Phase 2 v2: Upload raw Az/Bz/Cz/E, compute uCz_E and Mz on GPU.
+/// Saves CPU computation + 2 array uploads vs the original API.
 pub fn phase2_construct(
-  az: &[Scalar], bz: &[Scalar], ucz_e: &[Scalar], mz: &[Scalar],
+  az: &[Scalar], bz: &[Scalar], cz: &[Scalar], e: &[Scalar],
   w: &[Scalar], masked_eq: &[Scalar],
-  c: &Scalar, gamma: &Scalar, r: &Scalar,
+  u: &Scalar, c: &Scalar, gamma: &Scalar, r: &Scalar,
 ) -> Result<(), String> {
   let n = az.len() as u32;
   let _lock = GPU_SC_LOCK.lock().unwrap();
   let ret = unsafe {
-    gpu_phase2_construct(
+    gpu_phase2_construct_v2(
       az.as_ptr() as *const u8, bz.as_ptr() as *const u8,
-      ucz_e.as_ptr() as *const u8, mz.as_ptr() as *const u8,
+      cz.as_ptr() as *const u8, e.as_ptr() as *const u8,
       w.as_ptr() as *const u8, masked_eq.as_ptr() as *const u8,
-      scalar_to_raw(c).as_ptr(), scalar_to_raw(gamma).as_ptr(), scalar_to_raw(r).as_ptr(),
+      scalar_to_raw(u).as_ptr(), scalar_to_raw(c).as_ptr(),
+      scalar_to_raw(gamma).as_ptr(), scalar_to_raw(r).as_ptr(),
       n,
     )
   };
   if ret != 0 {
-    return Err("gpu_phase2_construct failed".to_string());
+    return Err("gpu_phase2_construct_v2 failed".to_string());
   }
   Ok(())
+}
+
+/// Upload a host array to a GPU poly slot and return device pointer.
+pub fn upload_to_poly(data: &[Scalar], poly_id: u32) -> Result<*mut u8, String> {
+  let n = data.len() as u32;
+  let mut d_ptr: *mut u8 = std::ptr::null_mut();
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  let ret = unsafe {
+    gpu_upload_to_poly(data.as_ptr() as *const u8, poly_id, n, &mut d_ptr)
+  };
+  if ret != 0 {
+    return Err("gpu_upload_to_poly failed".to_string());
+  }
+  Ok(d_ptr)
 }
 
 /// Download memory oracle + auxiliary polynomials from phase 2.
 /// Download only the 4 memory oracle polynomials from GPU (skip aux for GPU path).
 pub fn phase2_download_mem_oracles_only(n: usize) -> Result<[Vec<Scalar>; 4], String> {
-  let mut oracle = [
-    vec![Scalar::default(); n],
-    vec![Scalar::default(); n],
-    vec![Scalar::default(); n],
-    vec![Scalar::default(); n],
-  ];
   let fr_bytes = n * std::mem::size_of::<Scalar>();
   let _lock = GPU_SC_LOCK.lock().unwrap();
   // Oracle poly IDs: 1 (t_inv_row), 3 (w_inv_row), 6 (t_inv_col), 8 (w_inv_col)
   let poly_ids = [1u32, 3, 6, 8];
-  for (i, &pid) in poly_ids.iter().enumerate() {
-    let d_ptr = unsafe { gpu_get_poly_device_ptr(pid) };
-    let ret = unsafe { gpu_memcpy_dtoh(oracle[i].as_mut_ptr() as *mut u8, d_ptr, fr_bytes) };
-    if ret != 0 {
-      return Err(format!("gpu_memcpy_dtoh for poly {} failed", pid));
-    }
-  }
+  let oracle: [Vec<Scalar>; 4] = std::array::from_fn(|i| {
+    let mut v = Vec::<Scalar>::with_capacity(n);
+    let d_ptr = unsafe { gpu_get_poly_device_ptr(poly_ids[i]) };
+    let ret = unsafe { gpu_memcpy_dtoh(v.as_mut_ptr() as *mut u8, d_ptr, fr_bytes) };
+    assert_eq!(ret, 0, "gpu_memcpy_dtoh for poly {} failed", poly_ids[i]);
+    unsafe { v.set_len(n) };
+    v
+  });
   Ok(oracle)
 }
 
