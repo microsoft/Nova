@@ -1221,9 +1221,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       eval_col,
       eval_w_plus_r_inv_col,
       eval_ts_col,
-    ]
-    .into_iter()
-    .collect::<Vec<E::Scalar>>();
+    ];
 
     let comm_vec = [
       U.comm_W,
@@ -1534,9 +1532,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       self.eval_col,
       self.eval_w_plus_r_inv_col,
       self.eval_ts_col,
-    ]
-    .into_iter()
-    .collect::<Vec<E::Scalar>>();
+    ];
     let comm_vec = [
       U.comm_W,
       U.comm_E,
