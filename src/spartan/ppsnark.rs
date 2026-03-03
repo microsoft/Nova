@@ -1061,10 +1061,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // Claims from the outer sum-check
     let eval_Az_at_r_outer = claims_outer[0]; // Az(r_outer)
     let eval_Bz_at_r_outer = claims_outer[1]; // Bz(r_outer)
-                                              // claims_outer[2] = (u·Cz + E)(r_outer); decompose into Cz(r_outer) and E(r_outer)
-    let evals_Cz_E = MultilinearPolynomial::multi_evaluate_with(&[&Cz, &E], &r_outer);
-    let eval_Cz_at_r_outer = evals_Cz_E[0];
-    let eval_E_at_r_outer = evals_Cz_E[1];
+                                              // claims_outer[2] = (u·Cz + E)(r_outer); evaluate Cz and derive E
+    let eval_Cz_at_r_outer = MultilinearPolynomial::evaluate_with(&Cz, &r_outer);
+    let eval_E_at_r_outer = claims_outer[2] - U.u * eval_Cz_at_r_outer;
 
     // Absorb outer sum-check claims into transcript
     transcript.absorb(
