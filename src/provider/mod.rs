@@ -14,10 +14,10 @@ pub mod traits;
 
 #[cfg(feature = "blitzar")]
 pub mod blitzar;
-#[cfg(feature = "sppark")]
-pub mod sppark;
 #[cfg(feature = "io")]
 pub mod ptau;
+#[cfg(feature = "sppark")]
+pub mod sppark;
 
 use crate::{
   provider::{

@@ -180,10 +180,7 @@ mod tests {
     let bases: Vec<Affine> = (0..sample_len).map(|_| Affine::random(&mut rng)).collect();
 
     let result = batch_vartime_multiscalar_mul(&scalars, &bases);
-    let expected: Vec<Point> = scalars
-      .iter()
-      .map(|s| msm_best(s, &bases))
-      .collect();
+    let expected: Vec<Point> = scalars.iter().map(|s| msm_best(s, &bases)).collect();
 
     assert_eq!(result, expected);
   }
