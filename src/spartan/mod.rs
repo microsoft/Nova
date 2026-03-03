@@ -21,6 +21,10 @@ pub mod polys;
 /// Module providing sumcheck protocol implementation.
 pub mod sumcheck;
 
+/// GPU-accelerated sumcheck for BN254 ppsnark.
+#[cfg(feature = "sppark")]
+pub mod gpu_sumcheck;
+
 pub use sumcheck::SumcheckEngine;
 
 use crate::{

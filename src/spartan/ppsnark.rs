@@ -1001,6 +1001,152 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
       witness_claims,
     ))
   }
+
+  /// GPU-accelerated sumcheck for BN254.
+  ///
+  /// Uploads all 21 polynomials to GPU once, runs eval+bind rounds with only
+  /// ~1KB per-round host↔device communication (challenge scalar + 30 results).
+  #[cfg(feature = "sppark")]
+  #[allow(unsafe_code)]
+  fn gpu_prove_helper(
+    mem: &MemorySumcheckInstance<E>,
+    outer: &OuterSumcheckInstance<E>,
+    inner: &InnerSumcheckInstance<E>,
+    witness: &WitnessBoundSumcheck<E>,
+    rho: &[E::Scalar],
+    tau: &[E::Scalar],
+    transcript: &mut E::TE,
+  ) -> Result<
+    (
+      SumcheckProof<E>,
+      Vec<E::Scalar>,
+      Vec<Vec<E::Scalar>>,
+      Vec<Vec<E::Scalar>>,
+      Vec<Vec<E::Scalar>>,
+      Vec<Vec<E::Scalar>>,
+    ),
+    NovaError,
+  > {
+    use super::gpu_sumcheck::{self, GpuSumcheckState};
+    type Fr = halo2curves::bn256::Fr;
+
+    // SAFETY: Caller guarantees E::Scalar == Fr via TypeId check.
+    let as_fr = |s: &[E::Scalar]| -> &[Fr] {
+      unsafe { std::slice::from_raw_parts(s.as_ptr() as *const Fr, s.len()) }
+    };
+    let fr_to_scalar = |f: Fr| -> E::Scalar { unsafe { std::mem::transmute_copy(&f) } };
+
+    // Materialize eq polynomials as full vectors
+    let eq_memory = gpu_sumcheck::materialize_eq(as_fr(rho));
+    let eq_outer = gpu_sumcheck::materialize_eq(as_fr(tau));
+
+    // Polynomial layout matching gpu_sumcheck.cu claim dispatch
+    let polys: [&[Fr]; 21] = [
+      as_fr(&mem.t_plus_r_row.Z),       // 0
+      as_fr(&mem.t_plus_r_inv_row.Z),   // 1
+      as_fr(&mem.w_plus_r_row.Z),       // 2
+      as_fr(&mem.w_plus_r_inv_row.Z),   // 3
+      as_fr(&mem.ts_row.Z),             // 4
+      as_fr(&mem.t_plus_r_col.Z),       // 5
+      as_fr(&mem.t_plus_r_inv_col.Z),   // 6
+      as_fr(&mem.w_plus_r_col.Z),       // 7
+      as_fr(&mem.w_plus_r_inv_col.Z),   // 8
+      as_fr(&mem.ts_col.Z),             // 9
+      as_fr(&outer.poly_Az.Z),          // 10
+      as_fr(&outer.poly_Bz.Z),          // 11
+      as_fr(&outer.poly_uCz_E.Z),       // 12
+      as_fr(&outer.poly_Mz.Z),          // 13
+      as_fr(&inner.poly_L_row.Z),       // 14
+      as_fr(&inner.poly_L_col.Z),       // 15
+      as_fr(&inner.poly_val.Z),         // 16
+      as_fr(&witness.poly_W.Z),         // 17
+      as_fr(&witness.poly_masked_eq.Z), // 18
+      &eq_memory,                        // 19
+      &eq_outer,                         // 20
+    ];
+
+    let mut gpu =
+      GpuSumcheckState::setup(&polys).map_err(|_| NovaError::InternalError)?;
+
+    // Initial claims + random linear combination (identical to CPU path)
+    let claims = mem
+      .initial_claims()
+      .into_iter()
+      .chain(outer.initial_claims())
+      .chain(inner.initial_claims())
+      .chain(witness.initial_claims())
+      .collect::<Vec<E::Scalar>>();
+
+    let s = transcript.squeeze(b"r")?;
+    let coeffs = powers::<E>(&s, claims.len());
+    let claim = zip_with!((claims.iter(), coeffs.iter()), |c_1, c_2| *c_1 * c_2).sum();
+
+    let mut e = claim;
+    let mut r_vec: Vec<E::Scalar> = Vec::new();
+    let mut cubic_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let num_rounds = mem.size().log_2();
+
+    for _round in 0..num_rounds {
+      let gpu_evals = gpu
+        .eval_round()
+        .map_err(|_| NovaError::InternalError)?;
+
+      let evals_combined_0: E::Scalar = (0..gpu_evals.len())
+        .map(|i| fr_to_scalar(gpu_evals[i][0]) * coeffs[i])
+        .sum();
+      let evals_combined_bound_coeff: E::Scalar = (0..gpu_evals.len())
+        .map(|i| fr_to_scalar(gpu_evals[i][1]) * coeffs[i])
+        .sum();
+      let evals_combined_inf: E::Scalar = (0..gpu_evals.len())
+        .map(|i| fr_to_scalar(gpu_evals[i][2]) * coeffs[i])
+        .sum();
+
+      let evals = vec![
+        evals_combined_0,
+        e - evals_combined_0,
+        evals_combined_bound_coeff,
+        evals_combined_inf,
+      ];
+
+      let poly = UniPoly::from_evals_deg3(&evals);
+      transcript.absorb(b"p", &poly);
+      let r_i = transcript.squeeze(b"c")?;
+      r_vec.push(r_i);
+
+      let r_fr: Fr = unsafe { std::mem::transmute_copy(&r_i) };
+      gpu
+        .bind(&r_fr)
+        .map_err(|_| NovaError::InternalError)?;
+
+      e = poly.evaluate(&r_i);
+      cubic_polys.push(poly.compress());
+    }
+
+    // Extract final polynomial values from GPU
+    let get = |poly_id: usize| -> Result<E::Scalar, NovaError> {
+      gpu
+        .get_final(poly_id)
+        .map(|f| fr_to_scalar(f))
+        .map_err(|_| NovaError::InternalError)
+    };
+
+    let mem_claims = vec![
+      vec![get(1)?, get(3)?, get(4)?], // t_inv_row, w_inv_row, ts_row
+      vec![get(6)?, get(8)?, get(9)?], // t_inv_col, w_inv_col, ts_col
+    ];
+    let outer_claims = vec![vec![get(10)?, get(11)?]]; // Az, Bz
+    let inner_claims = vec![vec![get(14)?, get(15)?]]; // L_row, L_col
+    let witness_claims = vec![vec![get(17)?, get(18)?]]; // W, masked_eq
+
+    Ok((
+      SumcheckProof::new(cubic_polys),
+      r_vec,
+      mem_claims,
+      outer_claims,
+      inner_claims,
+      witness_claims,
+    ))
+  }
 }
 
 impl<E: Engine, EE: EvaluationEngineTrait<E>> VerifierKey<E, EE> {
@@ -1220,6 +1366,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           .map(|_| transcript.squeeze(b"r"))
           .collect::<Result<Vec<_>, NovaError>>()?;
 
+        let rho_for_gpu = rho.clone();
         Ok::<_, NovaError>((
           MemorySumcheckInstance::new(
             mem_oracles.clone(),
@@ -1230,21 +1377,50 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           ),
           comm_mem_oracles,
           mem_oracles,
+          rho_for_gpu,
         ))
       },
     );
 
-    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
+    let (mut mem_sc_inst, comm_mem_oracles, mem_oracles, sc_rho) = mem_res?;
 
+    let sc_tau = tau.clone();
     let mut witness_sc_inst = WitnessBoundSumcheck::new(tau, W.clone(), S.num_vars);
 
-    let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) = Self::prove_helper(
-      &mut mem_sc_inst,
-      &mut outer_sc_inst,
-      &mut inner_sc_inst,
-      &mut witness_sc_inst,
-      &mut transcript,
-    )?;
+    #[cfg(feature = "sppark")]
+    let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) = {
+      use std::any::TypeId;
+      if TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>() {
+        Self::gpu_prove_helper(
+          &mem_sc_inst,
+          &outer_sc_inst,
+          &inner_sc_inst,
+          &witness_sc_inst,
+          &sc_rho,
+          &sc_tau,
+          &mut transcript,
+        )?
+      } else {
+        Self::prove_helper(
+          &mut mem_sc_inst,
+          &mut outer_sc_inst,
+          &mut inner_sc_inst,
+          &mut witness_sc_inst,
+          &mut transcript,
+        )?
+      }
+    };
+    #[cfg(not(feature = "sppark"))]
+    let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) = {
+      let _ = (sc_rho, sc_tau);
+      Self::prove_helper(
+        &mut mem_sc_inst,
+        &mut outer_sc_inst,
+        &mut inner_sc_inst,
+        &mut witness_sc_inst,
+        &mut transcript,
+      )?
+    };
 
     // claims from the end of the sum-check
     let eval_Az = claims_outer[0][0];

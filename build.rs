@@ -79,6 +79,7 @@ fn build_sppark_msm() {
   build.include("gpu");
 
   build.file("gpu/sppark_msm.cu");
+  build.file("gpu/gpu_sumcheck.cu");
 
   // DEP_SPPARK_TARGET is set only when sppark's build.rs successfully compiled
   // all_gpus.cpp. If it didn't (e.g. nvcc not in PATH), we compile it ourselves.
@@ -97,6 +98,8 @@ fn build_sppark_msm() {
   println!("cargo:rustc-link-lib=cudart");
   println!("cargo:rerun-if-changed=gpu/sppark_msm.cu");
   println!("cargo:rerun-if-changed=gpu/msm_parallel.cuh");
+  println!("cargo:rerun-if-changed=gpu/gpu_sumcheck.cu");
+  println!("cargo:rerun-if-changed=gpu/sumcheck_kernels.cuh");
   println!("cargo:rerun-if-env-changed=NVCC");
   println!("cargo:rerun-if-env-changed=CUDA_ARCH");
 }
