@@ -88,6 +88,14 @@ fn trim_trailing_zeros(scalars: &[Scalar]) -> usize {
 /// generator set even when the slice length varies between calls.
 #[allow(unsafe_code)]
 fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point {
+  // Guard against silent truncation if lengths ever exceed u32::MAX.
+  let Ok(n_bases) = u32::try_from(bases.len()) else {
+    return msm(&scalars[..effective_len], &bases[..effective_len]);
+  };
+  let Ok(n_scalars) = u32::try_from(effective_len) else {
+    return msm(&scalars[..effective_len], &bases[..effective_len]);
+  };
+
   // Use the slice's base pointer as the label.  All prefix slices of the
   // same CommitmentKey share the same pointer, so the GPU recognises
   // them as the same generator set regardless of slice length.
@@ -101,8 +109,8 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
       bases.as_ptr() as *const u64,
       scalars.as_ptr() as *const u64,
       result.as_mut_ptr(),
-      bases.len() as u32,
-      effective_len as u32,
+      n_bases,
+      n_scalars,
       label,
     )
   };

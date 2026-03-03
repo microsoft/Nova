@@ -43,7 +43,7 @@ fn build_sppark_msm() {
 
   // GPU architecture: CUDA_ARCH env var (e.g. "sm_80") or multi-arch default
   if let Ok(arch) = env::var("CUDA_ARCH") {
-    build.flag(&format!("-arch={arch}"));
+    build.flag(format!("-arch={arch}"));
   } else {
     for (compute, sm) in [
       ("compute_75", "sm_75"), // T4, 2080
@@ -53,7 +53,7 @@ fn build_sppark_msm() {
     ] {
       build
         .flag("-gencode")
-        .flag(&format!("arch={compute},code={sm}"));
+        .flag(format!("arch={compute},code={sm}"));
     }
     // PTX fallback for future GPUs
     build
