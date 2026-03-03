@@ -24,10 +24,26 @@ extern "C" {
     n_scalars: u32,
     label: u64,
   ) -> i32;
+
+  /// Free the cached generator data on GPU.
+  /// Called automatically on process exit, but can be invoked explicitly
+  /// to release GPU memory earlier (e.g., after proving is done).
+  fn sppark_msm_free();
 }
 
 /// GPU access must be serialized — sppark's kernels are not thread-safe
 static GPU_LOCK: Mutex<()> = Mutex::new(());
+
+/// Free the cached GPU generator data.
+///
+/// Generators are cached on the GPU for the lifetime of the process.
+/// Call this after proving is complete to release GPU memory earlier.
+/// It is safe to call multiple times; subsequent MSM calls will re-upload.
+#[allow(unsafe_code)]
+pub fn free_gpu_generators() {
+  let _gpu = GPU_LOCK.lock().unwrap();
+  unsafe { sppark_msm_free() };
+}
 
 /// Convert sppark's Jacobian (X,Y,Z) to halo2curves G1 (homogeneous projective).
 ///
