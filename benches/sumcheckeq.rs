@@ -4,10 +4,7 @@
 use criterion::*;
 use nova_snark::{
   provider::Bn256EngineKZG,
-  spartan::{
-    ppsnark::MemorySumcheckInstance,
-    SumcheckEngine,
-  },
+  spartan::{ppsnark::MemorySumcheckInstance, SumcheckEngine},
   traits::Engine,
 };
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
