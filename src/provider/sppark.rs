@@ -4,11 +4,10 @@
 //! pathological scalar distributions via parallel tree reduction for large buckets.
 //! Generators are cached on GPU across calls (Nova's commitment key is fixed).
 
-#![allow(unsafe_code)]
-
 use halo2curves::bn256::{Fr as Scalar, G1Affine as Affine, G1 as Point};
 use std::sync::Mutex;
 
+#[allow(unsafe_code)]
 extern "C" {
   fn sppark_msm_with_generators(
     points: *const u64,
@@ -26,46 +25,43 @@ static GPU_LOCK: Mutex<()> = Mutex::new(());
 /// sppark Jacobian: affine_x = X/Z², affine_y = Y/Z³
 /// halo2curves projective: affine_x = X/Z, affine_y = Y/Z
 ///
-/// Conversion: Xp = X·Z, Yp = Y, Zp = Z³
+/// We go through `Fq::from_raw` to avoid relying on the internal memory layout
+/// of `Fq` and `G1`, then reconstruct the projective point via explicit
+/// coordinate conversion.
 fn jacobian_to_point(result: &[u64; 12]) -> Point {
   use ff::Field;
   use halo2curves::bn256::Fq;
 
-  let x = unsafe { std::ptr::read(result.as_ptr().add(0) as *const Fq) };
-  let y = unsafe { std::ptr::read(result.as_ptr().add(4) as *const Fq) };
-  let z = unsafe { std::ptr::read(result.as_ptr().add(8) as *const Fq) };
+  // Interpret input limbs as three Fq elements X, Y, Z using the public API.
+  let x = Fq::from_raw([result[0], result[1], result[2], result[3]]);
+  let y = Fq::from_raw([result[4], result[5], result[6], result[7]]);
+  let z = Fq::from_raw([result[8], result[9], result[10], result[11]]);
 
   if z.is_zero().into() {
     return Point::default();
   }
 
-  let xp = x * z;
-  let yp = y;
-  let zp = z * z * z;
+  // sppark Jacobian: affine_x = X / Z^2, affine_y = Y / Z^3.
+  let z_inv = z.invert().unwrap();
+  let z_inv2 = z_inv.square();
+  let z_inv3 = z_inv2 * z_inv;
 
-  let mut point_bytes = [0u64; 12];
-  unsafe {
-    std::ptr::write(point_bytes.as_mut_ptr().add(0) as *mut Fq, xp);
-    std::ptr::write(point_bytes.as_mut_ptr().add(4) as *mut Fq, yp);
-    std::ptr::write(point_bytes.as_mut_ptr().add(8) as *mut Fq, zp);
-    std::ptr::read(point_bytes.as_ptr() as *const Point)
-  }
+  let x_aff = x * z_inv2;
+  let y_aff = y * z_inv3;
+
+  let affine = Affine::from_xy(x_aff, y_aff).unwrap();
+  Point::from(affine)
 }
 
 use crate::provider::msm::msm;
 
 const GPU_MSM_THRESHOLD: usize = 256;
 
-/// Trim trailing zeros from a scalar slice.
+/// Trim trailing zero scalars from a slice.
+/// Uses the safe `Scalar::ZERO` comparison instead of raw pointer arithmetic.
 fn trim_trailing_zeros(scalars: &[Scalar]) -> usize {
-  let ptr = scalars.as_ptr() as *const u64;
   let mut len = scalars.len();
-  while len > 0 {
-    let i = len - 1;
-    let base = unsafe { ptr.add(i * 4) };
-    if unsafe { *base | *base.add(1) | *base.add(2) | *base.add(3) } != 0 {
-      break;
-    }
+  while len > 0 && scalars[len - 1] == Scalar::ZERO {
     len -= 1;
   }
   len
@@ -73,8 +69,13 @@ fn trim_trailing_zeros(scalars: &[Scalar]) -> usize {
 
 /// Perform GPU MSM with cached generators and parallel accumulate kernel.
 /// Caller must hold GPU_LOCK.
+/// Falls back to CPU MSM on any GPU error rather than panicking.
+#[allow(unsafe_code)]
 fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point {
   let mut result = [0u64; 12];
+  // SAFETY: `bases` and `scalars` point to contiguous slices of at least
+  // `effective_len` elements. The FFI function reads `effective_len` elements
+  // from each pointer and writes 12 u64s to `result`.
   let err = unsafe {
     sppark_msm_with_generators(
       bases.as_ptr() as *const u64,
@@ -83,7 +84,10 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
       effective_len as i32,
     )
   };
-  assert_eq!(err, 0, "sppark MSM failed with error code {}", err);
+  if err != 0 {
+    // GPU MSM failed; fall back to CPU MSM for this call.
+    return msm(&scalars[..effective_len], &bases[..effective_len]);
+  }
   jacobian_to_point(&result)
 }
 
@@ -94,7 +98,18 @@ pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
     return Point::default();
   }
 
+  assert!(
+    bases.len() >= scalars.len(),
+    "bases.len() ({}) must be >= scalars.len() ({})",
+    bases.len(),
+    scalars.len()
+  );
+
   let effective_len = trim_trailing_zeros(scalars);
+
+  if effective_len == 0 {
+    return Point::default();
+  }
 
   if effective_len < GPU_MSM_THRESHOLD {
     return msm(&scalars[..effective_len], &bases[..effective_len]);
@@ -118,7 +133,16 @@ pub fn batch_vartime_multiscalar_mul(scalars: &[Vec<Scalar>], bases: &[Affine]) 
       if s.is_empty() {
         return Point::default();
       }
+      assert!(
+        bases.len() >= s.len(),
+        "bases.len() ({}) must be >= scalars row len ({})",
+        bases.len(),
+        s.len()
+      );
       let effective_len = trim_trailing_zeros(s);
+      if effective_len == 0 {
+        return Point::default();
+      }
       if effective_len < GPU_MSM_THRESHOLD {
         return msm(&s[..effective_len], &bases[..effective_len]);
       }

@@ -28,6 +28,10 @@ static size_t g_gens_n = 0;
 static uint64_t g_gens_fp = 0;
 
 static void ensure_generators(const void* points, size_t n) {
+    if (n == 0) {
+        g_gens_n = 0;
+        return;
+    }
     const uint64_t* pts = reinterpret_cast<const uint64_t*>(points);
     // Fingerprint: first word XOR last point's first word XOR count
     uint64_t fp = pts[0] ^ pts[(n-1) * (sizeof(affine_h)/sizeof(uint64_t))] ^ n;

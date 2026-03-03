@@ -40,6 +40,12 @@ crate::impl_traits_no_dlog_ext!(
   "30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47"
 );
 
+// Prevent enabling both GPU MSM backends simultaneously
+#[cfg(all(feature = "blitzar", feature = "sppark"))]
+compile_error!(
+  "Features `blitzar` and `sppark` are mutually exclusive GPU MSM backends. Enable only one."
+);
+
 impl DlogGroupExt for bn256::Point {
   #[cfg(not(any(feature = "blitzar", feature = "sppark")))]
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
@@ -63,12 +69,12 @@ impl DlogGroupExt for bn256::Point {
     msm_small_with_max_num_bits(scalars, bases, max_num_bits)
   }
 
-  #[cfg(feature = "blitzar")]
+  #[cfg(all(feature = "blitzar", not(feature = "sppark")))]
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
     super::blitzar::vartime_multiscalar_mul(scalars, bases)
   }
 
-  #[cfg(feature = "blitzar")]
+  #[cfg(all(feature = "blitzar", not(feature = "sppark")))]
   fn batch_vartime_multiscalar_mul(
     scalars: &[Vec<Self::Scalar>],
     bases: &[Self::AffineGroupElement],
@@ -76,12 +82,12 @@ impl DlogGroupExt for bn256::Point {
     super::blitzar::batch_vartime_multiscalar_mul(scalars, bases)
   }
 
-  #[cfg(feature = "sppark")]
+  #[cfg(all(feature = "sppark", not(feature = "blitzar")))]
   fn vartime_multiscalar_mul(scalars: &[Self::Scalar], bases: &[Self::AffineGroupElement]) -> Self {
     super::sppark::vartime_multiscalar_mul(scalars, bases)
   }
 
-  #[cfg(feature = "sppark")]
+  #[cfg(all(feature = "sppark", not(feature = "blitzar")))]
   fn batch_vartime_multiscalar_mul(
     scalars: &[Vec<Self::Scalar>],
     bases: &[Self::AffineGroupElement],
