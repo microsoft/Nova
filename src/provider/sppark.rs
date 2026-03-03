@@ -34,19 +34,23 @@ static GPU_LOCK: Mutex<()> = Mutex::new(());
 /// sppark Jacobian: affine_x = X/Z², affine_y = Y/Z³
 /// halo2curves projective: affine_x = X/Z, affine_y = Y/Z
 ///
-/// We go through `Fq::from_raw` to avoid relying on the internal memory layout
-/// of `Fq` and `G1`, then reconstruct the projective point via explicit
-/// coordinate conversion.
+/// sppark's `mont_t` stores field elements in Montgomery form (`a·R mod p`).
+/// We use `from_raw_bytes` (which wraps raw limbs directly) rather than
+/// `from_raw` (which multiplies by R², assuming standard-form input).
 ///
-/// Returns `None` if the GPU output is malformed (zero Z after `from_raw`,
+/// Returns `None` if the GPU output is malformed (z off-range, zero Z,
 /// non-invertible Z, or off-curve affine point).
+#[allow(unsafe_code)]
 fn jacobian_to_point(result: &[u64; 12]) -> Option<Point> {
-  use halo2curves::bn256::Fq;
+  use halo2curves::{bn256::Fq, serde::SerdeObject};
 
-  // Interpret input limbs as three Fq elements X, Y, Z using the public API.
-  let x = Fq::from_raw([result[0], result[1], result[2], result[3]]);
-  let y = Fq::from_raw([result[4], result[5], result[6], result[7]]);
-  let z = Fq::from_raw([result[8], result[9], result[10], result[11]]);
+  // Re-interpret the u64 limbs as little-endian bytes (same layout).
+  let bytes: &[u8] = unsafe { std::slice::from_raw_parts(result.as_ptr() as *const u8, 96) };
+
+  // `from_raw_bytes` wraps Montgomery-form limbs directly and checks < modulus.
+  let x = Fq::from_raw_bytes(&bytes[0..32])?;
+  let y = Fq::from_raw_bytes(&bytes[32..64])?;
+  let z = Fq::from_raw_bytes(&bytes[64..96])?;
 
   if z.is_zero().into() {
     return Some(Point::default());
@@ -271,5 +275,61 @@ mod tests {
     let result = vartime_multiscalar_mul(&scalars, &bases);
     let expected = msm_best(&scalars, &bases);
     assert_eq!(result.to_affine(), expected.to_affine());
+  }
+
+  /// Validate that `jacobian_to_point` correctly interprets Montgomery-form
+  /// Jacobian coordinates.  We construct a known projective point, extract its
+  /// internal Montgomery-form limbs via `to_raw_bytes`, pack them as the
+  /// `[u64; 12]` layout that sppark would produce, and round-trip through
+  /// `jacobian_to_point`.
+  #[test]
+  fn test_jacobian_to_point_roundtrip() {
+    use halo2curves::{
+      bn256::{Fq, G1},
+      group::Curve,
+      serde::SerdeObject,
+    };
+
+    // Choose a known non-identity point: generator * 42
+    let scalar = Scalar::from(42u64);
+    let proj: G1 = Affine::generator() * scalar;
+    let affine_expected = proj.to_affine();
+
+    // Extract affine coordinates in Montgomery form
+    let coords = affine_expected.coordinates().unwrap();
+    let x: Fq = *coords.x();
+    let y: Fq = *coords.y();
+
+    // Build Jacobian (X, Y, Z) = (x, y, 1) in Montgomery form
+    let x_bytes = x.to_raw_bytes();
+    let y_bytes = y.to_raw_bytes();
+    let one_bytes = Fq::ONE.to_raw_bytes();
+
+    // Pack into [u64; 12] — each Fq is 4 limbs (32 bytes), little-endian
+    let mut packed = [0u64; 12];
+    for i in 0..4 {
+      packed[i] = u64::from_le_bytes(x_bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+      packed[4 + i] = u64::from_le_bytes(y_bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+      packed[8 + i] = u64::from_le_bytes(one_bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+    }
+
+    let result = jacobian_to_point(&packed);
+    assert!(result.is_some(), "jacobian_to_point returned None");
+    let result_affine = result.unwrap().to_affine();
+    assert_eq!(
+      result_affine, affine_expected,
+      "round-tripped point does not match"
+    );
+  }
+
+  /// Verify that `jacobian_to_point` returns `None` for clearly invalid data
+  /// (all 0xFF bytes exceed the BN254 modulus).
+  #[test]
+  fn test_jacobian_to_point_rejects_invalid() {
+    let bad = [u64::MAX; 12];
+    assert!(
+      jacobian_to_point(&bad).is_none(),
+      "should reject out-of-range limbs"
+    );
   }
 }

@@ -41,6 +41,7 @@ static int ensure_generators(const void* points, size_t n_bases, uint64_t label)
 
     if (g_gens) cudaFree(g_gens);
     g_gens = nullptr;
+    g_gens_label = 0;
 
     cudaError_t err = cudaMalloc(&g_gens, n_bases * sizeof(affine_h));
     if (err != cudaSuccess) { g_gens_n = 0; return -1; }
@@ -86,13 +87,6 @@ extern "C" {
 int sppark_msm_with_generators(const void* points, const void* scalars,
                                 void* result, uint32_t n_bases,
                                 uint32_t n_scalars, uint64_t label) {
-    return msm_cached(points, scalars, result, (size_t)n_bases,
-                      (size_t)n_scalars, label);
-}
-
-int sppark_msm_parallel(const void* points, const void* scalars,
-                         void* result, uint32_t n_bases,
-                         uint32_t n_scalars, uint64_t label) {
     return msm_cached(points, scalars, result, (size_t)n_bases,
                       (size_t)n_scalars, label);
 }
