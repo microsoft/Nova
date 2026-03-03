@@ -34,7 +34,7 @@ thiserror = "2.0.11"
 once_cell = "1.18.0"
 itertools = "0.14.0"
 semolina = { version = "0.1", optional = true }
-sppark = { version = "0.1.14", optional = true, features = ["build"] }
+sppark = { version = "0.1.14", optional = true }
 
 # Use halo2curves ASM on x86_64 by default; disable ASM on non-x86_64
 [target.'cfg(target_arch = "x86_64")'.dependencies]
