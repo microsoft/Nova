@@ -1285,13 +1285,26 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let L_row = fr_vec_to_scalar(l_row_fr);
         let L_col = fr_vec_to_scalar(l_col_fr);
 
-        // Commit L_row/L_col
+        // Commit L_row/L_col — use device-side MSM since data is already on GPU
         eprintln!("[ppsnark] static_upload + phase1: {:?}", _t.elapsed());
         let _t = std::time::Instant::now();
-        let (comm_L_row, comm_L_col) = rayon::join(
-          || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
-          || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
-        );
+        let (comm_L_row, comm_L_col) = if n >= 256 {
+          type G1 = halo2curves::bn256::G1;
+          let d_l_row = gpu_sumcheck::get_poly_device_ptr(14);
+          let d_l_col = gpu_sumcheck::get_poly_device_ptr(15);
+          let p_row: G1 = crate::provider::sppark::msm_from_device(d_l_row, n);
+          let p_col: G1 = crate::provider::sppark::msm_from_device(d_l_col, n);
+          let c_row: crate::Commitment<E> =
+            unsafe { std::ptr::read(&p_row as *const G1 as *const crate::Commitment<E>) };
+          let c_col: crate::Commitment<E> =
+            unsafe { std::ptr::read(&p_col as *const G1 as *const crate::Commitment<E>) };
+          (c_row, c_col)
+        } else {
+          rayon::join(
+            || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
+            || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
+          )
+        };
         eprintln!("[ppsnark]   L commit: {:?}", _t.elapsed());
 
         // Transcript: absorb evals + L commits, squeeze c
@@ -1301,20 +1314,25 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let comm_vec = vec![comm_Az, comm_Bz, comm_Cz];
         let poly_vec = vec![&Az, &Bz, &Cz];
         let c = transcript.squeeze(b"c")?;
+        let _t2 = std::time::Instant::now();
         let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
         let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &tau, &eval_vec, &c);
+        eprintln!("[ppsnark]   batch(Az,Bz,Cz): {:?}", _t2.elapsed());
 
         let gamma = transcript.squeeze(b"g")?;
         let r = transcript.squeeze(b"r")?;
 
         // Prepare dynamic polynomials for phase 2
+        let _t2 = std::time::Instant::now();
         let uCz_E: Vec<E::Scalar> = (0..Cz.len())
+          .into_par_iter()
           .map(|i| U.u * Cz[i] + E[i])
           .collect();
         let masked_eq_evals = {
           let num_vars_log = S.num_vars.log_2();
           MaskedEqPolynomial::new(&EqPolynomial::new(tau.clone()), num_vars_log).evals()
         };
+        eprintln!("[ppsnark]   uCz_E + masked_eq: {:?}", _t2.elapsed());
 
         // Phase 2: compute val, memory hash, batch_invert on GPU
         let _t2 = std::time::Instant::now();
