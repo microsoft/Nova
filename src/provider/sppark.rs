@@ -60,7 +60,7 @@ fn jacobian_to_point(result: &[u64; 12]) -> Option<Point> {
   let x_aff = x * z_inv2;
   let y_aff = y * z_inv3;
 
-  let affine = Option::from(Affine::from_xy(x_aff, y_aff))?;
+  let affine: Affine = Option::from(Affine::from_xy(x_aff, y_aff))?;
   Some(Point::from(affine))
 }
 
