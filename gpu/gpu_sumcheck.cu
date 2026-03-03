@@ -51,14 +51,8 @@ static uint32_t g_num_blocks = 0;
 static int g_grid = 0;
 static fr_t* h_block_results = nullptr;
 
-// ============== HyperKZG GPU operations ==============
-// Kernels must be outside #ifndef __CUDA_ARCH__ to compile for both device and host.
-
-static fr_t* d_hkzg_poly = nullptr;
-static fr_t* d_hkzg_scratch = nullptr;
-static fr_t** d_hkzg_levels = nullptr;
-static uint32_t hkzg_ell = 0;
-static uint32_t hkzg_n = 0;
+// ============== HyperKZG CUDA kernels ==============
+// Must be outside #ifndef __CUDA_ARCH__ to compile for both device and host.
 
 // Fold kernel: out[j] = in[2j] + x * (in[2j+1] - in[2j])
 __global__
@@ -89,6 +83,31 @@ void hkzg_chunked_horner_kernel(const fr_t* __restrict__ f, fr_t* __restrict__ c
     chunk_results[tid] = acc;
 }
 
+// 3-point chunked Horner: evaluates one chunk at 3 points simultaneously
+// Results stored interleaved: chunk_results[tid*3+p] for point p
+__global__
+void hkzg_chunked_horner_3pt_kernel(const fr_t* __restrict__ f, fr_t* __restrict__ chunk_results,
+                                     const fr_t u0, const fr_t u1, const fr_t u2,
+                                     uint32_t n, uint32_t chunk_sz)
+{
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t start = tid * chunk_sz;
+    if (start >= n) return;
+    uint32_t end = start + chunk_sz;
+    if (end > n) end = n;
+    fr_t a0 = f[end - 1], a1 = a0, a2 = a0;
+    for (uint32_t i = end - 1; i > start; ) {
+        --i;
+        fr_t fi = f[i];
+        a0 = a0 * u0 + fi;
+        a1 = a1 * u1 + fi;
+        a2 = a2 * u2 + fi;
+    }
+    chunk_results[tid*3]   = a0;
+    chunk_results[tid*3+1] = a1;
+    chunk_results[tid*3+2] = a2;
+}
+
 // SAXPY: out[i] = a[i] + s * b[i] (out may alias a or b)
 __global__
 void hkzg_saxpy_kernel(fr_t* out, const fr_t* __restrict__ a,
@@ -100,6 +119,12 @@ void hkzg_saxpy_kernel(fr_t* out, const fr_t* __restrict__ a,
 }
 
 #ifndef __CUDA_ARCH__
+
+// HyperKZG host-side state
+static fr_t* d_hkzg_poly = nullptr;
+static fr_t** d_hkzg_levels = nullptr;
+static uint32_t hkzg_ell = 0;
+static uint32_t hkzg_n = 0;
 
 extern "C" {
 
@@ -423,52 +448,67 @@ int gpu_hkzg_eval(const void* u_host, void* v_host, uint32_t ell) {
     const fr_t* u = reinterpret_cast<const fr_t*>(u_host);
     fr_t* v = reinterpret_cast<fr_t*>(v_host);
 
-    // For each level and each point, do chunked Horner evaluation
     const uint32_t CHUNK_SZ = 1024;
+    const uint32_t CPU_THRESHOLD = 4096;
+
+    // Allocate chunk results buffer once (3× for 3-point kernel)
+    uint32_t max_chunks = (hkzg_n + CHUNK_SZ - 1) / CHUNK_SZ;
+    fr_t* d_chunks;
+    CHECK_CUDA(cudaMalloc(&d_chunks, max_chunks * 3 * sizeof(fr_t)));
+
+    // Pre-compute u^CHUNK_SZ for each point
+    fr_t u_pow[3];
+    for (int p = 0; p < 3; p++) {
+        u_pow[p] = u[p];
+        for (uint32_t k = 1; k < CHUNK_SZ; k++) u_pow[p] = u_pow[p] * u[p];
+    }
 
     for (uint32_t i = 0; i < ell; i++) {
         uint32_t poly_len = hkzg_n >> i;
+
         if (poly_len <= 1) {
-            // Single element — just copy
-            for (int p = 0; p < 3; p++) {
-                CHECK_CUDA(cudaMemcpy(&v[i*3+p], d_hkzg_levels[i], sizeof(fr_t), cudaMemcpyDeviceToHost));
-            }
+            CHECK_CUDA(cudaMemcpy(&v[i*3], d_hkzg_levels[i], sizeof(fr_t), cudaMemcpyDeviceToHost));
+            v[i*3+1] = v[i*3];
+            v[i*3+2] = v[i*3];
             continue;
         }
 
-        uint32_t num_chunks = (poly_len + CHUNK_SZ - 1) / CHUNK_SZ;
+        if (poly_len <= CPU_THRESHOLD) {
+            fr_t* h_poly = (fr_t*)malloc(poly_len * sizeof(fr_t));
+            CHECK_CUDA(cudaMemcpy(h_poly, d_hkzg_levels[i], poly_len * sizeof(fr_t), cudaMemcpyDeviceToHost));
+            for (int p = 0; p < 3; p++) {
+                fr_t acc = h_poly[poly_len - 1];
+                for (uint32_t j = poly_len - 1; j > 0; ) {
+                    --j;
+                    acc = acc * u[p] + h_poly[j];
+                }
+                v[i*3+p] = acc;
+            }
+            free(h_poly);
+            continue;
+        }
 
-        // Allocate chunk results buffer on device
-        fr_t* d_chunks;
-        CHECK_CUDA(cudaMalloc(&d_chunks, num_chunks * sizeof(fr_t)));
+        // GPU: single 3-point kernel per level (1 launch instead of 3)
+        uint32_t num_chunks = (poly_len + CHUNK_SZ - 1) / CHUNK_SZ;
+        uint32_t blocks = (num_chunks + 255) / 256;
+        hkzg_chunked_horner_3pt_kernel<<<blocks, 256>>>(
+            d_hkzg_levels[i], d_chunks, u[0], u[1], u[2], poly_len, CHUNK_SZ);
+        CHECK_CUDA(cudaDeviceSynchronize());
+
+        fr_t* h_chunks = (fr_t*)malloc(num_chunks * 3 * sizeof(fr_t));
+        CHECK_CUDA(cudaMemcpy(h_chunks, d_chunks, num_chunks * 3 * sizeof(fr_t), cudaMemcpyDeviceToHost));
 
         for (int p = 0; p < 3; p++) {
-            // Phase 1: each thread evaluates a chunk using Horner
-            uint32_t blocks = (num_chunks + 255) / 256;
-            hkzg_chunked_horner_kernel<<<blocks, 256>>>(
-                d_hkzg_levels[i], d_chunks, u[p], poly_len, CHUNK_SZ);
-            CHECK_CUDA(cudaDeviceSynchronize());
-
-            // Phase 2: combine chunk results on CPU
-            // f(u) = c[0] + c[1]*u^chunk_sz + c[2]*u^(2*chunk_sz) + ...
-            fr_t* h_chunks = (fr_t*)malloc(num_chunks * sizeof(fr_t));
-            CHECK_CUDA(cudaMemcpy(h_chunks, d_chunks, num_chunks * sizeof(fr_t), cudaMemcpyDeviceToHost));
-
-            // Compute u^chunk_sz
-            fr_t u_pow = u[p];
-            for (uint32_t k = 1; k < CHUNK_SZ; k++) u_pow = u_pow * u[p];
-
-            // Horner combination of chunks (from last to first)
-            fr_t result = h_chunks[num_chunks - 1];
+            fr_t result = h_chunks[(num_chunks - 1) * 3 + p];
             for (uint32_t k = num_chunks - 1; k > 0; ) {
                 --k;
-                result = result * u_pow + h_chunks[k];
+                result = result * u_pow[p] + h_chunks[k * 3 + p];
             }
             v[i*3+p] = result;
-            free(h_chunks);
         }
-        cudaFree(d_chunks);
+        free(h_chunks);
     }
+    cudaFree(d_chunks);
     return 0;
 }
 
