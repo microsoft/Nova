@@ -496,32 +496,50 @@ void gpu_static_free() {
 
 // ============== Phase 1: After tau ==============
 int gpu_phase1_init(const void* eq_tau_host, const void* z_padded_host, uint32_t n) {
-    g_n = n;
     size_t fr_bytes = (size_t)n * sizeof(fr_t);
 
-    int device; cudaGetDevice(&device);
-    cudaDeviceProp prop; cudaGetDeviceProperties(&prop, device);
-    g_num_blocks = prop.multiProcessorCount * 2;
-    g_grid = (n + 255) / 256;
-    if (g_grid > (int)g_num_blocks * 4) g_grid = g_num_blocks * 4;
+    // Cache allocations across prove calls (n is constant for IVC)
+    if (g_n != n || !d_poly_data) {
+        // Free old allocations if size changed
+        if (d_poly_data)     { cudaFree(d_poly_data);     d_poly_data = nullptr; }
+        if (d_eq_tau)        { cudaFree(d_eq_tau);        d_eq_tau = nullptr; }
+        if (d_z_padded)      { cudaFree(d_z_padded);      d_z_padded = nullptr; }
+        if (d_challenge)     { cudaFree(d_challenge);     d_challenge = nullptr; }
+        if (d_products)      { cudaFree(d_products);      d_products = nullptr; }
+        if (d_ends_tmp)      { cudaFree(d_ends_tmp);      d_ends_tmp = nullptr; }
+        if (d_invs)          { cudaFree(d_invs);          d_invs = nullptr; }
+        if (h_ends_buf)      { free(h_ends_buf);          h_ends_buf = nullptr; }
+        if (h_prods_buf)     { free(h_prods_buf);         h_prods_buf = nullptr; }
+        if (h_invs_buf)      { free(h_invs_buf);          h_invs_buf = nullptr; }
 
-    CHECK_CUDA(cudaMalloc(&d_poly_data, (size_t)NUM_POLYS * fr_bytes));
-    for (int i = 0; i < NUM_POLYS; i++)
-        d_polys[i] = d_poly_data + (size_t)i * n;
+        g_n = n;
+        int device; cudaGetDevice(&device);
+        cudaDeviceProp prop; cudaGetDeviceProperties(&prop, device);
+        g_num_blocks = prop.multiProcessorCount * 2;
+        g_grid = (n + 255) / 256;
+        if (g_grid > (int)g_num_blocks * 4) g_grid = g_num_blocks * 4;
 
-    CHECK_CUDA(cudaMalloc(&d_eq_tau, fr_bytes));
-    CHECK_CUDA(cudaMalloc(&d_z_padded, fr_bytes));
-    CHECK_CUDA(cudaMalloc(&d_challenge, 4 * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_products, fr_bytes));
+        CHECK_CUDA(cudaMalloc(&d_poly_data, (size_t)NUM_POLYS * fr_bytes));
+        for (int i = 0; i < NUM_POLYS; i++)
+            d_polys[i] = d_poly_data + (size_t)i * n;
 
-    // Pre-allocate batch_inv buffers (nc ≈ n/4096)
-    uint32_t csz = 4096;
-    g_nc = (n + csz - 1) / csz;
-    CHECK_CUDA(cudaMalloc(&d_ends_tmp, g_nc * sizeof(fr_t)));
-    CHECK_CUDA(cudaMalloc(&d_invs, g_nc * sizeof(fr_t)));
-    h_ends_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
-    h_prods_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
-    h_invs_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+        CHECK_CUDA(cudaMalloc(&d_eq_tau, fr_bytes));
+        CHECK_CUDA(cudaMalloc(&d_z_padded, fr_bytes));
+        CHECK_CUDA(cudaMalloc(&d_challenge, 4 * sizeof(fr_t)));
+        CHECK_CUDA(cudaMalloc(&d_products, fr_bytes));
+
+        uint32_t csz = 4096;
+        g_nc = (n + csz - 1) / csz;
+        CHECK_CUDA(cudaMalloc(&d_ends_tmp, g_nc * sizeof(fr_t)));
+        CHECK_CUDA(cudaMalloc(&d_invs, g_nc * sizeof(fr_t)));
+        h_ends_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+        h_prods_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+        h_invs_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+    } else {
+        // Reuse existing allocations — just update grid params
+        g_grid = (n + 255) / 256;
+        if (g_grid > (int)g_num_blocks * 4) g_grid = g_num_blocks * 4;
+    }
 
     CHECK_CUDA(cudaMemcpy(d_eq_tau, eq_tau_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_z_padded, z_padded_host, fr_bytes, cudaMemcpyHostToDevice));
@@ -690,12 +708,16 @@ int gpu_phase3_setup_sumcheck(const void* rho_host, const void* tau_host, uint32
     }
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    CHECK_CUDA(cudaMalloc(&d_poly_ptrs, NUM_POLYS * sizeof(fr_t*)));
+    if (!d_poly_ptrs) {
+        CHECK_CUDA(cudaMalloc(&d_poly_ptrs, NUM_POLYS * sizeof(fr_t*)));
+    }
     CHECK_CUDA(cudaMemcpy(d_poly_ptrs, d_polys, NUM_POLYS * sizeof(fr_t*), cudaMemcpyHostToDevice));
 
-    size_t brb = g_num_blocks * 3 * sizeof(fr_t);
-    CHECK_CUDA(cudaMalloc(&d_block_results, brb));
-    h_block_results = (fr_t*)malloc(brb);
+    if (!d_block_results) {
+        size_t brb = g_num_blocks * 3 * sizeof(fr_t);
+        CHECK_CUDA(cudaMalloc(&d_block_results, brb));
+        h_block_results = (fr_t*)malloc(brb);
+    }
 
     CHECK_CUDA(cudaDeviceSynchronize());
     return 0;
@@ -744,6 +766,11 @@ void* gpu_get_poly_device_ptr(uint32_t poly_id) {
 }
 
 void gpu_sumcheck_free() {
+    // Soft free: keep allocations cached for next prove call.
+    // Nothing to free — all buffers are retained.
+}
+
+void gpu_sumcheck_free_all() {
     if (d_poly_data)     { cudaFree(d_poly_data);     d_poly_data = nullptr; }
     if (d_poly_ptrs)     { cudaFree(d_poly_ptrs);     d_poly_ptrs = nullptr; }
     if (d_block_results) { cudaFree(d_block_results); d_block_results = nullptr; }

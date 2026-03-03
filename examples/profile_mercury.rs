@@ -19,8 +19,15 @@ fn main() {
     DirectSNARK::<E, S, NonTrivialCircuit<<E as Engine>::Scalar>>::setup(c.clone()).unwrap();
   eprintln!("Setup done, starting prove...");
 
+  // First prove (cold — allocates GPU buffers)
   let t = std::time::Instant::now();
   let res = DirectSNARK::prove(&pk, c.clone(), &input);
   assert!(res.is_ok());
-  eprintln!("\nTotal wall time: {:?}", t.elapsed());
+  eprintln!("\n[1st prove] wall time: {:?}", t.elapsed());
+
+  // Second prove (warm — reuses cached GPU buffers)
+  let t = std::time::Instant::now();
+  let res = DirectSNARK::prove(&pk, c.clone(), &input);
+  assert!(res.is_ok());
+  eprintln!("\n[2nd prove] wall time: {:?}", t.elapsed());
 }
