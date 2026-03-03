@@ -85,6 +85,7 @@ extern "C" {
     alpha: *const u8,
     quotient: *mut u8,
     remainder: *mut u8,
+    d_quot_out: *mut *mut u8,
   ) -> i32;
 
   fn gpu_mercury_quot_f(
@@ -97,7 +98,10 @@ extern "C" {
     zeta: *const u8,
     quotient: *mut u8,
     remainder: *mut u8,
+    d_quot_out: *mut *mut u8,
   ) -> i32;
+
+  fn gpu_free_device(d_ptr: *mut u8);
 }
 
 /// Raw bytes of a scalar in Montgomery form (no conversion).
@@ -114,6 +118,20 @@ fn scalar_from_raw(bytes: &[u8]) -> Scalar {
 }
 
 /// Upload static circuit data to GPU (called once per circuit).
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static STATIC_FINGERPRINT: AtomicU64 = AtomicU64::new(0);
+
+/// Compute a fingerprint for the static data to detect changes.
+/// Compute a fingerprint for the static data to detect changes.
+fn compute_static_fingerprint(row_int: &[u32], n: usize) -> u64 {
+  // Use first+last element and size as a fast fingerprint
+  let first = if n > 0 { row_int[0] as u64 } else { 0 };
+  let last = if n > 0 { row_int[n - 1] as u64 } else { 0 };
+  first ^ (last << 32) ^ (n as u64).wrapping_mul(0x517cc1b727220a95)
+}
+
+/// Upload static circuit data to GPU. Caches based on fingerprint to skip re-upload.
 pub fn static_upload(
   row_int: &[u32],
   col_int: &[u32],
@@ -126,6 +144,13 @@ pub fn static_upload(
   ts_col: &[Scalar],
 ) -> Result<(), String> {
   let n = row_int.len();
+
+  // Check if static data is already uploaded (same circuit)
+  let fp = compute_static_fingerprint(row_int, n);
+  if STATIC_FINGERPRINT.load(Ordering::Relaxed) == fp {
+    return Ok(());
+  }
+
   let _lock = GPU_SC_LOCK.lock().unwrap();
   let ret = unsafe {
     gpu_static_upload(
@@ -139,6 +164,7 @@ pub fn static_upload(
   if ret != 0 {
     return Err("gpu_static_upload failed".to_string());
   }
+  STATIC_FINGERPRINT.store(fp, Ordering::Relaxed);
   Ok(())
 }
 
@@ -200,6 +226,29 @@ pub fn phase2_construct(
 }
 
 /// Download memory oracle + auxiliary polynomials from phase 2.
+/// Download only the 4 memory oracle polynomials from GPU (skip aux for GPU path).
+pub fn phase2_download_mem_oracles_only(n: usize) -> Result<[Vec<Scalar>; 4], String> {
+  let mut oracle = [
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+    vec![Scalar::default(); n],
+  ];
+  let fr_bytes = n * std::mem::size_of::<Scalar>();
+  let _lock = GPU_SC_LOCK.lock().unwrap();
+  // Oracle poly IDs: 1 (t_inv_row), 3 (w_inv_row), 6 (t_inv_col), 8 (w_inv_col)
+  let poly_ids = [1u32, 3, 6, 8];
+  for (i, &pid) in poly_ids.iter().enumerate() {
+    let d_ptr = unsafe { gpu_get_poly_device_ptr(pid) };
+    let ret = unsafe { gpu_memcpy_dtoh(oracle[i].as_mut_ptr() as *mut u8, d_ptr, fr_bytes) };
+    if ret != 0 {
+      return Err(format!("gpu_memcpy_dtoh for poly {} failed", pid));
+    }
+  }
+  Ok(oracle)
+}
+
+/// Download all 8 memory oracle + aux polynomials from GPU.
 pub fn phase2_download_mem_oracles(n: usize) -> Result<([Vec<Scalar>; 4], [Vec<Scalar>; 4]), String> {
   let mut oracle = [
     vec![Scalar::default(); n],
@@ -316,6 +365,11 @@ pub fn static_free() {
 /// Get device pointer for a sumcheck polynomial (for device-side MSM).
 pub fn get_poly_device_ptr(poly_id: u32) -> *mut u8 {
   unsafe { gpu_get_poly_device_ptr(poly_id) }
+}
+
+/// Free a device pointer allocated by GPU Mercury functions.
+pub fn free_device_ptr(d_ptr: *mut u8) {
+  unsafe { gpu_free_device(d_ptr) };
 }
 
 /// HyperKZG GPU state for fold, evaluate, and batch polynomial operations.
@@ -443,17 +497,18 @@ pub fn gpu_poly_divide_by_linear(coeffs: &[Scalar], a: &Scalar) -> Result<(Vec<S
 
 /// GPU-accelerated divide_by_binomial: f(X) / (X^b - alpha)
 /// Input: f_poly coefficients (b*b elements), b (sqrt of N), alpha
-/// Returns: (quotient coeffs, remainder coeffs of length b)
+/// Returns: (quotient coeffs, remainder coeffs of length b, optional device pointer)
 pub fn gpu_poly_divide_by_binomial(
   coeffs: &[Scalar],
   b: usize,
   alpha: &Scalar,
-) -> Result<(Vec<Scalar>, Vec<Scalar>), String> {
+) -> Result<(Vec<Scalar>, Vec<Scalar>, *mut u8), String> {
   assert_eq!(coeffs.len(), b * b);
 
   let quot_len = (b - 1) * b;
   let mut quotient = vec![Scalar::default(); quot_len];
   let mut remainder = vec![Scalar::default(); b];
+  let mut d_quot: *mut u8 = std::ptr::null_mut();
 
   let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
   let ret = unsafe {
@@ -463,24 +518,25 @@ pub fn gpu_poly_divide_by_binomial(
       alpha as *const Scalar as *const u8,
       quotient.as_mut_ptr() as *mut u8,
       remainder.as_mut_ptr() as *mut u8,
+      &mut d_quot,
     )
   };
   if ret != 0 {
     return Err("gpu_mercury_divide_by_binomial failed".to_string());
   }
-  Ok((quotient, remainder))
+  Ok((quotient, remainder, d_quot))
 }
 
 /// GPU-accelerated quot_f computation:
 /// quot_f = (f + scale*q - g_zeta) / (X - zeta)
-/// Returns (quotient, remainder).
+/// Returns (quotient, remainder, device pointer to quotient for MSM).
 pub fn gpu_mercury_compute_quot_f(
   f_coeffs: &[Scalar],
   q_coeffs: &[Scalar],
   scale: &Scalar,
   g_zeta: &Scalar,
   zeta: &Scalar,
-) -> Result<(Vec<Scalar>, Scalar), String> {
+) -> Result<(Vec<Scalar>, Scalar, *mut u8), String> {
   let f_len = f_coeffs.len();
   if f_len < 2 {
     return Err("polynomial too short".to_string());
@@ -488,6 +544,7 @@ pub fn gpu_mercury_compute_quot_f(
 
   let mut quotient = vec![Scalar::default(); f_len - 1];
   let mut remainder = Scalar::default();
+  let mut d_quot: *mut u8 = std::ptr::null_mut();
 
   let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
   let ret = unsafe {
@@ -501,10 +558,11 @@ pub fn gpu_mercury_compute_quot_f(
       zeta as *const Scalar as *const u8,
       quotient.as_mut_ptr() as *mut u8,
       &mut remainder as *mut Scalar as *mut u8,
+      &mut d_quot,
     )
   };
   if ret != 0 {
     return Err("gpu_mercury_quot_f failed".to_string());
   }
-  Ok((quotient, remainder))
+  Ok((quotient, remainder, d_quot))
 }

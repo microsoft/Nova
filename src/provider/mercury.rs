@@ -909,6 +909,8 @@ where
     // * 4. Mercury Section 6. Step 2. (b)
     // Compute q(X) and g(X)
     let _t = std::time::Instant::now();
+    #[allow(unused_mut)]
+    let mut _d_quot_ptr: *mut u8 = std::ptr::null_mut();
     let (mut q_poly, g_poly) = {
       #[cfg(feature = "sppark")]
       {
@@ -919,9 +921,10 @@ where
           let f_as_fr = unsafe { &*(f_poly.as_slice() as *const [E::Scalar] as *const [Fr]) };
           let alpha_as_fr = unsafe { &*(&alpha as *const E::Scalar as *const Fr) };
 
-          let (mut quot_fr, mut rem_fr) =
+          let (mut quot_fr, mut rem_fr, d_ptr) =
             crate::spartan::gpu_sumcheck::gpu_poly_divide_by_binomial(f_as_fr, b, alpha_as_fr)
               .map_err(|_| NovaError::InternalError)?;
+          _d_quot_ptr = d_ptr;
 
           // Reinterpret back to E::Scalar
           let q = UniPoly {
@@ -1004,10 +1007,35 @@ where
     // * 5. Mercury Section 6. Step 2. (c)
     // * Main Cost (Prover) I: MSM of O(N)
     let _t = std::time::Instant::now();
-    let (comm_q, comm_g) = rayon::join(
-      || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
-      || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
-    );
+    let (comm_q, comm_g) = {
+      #[cfg(feature = "sppark")]
+      {
+        if !_d_quot_ptr.is_null() {
+          // Device-side MSM for q (quotient already on GPU from divide_by_binomial)
+          type G1 = halo2curves::bn256::G1;
+          let q_len = q_poly.coeffs.len();
+          let point: G1 = crate::provider::sppark::msm_from_device(_d_quot_ptr, q_len);
+          crate::spartan::gpu_sumcheck::free_device_ptr(_d_quot_ptr);
+          _d_quot_ptr = std::ptr::null_mut();
+          let comm_q: Commitment<E> =
+            unsafe { std::ptr::read(&point as *const G1 as *const Commitment<E>) };
+          let comm_g = E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO);
+          (comm_q, comm_g)
+        } else {
+          rayon::join(
+            || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
+            || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
+          )
+        }
+      }
+      #[cfg(not(feature = "sppark"))]
+      {
+        rayon::join(
+          || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
+          || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
+        )
+      }
+    };
     eprintln!("[Mercury] commit(q,g): {:?}", _t.elapsed());
     transcript.absorb(LABEL_Q, &[comm_q].to_vec().as_slice());
     transcript.absorb(LABEL_G, &[comm_g].to_vec().as_slice());
@@ -1126,6 +1154,8 @@ where
 
     // quot_f(X) = ( f(X) -  q(X) * (zeta^b - alpha) - g(zeta) ) / (X - zeta)
     let _t = std::time::Instant::now();
+    #[allow(unused_mut)]
+    let mut _d_quotf_ptr: *mut u8 = std::ptr::null_mut();
     let quot_f = {
       let zeta_b = zeta.pow([b as u64]);
       let zeta_b_alpha = zeta_b - alpha;
@@ -1144,10 +1174,11 @@ where
           let gz_fr = unsafe { &*(&g_zeta as *const E::Scalar as *const Fr) };
           let zeta_fr = unsafe { &*(&zeta as *const E::Scalar as *const Fr) };
 
-          let (mut quot_fr, rem) = crate::spartan::gpu_sumcheck::gpu_mercury_compute_quot_f(
+          let (mut quot_fr, rem, d_ptr) = crate::spartan::gpu_sumcheck::gpu_mercury_compute_quot_f(
             f_as_fr, q_as_fr, scale_fr, gz_fr, zeta_fr,
           )
           .map_err(|_| NovaError::InternalError)?;
+          _d_quotf_ptr = d_ptr;
 
           let rem_e = unsafe { std::ptr::read(&rem as *const Fr as *const E::Scalar) };
           assert_eq!(rem_e, E::Scalar::ZERO);
@@ -1222,7 +1253,24 @@ where
       let mut quot_f = quot_f;
       quot_f.coeffs.truncate(original_size);
       quot_f.trim();
-      E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
+      #[cfg(feature = "sppark")]
+      {
+        if !_d_quotf_ptr.is_null() {
+          // Device-side MSM for quot_f (quotient already on GPU)
+          type G1 = halo2curves::bn256::G1;
+          let msm_len = std::cmp::min(quot_f.coeffs.len(), original_size);
+          let point: G1 = crate::provider::sppark::msm_from_device(_d_quotf_ptr, msm_len);
+          crate::spartan::gpu_sumcheck::free_device_ptr(_d_quotf_ptr);
+          _d_quotf_ptr = std::ptr::null_mut();
+          unsafe { std::ptr::read(&point as *const G1 as *const Commitment<E>) }
+        } else {
+          E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
+        }
+      }
+      #[cfg(not(feature = "sppark"))]
+      {
+        E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
+      }
     };
     eprintln!("[Mercury] commit(quot_f): {:?}", _t.elapsed());
     transcript.absorb(LABEL_QUOT_F, &[comm_quot_f].to_vec().as_slice());

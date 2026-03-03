@@ -887,8 +887,10 @@ int gpu_mercury_divide_by_linear(const void* h_coeffs, uint32_t poly_len,
 // Mercury: divide_by_binomial on GPU
 // f(X) / (X^b - alpha), f has b*b elements in row-major order
 // Returns quotient (b*(b-1) elements, transposed to coeff order) and remainder (b elements)
+// If d_quot_out is non-null, stores a COPY of the device quotient pointer there (caller must cudaFree)
 int gpu_mercury_divide_by_binomial(const void* h_coeffs, uint32_t b,
-                                    const void* h_alpha, void* h_quotient, void* h_remainder) {
+                                    const void* h_alpha, void* h_quotient, void* h_remainder,
+                                    void** d_quot_out) {
     uint32_t n = b * b;
     const fr_t alpha = *(const fr_t*)h_alpha;
     
@@ -960,13 +962,20 @@ int gpu_mercury_divide_by_binomial(const void* h_coeffs, uint32_t b,
     // ...
     // This is exactly the standard coefficient order! No transpose needed.
     
-    // Download quotient and remainder
-    // Quotient has (b-1)*b elements
-    CHECK_CUDA(cudaMemcpy(h_quotient, d_quot, (size_t)(b - 1) * b * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    // Download remainder only (quotient stays on device for MSM)
     CHECK_CUDA(cudaMemcpy(h_remainder, d_rem, (size_t)b * sizeof(fr_t), cudaMemcpyDeviceToHost));
     
+    // Also download quotient to host (needed later for EE)
+    CHECK_CUDA(cudaMemcpy(h_quotient, d_quot, (size_t)(b - 1) * b * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    
+    // If caller wants device pointer, transfer ownership instead of freeing
+    if (d_quot_out) {
+        *d_quot_out = d_quot;
+    } else {
+        cudaFree(d_quot);
+    }
+    
     cudaFree(d_in);
-    cudaFree(d_quot);
     cudaFree(d_rem);
     cudaFree(d_transposed);
     return 0;
@@ -984,7 +993,8 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
                        const void* h_g_zeta,
                        const void* h_zeta,
                        void* h_quotient,
-                       void* h_remainder) {
+                       void* h_remainder,
+                       void** d_quot_out) {
     const fr_t scale = *(const fr_t*)h_scale;
     const fr_t g_zeta = *(const fr_t*)h_g_zeta;
     const fr_t zeta = *(const fr_t*)h_zeta;
@@ -1066,13 +1076,24 @@ int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
     fr_t rem = f0_orig + zeta * q0;
     memcpy(h_remainder, &rem, sizeof(fr_t));
     
+    // If caller wants device pointer, transfer ownership instead of freeing
+    if (d_quot_out) {
+        *d_quot_out = d_quotient;
+    } else {
+        cudaFree(d_quotient);
+    }
+    
     cudaFree(d_f);
     cudaFree(d_local_m);
     cudaFree(d_local_b);
     cudaFree(d_block_m);
     cudaFree(d_block_b);
-    cudaFree(d_quotient);
     return 0;
+}
+
+// Free a device pointer allocated by the above functions
+void gpu_free_device(void* d_ptr) {
+    if (d_ptr) cudaFree(d_ptr);
 }
 
 } // extern "C"
