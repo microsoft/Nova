@@ -31,20 +31,27 @@ static affine_h* g_gens = nullptr;
 static size_t g_gens_n = 0;
 static uint64_t g_gens_label = 0;
 
-static void ensure_generators(const void* points, size_t n_bases, uint64_t label) {
+static int ensure_generators(const void* points, size_t n_bases, uint64_t label) {
     if (n_bases == 0) {
         g_gens_n = 0;
-        return;
+        return 0;
     }
     // Cache hit: same generator set and we already have enough points.
-    if (g_gens && g_gens_label == label && n_bases <= g_gens_n) return;
+    if (g_gens && g_gens_label == label && n_bases <= g_gens_n) return 0;
 
     if (g_gens) cudaFree(g_gens);
-    cudaMalloc(&g_gens, n_bases * sizeof(affine_h));
-    cudaMemcpy(g_gens, points, n_bases * sizeof(affine_h), cudaMemcpyHostToDevice);
+    g_gens = nullptr;
+
+    cudaError_t err = cudaMalloc(&g_gens, n_bases * sizeof(affine_h));
+    if (err != cudaSuccess) { g_gens_n = 0; return -1; }
+
+    err = cudaMemcpy(g_gens, points, n_bases * sizeof(affine_h), cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) { cudaFree(g_gens); g_gens = nullptr; g_gens_n = 0; return -1; }
+
     cudaDeviceSynchronize();
     g_gens_n = n_bases;
     g_gens_label = label;
+    return 0;
 }
 
 // Internal: run MSM using cached generators with msm_par_t (parallel accumulate).
@@ -54,7 +61,8 @@ static void ensure_generators(const void* points, size_t n_bases, uint64_t label
 static int msm_cached(const void* points, const void* scalars,
                       void* result, size_t n_bases, size_t n_scalars,
                       uint64_t label) {
-    ensure_generators(points, n_bases, label);
+    if (ensure_generators(points, n_bases, label) != 0)
+        return -1;
 
     // Fresh handle: optimal wbits for this n_scalars, no generator upload
     msm_par_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, n_scalars};
@@ -76,15 +84,15 @@ static int msm_cached(const void* points, const void* scalars,
 extern "C" {
 
 int sppark_msm_with_generators(const void* points, const void* scalars,
-                                void* result, int n_bases, int n_scalars,
-                                uint64_t label) {
+                                void* result, uint32_t n_bases,
+                                uint32_t n_scalars, uint64_t label) {
     return msm_cached(points, scalars, result, (size_t)n_bases,
                       (size_t)n_scalars, label);
 }
 
 int sppark_msm_parallel(const void* points, const void* scalars,
-                         void* result, int n_bases, int n_scalars,
-                         uint64_t label) {
+                         void* result, uint32_t n_bases,
+                         uint32_t n_scalars, uint64_t label) {
     return msm_cached(points, scalars, result, (size_t)n_bases,
                       (size_t)n_scalars, label);
 }

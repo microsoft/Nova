@@ -16,8 +16,8 @@ extern "C" {
     points: *const u64,
     scalars: *const u64,
     result: *mut u64,
-    n_bases: i32,
-    n_scalars: i32,
+    n_bases: u32,
+    n_scalars: u32,
     label: u64,
   ) -> i32;
 }
@@ -33,7 +33,10 @@ static GPU_LOCK: Mutex<()> = Mutex::new(());
 /// We go through `Fq::from_raw` to avoid relying on the internal memory layout
 /// of `Fq` and `G1`, then reconstruct the projective point via explicit
 /// coordinate conversion.
-fn jacobian_to_point(result: &[u64; 12]) -> Point {
+///
+/// Returns `None` if the GPU output is malformed (zero Z after `from_raw`,
+/// non-invertible Z, or off-curve affine point).
+fn jacobian_to_point(result: &[u64; 12]) -> Option<Point> {
   use ff::Field;
   use halo2curves::bn256::Fq;
 
@@ -43,19 +46,19 @@ fn jacobian_to_point(result: &[u64; 12]) -> Point {
   let z = Fq::from_raw([result[8], result[9], result[10], result[11]]);
 
   if z.is_zero().into() {
-    return Point::default();
+    return Some(Point::default());
   }
 
   // sppark Jacobian: affine_x = X / Z^2, affine_y = Y / Z^3.
-  let z_inv = z.invert().unwrap();
+  let z_inv = Option::from(z.invert())?;
   let z_inv2 = z_inv.square();
   let z_inv3 = z_inv2 * z_inv;
 
   let x_aff = x * z_inv2;
   let y_aff = y * z_inv3;
 
-  let affine = Affine::from_xy(x_aff, y_aff).unwrap();
-  Point::from(affine)
+  let affine = Option::from(Affine::from_xy(x_aff, y_aff))?;
+  Some(Point::from(affine))
 }
 
 use crate::provider::msm::msm;
@@ -95,8 +98,8 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
       bases.as_ptr() as *const u64,
       scalars.as_ptr() as *const u64,
       result.as_mut_ptr(),
-      bases.len() as i32,
-      effective_len as i32,
+      bases.len() as u32,
+      effective_len as u32,
       label,
     )
   };
@@ -104,7 +107,11 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
     // GPU MSM failed; fall back to CPU MSM for this call.
     return msm(&scalars[..effective_len], &bases[..effective_len]);
   }
-  jacobian_to_point(&result)
+  // If the GPU returned malformed data, fall back to CPU.
+  match jacobian_to_point(&result) {
+    Some(p) => p,
+    None => msm(&scalars[..effective_len], &bases[..effective_len]),
+  }
 }
 
 /// Perform MSM using sppark's GPU kernel with cached generators.

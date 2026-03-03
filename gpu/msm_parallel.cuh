@@ -18,6 +18,12 @@
 #define MAX_LARGE_BUCKETS 512
 #define PARALLEL_REDUCE_SIZE 256  // Must be power-of-2, <= ACCUMULATE_NTHREADS
 
+// Overflow threads fold into shared_buckets[0..PARALLEL_REDUCE_SIZE).
+// target = threadIdx.x - PARALLEL_REDUCE_SIZE must be < PARALLEL_REDUCE_SIZE,
+// i.e. ACCUMULATE_NTHREADS <= 2 * PARALLEL_REDUCE_SIZE.
+static_assert(ACCUMULATE_NTHREADS <= 2 * PARALLEL_REDUCE_SIZE,
+              "ACCUMULATE_NTHREADS must be <= 2 * PARALLEL_REDUCE_SIZE");
+
 struct large_bucket_info_t {
     uint32_t win;
     uint32_t bucket;
