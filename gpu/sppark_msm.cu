@@ -159,6 +159,10 @@ void sppark_ensure_generators(const void* points, int n) {
     ensure_generators(points, (size_t)n);
 }
 
+void sppark_sync_device() {
+    cudaDeviceSynchronize();
+}
+
 } // extern "C"
 
 #endif // __CUDA_ARCH__

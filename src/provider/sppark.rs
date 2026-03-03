@@ -40,6 +40,8 @@ extern "C" {
     points: *const u64,
     n: i32,
   );
+
+  fn sppark_sync_device();
 }
 
 /// GPU access must be serialized — sppark's kernels are not thread-safe
@@ -171,6 +173,11 @@ fn gpu_msm_device(d_scalars: *mut u8, n: usize) -> Point {
 pub fn ensure_generators_cached(bases: &[Affine]) {
   let _gpu = GPU_LOCK.lock().unwrap();
   unsafe { sppark_ensure_generators(bases.as_ptr() as *const u64, bases.len() as i32) };
+}
+
+/// Synchronize GPU device (wait for all pending work to complete).
+pub fn sync_device() {
+  unsafe { sppark_sync_device() };
 }
 
 /// Perform MSM using scalars already on GPU (device pointer).

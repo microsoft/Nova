@@ -392,6 +392,9 @@ static uint32_t hkzg_n = 0;
 extern "C" {
 
 // ============== Phase 0: Static upload ==============
+// Fingerprint for static data caching (skip re-upload on repeat calls)
+static uint64_t g_static_fp = 0;
+
 int gpu_static_upload(
     const uint32_t* row_int, const uint32_t* col_int,
     const void* row_fr, const void* col_fr,
@@ -399,7 +402,22 @@ int gpu_static_upload(
     const void* ts_row, const void* ts_col,
     uint32_t n)
 {
+    // Fingerprint based on pointer + first element of val_A (circuit identity)
+    const uint64_t* val_A_u64 = reinterpret_cast<const uint64_t*>(val_A);
+    uint64_t fp = val_A_u64[0] ^ val_A_u64[1] ^ reinterpret_cast<uint64_t>(val_A) ^ (uint64_t)n;
+
+    if (g_static_n == n && g_static_fp == fp && d_static_data) {
+        // Already uploaded — skip
+        return 0;
+    }
+
+    // Free previous data if any
+    if (d_static_data) { cudaFree(d_static_data); d_static_data = nullptr; }
+    if (d_row_int) { cudaFree(d_row_int); d_row_int = nullptr; }
+    if (d_col_int) { cudaFree(d_col_int); d_col_int = nullptr; }
+
     g_static_n = n;
+    g_static_fp = fp;
     size_t fr_bytes = (size_t)n * sizeof(fr_t);
     size_t int_bytes = (size_t)n * sizeof(uint32_t);
 
@@ -436,6 +454,7 @@ void gpu_static_free() {
     d_val_A = d_val_B = d_val_C = d_ts_row_static = d_ts_col_static = nullptr;
     d_row_fr = d_col_fr = nullptr;
     g_static_n = 0;
+    g_static_fp = 0;
 }
 
 // ============== Phase 1: After tau ==============

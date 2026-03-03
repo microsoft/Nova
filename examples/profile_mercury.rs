@@ -22,5 +22,11 @@ fn main() {
   let t = std::time::Instant::now();
   let res = DirectSNARK::prove(&pk, c.clone(), &input);
   assert!(res.is_ok());
-  eprintln!("\nTotal wall time: {:?}", t.elapsed());
+  eprintln!("\nFirst prove wall time: {:?}", t.elapsed());
+
+  eprintln!("\nStarting second prove (static data cached)...");
+  let t = std::time::Instant::now();
+  let res = DirectSNARK::prove(&pk, c.clone(), &input);
+  assert!(res.is_ok());
+  eprintln!("\nSecond prove wall time: {:?}", t.elapsed());
 }

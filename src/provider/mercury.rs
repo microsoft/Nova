@@ -1017,6 +1017,11 @@ where
           // Device-side MSM for q (quotient already on GPU from divide_by_binomial)
           type G1 = halo2curves::bn256::G1;
           let q_len = q_poly.coeffs.len();
+          // Free f_poly device pointer (no longer needed)
+          if !_d_f_ptr.is_null() {
+            crate::spartan::gpu_sumcheck::free_device_ptr(_d_f_ptr);
+            _d_f_ptr = std::ptr::null_mut();
+          }
           let point: G1 = crate::provider::sppark::msm_from_device(_d_quot_ptr, q_len);
           crate::spartan::gpu_sumcheck::free_device_ptr(_d_quot_ptr);
           _d_quot_ptr = std::ptr::null_mut();
