@@ -827,7 +827,7 @@ pub struct RelaxedR1CSSNARK<E: Engine, EE: EvaluationEngineTrait<E>> {
 }
 
 impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
-  /// Batched inner batched sum-check prover for 3 instances: memory, inner_batched, and witness.
+  /// Batched inner sum-check prover for 3 instances: memory, inner_batched, and witness.
   fn prove_helper<T1, T2, T3>(
     mem: &mut T1,
     inner: &mut T2,
