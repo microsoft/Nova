@@ -1074,7 +1074,6 @@ where
 
     #[cfg(feature = "sppark")]
     if let Some(ref hkzg_state) = gpu_hkzg {
-      // Commit folded polynomials from GPU device memory
       use halo2curves::bn256::{G1, G1Affine as BnG1Affine};
 
       // Ensure GPU generators are cached (may not be if HyperKZG is called standalone)
@@ -1083,16 +1082,31 @@ where
       };
       crate::provider::sppark::ensure_generators_cached(bases);
 
+      // Threshold: below this, download + CPU MSM is faster than GPU MSM
+      const DEVICE_MSM_THRESHOLD: usize = 1 << 15; // 32K elements
+
       let mut comms = Vec::with_capacity(ell - 1);
       for level in 1..ell as u32 {
-        let d_ptr = hkzg_state.get_level_ptr(level);
         let level_len = n >> level as usize;
-        let point: G1 = crate::provider::sppark::msm_from_device(d_ptr, level_len);
-        let bn_affine: BnG1Affine = point.into();
-        let affine: G1Affine<E> = unsafe {
-          std::ptr::read(&bn_affine as *const BnG1Affine as *const G1Affine<E>)
-        };
-        comms.push(affine);
+        if level_len >= DEVICE_MSM_THRESHOLD {
+          // GPU MSM from device memory
+          let d_ptr = hkzg_state.get_level_ptr(level);
+          let point: G1 = crate::provider::sppark::msm_from_device(d_ptr, level_len);
+          let bn_affine: BnG1Affine = point.into();
+          let affine: G1Affine<E> = unsafe {
+            std::ptr::read(&bn_affine as *const BnG1Affine as *const G1Affine<E>)
+          };
+          comms.push(affine);
+        } else {
+          // Download + CPU commit for small levels (avoids GPU MSM overhead)
+          let poly_fr = hkzg_state.download_level(level);
+          let poly_scalar: Vec<E::Scalar> = unsafe {
+            let mut v = std::mem::ManuallyDrop::new(poly_fr);
+            Vec::from_raw_parts(v.as_mut_ptr() as *mut E::Scalar, v.len(), v.capacity())
+          };
+          let comm = E::CE::commit(ck, &poly_scalar, &E::Scalar::ZERO);
+          comms.push(comm.comm.affine());
+        }
       }
       com = comms;
     } else {

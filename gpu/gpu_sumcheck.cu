@@ -552,5 +552,11 @@ void gpu_hkzg_free() {
     hkzg_ell = 0; hkzg_n = 0;
 }
 
+// Generic device-to-host memcpy wrapper
+int gpu_memcpy_dtoh(void* dst, const void* d_src, size_t bytes) {
+    cudaError_t err = cudaMemcpy(dst, d_src, bytes, cudaMemcpyDeviceToHost);
+    return err == cudaSuccess ? 0 : -1;
+}
+
 } // extern "C"
 #endif

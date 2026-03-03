@@ -202,9 +202,6 @@ pub fn vartime_multiscalar_mul(scalars: &[Scalar], bases: &[Affine]) -> Point {
   }
 
   if effective_len < GPU_MSM_THRESHOLD {
-    // Still cache generators at full bases length for future device-side MSM calls
-    let _gpu = GPU_LOCK.lock().unwrap();
-    unsafe { sppark_ensure_generators(bases.as_ptr() as *const u64, bases.len() as i32) };
     return msm(&scalars[..effective_len], &bases[..effective_len]);
   }
 

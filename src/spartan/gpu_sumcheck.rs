@@ -68,6 +68,7 @@ extern "C" {
   fn gpu_hkzg_eval(u_points: *const u8, v_out: *mut u8, ell: u32) -> i32;
   fn gpu_hkzg_batch_poly(q: *const u8, B_out: *mut u8, k_count: u32) -> i32;
   fn gpu_hkzg_free();
+  fn gpu_memcpy_dtoh(dst: *mut u8, d_src: *const u8, bytes: usize) -> i32;
 }
 
 /// Raw bytes of a scalar in Montgomery form (no conversion).
@@ -319,6 +320,19 @@ impl GpuHkzgState {
   /// Get device pointer for a folded polynomial level (for device-side MSM commit).
   pub fn get_level_ptr(&self, level: u32) -> *mut u8 {
     unsafe { gpu_hkzg_get_level_ptr(level) }
+  }
+
+  /// Download a folded polynomial level from GPU to CPU.
+  pub fn download_level(&self, level: u32) -> Vec<Scalar> {
+    let len = (self.n >> level) as usize;
+    let mut out = vec![Scalar::default(); len];
+    let d_ptr = self.get_level_ptr(level);
+    let _lock = GPU_SC_LOCK.lock().unwrap();
+    let err = unsafe {
+      gpu_memcpy_dtoh(out.as_mut_ptr() as *mut u8, d_ptr as *const u8, len * SCALAR_BYTES)
+    };
+    assert_eq!(err, 0, "gpu_memcpy_dtoh failed");
+    out
   }
 
   /// Evaluate all folded polynomials at 3 points. Returns v[i][j] = polys[i](u[j]).
