@@ -46,7 +46,7 @@ fn build_sppark_msm() {
     build.flag(&format!("-arch={arch}"));
   } else {
     for (compute, sm) in [
-      ("compute_70", "sm_70"), // V100
+      ("compute_75", "sm_75"), // T4, 2080
       ("compute_80", "sm_80"), // A100, 3090
       ("compute_89", "sm_89"), // 4090
       ("compute_90", "sm_90"), // H100
