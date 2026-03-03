@@ -1,7 +1,7 @@
 //! Standalone ppsnark benchmark — bypasses IVC, measures raw prove time.
 //!
 //! Usage:
-//!   cargo run --release --features test-utils,sppark-msm --example ppsnark_profile  # GPU
+//!   cargo run --release --features test-utils,sppark --example ppsnark_profile  # GPU
 //!   cargo run --release --features test-utils --example ppsnark_profile              # CPU only
 use nova_snark::{
   provider::Bn256EngineKZG,

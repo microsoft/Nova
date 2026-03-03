@@ -3,13 +3,7 @@
 // Generator caching: generators are uploaded to GPU on first call and reused.
 // All MSMs use accumulate_parallel (handles both normal and pathological distributions).
 //
-// Compile:
-//   nvcc -O3 -arch=sm_80 -I $SPPARK/sppark -I $BLST/src -I gpu/ \
-//     -DTAKE_RESPONSIBILITY_FOR_ERROR_MESSAGE -DFEATURE_BN254 \
-//     -rdc=true --shared -Xcompiler -fPIC \
-//     gpu/sppark_msm.cu $SPPARK/sppark/util/all_gpus.cpp \
-//     -Xlinker --whole-archive -L/tmp/blst_build -lblst -Xlinker --no-whole-archive \
-//     -o gpu/libsppark_msm.so
+// Built automatically via build.rs when the `sppark` feature is enabled.
 
 #include <cuda.h>
 
