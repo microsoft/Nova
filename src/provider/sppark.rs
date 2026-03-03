@@ -53,7 +53,7 @@ fn jacobian_to_point(result: &[u64; 12]) -> Option<Point> {
   }
 
   // sppark Jacobian: affine_x = X / Z^2, affine_y = Y / Z^3.
-  let z_inv = Option::from(z.invert())?;
+  let z_inv: Fq = Option::from(z.invert())?;
   let z_inv2 = z_inv.square();
   let z_inv3 = z_inv2 * z_inv;
 
