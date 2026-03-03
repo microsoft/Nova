@@ -257,6 +257,7 @@ fn divide_by_binomial<Scalar: PrimeField>(
   num_cols: usize,
   alpha: &Scalar,
 ) -> (UniPoly<Scalar>, UniPoly<Scalar>) {
+  let _t = std::time::Instant::now();
   let (quotients, remainder): (Vec<Vec<Scalar>>, Vec<Scalar>) = (0..num_cols)
     .into_par_iter()
     .map(|col_id| {
@@ -278,12 +279,15 @@ fn divide_by_binomial<Scalar: PrimeField>(
       (quotient.coeffs, remainder)
     })
     .unzip();
+  eprintln!("[Mercury]   div_binom: horner part: {:?}", _t.elapsed());
 
+  let _t = std::time::Instant::now();
   let mut quotient = UniPoly {
     coeffs: quotients.into_iter().flatten().collect(),
   };
 
   quotient.transpose(num_rows, num_cols);
+  eprintln!("[Mercury]   div_binom: transpose: {:?}", _t.elapsed());
 
   let remainder = UniPoly { coeffs: remainder };
 
@@ -522,6 +526,7 @@ mod batch_evaluation {
     // * BDFG20 4.1 - 2.
     // Compute polynomial m(X) = sum{ beta_pow * ( poly(X) - poly_star(X) ) }
     // `m(X)`` is `f(X)` in BDFG20 4.1
+    let _t_batch = std::time::Instant::now();
     let m_poly = {
       // m(X) =
       //             z_poly_t_s1(X) * (g(X) - g*(X))
@@ -580,7 +585,10 @@ mod batch_evaluation {
     assert_eq!(rem, E::Scalar::ZERO);
 
     // W(X) = quot_m(X)
+    eprintln!("[Mercury]   batch: m_poly + divisions: {:?}", _t_batch.elapsed());
+    let _t = std::time::Instant::now();
     let comm_w = E::CE::commit(ck, &quot_m_poly.coeffs, &E::Scalar::ZERO);
+    eprintln!("[Mercury]   batch: commit(W): {:?}", _t.elapsed());
     transcript.absorb(LABEL_W, &[comm_w].to_vec().as_slice());
 
     // * BDFG20 4.1 - 3.
@@ -667,7 +675,9 @@ mod batch_evaluation {
     };
 
     // W'(X) = quot_l(X)
+    let _t = std::time::Instant::now();
     let comm_w_prime = E::CE::commit(ck, &quot_l_poly.coeffs, &E::Scalar::ZERO);
+    eprintln!("[Mercury]   batch: commit(W'): {:?}", _t.elapsed());
 
     Ok(BatchArg {
       comm_w,
@@ -794,6 +804,7 @@ where
   }
 
   /// A method to prove the evaluation of a multilinear polynomial
+  #[allow(unsafe_code)]
   fn prove(
     ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
     _pk: &Self::ProverKey,
@@ -805,6 +816,8 @@ where
   ) -> Result<Self::EvaluationArgument, NovaError> {
     use batch_evaluation::*;
     use transcript_labels::*;
+
+    let _prove_start = std::time::Instant::now();
 
     let comm_f = comm;
 
@@ -866,7 +879,9 @@ where
 
     // * 1. Mercury Section 6. Step 1. (a)
     // Compute h(X)
+    let _t = std::time::Instant::now();
     let h_poly = compute_h_poly(&f_poly, &eq_col, b, b);
+    eprintln!("[Mercury] compute_h_poly: {:?}", _t.elapsed());
 
     #[cfg(debug_assertions)]
     {
@@ -883,7 +898,9 @@ where
     }
 
     // * 2. Mercury Section 6. Step 1. (b)
+    let _t = std::time::Instant::now();
     let comm_h = E::CE::commit(ck, &h_poly.coeffs, &E::Scalar::ZERO);
+    eprintln!("[Mercury] commit(h): {:?}", _t.elapsed());
     transcript.absorb(LABEL_H, &[comm_h].to_vec().as_slice());
 
     // * 3. Mercury Section 6. Step 2. (a)
@@ -891,7 +908,51 @@ where
 
     // * 4. Mercury Section 6. Step 2. (b)
     // Compute q(X) and g(X)
-    let (mut q_poly, g_poly) = divide_by_binomial(&f_poly, b, b, &alpha);
+    let _t = std::time::Instant::now();
+    let (mut q_poly, g_poly) = {
+      #[cfg(feature = "sppark")]
+      {
+        use std::any::TypeId;
+        if TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>() && b * b >= 1024 {
+          // GPU path for BN254: reinterpret E::Scalar as bn256::Fr via pointer cast
+          type Fr = halo2curves::bn256::Fr;
+          let f_as_fr = unsafe { &*(f_poly.as_slice() as *const [E::Scalar] as *const [Fr]) };
+          let alpha_as_fr = unsafe { &*(&alpha as *const E::Scalar as *const Fr) };
+
+          let (mut quot_fr, mut rem_fr) =
+            crate::spartan::gpu_sumcheck::gpu_poly_divide_by_binomial(f_as_fr, b, alpha_as_fr)
+              .map_err(|_| NovaError::InternalError)?;
+
+          // Reinterpret back to E::Scalar
+          let q = UniPoly {
+            coeffs: unsafe {
+              let ptr = quot_fr.as_mut_ptr();
+              let len = quot_fr.len();
+              let cap = quot_fr.capacity();
+              std::mem::forget(quot_fr);
+              Vec::from_raw_parts(ptr as *mut E::Scalar, len, cap)
+            },
+          };
+          let g = UniPoly {
+            coeffs: unsafe {
+              let ptr = rem_fr.as_mut_ptr();
+              let len = rem_fr.len();
+              let cap = rem_fr.capacity();
+              std::mem::forget(rem_fr);
+              Vec::from_raw_parts(ptr as *mut E::Scalar, len, cap)
+            },
+          };
+          (q, g)
+        } else {
+          divide_by_binomial(&f_poly, b, b, &alpha)
+        }
+      }
+      #[cfg(not(feature = "sppark"))]
+      {
+        divide_by_binomial(&f_poly, b, b, &alpha)
+      }
+    };
+    eprintln!("[Mercury] divide_by_binomial: {:?}", _t.elapsed());
 
     q_poly.trim();
 
@@ -942,10 +1003,12 @@ where
 
     // * 5. Mercury Section 6. Step 2. (c)
     // * Main Cost (Prover) I: MSM of O(N)
+    let _t = std::time::Instant::now();
     let (comm_q, comm_g) = rayon::join(
       || E::CE::commit(ck, &q_poly.coeffs, &E::Scalar::ZERO),
       || E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO),
     );
+    eprintln!("[Mercury] commit(q,g): {:?}", _t.elapsed());
     transcript.absorb(LABEL_Q, &[comm_q].to_vec().as_slice());
     transcript.absorb(LABEL_G, &[comm_g].to_vec().as_slice());
 
@@ -968,12 +1031,14 @@ where
 
     // * 7. Mercury Section 6. Step 3. (b)
     // Compute s(X)
+    let _t = std::time::Instant::now();
     let s_poly = make_s_polynomial(
       (&eq_col, &eq_row),
       (&g_poly.coeffs, &h_poly.coeffs),
       log_b as u32,
       &gamma,
     );
+    eprintln!("[Mercury] make_s_polynomial: {:?}", _t.elapsed());
 
     #[cfg(debug_assertions)]
     {
@@ -1019,10 +1084,12 @@ where
     };
 
     // * Send commitments of 7. and 8.
+    let _t = std::time::Instant::now();
     let (comm_s, comm_d) = rayon::join(
       || E::CE::commit(ck, &s_poly.coeffs, &E::Scalar::ZERO),
       || E::CE::commit(ck, &d_poly.coeffs, &E::Scalar::ZERO),
     );
+    eprintln!("[Mercury] commit(s,d): {:?}", _t.elapsed());
 
     transcript.absorb(LABEL_S, &[comm_s].to_vec().as_slice());
     transcript.absorb(LABEL_D, &[comm_d].to_vec().as_slice());
@@ -1058,23 +1125,64 @@ where
     };
 
     // quot_f(X) = ( f(X) -  q(X) * (zeta^b - alpha) - g(zeta) ) / (X - zeta)
+    let _t = std::time::Instant::now();
     let quot_f = {
       let zeta_b = zeta.pow([b as u64]);
       let zeta_b_alpha = zeta_b - alpha;
 
-      let mut quot_f = UniPoly {
-        coeffs: f_poly.to_vec(),
-      };
+      #[cfg(feature = "sppark")]
+      {
+        use std::any::TypeId;
+        if TypeId::of::<E::Scalar>() == TypeId::of::<halo2curves::bn256::Fr>() && f_poly.len() >= 1024
+        {
+          type Fr = halo2curves::bn256::Fr;
+          let f_as_fr = unsafe { &*(f_poly.as_slice() as *const [E::Scalar] as *const [Fr]) };
+          let q_as_fr =
+            unsafe { &*(q_poly.coeffs.as_slice() as *const [E::Scalar] as *const [Fr]) };
+          let neg_zba = -zeta_b_alpha;
+          let scale_fr = unsafe { &*(&neg_zba as *const E::Scalar as *const Fr) };
+          let gz_fr = unsafe { &*(&g_zeta as *const E::Scalar as *const Fr) };
+          let zeta_fr = unsafe { &*(&zeta as *const E::Scalar as *const Fr) };
 
-      quot_f.batch_add_with_polynomials(vec![&q_poly.coeffs], &[-zeta_b_alpha]);
+          let (mut quot_fr, rem) = crate::spartan::gpu_sumcheck::gpu_mercury_compute_quot_f(
+            f_as_fr, q_as_fr, scale_fr, gz_fr, zeta_fr,
+          )
+          .map_err(|_| NovaError::InternalError)?;
 
-      quot_f.coeffs[0] -= g_zeta;
+          let rem_e = unsafe { std::ptr::read(&rem as *const Fr as *const E::Scalar) };
+          assert_eq!(rem_e, E::Scalar::ZERO);
 
-      let rem = quot_f.divide_by_linear_polynomial(&zeta);
-
-      assert_eq!(rem, E::Scalar::ZERO);
-
-      quot_f
+          UniPoly {
+            coeffs: unsafe {
+              let ptr = quot_fr.as_mut_ptr();
+              let len = quot_fr.len();
+              let cap = quot_fr.capacity();
+              std::mem::forget(quot_fr);
+              Vec::from_raw_parts(ptr as *mut E::Scalar, len, cap)
+            },
+          }
+        } else {
+          let mut quot_f = UniPoly {
+            coeffs: f_poly.to_vec(),
+          };
+          quot_f.batch_add_with_polynomials(vec![&q_poly.coeffs], &[-zeta_b_alpha]);
+          quot_f.coeffs[0] -= g_zeta;
+          let rem = quot_f.divide_by_linear_polynomial(&zeta);
+          assert_eq!(rem, E::Scalar::ZERO);
+          quot_f
+        }
+      }
+      #[cfg(not(feature = "sppark"))]
+      {
+        let mut quot_f = UniPoly {
+          coeffs: f_poly.to_vec(),
+        };
+        quot_f.batch_add_with_polynomials(vec![&q_poly.coeffs], &[-zeta_b_alpha]);
+        quot_f.coeffs[0] -= g_zeta;
+        let rem = quot_f.divide_by_linear_polynomial(&zeta);
+        assert_eq!(rem, E::Scalar::ZERO);
+        quot_f
+      }
     };
 
     #[cfg(debug_assertions)]
@@ -1098,6 +1206,8 @@ where
     }
 
     // * 10. Mercury Section 6. Step 4. (b)
+    eprintln!("[Mercury] quot_f compute: {:?}", _t.elapsed());
+
     transcript.absorb(LABEL_GZ, &[g_zeta].to_vec().as_slice());
     transcript.absorb(LABEL_GZI, &[g_zeta_inv].to_vec().as_slice());
     transcript.absorb(LABEL_HZ, &[h_zeta].to_vec().as_slice());
@@ -1107,15 +1217,18 @@ where
 
     // * 11. Mercury Section 6. Step 4. (d)
     // * Main Cost (Prover) II: MSM of O(N)
+    let _t = std::time::Instant::now();
     let comm_quot_f = {
       let mut quot_f = quot_f;
       quot_f.coeffs.truncate(original_size);
       quot_f.trim();
       E::CE::commit(ck, &quot_f.coeffs, &E::Scalar::ZERO)
     };
+    eprintln!("[Mercury] commit(quot_f): {:?}", _t.elapsed());
     transcript.absorb(LABEL_QUOT_F, &[comm_quot_f].to_vec().as_slice());
 
     // * 12. Mercury Section 6. Step 4. (e)
+    let _t = std::time::Instant::now();
     let BatchArg {
       comm_w,
       comm_w_prime,
@@ -1142,10 +1255,13 @@ where
       },
       transcript,
     )?;
+    eprintln!("[Mercury] batch_evaluate_arg: {:?}", _t.elapsed());
 
     // For Pairing Check Batch
     transcript.absorb(LABEL_W_PRIME, &[comm_w_prime].to_vec().as_slice());
     let _d = transcript.squeeze(LABEL_PAIRING_D)?;
+
+    eprintln!("[Mercury] prove total: {:?}", _prove_start.elapsed());
 
     Ok(EvaluationArgument {
       comm_h,

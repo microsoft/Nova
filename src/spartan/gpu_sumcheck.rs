@@ -69,6 +69,35 @@ extern "C" {
   fn gpu_hkzg_batch_poly(q: *const u8, B_out: *mut u8, k_count: u32) -> i32;
   fn gpu_hkzg_free();
   fn gpu_memcpy_dtoh(dst: *mut u8, d_src: *const u8, bytes: usize) -> i32;
+
+  // Mercury GPU operations
+  fn gpu_mercury_divide_by_linear(
+    coeffs: *const u8,
+    poly_len: u32,
+    a: *const u8,
+    quotient: *mut u8,
+    remainder: *mut u8,
+  ) -> i32;
+
+  fn gpu_mercury_divide_by_binomial(
+    coeffs: *const u8,
+    b: u32,
+    alpha: *const u8,
+    quotient: *mut u8,
+    remainder: *mut u8,
+  ) -> i32;
+
+  fn gpu_mercury_quot_f(
+    f: *const u8,
+    f_len: u32,
+    q: *const u8,
+    q_len: u32,
+    scale: *const u8,
+    g_zeta: *const u8,
+    zeta: *const u8,
+    quotient: *mut u8,
+    remainder: *mut u8,
+  ) -> i32;
 }
 
 /// Raw bytes of a scalar in Montgomery form (no conversion).
@@ -381,4 +410,101 @@ impl Drop for GpuHkzgState {
       unsafe { gpu_hkzg_free() };
     }
   }
+}
+
+// ============== Mercury GPU operations ==============
+
+/// GPU-accelerated polynomial division by (X - a) using parallel prefix scan.
+/// Returns (quotient, remainder).
+pub fn gpu_poly_divide_by_linear(coeffs: &[Scalar], a: &Scalar) -> Result<(Vec<Scalar>, Scalar), String> {
+  let poly_len = coeffs.len();
+  if poly_len < 2 {
+    return Err("polynomial too short".to_string());
+  }
+
+  let mut quotient = vec![Scalar::default(); poly_len - 1];
+  let mut remainder = Scalar::default();
+
+  let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
+  let ret = unsafe {
+    gpu_mercury_divide_by_linear(
+      coeffs.as_ptr() as *const u8,
+      poly_len as u32,
+      a as *const Scalar as *const u8,
+      quotient.as_mut_ptr() as *mut u8,
+      &mut remainder as *mut Scalar as *mut u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_mercury_divide_by_linear failed".to_string());
+  }
+  Ok((quotient, remainder))
+}
+
+/// GPU-accelerated divide_by_binomial: f(X) / (X^b - alpha)
+/// Input: f_poly coefficients (b*b elements), b (sqrt of N), alpha
+/// Returns: (quotient coeffs, remainder coeffs of length b)
+pub fn gpu_poly_divide_by_binomial(
+  coeffs: &[Scalar],
+  b: usize,
+  alpha: &Scalar,
+) -> Result<(Vec<Scalar>, Vec<Scalar>), String> {
+  assert_eq!(coeffs.len(), b * b);
+
+  let quot_len = (b - 1) * b;
+  let mut quotient = vec![Scalar::default(); quot_len];
+  let mut remainder = vec![Scalar::default(); b];
+
+  let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
+  let ret = unsafe {
+    gpu_mercury_divide_by_binomial(
+      coeffs.as_ptr() as *const u8,
+      b as u32,
+      alpha as *const Scalar as *const u8,
+      quotient.as_mut_ptr() as *mut u8,
+      remainder.as_mut_ptr() as *mut u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_mercury_divide_by_binomial failed".to_string());
+  }
+  Ok((quotient, remainder))
+}
+
+/// GPU-accelerated quot_f computation:
+/// quot_f = (f + scale*q - g_zeta) / (X - zeta)
+/// Returns (quotient, remainder).
+pub fn gpu_mercury_compute_quot_f(
+  f_coeffs: &[Scalar],
+  q_coeffs: &[Scalar],
+  scale: &Scalar,
+  g_zeta: &Scalar,
+  zeta: &Scalar,
+) -> Result<(Vec<Scalar>, Scalar), String> {
+  let f_len = f_coeffs.len();
+  if f_len < 2 {
+    return Err("polynomial too short".to_string());
+  }
+
+  let mut quotient = vec![Scalar::default(); f_len - 1];
+  let mut remainder = Scalar::default();
+
+  let _lock = GPU_SC_LOCK.lock().map_err(|e| e.to_string())?;
+  let ret = unsafe {
+    gpu_mercury_quot_f(
+      f_coeffs.as_ptr() as *const u8,
+      f_len as u32,
+      q_coeffs.as_ptr() as *const u8,
+      q_coeffs.len() as u32,
+      scale as *const Scalar as *const u8,
+      g_zeta as *const Scalar as *const u8,
+      zeta as *const Scalar as *const u8,
+      quotient.as_mut_ptr() as *mut u8,
+      &mut remainder as *mut Scalar as *mut u8,
+    )
+  };
+  if ret != 0 {
+    return Err("gpu_mercury_quot_f failed".to_string());
+  }
+  Ok((quotient, remainder))
 }

@@ -118,6 +118,248 @@ void hkzg_saxpy_kernel(fr_t* out, const fr_t* __restrict__ a,
     out[i] = a[i] + s * b[i];
 }
 
+// ============== Mercury CUDA kernels ==============
+
+// Transpose kernel: out[col*num_rows + row] = in[row*num_cols + col]
+__global__
+void mercury_transpose_kernel(const fr_t* __restrict__ in, fr_t* __restrict__ out,
+                               uint32_t num_rows, uint32_t num_cols)
+{
+    uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t total = num_rows * num_cols;
+    if (idx >= total) return;
+    uint32_t row = idx / num_cols;
+    uint32_t col = idx % num_cols;
+    out[col * num_rows + row] = in[idx];
+}
+
+// Batch Horner: each thread does one column's Horner division
+// Input: N elements, logically b rows × b cols, stored row-major
+// For column col_id: extract coeffs[col_id], coeffs[col_id + b], coeffs[col_id + 2*b], ...
+// Do Horner division by alpha: q[n-1] = c[n-1]; q[i] = c[i] + alpha * q[i+1] (from top)
+// Actually: the Horner division f(X)/(X-alpha): q[i] = c[i+1] + alpha*q[i+1], q[b-2] = c[b-1]
+// Store quotient in-place, remainder in separate array
+__global__
+void mercury_batch_horner_strided_kernel(const fr_t* __restrict__ in, fr_t* __restrict__ quot_out,
+                                          fr_t* __restrict__ rem_out,
+                                          const fr_t alpha, uint32_t num_rows, uint32_t num_cols)
+{
+    uint32_t col_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if (col_id >= num_cols) return;
+
+    // Horner division: polynomial is in[col_id + i*num_cols] for i=0..num_rows-1
+    // Division by (X - alpha)
+    // q[n-1] is not produced (it would be leading coeff / 1 = c[n-1])
+    // Actually, divide_by_linear_polynomial does:
+    // for i = (len-2) downto 0: coeffs[i] += coeffs[i+1] * a
+    // then remove coeffs[0] as remainder
+
+    // Load column
+    fr_t prev = in[col_id + (num_rows - 1) * num_cols];
+    for (int i = (int)num_rows - 2; i >= 0; i--) {
+        fr_t cur = in[col_id + i * num_cols];
+        cur = cur + prev * alpha;
+        // quot_out stores in column-major order for each column
+        // We write quotient[i] for this column
+        // After division, coeffs shift: quotient has length num_rows-1
+        // coeffs[i] for i=1..num_rows-1 become quotient[i-1]
+        // Wait - let me match the CPU code exactly.
+        // CPU: for i in (0..len-1).rev(): coeffs[i] += coeffs[i+1] * a
+        //      remainder = coeffs.remove(0)
+        // So after the loop, coeffs[0] has the remainder,
+        // and coeffs[1..] is the quotient.
+        if (i > 0) {
+            // This is an intermediate step - store for next iteration
+            prev = cur;
+        } else {
+            // i=0: cur is the remainder
+            rem_out[col_id] = cur;
+            // prev (from i=1) was already stored as the quotient's first coeff
+        }
+    }
+
+    // We need to redo this more carefully to store quotient coefficients.
+    // Let me use a different approach: load all, compute, store.
+    // For num_rows up to ~2048, this fits in registers/local memory.
+
+    // Actually, num_rows = b = sqrt(N) ≈ 1024-2048. Too large for registers.
+    // Use global memory: read column, process, write back.
+    // The output quotient for this column goes into quot_out at positions:
+    // quot_out[col_id + i * num_cols] for i = 0..num_rows-2
+
+    // Recompute from scratch (we messed up above):
+    // After Horner division of f by (X - alpha):
+    // Process from high to low:
+    prev = in[col_id + (num_rows - 1) * num_cols];
+    quot_out[col_id + (num_rows - 2) * num_cols] = prev;
+    for (int i = (int)num_rows - 2; i >= 1; i--) {
+        prev = in[col_id + i * num_cols] + prev * alpha;
+        quot_out[col_id + (i - 1) * num_cols] = prev;
+    }
+    // remainder
+    rem_out[col_id] = in[col_id] + prev * alpha;
+}
+
+// Parallel prefix scan for polynomial division by (X - a)
+// The recurrence: q[n-2] = c[n-1], q[i] = c[i+1] + a*q[i+1]
+// Represented as linear function composition (suffix scan):
+// f_i(x) = a*x + c[i+1], compose: (m1,b1)∘(m2,b2) = (m1*m2, m1*b2+b1)
+// Two-phase Blelloch scan approach.
+// Phase 1 (upsweep): compute partial compositions within blocks
+// Phase 2 (downsweep): propagate prefix across blocks
+
+// Each block processes BLOCK_SIZE elements
+// Block output: composed (m, b) for the entire block
+__global__
+void mercury_horner_scan_phase1(const fr_t* __restrict__ coeffs, 
+                                 fr_t* __restrict__ block_m, fr_t* __restrict__ block_b,
+                                 fr_t* __restrict__ local_m, fr_t* __restrict__ local_b,
+                                 const fr_t a, uint32_t n)
+{
+    // n = number of quotient coefficients = poly_len - 1
+    // coeffs has poly_len elements, but we use coeffs[1..poly_len] as the addends
+    // q[i] = a * q[i+1] + coeffs[i+1], for i = n-2 downto 0
+    // q[n-1] = coeffs[n] (the last coeff)
+    
+    // We process right-to-left. Thread with logical index j handles quotient position (n-1-j).
+    // But for a scan, let's reindex left-to-right:
+    // Define r[j] = q[n-1-j], then r[0] = q[n-1] = coeffs[n]
+    // r[j] = a * r[j-1] + coeffs[n-j], for j >= 1
+    // This is a left-to-right scan: r[j] = a * r[j-1] + c'[j]
+    // where c'[j] = coeffs[n-j]
+    
+    uint32_t tid = threadIdx.x;
+    uint32_t block_start = blockIdx.x * blockDim.x;
+    uint32_t gid = block_start + tid;
+    
+    // Each element represents the linear function f(x) = a*x + c'[gid]
+    // For gid=0, the "initial value" will be handled separately
+    fr_t my_m = a;
+    fr_t my_b;
+    if (gid < n) {
+        my_b = coeffs[n - gid];  // c'[gid] = coeffs[n - gid]
+    } else {
+        // Identity function for out-of-range
+        my_m = fr_t::one();
+        my_b = fr_t();
+    }
+    
+    // Store local (m, b) for each element before scan
+    if (gid < n) {
+        local_m[gid] = my_m;
+        local_b[gid] = my_b;
+    }
+    
+    // Inclusive scan within block using shared memory
+    // fr_t is 32 bytes (8 uint32_t). Block size is 256, so 2*256*32 = 16KB shared mem.
+    __shared__ uint32_t s_m_raw[256 * 8], s_b_raw[256 * 8];
+    fr_t* s_m = reinterpret_cast<fr_t*>(s_m_raw);
+    fr_t* s_b = reinterpret_cast<fr_t*>(s_b_raw);
+    s_m[tid] = my_m;
+    s_b[tid] = my_b;
+    __syncthreads();
+    
+    // Hillis-Steele inclusive prefix scan (left to right)
+    // We want result[j](x) = f_j(f_{j-1}(...f_0(x)...))
+    // Compose: (my_m, my_b) applied AFTER (prev_m, prev_b):
+    //   composed(x) = my_m * (prev_m * x + prev_b) + my_b = (my_m*prev_m)*x + (my_m*prev_b + my_b)
+    for (uint32_t stride = 1; stride < blockDim.x; stride <<= 1) {
+        fr_t prev_m, prev_b;
+        if (tid >= stride) {
+            prev_m = s_m[tid - stride];
+            prev_b = s_b[tid - stride];
+        }
+        __syncthreads();
+        if (tid >= stride) {
+            // compose: current ∘ prev = (my_m * prev_m, my_m * prev_b + my_b)
+            fr_t my_m_cur = s_m[tid];
+            fr_t my_b_cur = s_b[tid];
+            s_m[tid] = my_m_cur * prev_m;
+            s_b[tid] = my_m_cur * prev_b + my_b_cur;
+        }
+        __syncthreads();
+    }
+    
+    // Write block aggregate (last thread's result)
+    if (tid == blockDim.x - 1 || gid == n - 1) {
+        block_m[blockIdx.x] = s_m[tid];
+        block_b[blockIdx.x] = s_b[tid];
+    }
+    
+    // Write per-element scanned results
+    if (gid < n) {
+        local_m[gid] = s_m[tid];
+        local_b[gid] = s_b[tid];
+    }
+}
+
+// Phase 2: propagate block prefixes and compute final quotient values
+__global__
+void mercury_horner_scan_phase2(fr_t* __restrict__ quotient,
+                                 const fr_t* __restrict__ local_m, const fr_t* __restrict__ local_b,
+                                 const fr_t* __restrict__ prefix_m, const fr_t* __restrict__ prefix_b,
+                                 const fr_t initial_val, uint32_t n, uint32_t n_orig)
+{
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (gid >= n) return;
+    
+    fr_t m = local_m[gid];
+    fr_t b = local_b[gid];
+    
+    // Apply block prefix if not the first block
+    // composed = local ∘ prefix: (m * pm, m * pb + b)
+    if (blockIdx.x > 0) {
+        fr_t pm = prefix_m[blockIdx.x - 1];
+        fr_t pb = prefix_b[blockIdx.x - 1];
+        b = m * pb + b;
+        m = m * pm;
+    }
+    
+    // r[gid] = m * initial_val + b
+    // But for gid=0: r[0] = coeffs[n] = initial_val directly
+    // Actually: element 0's function is f(x) = a*x + coeffs[n]
+    // After inclusive scan, composed[0] = (a, coeffs[n])
+    // r[0] = a * (what?) + coeffs[n]
+    // The scan gives us the composed function. We need to apply it to the "seed" value.
+    // For the Horner recurrence, r[0] = coeffs[n] (no prior dependence)
+    // r[j] = composed_j(r[-1]) where r[-1] is "0" conceptually
+    // Actually: the composed function for [0..j] applied to 0 gives r[j]
+    // Because: r[0] = a*0 + coeffs[n] = coeffs[n] ✓
+    // r[1] = a*r[0] + coeffs[n-1] = composed_{0,1}(0) ✓
+    
+    fr_t result = b;  // m * 0 + b = b (applying composed function to 0)
+    
+    // Map back: r[gid] = q[n-1-gid], so quotient[n-1-gid] = result
+    uint32_t qi = n - 1 - gid;
+    quotient[qi] = result;
+}
+
+// Simple element-wise operations for Mercury polynomial arithmetic
+__global__
+void mercury_poly_sub_scaled_kernel(fr_t* __restrict__ out, const fr_t* __restrict__ a,
+                                     const fr_t scale, uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = out[i] + scale * a[i];
+}
+
+// compute_h_poly: h[row] = sum_{col=0}^{b-1} f[row*b + col] * eq_col[col]
+__global__
+void mercury_h_poly_kernel(const fr_t* __restrict__ f, const fr_t* __restrict__ eq_col,
+                            fr_t* __restrict__ h, uint32_t b)
+{
+    uint32_t row = blockIdx.x * blockDim.x + threadIdx.x;
+    // b is both num_rows and num_cols
+    if (row >= b) return;
+    fr_t acc;
+    acc = fr_t();
+    for (uint32_t col = 0; col < b; col++) {
+        acc = acc + f[row * b + col] * eq_col[col];
+    }
+    h[row] = acc;
+}
+
 #ifndef __CUDA_ARCH__
 
 // HyperKZG host-side state
@@ -556,6 +798,281 @@ void gpu_hkzg_free() {
 int gpu_memcpy_dtoh(void* dst, const void* d_src, size_t bytes) {
     cudaError_t err = cudaMemcpy(dst, d_src, bytes, cudaMemcpyDeviceToHost);
     return err == cudaSuccess ? 0 : -1;
+}
+
+// ============== Mercury C API ==============
+
+// Mercury: divide polynomial by (X - a) using GPU parallel prefix scan.
+// Input: coeffs (host, poly_len elements), a (host, 1 element)
+// Output: quotient (host, poly_len-1 elements), remainder (host, 1 element)
+int gpu_mercury_divide_by_linear(const void* h_coeffs, uint32_t poly_len,
+                                  const void* h_a, void* h_quotient, void* h_remainder) {
+    if (poly_len < 2) return -1;
+    
+    const fr_t* coeffs = (const fr_t*)h_coeffs;
+    const fr_t a = *(const fr_t*)h_a;
+    uint32_t n = poly_len - 1;  // quotient length
+    
+    // Upload polynomial
+    fr_t* d_coeffs;
+    CHECK_CUDA(cudaMalloc(&d_coeffs, (size_t)poly_len * sizeof(fr_t)));
+    CHECK_CUDA(cudaMemcpy(d_coeffs, coeffs, (size_t)poly_len * sizeof(fr_t), cudaMemcpyHostToDevice));
+    
+    const uint32_t BLOCK = 256;
+    uint32_t num_blocks = (n + BLOCK - 1) / BLOCK;
+    
+    // Allocate scan buffers
+    fr_t* d_local_m, *d_local_b;
+    fr_t* d_block_m, *d_block_b;
+    fr_t* d_quotient;
+    CHECK_CUDA(cudaMalloc(&d_local_m, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_local_b, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_block_m, (size_t)num_blocks * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_block_b, (size_t)num_blocks * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_quotient, (size_t)n * sizeof(fr_t)));
+    
+    // Phase 1: block-level inclusive scan
+    mercury_horner_scan_phase1<<<num_blocks, BLOCK>>>(d_coeffs, d_block_m, d_block_b,
+                                                       d_local_m, d_local_b, a, n);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    
+    // Phase 1.5: scan the block aggregates (small enough for CPU or recursive GPU)
+    if (num_blocks > 1) {
+        // Download block results, scan on CPU, re-upload
+        fr_t* h_bm = (fr_t*)malloc(num_blocks * sizeof(fr_t));
+        fr_t* h_bb = (fr_t*)malloc(num_blocks * sizeof(fr_t));
+        CHECK_CUDA(cudaMemcpy(h_bm, d_block_m, num_blocks * sizeof(fr_t), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(h_bb, d_block_b, num_blocks * sizeof(fr_t), cudaMemcpyDeviceToHost));
+        
+        // Inclusive prefix scan of (m, b) pairs
+        // compose: current ∘ prev = (cur_m * prev_m, cur_m * prev_b + cur_b)
+        for (uint32_t i = 1; i < num_blocks; i++) {
+            fr_t cur_m = h_bm[i], cur_b = h_bb[i];
+            h_bm[i] = cur_m * h_bm[i-1];
+            h_bb[i] = cur_m * h_bb[i-1] + cur_b;
+        }
+        
+        CHECK_CUDA(cudaMemcpy(d_block_m, h_bm, num_blocks * sizeof(fr_t), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_block_b, h_bb, num_blocks * sizeof(fr_t), cudaMemcpyHostToDevice));
+        free(h_bm);
+        free(h_bb);
+    }
+    
+    // Phase 2: compute final quotient values
+    fr_t zero;
+    memset(&zero, 0, sizeof(fr_t));
+    mercury_horner_scan_phase2<<<num_blocks, BLOCK>>>(d_quotient, d_local_m, d_local_b,
+                                                       d_block_m, d_block_b, zero, n, poly_len);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    
+    // Download quotient
+    CHECK_CUDA(cudaMemcpy(h_quotient, d_quotient, (size_t)n * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    
+    // Compute remainder: r = coeffs[0] + a * q[0]
+    // Download q[0]
+    fr_t q0;
+    CHECK_CUDA(cudaMemcpy(&q0, d_quotient, sizeof(fr_t), cudaMemcpyDeviceToHost));
+    fr_t rem = coeffs[0] + a * q0;
+    memcpy(h_remainder, &rem, sizeof(fr_t));
+    
+    cudaFree(d_coeffs);
+    cudaFree(d_local_m);
+    cudaFree(d_local_b);
+    cudaFree(d_block_m);
+    cudaFree(d_block_b);
+    cudaFree(d_quotient);
+    return 0;
+}
+
+// Mercury: divide_by_binomial on GPU
+// f(X) / (X^b - alpha), f has b*b elements in row-major order
+// Returns quotient (b*(b-1) elements, transposed to coeff order) and remainder (b elements)
+int gpu_mercury_divide_by_binomial(const void* h_coeffs, uint32_t b,
+                                    const void* h_alpha, void* h_quotient, void* h_remainder) {
+    uint32_t n = b * b;
+    const fr_t alpha = *(const fr_t*)h_alpha;
+    
+    fr_t* d_in;
+    fr_t* d_quot;
+    fr_t* d_rem;
+    fr_t* d_transposed = nullptr;
+    CHECK_CUDA(cudaMalloc(&d_in, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_quot, (size_t)n * sizeof(fr_t)));  // b cols * (b-1) rows, padded
+    CHECK_CUDA(cudaMalloc(&d_rem, (size_t)b * sizeof(fr_t)));
+    CHECK_CUDA(cudaMemcpy(d_in, h_coeffs, (size_t)n * sizeof(fr_t), cudaMemcpyHostToDevice));
+    
+    // Launch batch Horner: one thread per column
+    uint32_t blocks = (b + 255) / 256;
+    mercury_batch_horner_strided_kernel<<<blocks, 256>>>(d_in, d_quot, d_rem, alpha, b, b);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    
+    // Transpose quotient: currently stored as b cols × (b-1) rows in strided layout
+    // Actually the kernel stores in row-major with stride b (same as input layout but one fewer row)
+    // We need to transpose it
+    // Output of kernel: quot_out[col_id + i * num_cols] for i = 0..num_rows-2
+    // That's (b-1) rows × b cols, row-major
+    // We need to transpose to b cols × (b-1) rows = b*(b-1) in column-major
+    // Actually, looking at CPU code: it first collects quotient per-column (each length b-1),
+    // flattens them (all columns concatenated), then transposes.
+    // Our kernel stores the quotient in the SAME row-major layout as input (with one fewer row).
+    // The CPU code then does a transpose on the flattened result.
+    // Let me match: CPU creates quotients as col-major (each column's quotient is a separate vec),
+    // then does transpose(num_rows-1, num_cols) to interleave back.
+    
+    // Actually our kernel writes quot_out[col_id + i * b] for i=0..b-2
+    // This is effectively (b-1) rows × b cols in row-major
+    // CPU code: flatten columns → [col0_q0..col0_q(b-2), col1_q0..col1_q(b-2), ...]
+    //   then expand each to length b (zero-pad) → b × b
+    //   then transpose(b-1, b) on this b×b thing
+    // That's complex. Let me just match the CPU output format directly.
+    
+    // Our kernel output: row i (0..b-2), col j (0..b-1): quot[j + i*b]
+    // CPU output after transpose: the coefficient of X^k in the quotient
+    // The quotient of f(X)/(X^b - alpha) has degree < b*(b-1)
+    // CPU code: quotient.coeffs stores this in standard coeff order
+    
+    // Actually, let me think about this differently.
+    // CPU does: for each col, Horner div gives quotient of length b-1
+    // Then it pads each to length b (zero at end), getting b vectors of length b
+    // Then concatenates to b*b, then transposes(b-1, b) which treats it as (b-1) rows × b cols → b rows × (b-1) cols
+    // Wait, transpose(num_rows, num_cols) where num_rows=b-1, num_cols=b
+    // After transpose: result[new_row * (b-1) + new_col] comes from [new_col * b + new_row]
+    // Hmm this is getting complex. Let me just allocate a temp and use the transpose kernel.
+    
+    // Simpler approach: our kernel already puts quotient in row-major (b-1 rows × b cols).
+    // The CPU code wants the coefficients of the polynomial quotient.
+    // The relationship is: the quotient poly Q(X) of f(X) / (X^b - alpha) has degree < b*(b-1).
+    // Q(X) = sum_{k=0}^{b^2-b-1} q_k X^k
+    // Each column c (0..b-1) gives the sub-polynomial coefficients:
+    // q_{c + j*b} for j=0..b-2 from the Horner division of column c.
+    // So Q's coefficient at position (c + j*b) = column_quotient[c][j].
+    
+    // Our kernel stores quot_out[c + j*b] = column_quotient[c][j], which is exactly q_{c+j*b}.
+    // So the quotient coefficients are already in the right order! No transpose needed if we
+    // expanded each column to length b (zero-padded).
+    // But CPU code does transpose because it concatenates columns (col0_q, col1_q, ...)
+    // which gives [q_{0}, q_{b}, q_{2b}, ..., q_{1}, q_{b+1}, q_{2b+1}, ...] — wrong order.
+    // It then transposes to fix the interleaving.
+    
+    // Our kernel stores in ROW-MAJOR: quot_out[c + j*b], which when flattened gives:
+    // j=0: [q_0, q_1, ..., q_{b-1}]  (first "row" of quotient coeffs)
+    // j=1: [q_b, q_{b+1}, ..., q_{2b-1}]
+    // ...
+    // This is exactly the standard coefficient order! No transpose needed.
+    
+    // Download quotient and remainder
+    // Quotient has (b-1)*b elements
+    CHECK_CUDA(cudaMemcpy(h_quotient, d_quot, (size_t)(b - 1) * b * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    CHECK_CUDA(cudaMemcpy(h_remainder, d_rem, (size_t)b * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    
+    cudaFree(d_in);
+    cudaFree(d_quot);
+    cudaFree(d_rem);
+    cudaFree(d_transposed);
+    return 0;
+}
+
+// Mercury: quot_f = (f - scale*q - g_zeta) / (X - zeta)
+// Combines batch_add + divide_by_linear into one GPU call
+// f_coeffs: N elements, q_coeffs: up to N elements, scale: scalar
+// g_zeta: scalar to subtract from coeff[0]
+// zeta: divisor point
+// Output: quotient (N-1 elements)
+int gpu_mercury_quot_f(const void* h_f, uint32_t f_len,
+                       const void* h_q, uint32_t q_len,
+                       const void* h_scale,
+                       const void* h_g_zeta,
+                       const void* h_zeta,
+                       void* h_quotient,
+                       void* h_remainder) {
+    const fr_t scale = *(const fr_t*)h_scale;
+    const fr_t g_zeta = *(const fr_t*)h_g_zeta;
+    const fr_t zeta = *(const fr_t*)h_zeta;
+    
+    // Upload f and q
+    fr_t* d_f;
+    fr_t* d_q;
+    CHECK_CUDA(cudaMalloc(&d_f, (size_t)f_len * sizeof(fr_t)));
+    CHECK_CUDA(cudaMemcpy(d_f, h_f, (size_t)f_len * sizeof(fr_t), cudaMemcpyHostToDevice));
+    
+    if (q_len > 0) {
+        CHECK_CUDA(cudaMalloc(&d_q, (size_t)q_len * sizeof(fr_t)));
+        CHECK_CUDA(cudaMemcpy(d_q, h_q, (size_t)q_len * sizeof(fr_t), cudaMemcpyHostToDevice));
+        
+        // f += scale * q (element-wise, only for first q_len elements)
+        uint32_t blocks = (q_len + 255) / 256;
+        mercury_poly_sub_scaled_kernel<<<blocks, 256>>>(d_f, d_q, scale, q_len);
+        cudaFree(d_q);
+    }
+    
+    // f[0] -= g_zeta
+    fr_t neg_g_zeta;
+    memset(&neg_g_zeta, 0, sizeof(fr_t));
+    // Download f[0], subtract, upload
+    fr_t f0;
+    CHECK_CUDA(cudaMemcpy(&f0, d_f, sizeof(fr_t), cudaMemcpyDeviceToHost));
+    f0 = f0 - g_zeta;
+    CHECK_CUDA(cudaMemcpy(d_f, &f0, sizeof(fr_t), cudaMemcpyHostToDevice));
+    
+    // Now divide d_f by (X - zeta) using parallel prefix scan
+    uint32_t n = f_len - 1;  // quotient length
+    const uint32_t BLOCK = 256;
+    uint32_t num_blocks = (n + BLOCK - 1) / BLOCK;
+    
+    fr_t* d_local_m, *d_local_b;
+    fr_t* d_block_m, *d_block_b;
+    fr_t* d_quotient;
+    CHECK_CUDA(cudaMalloc(&d_local_m, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_local_b, (size_t)n * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_block_m, (size_t)num_blocks * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_block_b, (size_t)num_blocks * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_quotient, (size_t)n * sizeof(fr_t)));
+    
+    mercury_horner_scan_phase1<<<num_blocks, BLOCK>>>(d_f, d_block_m, d_block_b,
+                                                       d_local_m, d_local_b, zeta, n);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    
+    if (num_blocks > 1) {
+        fr_t* h_bm = (fr_t*)malloc(num_blocks * sizeof(fr_t));
+        fr_t* h_bb = (fr_t*)malloc(num_blocks * sizeof(fr_t));
+        CHECK_CUDA(cudaMemcpy(h_bm, d_block_m, num_blocks * sizeof(fr_t), cudaMemcpyDeviceToHost));
+        CHECK_CUDA(cudaMemcpy(h_bb, d_block_b, num_blocks * sizeof(fr_t), cudaMemcpyDeviceToHost));
+        
+        for (uint32_t i = 1; i < num_blocks; i++) {
+            fr_t cur_m = h_bm[i], cur_b = h_bb[i];
+            h_bm[i] = cur_m * h_bm[i-1];
+            h_bb[i] = cur_m * h_bb[i-1] + cur_b;
+        }
+        
+        CHECK_CUDA(cudaMemcpy(d_block_m, h_bm, num_blocks * sizeof(fr_t), cudaMemcpyHostToDevice));
+        CHECK_CUDA(cudaMemcpy(d_block_b, h_bb, num_blocks * sizeof(fr_t), cudaMemcpyHostToDevice));
+        free(h_bm);
+        free(h_bb);
+    }
+    
+    fr_t zero;
+    memset(&zero, 0, sizeof(fr_t));
+    mercury_horner_scan_phase2<<<num_blocks, BLOCK>>>(d_quotient, d_local_m, d_local_b,
+                                                       d_block_m, d_block_b, zero, n, f_len);
+    CHECK_CUDA(cudaDeviceSynchronize());
+    
+    CHECK_CUDA(cudaMemcpy(h_quotient, d_quotient, (size_t)n * sizeof(fr_t), cudaMemcpyDeviceToHost));
+    
+    // Compute remainder
+    fr_t q0;
+    CHECK_CUDA(cudaMemcpy(&q0, d_quotient, sizeof(fr_t), cudaMemcpyDeviceToHost));
+    fr_t f0_orig;
+    CHECK_CUDA(cudaMemcpy(&f0_orig, d_f, sizeof(fr_t), cudaMemcpyDeviceToHost));
+    fr_t rem = f0_orig + zeta * q0;
+    memcpy(h_remainder, &rem, sizeof(fr_t));
+    
+    cudaFree(d_f);
+    cudaFree(d_local_m);
+    cudaFree(d_local_b);
+    cudaFree(d_block_m);
+    cudaFree(d_block_b);
+    cudaFree(d_quotient);
+    return 0;
 }
 
 } // extern "C"
