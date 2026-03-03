@@ -1281,7 +1281,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let mem_col = padded::<E>(&z, n, &E::Scalar::ZERO);
         gpu_sumcheck::phase1_init(as_fr(&mem_row), as_fr(&mem_col))
           .map_err(|_| NovaError::InternalError)?;
-        eprintln!("[ppsnark]     phase1_init_with_tau: {:?}", _ts.elapsed());
 
         // Start async L download (D2D copy on default stream, then DtoH on download stream)
         // This overlaps the DtoH transfer with the L commit MSMs below.
@@ -1384,7 +1383,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let _t2 = std::time::Instant::now();
 
         let _t3 = std::time::Instant::now();
-        let comm_mem_oracles = if n >= 256 {
+        let (comm_mem_oracles, mem_oracles) = if n >= 256 {
           // Device MSM: generators already cached from prior commit calls
           type G1 = halo2curves::bn256::G1;
           debug_assert_eq!(std::mem::size_of::<G1>(), std::mem::size_of_val(&comm_Az));
@@ -1394,26 +1393,27 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             let point: G1 = crate::provider::sppark::msm_from_device(d_ptr, n);
             unsafe { std::ptr::read(&point as *const G1 as *const crate::Commitment<E>) }
           }).collect();
-          [comms[0], comms[1], comms[2], comms[3]]
+          eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
+
+          // Download oracle polys (needed for EE witness later)
+          // Must download before phase3 which overwrites d_polys during sumcheck bind
+          let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
+            .map_err(|_| NovaError::InternalError)?;
+          let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
+          ([comms[0], comms[1], comms[2], comms[3]], mem_oracles)
         } else {
           let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
             .map_err(|_| NovaError::InternalError)?;
           let mo: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
-          [
+          let comms = [
             E::CE::commit(ck, &mo[0], &E::Scalar::ZERO),
             E::CE::commit(ck, &mo[1], &E::Scalar::ZERO),
             E::CE::commit(ck, &mo[2], &E::Scalar::ZERO),
             E::CE::commit(ck, &mo[3], &E::Scalar::ZERO),
-          ]
+          ];
+          eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
+          (comms, mo)
         };
-        eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
-
-        // Download oracle polys (needed for EE witness later)
-        // Must download before phase3 which overwrites d_polys during sumcheck bind
-        let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
-          .map_err(|_| NovaError::InternalError)?;
-        let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
-        let gpu_n_for_download = 0usize; // download already done
         eprintln!("[ppsnark]   mem oracle download+commit: {:?}", _t2.elapsed());
 
         // Absorb commitments, squeeze rho

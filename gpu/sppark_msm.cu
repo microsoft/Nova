@@ -114,7 +114,7 @@ static int msm_cached(const void* points, const void* scalars,
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
-    fprintf(stderr, "  [sppark] msm_cached n=%zu invoke=%ldus\n", n, (long)us);
+    fprintf(stderr, "  [sppark] msm_cached n=%zu invoke=%ldus\n", n_scalars, (long)us);
 
     memcpy(result, &out, sizeof(out));
     return err.code;
@@ -172,7 +172,8 @@ void sppark_msm_free() {
 
 // Ensure generators are cached with at least n elements.
 void sppark_ensure_generators(const void* points, int n) {
-    ensure_generators(points, (size_t)n);
+    uint64_t label = reinterpret_cast<uint64_t>(points);
+    ensure_generators(points, (size_t)n, label);
 }
 
 void sppark_sync_device() {

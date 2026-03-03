@@ -161,21 +161,24 @@ fn gpu_msm(scalars: &[Scalar], bases: &[Affine], effective_len: usize) -> Point 
 /// Perform MSM using scalars already on GPU device memory.
 /// Generators must be cached from a prior MSM call.
 /// Caller must hold GPU_LOCK.
+#[allow(unsafe_code)]
 fn gpu_msm_device(d_scalars: *mut u8, n: usize) -> Point {
   let mut result = [0u64; 12];
   let err = unsafe { sppark_msm_from_device(d_scalars, result.as_mut_ptr(), n as i32) };
   assert_eq!(err, 0, "sppark MSM from device failed with error code {}", err);
-  jacobian_to_point(&result)
+  jacobian_to_point(&result).expect("GPU MSM returned invalid point")
 }
 
 /// Ensure generators are cached on GPU at the specified size.
 /// Must be called before `msm_from_device` if no prior `vartime_multiscalar_mul` has been done.
+#[allow(unsafe_code)]
 pub fn ensure_generators_cached(bases: &[Affine]) {
   let _gpu = GPU_LOCK.lock().unwrap();
   unsafe { sppark_ensure_generators(bases.as_ptr() as *const u64, bases.len() as i32) };
 }
 
 /// Synchronize GPU device (wait for all pending work to complete).
+#[allow(unsafe_code)]
 pub fn sync_device() {
   unsafe { sppark_sync_device() };
 }
