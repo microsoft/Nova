@@ -22,6 +22,22 @@ typedef affine_t::mem_t affine_h;
 
 #ifndef __CUDA_ARCH__
 
+// Configure CUDA memory pool to retain freed memory, avoiding OS-level
+// alloc/free overhead on repeated cudaMallocAsync/cudaFreeAsync cycles.
+// This eliminates the alternating fast/slow MSM pattern caused by the
+// sppark invoke's internal dev_ptr_t alloc/free of ~192MB per call.
+static void init_cuda_pool() {
+    static bool done = false;
+    if (!done) {
+        cudaMemPool_t pool;
+        if (cudaDeviceGetDefaultMemPool(&pool, 0) == cudaSuccess) {
+            uint64_t threshold = UINT64_MAX;
+            cudaMemPoolSetAttribute(pool, cudaMemPoolAttrReleaseThreshold, &threshold);
+        }
+        done = true;
+    }
+}
+
 // Generator cache with label-based invalidation.
 // The label is the base pointer of the Rust Vec<Affine> inside CommitmentKey.
 // Because every prefix slice &ck[..len] shares the same base pointer, the
@@ -32,6 +48,7 @@ static size_t g_gens_n = 0;
 static uint64_t g_gens_label = 0;
 
 static int ensure_generators(const void* points, size_t n_bases, uint64_t label) {
+    init_cuda_pool();
     if (n_bases == 0) {
         g_gens_n = 0;
         return 0;
@@ -55,28 +72,41 @@ static int ensure_generators(const void* points, size_t n_bases, uint64_t label)
     return 0;
 }
 
-// Internal: run MSM using cached generators with msm_par_t (parallel accumulate).
-// Creates a fresh handle per call for optimal wbits, but reuses GPU generator data.
-// n_bases:  how many generators the caller provides (for upload).
-// n_scalars: how many scalars to use for this MSM (for computation, ≤ n_bases).
+// Cached MSM handle — avoids repeated alloc/sync/free per call.
+// The msm_t destructor calls cudaDeviceSynchronize() + cudaFree, which adds
+// ~30ms overhead per call. Caching the handle across calls eliminates this.
+typedef msm_par_t<bucket_t, point_t, affine_t, scalar_t> msm_handle_t;
+static msm_handle_t* g_msm_handle = nullptr;
+static size_t g_msm_handle_n = 0;
+
+static msm_handle_t& get_msm_handle(size_t n) {
+    if (!g_msm_handle || g_msm_handle_n < n) {
+        if (g_msm_handle) {
+            g_msm_handle->d_points = nullptr;
+            g_msm_handle->npoints = 0;
+            g_msm_handle->d_scalars = nullptr;
+            delete g_msm_handle;
+        }
+        g_msm_handle = new msm_handle_t(nullptr, n);
+        g_msm_handle_n = n;
+    }
+    return *g_msm_handle;
+}
+
+// Internal: run MSM using cached generators and cached MSM handle.
 static int msm_cached(const void* points, const void* scalars,
                       void* result, size_t n_bases, size_t n_scalars,
                       uint64_t label) {
     if (ensure_generators(points, n_bases, label) != 0)
         return -1;
 
-    // Fresh handle: optimal wbits for this n_scalars, no generator upload
-    msm_par_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, n_scalars};
+    msm_handle_t& msm = get_msm_handle(n_scalars);
     msm.d_points = g_gens;
     msm.npoints = n_scalars;
 
     point_t out;
     RustError err = msm.invoke(out, (const affine_t*)nullptr, n_scalars,
                                reinterpret_cast<const scalar_t*>(scalars), true);
-
-    // Prevent destructor from freeing cached generators
-    msm.d_points = nullptr;
-    msm.npoints = 0;
 
     memcpy(result, &out, sizeof(out));
     return err.code;
@@ -99,7 +129,7 @@ int sppark_msm_from_device(void* d_scalars, void* result, int n) {
         return -1;
     }
 
-    msm_par_t<bucket_t, point_t, affine_t, scalar_t> msm{nullptr, (size_t)n};
+    msm_handle_t& msm = get_msm_handle((size_t)n);
     msm.d_points = g_gens;
     msm.npoints = (size_t)n;
     msm.d_scalars = reinterpret_cast<scalar_t*>(d_scalars);
@@ -108,15 +138,19 @@ int sppark_msm_from_device(void* d_scalars, void* result, int n) {
     RustError err = msm.invoke(out, (const affine_t*)nullptr, (size_t)n,
                                (const scalar_t*)nullptr, true);
 
-    msm.d_points = nullptr;
-    msm.npoints = 0;
-    msm.d_scalars = nullptr;
-
     memcpy(result, &out, sizeof(out));
     return err.code;
 }
 
 void sppark_msm_free() {
+    if (g_msm_handle) {
+        g_msm_handle->d_points = nullptr;
+        g_msm_handle->npoints = 0;
+        g_msm_handle->d_scalars = nullptr;
+        delete g_msm_handle;
+        g_msm_handle = nullptr;
+        g_msm_handle_n = 0;
+    }
     if (g_gens) { cudaFree(g_gens); g_gens = nullptr; g_gens_n = 0; }
 }
 

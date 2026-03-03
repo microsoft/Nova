@@ -1257,8 +1257,9 @@ where
       {
         if !_d_quotf_ptr.is_null() {
           // Device-side MSM for quot_f (quotient already on GPU)
+          // Use original_size (power of 2) for optimal MSM wbits
           type G1 = halo2curves::bn256::G1;
-          let msm_len = std::cmp::min(quot_f.coeffs.len(), original_size);
+          let msm_len = original_size;
           let point: G1 = crate::provider::sppark::msm_from_device(_d_quotf_ptr, msm_len);
           crate::spartan::gpu_sumcheck::free_device_ptr(_d_quotf_ptr);
           _d_quotf_ptr = std::ptr::null_mut();
