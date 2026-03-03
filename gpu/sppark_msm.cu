@@ -142,7 +142,8 @@ int sppark_msm_from_device(void* d_scalars, void* result, int n) {
     msm.npoints = (size_t)n;
     msm.d_scalars = reinterpret_cast<scalar_t*>(d_scalars);
 
-    cudaDeviceSynchronize();  // flush pending work before timing
+    cudaDeviceSynchronize();  // ensure no pending GPU work
+
     auto t0 = std::chrono::high_resolution_clock::now();
 
     point_t out;

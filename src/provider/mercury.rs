@@ -1022,6 +1022,11 @@ where
             crate::spartan::gpu_sumcheck::free_device_ptr(_d_f_ptr);
             _d_f_ptr = std::ptr::null_mut();
           }
+          // Commit g first (small host MSM) to warm up GPU MSM state,
+          // then commit q (large device MSM) benefits from warmed state
+          let _tg = std::time::Instant::now();
+          let comm_g = E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO);
+          eprintln!("[Mercury]   commit(g) n={}: {:?}", g_poly.coeffs.len(), _tg.elapsed());
           let _tq = std::time::Instant::now();
           let point: G1 = crate::provider::sppark::msm_from_device(_d_quot_ptr, q_len);
           eprintln!("[Mercury]   commit(q) n={}: {:?}", q_len, _tq.elapsed());
@@ -1029,9 +1034,6 @@ where
           _d_quot_ptr = std::ptr::null_mut();
           let comm_q: Commitment<E> =
             unsafe { std::ptr::read(&point as *const G1 as *const Commitment<E>) };
-          let _tg = std::time::Instant::now();
-          let comm_g = E::CE::commit(ck, &g_poly.coeffs, &E::Scalar::ZERO);
-          eprintln!("[Mercury]   commit(g) n={}: {:?}", g_poly.coeffs.len(), _tg.elapsed());
           (comm_q, comm_g)
         } else {
           rayon::join(

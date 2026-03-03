@@ -13,9 +13,9 @@
 #include <cooperative_groups.h>
 
 #ifndef LARGE_BUCKET_THRESHOLD
-# define LARGE_BUCKET_THRESHOLD 4096
+# define LARGE_BUCKET_THRESHOLD 256
 #endif
-#define MAX_LARGE_BUCKETS 512
+#define MAX_LARGE_BUCKETS 32768
 #define PARALLEL_REDUCE_SIZE 256  // Must be power-of-2, <= ACCUMULATE_NTHREADS
 
 // Overflow threads fold into shared_buckets[0..PARALLEL_REDUCE_SIZE).
@@ -130,7 +130,7 @@ void accumulate_parallel(bucket_h buckets_[], uint32_t nwins, uint32_t wbits,
     cooperative_groups::this_grid().sync();
 
     // ===== Phase 2: parallel tree reduction for large buckets =====
-    uint32_t n_large = d_n_large_buckets;
+    uint32_t n_large = min(d_n_large_buckets, (uint32_t)MAX_LARGE_BUCKETS);
     extern __shared__ bucket_h shared_buckets[];
 
     for (uint32_t lb = blockIdx.x; lb < n_large; lb += gridDim.x) {
@@ -365,7 +365,6 @@ struct msm_par_t {
                 );
                 CUDA_OK(cudaGetLastError());
 
-                // THE KEY CHANGE: accumulate_parallel + shared memory for Phase 2
                 size_t accum_shared = sizeof(bucket_h) * PARALLEL_REDUCE_SIZE;
                 gpu[i&1].launch_coop(accumulate_parallel<bucket_t, affine_h>,
                     {gpu.sm_count(), 0, accum_shared},
