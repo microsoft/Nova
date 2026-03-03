@@ -1382,9 +1382,11 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         eprintln!("[ppsnark]     mem 4 MSMs: {:?}", _t3.elapsed());
 
         // Download oracle polys (needed for EE witness later)
+        // Must download before phase3 which overwrites d_polys during sumcheck bind
         let oracle_fr = gpu_sumcheck::phase2_download_mem_oracles_only(n)
           .map_err(|_| NovaError::InternalError)?;
         let mem_oracles: [Vec<E::Scalar>; 4] = oracle_fr.map(fr_vec_to_scalar);
+        let gpu_n_for_download = 0usize; // download already done
         eprintln!("[ppsnark]   mem oracle download+commit: {:?}", _t2.elapsed());
 
         // Absorb commitments, squeeze rho
@@ -1535,6 +1537,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // compute the remaining claims that did not come for free from the sum-check prover
     let _t = std::time::Instant::now();
+
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
       let e = MultilinearPolynomial::multi_evaluate_with(
         &[

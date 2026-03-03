@@ -46,6 +46,12 @@ static fr_t* d_challenge = nullptr;
 static fr_t* d_eq_tau = nullptr;
 static fr_t* d_z_padded = nullptr;
 static fr_t* d_products = nullptr;
+static fr_t* d_ends_tmp = nullptr;
+static fr_t* d_invs = nullptr;
+static fr_t* h_ends_buf = nullptr;
+static fr_t* h_prods_buf = nullptr;
+static fr_t* h_invs_buf = nullptr;
+static uint32_t g_nc = 0;
 static uint32_t g_n = 0;
 static uint32_t g_num_blocks = 0;
 static int g_grid = 0;
@@ -381,6 +387,37 @@ void batch_lincomb_3_kernel(fr_t* __restrict__ out, const fr_t* __restrict__ x,
     out[i] = x[i] + c * y[i] + c2 * z[i];
 }
 
+// Fused product of 4 arrays: out[i] = a[i] * b[i] * c[i] * d[i]
+__global__
+void product_4_kernel(fr_t* __restrict__ out,
+                       const fr_t* __restrict__ a, const fr_t* __restrict__ b,
+                       const fr_t* __restrict__ c, const fr_t* __restrict__ d, uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    out[i] = a[i] * b[i] * c[i] * d[i];
+}
+
+// Scatter inverses: given inv(a*b*c*d), recover inv(a), inv(b), inv(c), inv(d)
+__global__
+void scatter_inv_4_kernel(const fr_t* __restrict__ inv_prod,
+                           const fr_t* __restrict__ a, const fr_t* __restrict__ b,
+                           const fr_t* __restrict__ c, const fr_t* __restrict__ d,
+                           fr_t* __restrict__ inv_a, fr_t* __restrict__ inv_b,
+                           fr_t* __restrict__ inv_c, fr_t* __restrict__ inv_d,
+                           uint32_t n)
+{
+    uint32_t i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    fr_t ip = inv_prod[i];
+    fr_t ai = a[i], bi = b[i], ci = c[i], di = d[i];
+    fr_t cd = ci * di;
+    inv_a[i] = ip * bi * cd;
+    inv_b[i] = ip * ai * cd;
+    inv_c[i] = ip * ai * bi * di;
+    inv_d[i] = ip * ai * bi * ci;
+}
+
 #ifndef __CUDA_ARCH__
 
 // HyperKZG host-side state
@@ -475,6 +512,16 @@ int gpu_phase1_init(const void* eq_tau_host, const void* z_padded_host, uint32_t
     CHECK_CUDA(cudaMalloc(&d_eq_tau, fr_bytes));
     CHECK_CUDA(cudaMalloc(&d_z_padded, fr_bytes));
     CHECK_CUDA(cudaMalloc(&d_challenge, 4 * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_products, fr_bytes));
+
+    // Pre-allocate batch_inv buffers (nc ≈ n/4096)
+    uint32_t csz = 4096;
+    g_nc = (n + csz - 1) / csz;
+    CHECK_CUDA(cudaMalloc(&d_ends_tmp, g_nc * sizeof(fr_t)));
+    CHECK_CUDA(cudaMalloc(&d_invs, g_nc * sizeof(fr_t)));
+    h_ends_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+    h_prods_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
+    h_invs_buf = (fr_t*)malloc(g_nc * sizeof(fr_t));
 
     CHECK_CUDA(cudaMemcpy(d_eq_tau, eq_tau_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_z_padded, z_padded_host, fr_bytes, cudaMemcpyHostToDevice));
@@ -515,29 +562,27 @@ int gpu_phase2_construct_v2(
     const fr_t c_val = *(const fr_t*)c_host;
     const fr_t c2_val = c_val * c_val;
 
-    // Upload Az, Bz, Cz, E to GPU
+    auto t0 = std::chrono::high_resolution_clock::now();
+
+    // Upload Az, Bz to their permanent slots
     CHECK_CUDA(cudaMemcpy(d_polys[10], Az_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_polys[11], Bz_host, fr_bytes, cudaMemcpyHostToDevice));
     
-    // Need temp space for Cz and E on GPU
-    fr_t* d_Cz;
-    fr_t* d_E;
-    CHECK_CUDA(cudaMalloc(&d_Cz, fr_bytes));
-    CHECK_CUDA(cudaMalloc(&d_E, fr_bytes));
-    CHECK_CUDA(cudaMemcpy(d_Cz, Cz_host, fr_bytes, cudaMemcpyHostToDevice));
-    CHECK_CUDA(cudaMemcpy(d_E, E_host, fr_bytes, cudaMemcpyHostToDevice));
+    // Upload Cz, E to temp slots (d_polys[16] and d_polys[14] are safe:
+    // they'll be overwritten later by compute_val and mem_hash respectively)
+    CHECK_CUDA(cudaMemcpy(d_polys[16], Cz_host, fr_bytes, cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpy(d_polys[14], E_host, fr_bytes, cudaMemcpyHostToDevice));
 
     // Compute uCz_E = u * Cz + E → store in d_polys[12]
-    axpy_kernel<<<g_grid, 256>>>(d_polys[12], d_Cz, d_E, u_val, n);
+    axpy_kernel<<<g_grid, 256>>>(d_polys[12], d_polys[16], d_polys[14], u_val, n);
     
     // Compute Mz = Az + c * Bz + c^2 * Cz → store in d_polys[13]
-    batch_lincomb_3_kernel<<<g_grid, 256>>>(d_polys[13], d_polys[10], d_polys[11], d_Cz, c_val, c2_val, n);
-    
-    cudaFree(d_Cz);
-    cudaFree(d_E);
+    batch_lincomb_3_kernel<<<g_grid, 256>>>(d_polys[13], d_polys[10], d_polys[11], d_polys[16], c_val, c2_val, n);
 
     CHECK_CUDA(cudaMemcpy(d_polys[17], W_host, fr_bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_polys[18], masked_eq_host, fr_bytes, cudaMemcpyHostToDevice));
+
+    auto t1 = std::chrono::high_resolution_clock::now();
 
     CHECK_CUDA(cudaMemcpy(d_challenge, c_host, sizeof(fr_t), cudaMemcpyHostToDevice));
     compute_val_kernel<<<g_grid, 256>>>(d_val_A, d_val_B, d_val_C, d_challenge, d_polys[16], n);
@@ -559,48 +604,52 @@ int gpu_phase2_construct_v2(
     add_scalar_kernel<<<g_grid, 256>>>(d_polys[7], d_challenge, n);
     CHECK_CUDA(cudaDeviceSynchronize());
 
-    // Batch inversion (Montgomery's trick with chunked prefix products)
-    CHECK_CUDA(cudaMalloc(&d_products, fr_bytes));
+    auto t2 = std::chrono::high_resolution_clock::now();
 
-    auto batch_inv = [&](fr_t* d_arr, fr_t* d_inv_out, uint32_t len) -> int {
-        uint32_t csz = 4096;
-        uint32_t nc = (len + csz - 1) / csz;
-        batch_invert_prefix_kernel<<<(nc+255)/256, 256>>>(d_arr, d_products, len, csz);
+    // Fused batch inversion: compute product of 4 arrays, invert once, scatter
+    // d_polys[14] and d_polys[16] are available as temp after compute_val/mem_hash
+    uint32_t csz = 4096;
+    uint32_t nc = g_nc;
 
-        // Gather chunk ends using GPU kernel, then single bulk download
-        fr_t* d_ends_tmp;
-        CHECK_CUDA(cudaMalloc(&d_ends_tmp, nc * sizeof(fr_t)));
-        gather_chunk_ends_kernel<<<(nc+255)/256, 256>>>(d_products, d_ends_tmp, nc, csz, len);
-        fr_t* h_ends = (fr_t*)malloc(nc * sizeof(fr_t));
-        CHECK_CUDA(cudaMemcpy(h_ends, d_ends_tmp, nc * sizeof(fr_t), cudaMemcpyDeviceToHost));
-        cudaFree(d_ends_tmp);
+    // Step 1: product of all 4 arrays → d_polys[16]
+    product_4_kernel<<<g_grid, 256>>>(d_polys[16], d_polys[0], d_polys[2], d_polys[5], d_polys[7], n);
 
-        fr_t* h_prods = (fr_t*)malloc(nc * sizeof(fr_t));
-        h_prods[0] = h_ends[0];
-        for (uint32_t i = 1; i < nc; i++) h_prods[i] = h_prods[i-1] * h_ends[i];
+    // Step 2: single batch_inv of the product → d_polys[14]
+    batch_invert_prefix_kernel<<<(nc+255)/256, 256>>>(d_polys[16], d_products, n, csz);
+    gather_chunk_ends_kernel<<<(nc+255)/256, 256>>>(d_products, d_ends_tmp, nc, csz, n);
+    CHECK_CUDA(cudaMemcpy(h_ends_buf, d_ends_tmp, nc * sizeof(fr_t), cudaMemcpyDeviceToHost));
 
-        fr_t total_inv = h_prods[nc-1].reciprocal();
+    h_prods_buf[0] = h_ends_buf[0];
+    for (uint32_t i = 1; i < nc; i++) h_prods_buf[i] = h_prods_buf[i-1] * h_ends_buf[i];
 
-        fr_t* h_invs = (fr_t*)malloc(nc * sizeof(fr_t));
-        for (uint32_t i = nc; i > 1; ) { --i; h_invs[i] = total_inv * h_prods[i-1]; total_inv = total_inv * h_ends[i]; }
-        h_invs[0] = total_inv;
+    fr_t total_inv = h_prods_buf[nc-1].reciprocal();
 
-        fr_t* d_invs; CHECK_CUDA(cudaMalloc(&d_invs, nc * sizeof(fr_t)));
-        CHECK_CUDA(cudaMemcpy(d_invs, h_invs, nc * sizeof(fr_t), cudaMemcpyHostToDevice));
-        batch_invert_back_kernel<<<(nc+255)/256, 256>>>(d_arr, d_products, d_invs, d_inv_out, len, csz);
-        CHECK_CUDA(cudaDeviceSynchronize());
-        cudaFree(d_invs); free(h_ends); free(h_prods); free(h_invs);
-        return 0;
-    };
+    for (uint32_t i = nc; i > 1; ) { --i; h_invs_buf[i] = total_inv * h_prods_buf[i-1]; total_inv = total_inv * h_ends_buf[i]; }
+    h_invs_buf[0] = total_inv;
 
-    if (batch_inv(d_polys[0], d_polys[1], n) != 0) return -1;
-    if (batch_inv(d_polys[2], d_polys[3], n) != 0) return -1;
-    if (batch_inv(d_polys[5], d_polys[6], n) != 0) return -1;
-    if (batch_inv(d_polys[7], d_polys[8], n) != 0) return -1;
+    CHECK_CUDA(cudaMemcpy(d_invs, h_invs_buf, nc * sizeof(fr_t), cudaMemcpyHostToDevice));
+    batch_invert_back_kernel<<<(nc+255)/256, 256>>>(d_polys[16], d_products, d_invs, d_polys[14], n, csz);
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    // Step 3: scatter individual inverses
+    scatter_inv_4_kernel<<<g_grid, 256>>>(d_polys[14],
+        d_polys[0], d_polys[2], d_polys[5], d_polys[7],
+        d_polys[1], d_polys[3], d_polys[6], d_polys[8], n);
+    CHECK_CUDA(cudaDeviceSynchronize());
+
+    auto t3 = std::chrono::high_resolution_clock::now();
 
     elemwise_mul_kernel<<<g_grid, 256>>>(d_polys[1], d_polys[4], d_polys[1], n);
     elemwise_mul_kernel<<<g_grid, 256>>>(d_polys[6], d_polys[9], d_polys[6], n);
     CHECK_CUDA(cudaDeviceSynchronize());
+
+    auto t4 = std::chrono::high_resolution_clock::now();
+    auto us01 = std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
+    auto us12 = std::chrono::duration_cast<std::chrono::microseconds>(t2-t1).count();
+    auto us23 = std::chrono::duration_cast<std::chrono::microseconds>(t3-t2).count();
+    auto us34 = std::chrono::duration_cast<std::chrono::microseconds>(t4-t3).count();
+    fprintf(stderr, "  [phase2] uploads=%ldus compute=%ldus batch_inv=%ldus final=%ldus\n",
+            (long)us01, (long)us12, (long)us23, (long)us34);
     return 0;
 }
 
@@ -702,8 +751,13 @@ void gpu_sumcheck_free() {
     if (d_eq_tau)        { cudaFree(d_eq_tau);        d_eq_tau = nullptr; }
     if (d_z_padded)      { cudaFree(d_z_padded);      d_z_padded = nullptr; }
     if (d_products)      { cudaFree(d_products);      d_products = nullptr; }
+    if (d_ends_tmp)      { cudaFree(d_ends_tmp);      d_ends_tmp = nullptr; }
+    if (d_invs)          { cudaFree(d_invs);          d_invs = nullptr; }
     if (h_block_results) { free(h_block_results);     h_block_results = nullptr; }
-    g_n = 0; g_num_blocks = 0;
+    if (h_ends_buf)      { free(h_ends_buf);          h_ends_buf = nullptr; }
+    if (h_prods_buf)     { free(h_prods_buf);         h_prods_buf = nullptr; }
+    if (h_invs_buf)      { free(h_invs_buf);          h_invs_buf = nullptr; }
+    g_n = 0; g_num_blocks = 0; g_nc = 0;
 }
 
 // Upload hat_P and fold ell-1 times. Stores device pointers for each level.

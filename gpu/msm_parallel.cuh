@@ -209,6 +209,8 @@ struct msm_par_t {
     affine_h *d_points;
     scalar_t *d_scalars;
     vec2d_t<uint32_t> d_hist;
+    uint8_t *d_temp_buf;
+    size_t d_temp_buf_sz;
 
     template<typename T> using vec_t = slice_t<T>;
 
@@ -225,7 +227,8 @@ struct msm_par_t {
 
     msm_par_t(const affine_t points[], size_t np,
               size_t ffi_affine_sz = sizeof(affine_t), int device_id = -1)
-        : gpu(select_gpu(device_id)), d_points(nullptr), d_scalars(nullptr)
+        : gpu(select_gpu(device_id)), d_points(nullptr), d_scalars(nullptr),
+          d_temp_buf(nullptr), d_temp_buf_sz(0)
     {
         npoints = (np+WARP_SZ-1) & ((size_t)0-WARP_SZ);
         wbits = 17;
@@ -262,6 +265,7 @@ struct msm_par_t {
     ~msm_par_t()
     {
         gpu.sync();
+        if (d_temp_buf) cudaFree(d_temp_buf);
         if (d_buckets) gpu.Dfree(d_buckets);
     }
 
@@ -322,14 +326,19 @@ struct msm_par_t {
 
             size_t digits_sz = nwins * stride * sizeof(uint32_t);
 
-            dev_ptr_t<uint8_t> d_temp{temp_sz + digits_sz + d_point_sz, gpu[2]};
+            size_t total_temp = temp_sz + digits_sz + d_point_sz;
+            if (total_temp > d_temp_buf_sz) {
+                if (d_temp_buf) cudaFree(d_temp_buf);
+                CUDA_OK(cudaMalloc(&d_temp_buf, total_temp));
+                d_temp_buf_sz = total_temp;
+            }
 
-            vec2d_t<uint2> d_temps{&d_temp[0], stride};
-            vec2d_t<uint32_t> d_digits{&d_temp[temp_sz], stride};
+            vec2d_t<uint2> d_temps{d_temp_buf, stride};
+            vec2d_t<uint32_t> d_digits{&d_temp_buf[temp_sz], stride};
 
-            scalar_t* d_scalars = scalars ? (scalar_t*)&d_temp[0]
+            scalar_t* d_scalars = scalars ? (scalar_t*)d_temp_buf
                                           : this->d_scalars;
-            affine_h* d_points = points ? (affine_h*)&d_temp[temp_sz + digits_sz]
+            affine_h* d_points = points ? (affine_h*)&d_temp_buf[temp_sz + digits_sz]
                                         : this->d_points;
 
             size_t d_off = 0;

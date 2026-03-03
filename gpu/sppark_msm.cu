@@ -6,6 +6,7 @@
 // Built automatically via build.rs when the `sppark` feature is enabled.
 
 #include <cuda.h>
+#include <chrono>
 
 #include <ec/jacobian_t.hpp>
 #include <ec/xyzz_t.hpp>
@@ -104,9 +105,16 @@ static int msm_cached(const void* points, const void* scalars,
     msm.d_points = g_gens;
     msm.npoints = n_scalars;
 
+    cudaDeviceSynchronize();
+    auto t0 = std::chrono::high_resolution_clock::now();
+
     point_t out;
     RustError err = msm.invoke(out, (const affine_t*)nullptr, n_scalars,
                                reinterpret_cast<const scalar_t*>(scalars), true);
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
+    fprintf(stderr, "  [sppark] msm_cached n=%zu invoke=%ldus\n", n, (long)us);
 
     memcpy(result, &out, sizeof(out));
     return err.code;
@@ -134,9 +142,16 @@ int sppark_msm_from_device(void* d_scalars, void* result, int n) {
     msm.npoints = (size_t)n;
     msm.d_scalars = reinterpret_cast<scalar_t*>(d_scalars);
 
+    cudaDeviceSynchronize();  // flush pending work before timing
+    auto t0 = std::chrono::high_resolution_clock::now();
+
     point_t out;
     RustError err = msm.invoke(out, (const affine_t*)nullptr, (size_t)n,
                                (const scalar_t*)nullptr, true);
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(t1-t0).count();
+    fprintf(stderr, "  [sppark] msm_from_device n=%d invoke=%ldus\n", n, (long)us);
 
     memcpy(result, &out, sizeof(out));
     return err.code;
