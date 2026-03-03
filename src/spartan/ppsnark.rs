@@ -377,7 +377,6 @@ impl<E: Engine> MemorySumcheckInstance<E> {
     L_col: &[E::Scalar],
     ts_col: &[E::Scalar],
   ) -> Result<([Commitment<E>; 4], [Vec<E::Scalar>; 4], [Vec<E::Scalar>; 4]), NovaError> {
-    let _t0 = std::time::Instant::now();
     // hash the tuples of (addr,val) memory contents and read responses into a single field element using `hash_func`
     let hash_func_vec = |mem: &[E::Scalar],
                          addr: &[E::Scalar],
@@ -403,9 +402,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       || hash_func_vec(mem_row, addr_row, L_row),
       || hash_func_vec(mem_col, addr_col, L_col),
     );
-    eprintln!("[compute_oracles] hash: {:?}", _t0.elapsed());
 
-    let _t1 = std::time::Instant::now();
     // compute vectors TS[i]/(T[i] + r) and 1/(W[i] + r)
     let helper = |T: &[E::Scalar],
                   W: &[E::Scalar],
@@ -449,9 +446,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
 
     let (t_plus_r_inv_row, w_plus_r_inv_row, t_plus_r_row, w_plus_r_row) = row?;
     let (t_plus_r_inv_col, w_plus_r_inv_col, t_plus_r_col, w_plus_r_col) = col?;
-    eprintln!("[compute_oracles] batch_invert+add_r: {:?}", _t1.elapsed());
 
-    let _t2 = std::time::Instant::now();
     let (
       (comm_t_plus_r_inv_row, comm_w_plus_r_inv_row),
       (comm_t_plus_r_inv_col, comm_w_plus_r_inv_col),
@@ -469,7 +464,6 @@ impl<E: Engine> MemorySumcheckInstance<E> {
         )
       },
     );
-    eprintln!("[compute_oracles] 4 commits: {:?}", _t2.elapsed());
 
     let comm_vec = [
       comm_t_plus_r_inv_row,
@@ -1172,12 +1166,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     U: &RelaxedR1CSInstance<E>,
     W: &RelaxedR1CSWitness<E>,
   ) -> Result<Self, NovaError> {
-    let _prove_start = std::time::Instant::now();
     // pad the R1CSShape
     let S = S.pad();
     // sanity check that R1CSShape has all required size characteristics
     assert!(S.is_regular_shape());
-    eprintln!("[prove] N = {}", pk.S_repr.N);
 
     let W = W.pad(&S); // pad the witness
     let mut transcript = E::TE::new(b"RelaxedR1CSSNARK");
@@ -1189,13 +1181,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
-    let _t = std::time::Instant::now();
     // compute Az, Bz, Cz
     let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
-    eprintln!("[prove] multiply_vec: {:?}", _t.elapsed());
 
     // commit to Az, Bz, Cz
-    let _t = std::time::Instant::now();
     let (comm_Az, (comm_Bz, comm_Cz)) = rayon::join(
       || E::CE::commit(ck, &Az, &E::Scalar::ZERO),
       || {
@@ -1205,7 +1194,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         )
       },
     );
-    eprintln!("[prove] commit Az,Bz,Cz: {:?}", _t.elapsed());
 
     transcript.absorb(b"c", &[comm_Az, comm_Bz, comm_Cz].as_slice());
 
@@ -1216,7 +1204,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .collect::<Result<Vec<_>, NovaError>>()?;
 
     // (1) send commitments to Az, Bz, and Cz along with their evaluations at tau
-    let _t = std::time::Instant::now();
     let (Az, Bz, Cz, W, E) = {
       Az.resize(pk.S_repr.N, E::Scalar::ZERO);
       Bz.resize(pk.S_repr.N, E::Scalar::ZERO);
@@ -1268,7 +1255,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let num_rounds = n.log_2();
 
         // Static upload: extract integer row/col indices and upload circuit data to GPU
-        let _t = std::time::Instant::now();
         {
           let mut row_int = vec![0u32; n];
           let mut col_int = vec![(n - 1) as u32; n];
@@ -1283,10 +1269,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             as_fr(&pk.S_repr.ts_row), as_fr(&pk.S_repr.ts_col),
           ).map_err(|_| NovaError::InternalError)?;
         }
-        eprintln!("[prove/gpu] static_upload: {:?}", _t.elapsed());
 
         // Phase 1: compute L_row/L_col via GPU gather
-        let _t = std::time::Instant::now();
         let mem_row = EqPolynomial::new(tau.clone()).evals();
         let mem_col = padded::<E>(&z, n, &E::Scalar::ZERO);
         gpu_sumcheck::phase1_init(as_fr(&mem_row), as_fr(&mem_col))
@@ -1295,15 +1279,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           .map_err(|_| NovaError::InternalError)?;
         let L_row = fr_vec_to_scalar(l_row_fr);
         let L_col = fr_vec_to_scalar(l_col_fr);
-        eprintln!("[prove/gpu] phase1 (L_row/L_col): {:?}", _t.elapsed());
 
         // Commit L_row/L_col
-        let _t = std::time::Instant::now();
         let (comm_L_row, comm_L_col) = rayon::join(
           || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
           || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
         );
-        eprintln!("[prove/gpu] commit L_row/L_col: {:?}", _t.elapsed());
 
         // Transcript: absorb evals + L commits, squeeze c
         let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
@@ -1319,7 +1300,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         let r = transcript.squeeze(b"r")?;
 
         // Prepare dynamic polynomials for phase 2
-        let _t = std::time::Instant::now();
         let uCz_E: Vec<E::Scalar> = (0..Cz.len())
           .map(|i| U.u * Cz[i] + E[i])
           .collect();
@@ -1336,10 +1316,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           unsafe { &*(&gamma as *const E::Scalar as *const Fr) },
           unsafe { &*(&r as *const E::Scalar as *const Fr) },
         ).map_err(|_| NovaError::InternalError)?;
-        eprintln!("[prove/gpu] phase2 (construct): {:?}", _t.elapsed());
 
         // Commit 4 memory oracle polys
-        let _t = std::time::Instant::now();
 
         // Download memory oracle polys first (needed later for HyperKZG witness AND
         // for CPU commit when N is small)
@@ -1368,7 +1346,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
             E::CE::commit(ck, &mem_oracles[3], &E::Scalar::ZERO),
           ]
         };
-        eprintln!("[prove/gpu] 4 mem commits + download: {:?}", _t.elapsed());
 
         // Absorb commitments, squeeze rho
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());
@@ -1377,11 +1354,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           .collect::<Result<Vec<_>, NovaError>>()?;
 
         // Phase 3: construct eq polynomials, setup sumcheck
-        let _t = std::time::Instant::now();
         let mut gpu = gpu_sumcheck::GpuSumcheckState::phase3_setup(
           as_fr(&rho), as_fr(&tau), n,
         ).map_err(|_| NovaError::InternalError)?;
-        eprintln!("[prove/gpu] phase3 (eq+setup): {:?}", _t.elapsed());
 
         // Compute initial claims for sumcheck
         let inner_claim = eval_Az_at_tau + c * eval_Bz_at_tau + c * c * eval_Cz_at_tau;
@@ -1395,10 +1370,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         ];
 
         // Run GPU sumcheck rounds
-        let _t = std::time::Instant::now();
         let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) =
           Self::gpu_sumcheck_rounds(&mut gpu, &claims, num_rounds, &mut transcript)?;
-        eprintln!("[prove/gpu] sumcheck rounds: {:?}", _t.elapsed());
 
         (
           L_row, L_col,
@@ -1413,16 +1386,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       unreachable!()
     } else {
       // CPU path
-      let _t = std::time::Instant::now();
       let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &tau, &z);
-      eprintln!("[prove] eval_oracles + multi_eval: {:?}", _t.elapsed());
 
-      let _t = std::time::Instant::now();
       let (comm_L_row, comm_L_col) = rayon::join(
         || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
         || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
       );
-      eprintln!("[prove] commit L_row,L_col: {:?}", _t.elapsed());
 
       let eval_vec = vec![eval_Az_at_tau, eval_Bz_at_tau, eval_Cz_at_tau];
       transcript.absorb(b"e", &eval_vec.as_slice());
@@ -1435,7 +1404,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       let gamma = transcript.squeeze(b"g")?;
       let r = transcript.squeeze(b"r")?;
 
-      let _t = std::time::Instant::now();
       let ((mut outer_sc_inst, mut inner_sc_inst), mem_res) = rayon::join(
         || {
           let outer_sc_inst = OuterSumcheckInstance::new(
@@ -1483,12 +1451,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           ))
         },
       );
-      eprintln!("[prove] sc_instances + mem_oracles + 4 commits: {:?}", _t.elapsed());
 
       let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
       let mut witness_sc_inst = WitnessBoundSumcheck::new(tau, W.clone(), S.num_vars);
 
-      let _t = std::time::Instant::now();
       let (sc, rand_sc, claims_mem, claims_outer, claims_inner, claims_witness) =
         Self::prove_helper(
           &mut mem_sc_inst,
@@ -1497,7 +1463,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           &mut witness_sc_inst,
           &mut transcript,
         )?;
-      eprintln!("[prove] sumcheck: {:?}", _t.elapsed());
 
       (
         L_row, L_col,
@@ -1508,7 +1473,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         claims_mem, claims_outer, claims_inner, claims_witness,
       )
     };
-    eprintln!("[prove] sumcheck total: {:?}", _t.elapsed());
 
     // claims from the end of the sum-check
     let eval_Az = claims_outer[0][0];
@@ -1527,7 +1491,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let eval_W = claims_witness[0][0];
 
     // compute the remaining claims that did not come for free from the sum-check prover
-    let _t = std::time::Instant::now();
     let (eval_Cz, eval_E, eval_val_A, eval_val_B, eval_val_C, eval_row, eval_col) = {
       let e = MultilinearPolynomial::multi_evaluate_with(
         &[
@@ -1543,7 +1506,6 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       );
       (e[0], e[1], e[2], e[3], e[4], e[5], e[6])
     };
-    eprintln!("[prove] multi_evaluate_with: {:?}", _t.elapsed());
 
     // all the evaluations are at rand_sc, we can fold them into one claim
     let eval_vec = vec![
@@ -1611,15 +1573,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     ];
     transcript.absorb(b"e", &eval_vec.as_slice()); // comm_vec is already in the transcript
     let c = transcript.squeeze(b"c")?;
-    let _t = std::time::Instant::now();
     let w: PolyEvalWitness<E> = PolyEvalWitness::batch(&poly_vec, &c);
     let u: PolyEvalInstance<E> = PolyEvalInstance::batch(&comm_vec, &rand_sc, &eval_vec, &c);
-    eprintln!("[prove] batch witness+instance: {:?}", _t.elapsed());
 
-    let _t = std::time::Instant::now();
     let eval_arg = EE::prove(ck, &pk.pk_ee, &mut transcript, &u.c, &w.p, &rand_sc, &u.e)?;
-    eprintln!("[prove] EE::prove (HyperKZG): {:?}", _t.elapsed());
-    eprintln!("[prove] TOTAL: {:?}", _prove_start.elapsed());
 
     Ok(RelaxedR1CSSNARK {
       comm_Az,

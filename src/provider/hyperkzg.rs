@@ -981,27 +981,21 @@ where
 
       let k = f.len();
 
-      let _t_ob = std::time::Instant::now();
       let mut v = vec![[E::Scalar::ZERO; 3]; k];
       v.par_iter_mut().zip_eq(f).for_each(|(v_j, f)| {
         v_j.par_iter_mut().enumerate().for_each(|(i, v_ij)| {
           *v_ij = poly_eval(f, u[i]);
         });
       });
-      eprintln!("[hkzg]   poly_eval all: {:?}", _t_ob.elapsed());
 
       let q = Self::get_batch_challenge(&v, transcript);
-      let _t_ob = std::time::Instant::now();
       let B = kzg_compute_batch_polynomial(f, q);
-      eprintln!("[hkzg]   batch_poly: {:?}", _t_ob.elapsed());
 
       // Now open B at u0, ..., u_{t-1}
-      let _t_ob = std::time::Instant::now();
       let w = u
         .into_par_iter()
         .map(|ui| kzg_open(&B, *ui))
         .collect::<Vec<G1Affine<E>>>();
-      eprintln!("[hkzg]   3x kzg_open: {:?}", _t_ob.elapsed());
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
@@ -1028,7 +1022,6 @@ where
     // Phase 1  -- create commitments com_1, ..., com_\ell
     // GPU path: fold on GPU, commit from device memory
     // CPU path: fold on CPU, commit via batch_commit
-    let _t_hkzg = std::time::Instant::now();
 
     #[cfg(feature = "sppark")]
     let gpu_hkzg = if use_gpu {
@@ -1065,10 +1058,8 @@ where
         polys.push(Pi);
       }
     }
-    eprintln!("[hkzg] phase1 fold: {:?}", _t_hkzg.elapsed());
 
     // Compute commitments
-    let _t_hkzg = std::time::Instant::now();
     #[allow(unused_assignments)]
     let mut com: Vec<G1Affine<E>> = Vec::new();
 
@@ -1125,20 +1116,17 @@ where
         .map(|i| i.comm.affine())
         .collect();
     }
-    eprintln!("[hkzg] phase1 batch_commit: {:?}", _t_hkzg.elapsed());
 
     let r = Self::compute_challenge(&com, transcript);
     let u = [r, -r, r * r];
 
     // Phase 3 -- create response
-    let _t_hkzg = std::time::Instant::now();
 
     #[cfg(feature = "sppark")]
     let (w, v) = if let Some(ref hkzg_state) = gpu_hkzg {
       type Fr = halo2curves::bn256::Fr;
 
       // Evaluate all folded polynomials at u points using GPU
-      let _t = std::time::Instant::now();
       let u_fr: [Fr; 3] = unsafe {
         [std::ptr::read(&u[0] as *const E::Scalar as *const Fr),
          std::ptr::read(&u[1] as *const E::Scalar as *const Fr),
@@ -1152,12 +1140,10 @@ where
          std::ptr::read(&row[1] as *const Fr as *const E::Scalar),
          std::ptr::read(&row[2] as *const Fr as *const E::Scalar)]
       }).collect();
-      eprintln!("[hkzg]   poly_eval (GPU): {:?}", _t.elapsed());
 
       let q = Self::get_batch_challenge(&v, transcript);
 
       // Compute batch polynomial B on GPU
-      let _t = std::time::Instant::now();
       let q_fr: Fr = unsafe { std::ptr::read(&q as *const E::Scalar as *const Fr) };
       let b_fr = hkzg_state.batch_poly(&q_fr)
         .map_err(|_| NovaError::InternalError)?;
@@ -1165,15 +1151,12 @@ where
         let mut b = std::mem::ManuallyDrop::new(b_fr);
         Vec::from_raw_parts(b.as_mut_ptr() as *mut E::Scalar, b.len(), b.capacity())
       };
-      eprintln!("[hkzg]   batch_poly (GPU): {:?}", _t.elapsed());
 
       // kzg_open: div_by_monomial + commit (still on CPU)
-      let _t = std::time::Instant::now();
       let w: Vec<G1Affine<E>> = (0..3)
         .into_par_iter()
         .map(|i| kzg_open(&B, u[i]))
         .collect();
-      eprintln!("[hkzg]   3x kzg_open: {:?}", _t.elapsed());
 
       let _d_0 = Self::verifier_second_challenge(&w, transcript);
       (w, v)
@@ -1184,7 +1167,6 @@ where
     #[cfg(not(feature = "sppark"))]
     let (w, v) = kzg_open_batch(&polys, &u, transcript);
 
-    eprintln!("[hkzg] phase3 kzg_open_batch: {:?}", _t_hkzg.elapsed());
 
     Ok(EvaluationArgument {
       com,
