@@ -2,13 +2,9 @@
 //! The optimization is described in Section 5 of https://eprint.iacr.org/2025/1117.
 #![allow(non_snake_case)]
 use criterion::*;
-use ff::Field;
 use nova_snark::{
   provider::Bn256EngineKZG,
-  spartan::{
-    ppsnark::{MemorySumcheckInstance, OuterSumcheckInstance},
-    SumcheckEngine,
-  },
+  spartan::{ppsnark::MemorySumcheckInstance, SumcheckEngine},
   traits::Engine,
 };
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -80,39 +76,6 @@ fn bench_sumcheckeq(c: &mut Criterion) {
     .collect::<Vec<_>>();
 
   for i in 3..MAX_NUM_VARS {
-    let mut group = c.benchmark_group(format!("NovaProve-PPSNARK-SumCheckEq-len-{}", i));
-    group.sample_size(20);
-
-    group.bench_function("ProveOuter", |b| {
-      b.iter(|| {
-        let (rs, taus, vs_a, vs_b, vs_c, vs_d) = black_box({
-          let len = black_box(1 << i);
-          (
-            rs[..i].to_vec(),
-            taus[..i].to_vec(),
-            vs_a[..len].to_vec(),
-            vs_b[..len].to_vec(),
-            vs_c[..len].to_vec(),
-            vs_d[..len].to_vec(),
-          )
-        });
-
-        black_box({
-          let mut instance = OuterSumcheckInstance::<E>::new(
-            taus,
-            vs_a,
-            vs_b,
-            vs_c,
-            vs_d,
-            &<E as Engine>::Scalar::ZERO,
-          );
-          run_sc(&rs, &mut instance)
-        });
-      });
-    });
-
-    group.finish();
-
     let mut group = c.benchmark_group(format!("NovaProve-PPSNARK-SumCheckEq-len-{}", i));
     group.sample_size(20);
 
