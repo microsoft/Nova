@@ -1071,8 +1071,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     );
 
     // Squeeze random padding challenges and extend r_outer to length log(N).
-    // For zero-padded polys P of size m within N: P(r_full) = factor · P(r_short)
-    // where factor = Π(1 - r_pad_j) and r_full = (r_pad, r_short).
+    // For zero-padded polys P of size m within N: P(r_full) = factor · P(r_outer)
+    // where factor = Π(1 - r_pad_j) and r_full = (r_pad, r_outer).
     // r_pad occupies the top (MSB) positions since padding variables are the high-order bits.
     let num_pad_rounds = num_rounds_inner
       .checked_sub(num_rounds_outer)
@@ -1118,7 +1118,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         // (a) ABC claim: factor·(v_A + c·v_B + c²·v_C) = Σ L_row(y) * (val_A + c·val_B + c²·val_C)(y) * L_col(y)
         // (b) E claim: factor·eval_E = Σ eq(r_outer_full, y) * E(y)
         // The claims are scaled by factor because the inner sum-check uses r_outer_full
-        // and eq(r_full, j) = factor · eq(r_short, j) for j < m.
+        // and eq(r_full, j) = factor · eq(r_outer, j) for j < m.
         let val = zip_with!(
           par_iter,
           (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
@@ -1426,7 +1426,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // Claim 6: inner ABC = factor * (eval_Az + c * eval_Bz + c² * eval_Cz)
     // Claim 7: inner E = factor * eval_E
     // Claim 8: witness (zero)
-    // The factor accounts for zero-padding: eval_P(r_full) = factor * eval_P(r_short)
+    // The factor accounts for zero-padding: eval_P(r_full) = factor * eval_P(r_outer)
     let claim_inner_batched_ABC = factor
       * (self.eval_Az_at_r_outer + c * self.eval_Bz_at_r_outer + c * c * self.eval_Cz_at_r_outer);
     let claim = coeffs[6] * claim_inner_batched_ABC + coeffs[7] * factor * self.eval_E_at_r_outer;
