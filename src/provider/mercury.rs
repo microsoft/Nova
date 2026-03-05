@@ -833,6 +833,9 @@ where
       (f_poly, log_b, b, point)
     };
 
+    // b_row = actual nonzero row count; equals b for even log_n, b/2 for odd
+    let b_row = original_size / b;
+
     let (u_row, u_col) = point.split_at(log_b);
     let u_row = u_row.to_owned();
     let u_col = u_col.to_owned();
@@ -865,8 +868,12 @@ where
     }
 
     // * 1. Mercury Section 6. Step 1. (a)
-    // Compute h(X)
-    let h_poly = compute_h_poly(&f_poly, &eq_col, b, b);
+    // Compute h(X) — only b_row rows have non-zero data
+    let mut h_poly = compute_h_poly(&f_poly, &eq_col, b_row, b);
+    // Pad h to b for make_s_polynomial (upper elements are zero since f is zero-padded)
+    if h_poly.coeffs.len() < b {
+      h_poly.coeffs.resize(b, E::Scalar::ZERO);
+    }
 
     #[cfg(debug_assertions)]
     {
@@ -890,8 +897,8 @@ where
     let alpha = transcript.squeeze(LABEL_ALPHA)?;
 
     // * 4. Mercury Section 6. Step 2. (b)
-    // Compute q(X) and g(X)
-    let (mut q_poly, g_poly) = divide_by_binomial(&f_poly, b, b, &alpha);
+    // Compute q(X) and g(X) — use b_row to skip zero-padded rows
+    let (mut q_poly, g_poly) = divide_by_binomial(&f_poly[..original_size], b_row, b, &alpha);
 
     q_poly.trim();
 
@@ -1058,12 +1065,13 @@ where
     };
 
     // quot_f(X) = ( f(X) -  q(X) * (zeta^b - alpha) - g(zeta) ) / (X - zeta)
+    // Use original_size to skip zero-padded elements
     let quot_f = {
       let zeta_b = zeta.pow([b as u64]);
       let zeta_b_alpha = zeta_b - alpha;
 
       let mut quot_f = UniPoly {
-        coeffs: f_poly.to_vec(),
+        coeffs: f_poly[..original_size].to_vec(),
       };
 
       quot_f.batch_add_with_polynomials(vec![&q_poly.coeffs], &[-zeta_b_alpha]);
