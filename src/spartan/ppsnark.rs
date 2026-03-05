@@ -1021,28 +1021,22 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
 
     // compute Az, Bz, Cz
-    let (mut Az, mut Bz, mut Cz) = S.multiply_vec(&z)?;
+    let (Az, Bz, Cz) = S.multiply_vec(&z)?;
 
-    // number of rounds of sum-check (same for outer and inner)
-    let num_rounds_sc = pk.S_repr.N.log_2();
-    let tau = (0..num_rounds_sc)
+    // Shortened outer sum-check: run for log(num_cons) rounds instead of log(N).
+    // Az, Bz, Cz, E are naturally size num_cons and zero-padded to N, so the
+    // sum over {0,1}^log(N) collapses to {0,1}^log(num_cons).
+    let num_rounds_outer = S.num_cons.log_2();
+    let num_rounds_inner = pk.S_repr.N.log_2();
+    let tau = (0..num_rounds_outer)
       .map(|_| transcript.squeeze(b"t"))
       .collect::<Result<Vec<_>, NovaError>>()?;
 
-    // Pad Az, Bz, Cz, W, E to size N
-    Az.resize(pk.S_repr.N, E::Scalar::ZERO);
-    Bz.resize(pk.S_repr.N, E::Scalar::ZERO);
-    Cz.resize(pk.S_repr.N, E::Scalar::ZERO);
-    let E = padded::<E>(&W.E, pk.S_repr.N, &E::Scalar::ZERO);
-    let W = padded::<E>(&W.W, pk.S_repr.N, &E::Scalar::ZERO);
-
-    // Step 1: Outer sum-check (standalone, degree-3)
-    // Proves: 0 = Σ_x eq(τ,x) * (Az(x) * Bz(x) - (u·Cz(x) + E(x)))
-    // Az, Bz, Cz are virtual (not committed); the outer sum-check produces
-    // claims v_A = Az(r_outer), v_B = Bz(r_outer), and (u·Cz+E)(r_outer).
+    // Step 1: Outer sum-check (standalone, degree-3) on size-m polynomials
+    // Proves: 0 = Σ_{x∈{0,1}^log(m)} eq(τ,x) * (Az(x) * Bz(x) - (u·Cz(x) + E(x)))
     let uCz_E: Vec<E::Scalar> = Cz
       .iter()
-      .zip(E.iter())
+      .zip(W.E.iter())
       .map(|(cz, e)| U.u * *cz + *e)
       .collect();
     let mut poly_Az = MultilinearPolynomial::new(Az);
@@ -1058,10 +1052,9 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       &mut transcript,
     )?;
 
-    // Claims from the outer sum-check
-    let eval_Az_at_r_outer = claims_outer[0]; // Az(r_outer)
-    let eval_Bz_at_r_outer = claims_outer[1]; // Bz(r_outer)
-                                              // claims_outer[2] = (u·Cz + E)(r_outer); evaluate Cz and derive E
+    // Claims from the shortened outer sum-check (evaluations at the log(m)-length point)
+    let eval_Az_at_r_outer = claims_outer[0];
+    let eval_Bz_at_r_outer = claims_outer[1];
     let eval_Cz_at_r_outer = MultilinearPolynomial::evaluate_with(&Cz, &r_outer);
     let eval_E_at_r_outer = claims_outer[2] - U.u * eval_Cz_at_r_outer;
 
@@ -1077,14 +1070,30 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .as_slice(),
     );
 
+    // Squeeze random padding challenges and extend r_outer to length log(N).
+    // For zero-padded polys P of size m within N: P(r_full) = factor · P(r_short)
+    // where factor = Π(1 - r_pad_j) and r_full = (r_pad, r_short).
+    // r_pad occupies the top (MSB) positions since padding variables are the high-order bits.
+    let r_pad = (0..num_rounds_inner - num_rounds_outer)
+      .map(|_| transcript.squeeze(b"p"))
+      .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
+    let r_outer_full: Vec<E::Scalar> = r_pad.iter().chain(r_outer.iter()).cloned().collect();
+    let factor: E::Scalar = r_pad
+      .iter()
+      .fold(E::Scalar::ONE, |acc, r| acc * (E::Scalar::ONE - r));
+
+    // Pad E and W to size N for inner sum-check and PCS
+    let E = padded::<E>(&W.E, pk.S_repr.N, &E::Scalar::ZERO);
+    let W = padded::<E>(&W.W, pk.S_repr.N, &E::Scalar::ZERO);
+
     // -----------------------------------------------------------------------
     // Step 2: Prepare the batched inner batched sum-check (memory + inner_batched + witness)
     // -----------------------------------------------------------------------
 
-    // Compute evaluation oracles at r_outer (output of outer sum-check)
-    // L_row(i) = eq(r_outer, row(i)) for all i
-    // L_col(i) = z(col(i)) for all i
-    let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &r_outer, &z);
+    // Compute evaluation oracles at r_outer_full (the extended outer challenge)
+    // L_row(i) = eq(r_outer_full, row(i)) for all i
+    // L_col(i) = z(col(i)) for all i, where z is the full satisfying assignment
+    let (mem_row, mem_col, L_row, L_col) = pk.S_repr.evaluation_oracles(&S, &r_outer_full, &z);
     let (comm_L_row, comm_L_col) = rayon::join(
       || E::CE::commit(ck, &L_row, &E::Scalar::ZERO),
       || E::CE::commit(ck, &L_col, &E::Scalar::ZERO),
@@ -1103,8 +1112,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (mut inner_batched_sc_inst, mem_res) = rayon::join(
       || {
         // Inner batched sum-check instance for:
-        // (a) ABC claim: v_A + c·v_B + c²·v_C = Σ L_row(y) * (val_A + c·val_B + c²·val_C)(y) * L_col(y)
-        // (b) E claim: eval_E_at_r_outer = Σ eq(r_outer, y) * E(y)
+        // (a) ABC claim: factor·(v_A + c·v_B + c²·v_C) = Σ L_row(y) * (val_A + c·val_B + c²·val_C)(y) * L_col(y)
+        // (b) E claim: factor·eval_E = Σ eq(r_outer_full, y) * E(y)
+        // The claims are scaled by factor because the inner sum-check uses r_outer_full
+        // and eq(r_full, j) = factor · eq(r_short, j) for j < m.
         let val = zip_with!(
           par_iter,
           (pk.S_repr.val_A, pk.S_repr.val_B, pk.S_repr.val_C),
@@ -1113,12 +1124,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         .collect::<Vec<E::Scalar>>();
 
         InnerBatchedSumcheckInstance::new(
-          eval_Az_at_r_outer + c * eval_Bz_at_r_outer + c * c * eval_Cz_at_r_outer,
+          factor * (eval_Az_at_r_outer + c * eval_Bz_at_r_outer + c * c * eval_Cz_at_r_outer),
           L_row.clone(),
           L_col.clone(),
           val,
-          eval_E_at_r_outer,
-          mem_row.clone(), // eq(r_outer, ·) polynomial
+          factor * eval_E_at_r_outer,
+          mem_row.clone(), // eq(r_outer_full, ·) polynomial
           E.clone(),
         )
       },
@@ -1141,7 +1152,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         // absorb the commitments
         transcript.absorb(b"l", &comm_mem_oracles.as_slice());
 
-        let rho = (0..num_rounds_sc)
+        let rho = (0..num_rounds_inner)
           .map(|_| transcript.squeeze(b"r"))
           .collect::<Result<Vec<_>, NovaError>>()?;
 
@@ -1161,8 +1172,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
 
-    // Witness bound sum-check using r_outer as the random evaluation point
-    let mut witness_sc_inst = WitnessBoundSumcheck::new(r_outer.clone(), W.clone(), S.num_vars);
+    // Witness bound sum-check using r_outer_full as the random evaluation point
+    let mut witness_sc_inst = WitnessBoundSumcheck::new(r_outer_full.clone(), W.clone(), S.num_vars);
 
     // -----------------------------------------------------------------------
     // Step 3: Run the batched inner batched sum-check (3 instances)
@@ -1322,19 +1333,21 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(b"vk", &vk.digest());
     transcript.absorb(b"U", U);
 
-    let num_rounds_sc = vk.S_comm.N.log_2();
-    let tau = (0..num_rounds_sc)
+    // Shortened outer sum-check runs for log(num_cons) rounds
+    let num_rounds_outer = vk.num_cons.log_2();
+    let num_rounds_inner = vk.S_comm.N.log_2();
+    let tau = (0..num_rounds_outer)
       .map(|_| transcript.squeeze(b"t"))
       .collect::<Result<Vec<_>, NovaError>>()?;
 
     // -----------------------------------------------------------------------
-    // Step 1: Verify the outer sum-check
-    // Claim: 0 = Σ_x eq(τ,x) * (Az(x) * Bz(x) - (u·Cz(x) + E(x)))
+    // Step 1: Verify the shortened outer sum-check
+    // Claim: 0 = Σ_{x∈{0,1}^log(m)} eq(τ,x) * (Az(x) * Bz(x) - (u·Cz(x) + E(x)))
     // -----------------------------------------------------------------------
     let (claim_sc_outer_final, r_outer) =
       self
         .sc_outer
-        .verify(E::Scalar::ZERO, num_rounds_sc, 3, &mut transcript)?;
+        .verify(E::Scalar::ZERO, num_rounds_outer, 3, &mut transcript)?;
 
     // Check outer sum-check final claim
     let eq_tau_at_r_outer = EqPolynomial::new(tau).evaluate(&r_outer);
@@ -1357,6 +1370,16 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       ]
       .as_slice(),
     );
+
+    // Squeeze random padding challenges and extend r_outer to length log(N)
+    // r_pad occupies the top (MSB) positions since padding variables are the high-order bits.
+    let r_pad = (0..num_rounds_inner - num_rounds_outer)
+      .map(|_| transcript.squeeze(b"p"))
+      .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
+    let r_outer_full: Vec<E::Scalar> = r_pad.iter().chain(r_outer.iter()).cloned().collect();
+    let factor: E::Scalar = r_pad
+      .iter()
+      .fold(E::Scalar::ONE, |acc, r| acc * (E::Scalar::ONE - r));
 
     // -----------------------------------------------------------------------
     // Step 2: Verify the batched inner batched sum-check (memory + inner_batched + witness)
@@ -1382,7 +1405,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       .as_slice(),
     );
 
-    let rho = (0..num_rounds_sc)
+    let rho = (0..num_rounds_inner)
       .map(|_| transcript.squeeze(b"r"))
       .collect::<Result<Vec<_>, NovaError>>()?;
 
@@ -1393,34 +1416,36 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // Compute the combined initial claim
     // Claims 0-5: memory (all zero)
-    // Claim 6: inner batched ABC = eval_Az_at_r_outer + c * eval_Bz_at_r_outer + c² * eval_Cz_at_r_outer
-    // Claim 7: inner batched E = eval_E_at_r_outer
+    // Claim 6: inner ABC = factor * (eval_Az + c * eval_Bz + c² * eval_Cz)
+    // Claim 7: inner E = factor * eval_E
     // Claim 8: witness (zero)
-    let claim_inner_batched_ABC =
-      self.eval_Az_at_r_outer + c * self.eval_Bz_at_r_outer + c * c * self.eval_Cz_at_r_outer;
-    let claim = coeffs[6] * claim_inner_batched_ABC + coeffs[7] * self.eval_E_at_r_outer;
+    // The factor accounts for zero-padding: eval_P(r_full) = factor * eval_P(r_short)
+    let claim_inner_batched_ABC = factor
+      * (self.eval_Az_at_r_outer + c * self.eval_Bz_at_r_outer + c * c * self.eval_Cz_at_r_outer);
+    let claim =
+      coeffs[6] * claim_inner_batched_ABC + coeffs[7] * factor * self.eval_E_at_r_outer;
 
     // Verify inner batched sum-check
     let (claim_sc_inner_batched_final, r_inner_batched) =
       self
         .sc_inner_batched
-        .verify(claim, num_rounds_sc, 3, &mut transcript)?;
+        .verify(claim, num_rounds_inner, 3, &mut transcript)?;
 
     // Verify inner batched sum-check final claim
     let claim_sc_inner_batched_expected = {
       let rand_eq_bound_r_inner_batched = EqPolynomial::new(rho).evaluate(&r_inner_batched);
 
-      // eq(r_outer, r_inner_batched) for the E claim and memory row address check
-      let eq_r_outer = EqPolynomial::new(r_outer.clone());
+      // eq(r_outer_full, r_inner_batched) for the E claim and memory row address check
+      let eq_r_outer = EqPolynomial::new(r_outer_full.clone());
       let eq_r_outer_at_r_inner_batched = eq_r_outer.evaluate(&r_inner_batched);
 
-      // masked eq for witness bound check (using r_outer as random point)
+      // masked eq for witness bound check (using r_outer_full as random point)
       let taus_masked_bound_r_inner_batched =
         MaskedEqPolynomial::new(&eq_r_outer, vk.num_vars.log_2()).evaluate(&r_inner_batched);
 
       let eval_t_plus_r_row = {
-        let eval_addr_row = IdentityPolynomial::new(num_rounds_sc).evaluate(&r_inner_batched);
-        let eval_val_row = eq_r_outer_at_r_inner_batched; // mem_row = eq(r_outer, ·)
+        let eval_addr_row = IdentityPolynomial::new(num_rounds_inner).evaluate(&r_inner_batched);
+        let eval_val_row = eq_r_outer_at_r_inner_batched; // mem_row = eq(r_outer_full, ·)
         let eval_t = eval_addr_row + gamma * eval_val_row;
         eval_t + r
       };
@@ -1433,7 +1458,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       };
 
       let eval_t_plus_r_col = {
-        let eval_addr_col = IdentityPolynomial::new(num_rounds_sc).evaluate(&r_inner_batched);
+        let eval_addr_col = IdentityPolynomial::new(num_rounds_inner).evaluate(&r_inner_batched);
 
         // memory contents is z, so we compute eval_Z from eval_W and eval_X
         let eval_val_col = {
@@ -1499,7 +1524,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         * self.eval_L_col
         * (self.eval_val_A + c * self.eval_val_B + c * c * self.eval_val_C);
 
-      // Inner batched E claim (coeff 7): eq(r_outer, r_inner_batched) * E(r_inner_batched)
+      // Inner batched E claim (coeff 7): eq(r_outer_full, r_inner_batched) * E(r_inner_batched)
       let claim_inner_batched_E_final = coeffs[7] * eq_r_outer_at_r_inner_batched * self.eval_E;
 
       // Witness claim (coeff 8)
