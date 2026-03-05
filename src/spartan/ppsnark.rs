@@ -1074,7 +1074,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // For zero-padded polys P of size m within N: P(r_full) = factor · P(r_short)
     // where factor = Π(1 - r_pad_j) and r_full = (r_pad, r_short).
     // r_pad occupies the top (MSB) positions since padding variables are the high-order bits.
-    let r_pad = (0..num_rounds_inner - num_rounds_outer)
+    let num_pad_rounds = num_rounds_inner
+      .checked_sub(num_rounds_outer)
+      .ok_or(NovaError::InvalidSumcheckProof)?;
+    let r_pad = (0..num_pad_rounds)
       .map(|_| transcript.squeeze(b"p"))
       .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
     let r_outer_full: Vec<E::Scalar> = r_pad.iter().chain(r_outer.iter()).cloned().collect();
@@ -1374,7 +1377,10 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // Squeeze random padding challenges and extend r_outer to length log(N)
     // r_pad occupies the top (MSB) positions since padding variables are the high-order bits.
-    let r_pad = (0..num_rounds_inner - num_rounds_outer)
+    let num_pad_rounds = num_rounds_inner
+      .checked_sub(num_rounds_outer)
+      .ok_or(NovaError::InvalidSumcheckProof)?;
+    let r_pad = (0..num_pad_rounds)
       .map(|_| transcript.squeeze(b"p"))
       .collect::<Result<Vec<E::Scalar>, NovaError>>()?;
     let r_outer_full: Vec<E::Scalar> = r_pad.iter().chain(r_outer.iter()).cloned().collect();
