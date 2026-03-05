@@ -1173,7 +1173,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (mut mem_sc_inst, comm_mem_oracles, mem_oracles) = mem_res?;
 
     // Witness bound sum-check using r_outer_full as the random evaluation point
-    let mut witness_sc_inst = WitnessBoundSumcheck::new(r_outer_full.clone(), W.clone(), S.num_vars);
+    let mut witness_sc_inst =
+      WitnessBoundSumcheck::new(r_outer_full.clone(), W.clone(), S.num_vars);
 
     // -----------------------------------------------------------------------
     // Step 3: Run the batched inner batched sum-check (3 instances)
@@ -1422,8 +1423,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // The factor accounts for zero-padding: eval_P(r_full) = factor * eval_P(r_short)
     let claim_inner_batched_ABC = factor
       * (self.eval_Az_at_r_outer + c * self.eval_Bz_at_r_outer + c * c * self.eval_Cz_at_r_outer);
-    let claim =
-      coeffs[6] * claim_inner_batched_ABC + coeffs[7] * factor * self.eval_E_at_r_outer;
+    let claim = coeffs[6] * claim_inner_batched_ABC + coeffs[7] * factor * self.eval_E_at_r_outer;
 
     // Verify inner batched sum-check
     let (claim_sc_inner_batched_final, r_inner_batched) =
