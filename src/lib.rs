@@ -8,7 +8,7 @@
   missing_docs
 )]
 #![allow(non_snake_case)]
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 #![cfg_attr(not(test), warn(clippy::print_stdout, clippy::print_stderr))]
 
 // main APIs exposed by this library

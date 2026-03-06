@@ -852,6 +852,11 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
   }
 
+  /// Consumes self and returns owned W and E vectors (avoids re-cloning).
+  pub fn into_W_E(self) -> (Vec<E::Scalar>, Vec<E::Scalar>) {
+    (self.W, self.E)
+  }
+
   /// Derandomizes the witness by setting randomness to zero.
   pub fn derandomize(&self) -> (Self, E::Scalar, E::Scalar) {
     (

@@ -41,31 +41,54 @@ use crate::{
   },
 };
 
-// Transcript absorb/squeeze labels used by both prover and verifier
-mod transcript_labels {
+/// Transcript absorb/squeeze labels used by both prover and verifier.
+pub mod transcript_labels {
+  /// Label for polynomial f.
   pub const LABEL_F: &[u8] = b"f";
+  /// Label for evaluation point u.
   pub const LABEL_U: &[u8] = b"u";
+  /// Label for evaluation e.
   pub const LABEL_E: &[u8] = b"e";
+  /// Label for polynomial h.
   pub const LABEL_H: &[u8] = b"h";
+  /// Label for polynomial q.
   pub const LABEL_Q: &[u8] = b"q";
+  /// Label for polynomial g.
   pub const LABEL_G: &[u8] = b"g";
+  /// Label for polynomial s.
   pub const LABEL_S: &[u8] = b"s";
+  /// Label for polynomial d.
   pub const LABEL_D: &[u8] = b"d";
+  /// Label for quotient of f.
   pub const LABEL_QUOT_F: &[u8] = b"t";
+  /// Label for g(zeta).
   pub const LABEL_GZ: &[u8] = b"gz";
+  /// Label for g(zeta_inv).
   pub const LABEL_GZI: &[u8] = b"gzi";
+  /// Label for h(zeta).
   pub const LABEL_HZ: &[u8] = b"hz";
+  /// Label for h(zeta_inv).
   pub const LABEL_HZI: &[u8] = b"hzi";
+  /// Label for s(zeta).
   pub const LABEL_SZ: &[u8] = b"sz";
+  /// Label for s(zeta_inv).
   pub const LABEL_SZI: &[u8] = b"szi";
+  /// Label for witness polynomial w.
   pub const LABEL_W: &[u8] = b"w";
+  /// Label for witness polynomial w'.
   pub const LABEL_W_PRIME: &[u8] = b"wp";
 
+  /// Label for challenge alpha.
   pub const LABEL_ALPHA: &[u8] = b"a";
+  /// Label for challenge gamma.
   pub const LABEL_GAMMA: &[u8] = b"gm";
+  /// Label for challenge zeta.
   pub const LABEL_ZETA: &[u8] = b"zt";
+  /// Label for challenge beta.
   pub const LABEL_BETA: &[u8] = b"b";
+  /// Label for evaluation point z.
   pub const LABEL_Z: &[u8] = b"z";
+  /// Label for pairing point d.
   pub const LABEL_PAIRING_D: &[u8] = b"pd";
 }
 
@@ -120,6 +143,47 @@ where
   s_zeta_inv: E::Scalar,
 }
 
+impl<E: Engine> EvaluationArgument<E>
+where
+  E::GE: PairingGroup,
+{
+  /// Construct a new EvaluationArgument from its components.
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    comm_h: Commitment<E>,
+    comm_g: Commitment<E>,
+    comm_q: Commitment<E>,
+    comm_s: Commitment<E>,
+    comm_d: Commitment<E>,
+    comm_quot_f: Commitment<E>,
+    comm_w: Commitment<E>,
+    comm_w_prime: Commitment<E>,
+    g_zeta: E::Scalar,
+    g_zeta_inv: E::Scalar,
+    h_zeta: E::Scalar,
+    h_zeta_inv: E::Scalar,
+    s_zeta: E::Scalar,
+    s_zeta_inv: E::Scalar,
+  ) -> Self {
+    Self {
+      comm_h,
+      comm_g,
+      comm_q,
+      comm_s,
+      comm_d,
+      comm_quot_f,
+      comm_w,
+      comm_w_prime,
+      g_zeta,
+      g_zeta_inv,
+      h_zeta,
+      h_zeta_inv,
+      s_zeta,
+      s_zeta_inv,
+    }
+  }
+}
+
 fn omega<Scalar: PrimeField>(log_n: u32) -> Scalar {
   Scalar::ROOT_OF_UNITY.pow([1_u64 << (Scalar::S - log_n)])
 }
@@ -165,7 +229,8 @@ impl<Scalar: PrimeField> UniPoly<Scalar> {
     Self { coeffs }
   }
 
-  fn trim(&mut self) {
+  /// Remove trailing zero coefficients.
+  pub fn trim(&mut self) {
     while !self.coeffs.is_empty() && self.coeffs.last().unwrap() == &Scalar::ZERO {
       self.coeffs.pop();
     }
@@ -410,7 +475,8 @@ fn make_s_polynomial<Scalar: PrimeField>(
 }
 
 /// BDFG20 4.1
-mod batch_evaluation {
+/// Batch evaluation utilities for Mercury polynomial commitment scheme.
+pub mod batch_evaluation {
   use ff::{Field, PrimeField};
   use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator,
@@ -426,45 +492,73 @@ mod batch_evaluation {
     traits::{commitment::CommitmentEngineTrait, Engine, TranscriptEngineTrait},
   };
 
+  /// Scalar evaluations at zeta, zeta_inv, and alpha needed for batch opening.
   pub struct BatchEvaluations<Scalar: PrimeField> {
+    /// g(zeta)
     pub g_zeta: Scalar,
+    /// g(zeta^{-1})
     pub g_zeta_inv: Scalar,
+    /// h(zeta)
     pub h_zeta: Scalar,
+    /// h(zeta^{-1})
     pub h_zeta_inv: Scalar,
+    /// h(alpha)
     pub h_alpha: Scalar,
+    /// s(zeta)
     pub s_zeta: Scalar,
+    /// s(zeta^{-1})
     pub s_zeta_inv: Scalar,
+    /// d(zeta)
     pub d_zeta: Scalar,
 
+    /// Evaluation point zeta (root of unity).
     pub zeta: Scalar,
+    /// Inverse of zeta.
     pub zeta_inv: Scalar,
+    /// Challenge alpha.
     pub alpha: Scalar,
   }
 
+  /// Commitments needed for batch evaluation verification.
   pub struct BatchEvaluationCommitments<E: Engine> {
+    /// Commitment to g.
     pub comm_g: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    /// Commitment to h.
     pub comm_h: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    /// Commitment to s.
     pub comm_s: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    /// Commitment to d.
     pub comm_d: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
 
+    /// Commitment to witness w.
     pub comm_w: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    /// Commitment to witness w'.
     pub comm_w_prime: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
   }
 
+  /// Input data for batch evaluation: scalar evaluations and polynomial references.
   pub struct BatchEvaluationInput<'a, Scalar: PrimeField> {
+    /// Scalar evaluations at challenge points.
     pub evals: BatchEvaluations<Scalar>,
 
+    /// Reference to polynomial g.
     pub g_poly: &'a UniPoly<Scalar>,
+    /// Reference to polynomial h.
     pub h_poly: &'a UniPoly<Scalar>,
+    /// Reference to polynomial s.
     pub s_poly: &'a UniPoly<Scalar>,
+    /// Reference to polynomial d.
     pub d_poly: &'a UniPoly<Scalar>,
   }
 
+  /// Result of batch evaluation: witness commitments w and w'.
   pub struct BatchArg<E: Engine>
   where
     E::GE: PairingGroup,
   {
+    /// Commitment to witness w.
     pub comm_w: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    /// Commitment to witness w'.
     pub comm_w_prime: <<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
   }
 
