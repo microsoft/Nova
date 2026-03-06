@@ -952,7 +952,6 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
   ///
   /// This is useful for constructing instances when commitments are
   /// computed separately from instance creation.
-  /// Creates a `RelaxedR1CSInstance` from its component parts.
   ///
   /// Validates that X has the correct length for the given shape.
   pub fn new(
