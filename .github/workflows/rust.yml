@@ -139,3 +139,18 @@ jobs:
         with:
           command: check
           args: --features "io,evm,experimental,test-utils"
+
+  # Check GPU feature compiles (requires Linux, actual GPU tests need separate runner)
+  check-gpu-feature:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Check blitzar feature compiles
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --features blitzar
