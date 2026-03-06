@@ -752,7 +752,6 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
   ///
   /// This is useful for constructing witnesses when commitment operations
   /// are handled separately from witness creation.
-  /// Creates a `RelaxedR1CSWitness` from its component parts.
   ///
   /// Validates that W and E have correct lengths for the given shape.
   pub fn new(
