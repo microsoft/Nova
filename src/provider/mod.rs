@@ -16,8 +16,6 @@ pub mod traits;
 pub mod blitzar;
 #[cfg(feature = "io")]
 pub mod ptau;
-#[cfg(feature = "sppark")]
-pub mod sppark;
 
 use crate::{
   provider::{

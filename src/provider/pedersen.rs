@@ -37,6 +37,16 @@ where
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
+impl<E: Engine> CommitmentKey<E>
+where
+  E::GE: DlogGroup,
+{
+  /// Returns a reference to the generator points (affine form).
+  pub fn generators(&self) -> &[<E::GE as DlogGroup>::AffineGroupElement] {
+    &self.ck
+  }
+}
+
 impl<E: Engine> Len for CommitmentKey<E>
 where
   E::GE: DlogGroup,

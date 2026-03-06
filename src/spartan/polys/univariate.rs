@@ -18,7 +18,8 @@ use serde_with::serde_as;
 /// and ax^3 + bx^2 + cx + d is stored as vec![d, c, b, a]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UniPoly<Scalar: PrimeField> {
-  pub(crate) coeffs: Vec<Scalar>,
+  /// Coefficients of the polynomial, from constant term to highest degree.
+  pub coeffs: Vec<Scalar>,
 }
 
 /// A compressed univariate polynomial with the linear term omitted (little endian).
