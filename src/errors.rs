@@ -74,6 +74,9 @@ pub enum NovaError {
   /// returned when the prover cannot prove the provided statement due to completeness error
   #[error("InternalError")]
   InternalError,
+  /// returned when a GPU operation fails
+  #[error("GpuError: {0}")]
+  GpuError(String),
   /// returned when there is an error reading/writing a ptau file
   #[error("PtauFileError: {0}")]
   PtauFileError(String),
