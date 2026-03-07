@@ -748,6 +748,28 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
   }
 
+  /// Creates a `RelaxedR1CSWitness` from its component parts.
+  ///
+  /// This is useful for constructing witnesses when commitment operations
+  /// are handled separately from witness creation.
+  ///
+  /// Validates that W and E have correct lengths for the given shape.
+  pub fn new(
+    S: &R1CSShape<E>,
+    W: Vec<E::Scalar>,
+    r_W: E::Scalar,
+    E: Vec<E::Scalar>,
+    r_E: E::Scalar,
+  ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
+    if W.len() != S.num_vars {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+    if E.len() != S.num_cons {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+    Ok(RelaxedR1CSWitness { W, r_W, E, r_E })
+  }
+
   /// Returns a reference to the witness vector W.
   ///
   /// This is useful for witness manipulation.
@@ -924,6 +946,30 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
   /// This is useful for accessing the relaxation factor in folding.
   pub fn u(&self) -> E::Scalar {
     self.u
+  }
+
+  /// Creates a `RelaxedR1CSInstance` from its component parts.
+  ///
+  /// This is useful for constructing instances when commitments are
+  /// computed separately from instance creation.
+  ///
+  /// Validates that X has the correct length for the given shape.
+  pub fn new(
+    S: &R1CSShape<E>,
+    comm_W: Commitment<E>,
+    comm_E: Commitment<E>,
+    u: E::Scalar,
+    X: Vec<E::Scalar>,
+  ) -> Result<RelaxedR1CSInstance<E>, NovaError> {
+    if X.len() != S.num_io {
+      return Err(NovaError::InvalidInputLength);
+    }
+    Ok(RelaxedR1CSInstance {
+      comm_W,
+      comm_E,
+      u,
+      X,
+    })
   }
 
   /// Initializes a new `RelaxedR1CSInstance` from an `R1CSInstance`
