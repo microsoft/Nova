@@ -157,6 +157,13 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
   }
 }
 
+impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeCircuit<'a, F, A, CS> {
+  /// Enable compact mode on the inner Poseidon circuit to reduce R1CS non-zeros.
+  pub fn set_compact(&mut self, compact: bool) {
+    self.state.set_compact(compact);
+  }
+}
+
 impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> InnerSpongeAPI<F, A>
   for SpongeCircuit<'a, F, A, CS>
 {
