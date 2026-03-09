@@ -31,7 +31,7 @@ use crate::{
   zip_with, Commitment, CommitmentKey,
 };
 use core::cmp::max;
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -304,7 +304,7 @@ impl<E: Engine> SumcheckEngine<E> for WitnessBoundSumcheck<E> {
     self.poly_W.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
     // masked_eq * W is a quadratic polynomial (A * B)
     let (eval_point_0, eval_point_inf) =
       SumcheckProof::<E>::compute_eval_points_quadratic(&self.poly_masked_eq, &self.poly_W);
@@ -341,6 +341,10 @@ pub struct MemorySumcheckInstance<E: Engine> {
   ts_col: MultilinearPolynomial<E::Scalar>,
 
   eq_sumcheck: EqSumCheckInstance<E>,
+
+  // Per-claim running claims and saved evaluation points (BDDT, eprint 2025/1117 Section 6.2)
+  running_claims: [E::Scalar; 6],
+  saved_evals: [[E::Scalar; 3]; 6],
 }
 
 impl<E: Engine> MemorySumcheckInstance<E> {
@@ -348,7 +352,7 @@ impl<E: Engine> MemorySumcheckInstance<E> {
   ///
   /// # Description
   /// We use the logUp protocol to prove that
-  /// ∑ TS\[i\]/(T\[i\] + r) - 1/(W\[i\] + r) = 0
+  /// sum TS\[i\]/(T\[i\] + r) - 1/(W\[i\] + r) = 0
   /// where
   ///   T_row\[i\] = mem_row\[i\]      * gamma + i
   ///            = eq(tau)\[i\]      * gamma + i
@@ -507,6 +511,8 @@ impl<E: Engine> MemorySumcheckInstance<E> {
       w_plus_r_inv_col: MultilinearPolynomial::new(w_plus_r_inv_col),
       ts_col: MultilinearPolynomial::new(ts_col),
       eq_sumcheck: EqSumCheckInstance::new(rhos),
+      running_claims: [E::Scalar::ZERO; 6],
+      saved_evals: [[E::Scalar::ZERO; 3]; 6],
     }
   }
 }
@@ -531,72 +537,113 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
     self.w_plus_r_row.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
-    // inv related evaluation points for linear (A - B) pattern
-    // 0 = ∑ TS[i]/(T[i] + r) - 1/(W[i] + r)
-    let (eval_inv_0_row, eval_inv_3_row) = SumcheckProof::<E>::compute_eval_points_linear(
-      &self.t_plus_r_inv_row,
-      &self.w_plus_r_inv_row,
-    );
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
+    // Pre-borrow all fields as shared references for parallel access
+    let eq = &self.eq_sumcheck;
+    let running_claims = &self.running_claims;
+    let t_plus_r_inv_row = &self.t_plus_r_inv_row;
+    let w_plus_r_inv_row = &self.w_plus_r_inv_row;
+    let t_plus_r_row = &self.t_plus_r_row;
+    let w_plus_r_row = &self.w_plus_r_row;
+    let ts_row = &self.ts_row;
+    let t_plus_r_inv_col = &self.t_plus_r_inv_col;
+    let w_plus_r_inv_col = &self.w_plus_r_inv_col;
+    let t_plus_r_col = &self.t_plus_r_col;
+    let w_plus_r_col = &self.w_plus_r_col;
+    let ts_col = &self.ts_col;
 
-    let (eval_inv_0_col, eval_inv_3_col) = SumcheckProof::<E>::compute_eval_points_linear(
-      &self.t_plus_r_inv_col,
-      &self.w_plus_r_inv_col,
-    );
-
+    // inv related evaluation points for linear (A - B) pattern (no claim derivation)
+    // 0 = sum TS[i]/(T[i] + r) - 1/(W[i] + r)
     let (
-      ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
-      ((eval_T_0_col, eval_T_2_col, eval_T_3_col), (eval_W_0_col, eval_W_2_col, eval_W_3_col)),
+      ((eval_inv_0_row, eval_inv_3_row), (eval_inv_0_col, eval_inv_3_col)),
+      (
+        ((eval_T_0_row, eval_T_2_row, eval_T_3_row), (eval_W_0_row, eval_W_2_row, eval_W_3_row)),
+        ((eval_T_0_col, eval_T_2_col, eval_T_3_col), (eval_W_0_col, eval_W_2_col, eval_W_3_col)),
+      ),
     ) = rayon::join(
       || {
-        // row related evaluation points
         rayon::join(
-          || {
-            // 0 = ∑ eq[i] * (inv_T[i] * (T[i] + r) - TS[i]))
-            self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
-              &self.t_plus_r_inv_row,
-              &self.t_plus_r_row,
-              &self.ts_row,
-            )
-          },
-          || {
-            // 0 = ∑ eq[i] * (inv_W[i] * (T[i] + r) - 1))
-            self
-              .eq_sumcheck
-              .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_row, &self.w_plus_r_row)
-          },
+          || SumcheckProof::<E>::compute_eval_points_linear(t_plus_r_inv_row, w_plus_r_inv_row),
+          || SumcheckProof::<E>::compute_eval_points_linear(t_plus_r_inv_col, w_plus_r_inv_col),
         )
       },
       || {
-        // column related evaluation points
         rayon::join(
           || {
-            self.eq_sumcheck.evaluation_points_cubic_with_three_inputs(
-              &self.t_plus_r_inv_col,
-              &self.t_plus_r_col,
-              &self.ts_col,
+            // Row evaluation points (claim-derived, BDDT Section 6.2)
+            rayon::join(
+              || {
+                // 0 = sum eq[i] * (inv_T[i] * (T[i] + r) - TS[i]))
+                eq.evaluation_points_cubic_with_three_inputs(
+                  t_plus_r_inv_row,
+                  t_plus_r_row,
+                  ts_row,
+                  running_claims[2],
+                )
+              },
+              || {
+                // 0 = sum eq[i] * (inv_W[i] * (W[i] + r) - 1))
+                eq.evaluation_points_cubic_with_two_inputs(
+                  w_plus_r_inv_row,
+                  w_plus_r_row,
+                  running_claims[3],
+                )
+              },
             )
           },
           || {
-            self
-              .eq_sumcheck
-              .evaluation_points_cubic_with_two_inputs(&self.w_plus_r_inv_col, &self.w_plus_r_col)
+            // Column evaluation points (claim-derived, BDDT Section 6.2)
+            rayon::join(
+              || {
+                eq.evaluation_points_cubic_with_three_inputs(
+                  t_plus_r_inv_col,
+                  t_plus_r_col,
+                  ts_col,
+                  running_claims[4],
+                )
+              },
+              || {
+                eq.evaluation_points_cubic_with_two_inputs(
+                  w_plus_r_inv_col,
+                  w_plus_r_col,
+                  running_claims[5],
+                )
+              },
+            )
           },
         )
       },
     );
 
-    vec![
-      vec![eval_inv_0_row, E::Scalar::ZERO, eval_inv_3_row],
-      vec![eval_inv_0_col, E::Scalar::ZERO, eval_inv_3_col],
-      vec![eval_T_0_row, eval_T_2_row, eval_T_3_row],
-      vec![eval_W_0_row, eval_W_2_row, eval_W_3_row],
-      vec![eval_T_0_col, eval_T_2_col, eval_T_3_col],
-      vec![eval_W_0_col, eval_W_2_col, eval_W_3_col],
-    ]
+    // Save evaluation points for running claim updates in bound()
+    self.saved_evals = [
+      [eval_inv_0_row, E::Scalar::ZERO, eval_inv_3_row],
+      [eval_inv_0_col, E::Scalar::ZERO, eval_inv_3_col],
+      [eval_T_0_row, eval_T_2_row, eval_T_3_row],
+      [eval_W_0_row, eval_W_2_row, eval_W_3_row],
+      [eval_T_0_col, eval_T_2_col, eval_T_3_col],
+      [eval_W_0_col, eval_W_2_col, eval_W_3_col],
+    ];
+
+    self.saved_evals.iter().map(|e| e.to_vec()).collect()
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    // Update per-claim running claims from saved evaluation points
+    let half = E::Scalar::TWO_INV;
+    for j in 0..6 {
+      let [e0, c3, em1] = self.saved_evals[j];
+      let e1 = self.running_claims[j] - e0;
+      // p(x) = a0 + a1*x + a2*x^2 + a3*x^3 where:
+      //   a0 = e0, a3 = c3
+      //   a1 = (e1 - em1)/2 - c3
+      //   a2 = (e1 + em1)/2 - e0
+      let a1 = (e1 - em1) * half - c3;
+      let a2 = (e1 + em1) * half - e0;
+      // Horner's: p(r) = e0 + r*(a1 + r*(a2 + r*c3))
+      self.running_claims[j] = e0 + *r * (a1 + *r * (a2 + *r * c3));
+    }
+
     [
       &mut self.t_plus_r_row,
       &mut self.t_plus_r_inv_row,
@@ -649,10 +696,15 @@ pub struct InnerBatchedSumcheckInstance<E: Engine> {
 
   /// The claim value for E: eval_E_at_r_outer
   pub claim_E: E::Scalar,
-  /// Equality polynomial eq(r_outer, ·)
-  pub poly_eq: MultilinearPolynomial<E::Scalar>,
+  /// Factored eq polynomial eq(r_outer, .) (Gruen, eprint 2024/108)
+  eq_sumcheck: EqSumCheckInstance<E>,
   /// Error polynomial E
   pub poly_E: MultilinearPolynomial<E::Scalar>,
+
+  /// Running claim for E sub-claim (BDDT, eprint 2025/1117 Section 6.2)
+  running_claim_E: E::Scalar,
+  /// Saved eval points for E sub-claim
+  saved_evals_E: [E::Scalar; 3],
 }
 
 impl<E: Engine> InnerBatchedSumcheckInstance<E> {
@@ -663,7 +715,7 @@ impl<E: Engine> InnerBatchedSumcheckInstance<E> {
     L_col: Vec<E::Scalar>,
     val: Vec<E::Scalar>,
     claim_E: E::Scalar,
-    eq: Vec<E::Scalar>,
+    r_outer: Vec<E::Scalar>,
     E: Vec<E::Scalar>,
   ) -> Self {
     Self {
@@ -672,8 +724,10 @@ impl<E: Engine> InnerBatchedSumcheckInstance<E> {
       poly_L_col: MultilinearPolynomial::new(L_col),
       poly_val: MultilinearPolynomial::new(val),
       claim_E,
-      poly_eq: MultilinearPolynomial::new(eq),
+      eq_sumcheck: EqSumCheckInstance::new(r_outer),
       poly_E: MultilinearPolynomial::new(E),
+      running_claim_E: claim_E,
+      saved_evals_E: [E::Scalar::ZERO; 3],
     }
   }
 }
@@ -690,18 +744,25 @@ impl<E: Engine> SumcheckEngine<E> for InnerBatchedSumcheckInstance<E> {
   fn size(&self) -> usize {
     assert_eq!(self.poly_L_row.len(), self.poly_val.len());
     assert_eq!(self.poly_L_row.len(), self.poly_L_col.len());
-    assert_eq!(self.poly_L_row.len(), self.poly_eq.len());
     assert_eq!(self.poly_L_row.len(), self.poly_E.len());
     self.poly_L_row.len()
   }
 
-  fn evaluation_points(&self) -> Vec<Vec<E::Scalar>> {
+  fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>> {
     let (poly_A, poly_B, poly_C) = (&self.poly_L_row, &self.poly_L_col, &self.poly_val);
 
-    let ((eval_point_0, bound_coeff, eval_point_inf), (eval_E_0, eval_E_inf)) = rayon::join(
-      || SumcheckProof::<E>::compute_eval_points_cubic_with_deg::<3>(poly_A, poly_B, poly_C),
-      || SumcheckProof::<E>::compute_eval_points_quadratic(&self.poly_eq, &self.poly_E),
-    );
+    // E claim: 1 N-scaling sum + claim-derived (BDDT, eprint 2025/1117 Section 6.2)
+    let ((eval_point_0, bound_coeff, eval_point_inf), (eval_E_0, eval_E_bound_coeff, eval_E_inf)) =
+      rayon::join(
+        || SumcheckProof::<E>::compute_eval_points_cubic(poly_A, poly_B, poly_C),
+        || {
+          self
+            .eq_sumcheck
+            .evaluation_points_quadratic_with_one_input(&self.poly_E, self.running_claim_E)
+        },
+      );
+
+    self.saved_evals_E = [eval_E_0, eval_E_bound_coeff, eval_E_inf];
 
     vec![
       vec![eval_point_0, bound_coeff, eval_point_inf],
@@ -711,15 +772,26 @@ impl<E: Engine> SumcheckEngine<E> for InnerBatchedSumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
+    // Update running claim for E from saved eval points
+    let [e0, _c, em1] = self.saved_evals_E;
+    let e1 = self.running_claim_E - e0;
+    // Degree-2: p(x) = a0 + a1*x + a2*x^2
+    //   a0 = e0, a2 = (e1 + em1)/2 - e0, a1 = (e1 - em1)/2
+    let half = E::Scalar::TWO_INV;
+    let a1 = (e1 - em1) * half;
+    let a2 = (e1 + em1) * half - e0;
+    self.running_claim_E = e0 + *r * (a1 + *r * a2);
+
     [
       &mut self.poly_L_row,
       &mut self.poly_L_col,
       &mut self.poly_val,
-      &mut self.poly_eq,
       &mut self.poly_E,
     ]
     .par_iter_mut()
     .for_each(|poly| poly.bind_poly_var_top(r));
+
+    self.eq_sumcheck.bound(r);
   }
 
   fn final_claims(&self) -> Vec<Vec<E::Scalar>> {
@@ -1132,7 +1204,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           L_col.clone(),
           val,
           factor * eval_E_at_r_outer,
-          mem_row.clone(), // eq(r_outer_full, ·) polynomial
+          r_outer_full.clone(), // eq challenges for factored eq (Gruen)
           E.clone(),
         )
       },
