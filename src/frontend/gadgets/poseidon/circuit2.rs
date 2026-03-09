@@ -152,6 +152,8 @@ where
   pub(crate) pos: usize,
   current_round: usize,
   constants: &'a PoseidonConstants<Scalar, A>,
+  /// When true, materializes non-S-boxed elements each partial round to reduce R1CS non-zeros.
+  compact: bool,
   _w: PhantomData<A>,
 }
 
@@ -172,6 +174,7 @@ where
       pos: 1,
       current_round: 0,
       constants,
+      compact: false,
       _w: PhantomData::<A>,
     }
   }
@@ -181,6 +184,12 @@ where
   ) -> Self {
     let elements = Self::initial_elements::<CS>();
     Self::new(elements, constants)
+  }
+
+  /// Enable compact mode: materializes non-S-boxed elements each partial round
+  /// to reduce R1CS non-zeros at the cost of extra constraints.
+  pub fn set_compact(&mut self, compact: bool) {
+    self.compact = compact;
   }
 
   pub fn hash<CS: ConstraintSystem<Scalar>>(
@@ -318,6 +327,18 @@ where
 
     // Multiply the elements by the constant MDS matrix
     self.product_mds::<CS>()?;
+
+    // In compact mode, materialize non-S-boxed elements to cap LC term growth.
+    // Without this, elements[1..] accumulate ~1 LC term per partial round,
+    // reaching ~58 terms after 55 rounds, which inflates R1CS non-zeros.
+    if self.compact {
+      for i in 1..self.width {
+        let allocated = self.elements[i]
+          .ensure_allocated(&mut cs.namespace(|| format!("materialize {i}")), true)?;
+        self.elements[i] = Elt::Allocated(allocated);
+      }
+    }
+
     Ok(())
   }
 
