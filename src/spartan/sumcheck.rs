@@ -9,7 +9,7 @@ use crate::{
   },
   traits::{Engine, TranscriptEngineTrait},
 };
-use ff::Field;
+use ff::{Field, PrimeField};
 use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,25 @@ impl<E: Engine> SumcheckProof<E> {
   /// Creates a new `SumcheckProof` from compressed univariate polynomials.
   pub fn new(compressed_polys: Vec<CompressedUniPoly<E::Scalar>>) -> Self {
     Self { compressed_polys }
+  }
+
+  /// Advance a running sumcheck claim after verifier challenge `r`.
+  ///
+  /// `evals` = `[p(0), cubic_coeff, p(-1)]` as returned by
+  /// [`SumcheckEngine::evaluation_points`].  Works for both degree-3 (cubic)
+  /// and degree-2 (quadratic, where `cubic_coeff = 0`) claims.
+  ///
+  /// Reconstructs the round polynomial from the BDDT evaluation points
+  /// (eprint 2025/1117, Section 6.2) and evaluates it at `r` via Horner's
+  /// method, all in O(1) without allocating.
+  #[inline]
+  pub fn update_claim(claim: E::Scalar, evals: &[E::Scalar; 3], r: &E::Scalar) -> E::Scalar {
+    let [e0, c3, em1] = *evals;
+    let e1 = claim - e0;
+    let half = E::Scalar::TWO_INV;
+    let a1 = (e1 - em1) * half - c3;
+    let a2 = (e1 + em1) * half - e0;
+    e0 + *r * (a1 + *r * (a2 + *r * c3))
   }
 
   /// Verifies the sumcheck proof.

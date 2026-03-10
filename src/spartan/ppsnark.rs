@@ -31,7 +31,7 @@ use crate::{
   zip_with, Commitment, CommitmentKey,
 };
 use core::cmp::max;
-use ff::{Field, PrimeField};
+use ff::Field;
 use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -629,19 +629,9 @@ impl<E: Engine> SumcheckEngine<E> for MemorySumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
-    // Update per-claim running claims from saved evaluation points
-    let half = E::Scalar::TWO_INV;
     for j in 0..6 {
-      let [e0, c3, em1] = self.saved_evals[j];
-      let e1 = self.running_claims[j] - e0;
-      // p(x) = a0 + a1*x + a2*x^2 + a3*x^3 where:
-      //   a0 = e0, a3 = c3
-      //   a1 = (e1 - em1)/2 - c3
-      //   a2 = (e1 + em1)/2 - e0
-      let a1 = (e1 - em1) * half - c3;
-      let a2 = (e1 + em1) * half - e0;
-      // Horner's: p(r) = e0 + r*(a1 + r*(a2 + r*c3))
-      self.running_claims[j] = e0 + *r * (a1 + *r * (a2 + *r * c3));
+      self.running_claims[j] =
+        SumcheckProof::<E>::update_claim(self.running_claims[j], &self.saved_evals[j], r);
     }
 
     [
@@ -772,15 +762,8 @@ impl<E: Engine> SumcheckEngine<E> for InnerBatchedSumcheckInstance<E> {
   }
 
   fn bound(&mut self, r: &E::Scalar) {
-    // Update running claim for E from saved eval points
-    let [e0, _c, em1] = self.saved_evals_E;
-    let e1 = self.running_claim_E - e0;
-    // Degree-2: p(x) = a0 + a1*x + a2*x^2
-    //   a0 = e0, a2 = (e1 + em1)/2 - e0, a1 = (e1 - em1)/2
-    let half = E::Scalar::TWO_INV;
-    let a1 = (e1 - em1) * half;
-    let a2 = (e1 + em1) * half - e0;
-    self.running_claim_E = e0 + *r * (a1 + *r * a2);
+    self.running_claim_E =
+      SumcheckProof::<E>::update_claim(self.running_claim_E, &self.saved_evals_E, r);
 
     [
       &mut self.poly_L_row,
