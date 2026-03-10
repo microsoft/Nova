@@ -382,6 +382,7 @@ pub fn batch_eval_reduce<E: Engine>(
   (
     PolyEvalInstance<E>,
     PolyEvalWitness<E>,
+    E::Scalar,
     sumcheck::SumcheckProof<E>,
     Vec<E::Scalar>,
   ),
@@ -421,14 +422,13 @@ pub fn batch_eval_reduce<E: Engine>(
 
   transcript.absorb(b"l", &claims_batch_left.as_slice());
 
-  let gamma = transcript.squeeze(b"g")?;
+  let c = transcript.squeeze(b"c")?;
 
-  let u_joint =
-    PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, gamma);
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, c);
 
-  let w_joint = PolyEvalWitness::batch_diff_size(w_vec, gamma);
+  let w_joint = PolyEvalWitness::batch_diff_size(w_vec, c);
 
-  Ok((u_joint, w_joint, sc_proof_batch, claims_batch_left))
+  Ok((u_joint, w_joint, c, sc_proof_batch, claims_batch_left))
 }
 
 /// Verifies a batch of polynomial evaluation claims via sumcheck,
@@ -438,7 +438,7 @@ pub fn batch_eval_verify<E: Engine>(
   transcript: &mut E::TE,
   sc_proof_batch: &sumcheck::SumcheckProof<E>,
   evals_batch: &[E::Scalar],
-) -> Result<PolyEvalInstance<E>, NovaError> {
+) -> Result<(PolyEvalInstance<E>, E::Scalar), NovaError> {
   use polys::eq::EqPolynomial;
 
   let num_claims = u_vec.len();
@@ -474,13 +474,13 @@ pub fn batch_eval_verify<E: Engine>(
 
   transcript.absorb(b"l", &evals_batch);
 
-  let gamma = transcript.squeeze(b"g")?;
+  let c = transcript.squeeze(b"c")?;
 
   let comms = u_vec.into_iter().map(|u| u.c).collect::<Vec<_>>();
 
-  let u_joint = PolyEvalInstance::batch_diff_size(&comms, evals_batch, &num_rounds, r, gamma);
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, evals_batch, &num_rounds, r, c);
 
-  Ok(u_joint)
+  Ok((u_joint, c))
 }
 
 /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials.

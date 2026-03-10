@@ -228,7 +228,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       },
     ];
 
-    let (batched_u, batched_w, sc_proof_batch, claims_batch_left) =
+    let (batched_u, batched_w, _chal, sc_proof_batch, claims_batch_left) =
       super::batch_eval_reduce(u_vec, w_vec, &mut transcript)?;
 
     let eval_arg = EE::prove(
@@ -369,7 +369,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       },
     ];
 
-    let batched_u = super::batch_eval_verify(
+    let (batched_u, _chal) = super::batch_eval_verify(
       u_vec,
       &mut transcript,
       &self.sc_proof_batch,
