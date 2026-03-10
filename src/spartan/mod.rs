@@ -27,7 +27,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, SparseMatrix},
   traits::{Engine, TranscriptEngineTrait},
-  zip_with, Commitment,
+  Commitment,
 };
 use ff::{Field, PrimeField};
 use itertools::Itertools as _;

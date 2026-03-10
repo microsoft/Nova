@@ -12,7 +12,6 @@ use crate::{
     compute_eval_table_sparse,
     math::Math,
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
-    powers,
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,
   },
@@ -21,10 +20,9 @@ use crate::{
     snark::{DigestHelperTrait, RelaxedR1CSSNARKTrait},
     Engine, TranscriptEngineTrait,
   },
-  zip_with, CommitmentKey,
+  CommitmentKey,
 };
 use ff::Field;
-use itertools::Itertools as _;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
