@@ -10,7 +10,6 @@ use crate::{
   traits::{Engine, TranscriptEngineTrait},
 };
 use ff::{Field, PrimeField};
-use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -237,79 +236,88 @@ impl<E: Engine> SumcheckProof<E> {
     ))
   }
 
-  /// Proves a batch of quadratic sumcheck instances over product polynomials.
-  /// Each instance computes the sum over the boolean hypercube of poly_A\[i\] * poly_B\[i\].
-  pub fn prove_quad_batch_prod(
+  /// Batched sumcheck for polynomial evaluation claims.
+  ///
+  /// Each instance `i` proves `e_i = sum_x P_i(x) * eq(x_i, x)` over `{0,1}^{n_i}`,
+  /// where `P_i` is a witness polynomial and `x_i` is the evaluation point.
+  /// Uses `EqSumCheckInstance` to avoid materializing the eq tables.
+  ///
+  /// Returns `(proof, challenges, P_i_final_evals)`.
+  pub fn prove_batch_eval(
     claims: &[E::Scalar],
     num_rounds: &[usize],
-    mut poly_A_vec: Vec<MultilinearPolynomial<E::Scalar>>,
-    mut poly_B_vec: Vec<MultilinearPolynomial<E::Scalar>>,
+    mut polys: Vec<MultilinearPolynomial<E::Scalar>>,
+    eq_points: Vec<Vec<E::Scalar>>,
     coeffs: &[E::Scalar],
     transcript: &mut E::TE,
-  ) -> Result<(Self, Vec<E::Scalar>, (Vec<E::Scalar>, Vec<E::Scalar>)), NovaError> {
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
     let num_claims = claims.len();
 
     assert_eq!(num_rounds.len(), num_claims);
-    assert_eq!(poly_A_vec.len(), num_claims);
-    assert_eq!(poly_B_vec.len(), num_claims);
+    assert_eq!(polys.len(), num_claims);
+    assert_eq!(eq_points.len(), num_claims);
     assert_eq!(coeffs.len(), num_claims);
 
-    for (i, &num_rounds) in num_rounds.iter().enumerate() {
-      let expected_size = 1 << num_rounds;
-
-      // Direct indexing with the assumption that the index will always be in bounds
-      let a = &poly_A_vec[i];
-      let b = &poly_B_vec[i];
-
-      for (l, polyname) in [(a.len(), "poly_A_vec"), (b.len(), "poly_B_vec")].iter() {
-        assert_eq!(
-          *l, expected_size,
-          "Mismatch in size for {polyname} at index {i}"
-        );
-      }
+    for (i, &nr) in num_rounds.iter().enumerate() {
+      assert_eq!(polys[i].len(), 1 << nr, "poly size mismatch at index {i}");
+      assert_eq!(
+        eq_points[i].len(),
+        nr,
+        "eq_point length mismatch at index {i}"
+      );
     }
 
     let num_rounds_max = *num_rounds.iter().max().unwrap();
-    let mut e = zip_with!(
-      iter,
-      (claims, num_rounds, coeffs),
-      |claim, num_rounds, coeff| {
-        let scaled_claim =
-          E::Scalar::from(2u64).pow_vartime([(num_rounds_max - num_rounds) as u64]) * claim;
-        scaled_claim * coeff
-      }
-    )
-    .sum();
+
+    let mut eq_instances: Vec<EqSumCheckInstance<E>> =
+      eq_points.into_iter().map(EqSumCheckInstance::new).collect();
+
+    let mut running_claims: Vec<E::Scalar> = claims.to_vec();
+
+    let mut e: E::Scalar = claims
+      .iter()
+      .zip(num_rounds.iter())
+      .zip(coeffs.iter())
+      .map(|((claim, &nr), coeff)| {
+        let scale = E::Scalar::from(2u64).pow_vartime([(num_rounds_max - nr) as u64]);
+        *claim * scale * coeff
+      })
+      .sum();
+
     let mut r: Vec<E::Scalar> = Vec::new();
     let mut quad_polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
 
     for current_round in 0..num_rounds_max {
       let remaining_rounds = num_rounds_max - current_round;
-      let evals: Vec<(E::Scalar, E::Scalar)> = zip_with!(
-        par_iter,
-        (num_rounds, claims, poly_A_vec, poly_B_vec),
-        |num_rounds, claim, poly_A, poly_B| {
-          if remaining_rounds <= *num_rounds {
-            Self::compute_eval_points_quad_prod(poly_A, poly_B)
+
+      // Per-claim [S_i(0), 0, S_i(-1)] for `update_claim` (c3=0 since P*eq is degree 2)
+      let evals: Vec<[E::Scalar; 3]> = (0..num_claims)
+        .into_par_iter()
+        .map(|i| {
+          if remaining_rounds <= num_rounds[i] {
+            let (eval_0, _cubic_coeff, eval_m1) = eq_instances[i]
+              .evaluation_points_quadratic_with_one_input(&polys[i], running_claims[i]);
+            [eval_0, E::Scalar::ZERO, eval_m1]
           } else {
-            let remaining_variables = remaining_rounds - num_rounds - 1;
+            // not yet started: constant (replicated)
+            let remaining_variables = remaining_rounds - num_rounds[i] - 1;
             let scaled_claim =
-              E::Scalar::from(2u64).pow_vartime([remaining_variables as u64]) * claim;
-            (scaled_claim, scaled_claim)
+              E::Scalar::from(2u64).pow_vartime([remaining_variables as u64]) * claims[i];
+            [scaled_claim, E::Scalar::ZERO, scaled_claim]
           }
-        }
-      )
-      .collect();
+        })
+        .collect();
 
-      let evals_combined_0 = (0..evals.len()).map(|i| evals[i].0 * coeffs[i]).sum();
-      let evals_combined_bound_coeff = (0..evals.len()).map(|i| evals[i].1 * coeffs[i]).sum();
+      let evals_combined_0: E::Scalar = (0..num_claims).map(|i| evals[i][0] * coeffs[i]).sum();
+      let evals_combined_m1: E::Scalar = (0..num_claims).map(|i| evals[i][2] * coeffs[i]).sum();
 
-      let evals = vec![
-        evals_combined_0,
-        e - evals_combined_0,
-        evals_combined_bound_coeff,
-      ];
-      let poly = UniPoly::from_evals_deg2(&evals);
+      // quadratic coeff: a = (S(1) + S(-1) - 2*S(0)) / 2
+      let evals_combined_1 = e - evals_combined_0;
+      let quad_coeff =
+        (evals_combined_1 + evals_combined_m1 - evals_combined_0.double()) * E::Scalar::TWO_INV;
+
+      let uni_evals = vec![evals_combined_0, evals_combined_1, quad_coeff];
+      let poly = UniPoly::from_evals_deg2(&uni_evals);
 
       // append the prover's message to the transcript
       transcript.absorb(b"p", &poly);
@@ -318,49 +326,23 @@ impl<E: Engine> SumcheckProof<E> {
       let r_i = transcript.squeeze(b"c")?;
       r.push(r_i);
 
-      // bound all tables to the verifier's challenge
-      zip_with_for_each!(
-        (
-          num_rounds.par_iter(),
-          poly_A_vec.par_iter_mut(),
-          poly_B_vec.par_iter_mut()
-        ),
-        |num_rounds, poly_A, poly_B| {
-          if remaining_rounds <= *num_rounds {
-            let _ = rayon::join(
-              || poly_A.bind_poly_var_top(&r_i),
-              || poly_B.bind_poly_var_top(&r_i),
-            );
-          }
+      for i in 0..num_claims {
+        if remaining_rounds <= num_rounds[i] {
+          running_claims[i] = Self::update_claim(running_claims[i], &evals[i], &r_i);
+          polys[i].bind_poly_var_top(&r_i);
+          eq_instances[i].bound(&r_i);
         }
-      );
+      }
 
       e = poly.evaluate(&r_i);
       quad_polys.push(poly.compress());
     }
-    poly_A_vec.iter().for_each(|p| assert_eq!(p.len(), 1));
-    poly_B_vec.iter().for_each(|p| assert_eq!(p.len(), 1));
 
-    let poly_A_final = poly_A_vec
-      .into_iter()
-      .map(|poly| poly[0])
-      .collect::<Vec<_>>();
-    let poly_B_final = poly_B_vec
-      .into_iter()
-      .map(|poly| poly[0])
-      .collect::<Vec<_>>();
+    polys.iter().for_each(|p| assert_eq!(p.len(), 1));
 
-    let eval_expected = zip_with!(
-      iter,
-      (poly_A_final, poly_B_final, coeffs),
-      |eA, eB, coeff| *eA * *eB * coeff
-    )
-    .sum::<E::Scalar>();
-    assert_eq!(e, eval_expected);
+    let poly_finals: Vec<E::Scalar> = polys.into_iter().map(|poly| poly[0]).collect();
 
-    let claims_prod = (poly_A_final, poly_B_final);
-
-    Ok((SumcheckProof::new(quad_polys), r, claims_prod))
+    Ok((SumcheckProof::new(quad_polys), r, poly_finals))
   }
 
   /// Computes evaluation points for a linear sumcheck round (poly_A - poly_B).

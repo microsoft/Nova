@@ -26,7 +26,7 @@ pub use sumcheck::SumcheckEngine;
 use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, SparseMatrix},
-  traits::Engine,
+  traits::{Engine, TranscriptEngineTrait},
   Commitment,
 };
 use ff::{Field, PrimeField};
@@ -367,6 +367,120 @@ impl<E: Engine> PolyEvalInstance<E> {
       e,
     }
   }
+}
+
+/// Reduces a batch of polynomial evaluation claims to a single claim via sumcheck.
+///
+/// Given instance/witness pairs (C_i, x_i, e_i) / P_i where e_i = P_i(x_i),
+/// proves all evaluations jointly and combines them into one claim at a shared point.
+/// Polynomials may have different sizes.
+pub fn batch_eval_reduce<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  w_vec: Vec<PolyEvalWitness<E>>,
+  transcript: &mut E::TE,
+) -> Result<
+  (
+    PolyEvalInstance<E>,
+    PolyEvalWitness<E>,
+    E::Scalar,
+    sumcheck::SumcheckProof<E>,
+    Vec<E::Scalar>,
+  ),
+  NovaError,
+> {
+  use polys::multilinear::MultilinearPolynomial;
+
+  let num_claims = u_vec.len();
+  assert_eq!(w_vec.len(), num_claims);
+
+  let num_rounds = u_vec.iter().map(|u| u.x.len()).collect::<Vec<_>>();
+
+  w_vec
+    .iter()
+    .zip_eq(num_rounds.iter())
+    .for_each(|(w, num_vars)| assert_eq!(w.p.len(), 1 << num_vars));
+
+  let rho = transcript.squeeze(b"r")?;
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+
+  let (claims, u_xs, comms): (Vec<_>, Vec<_>, Vec<_>) =
+    u_vec.into_iter().map(|u| (u.e, u.x, u.c)).multiunzip();
+
+  let polys_P: Vec<MultilinearPolynomial<E::Scalar>> = w_vec
+    .iter()
+    .map(|w| MultilinearPolynomial::new(w.p.clone()))
+    .collect();
+
+  let (sc_proof_batch, r, claims_batch_left) = sumcheck::SumcheckProof::prove_batch_eval(
+    &claims,
+    &num_rounds,
+    polys_P,
+    u_xs,
+    &powers_of_rho,
+    transcript,
+  )?;
+
+  transcript.absorb(b"l", &claims_batch_left.as_slice());
+
+  let c = transcript.squeeze(b"c")?;
+
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, &claims_batch_left, &num_rounds, r, c);
+
+  let w_joint = PolyEvalWitness::batch_diff_size(w_vec, c);
+
+  Ok((u_joint, w_joint, c, sc_proof_batch, claims_batch_left))
+}
+
+/// Verifies a batch of polynomial evaluation claims via sumcheck,
+/// reducing them to a single claim at a shared point.
+pub fn batch_eval_verify<E: Engine>(
+  u_vec: Vec<PolyEvalInstance<E>>,
+  transcript: &mut E::TE,
+  sc_proof_batch: &sumcheck::SumcheckProof<E>,
+  evals_batch: &[E::Scalar],
+) -> Result<(PolyEvalInstance<E>, E::Scalar), NovaError> {
+  use polys::eq::EqPolynomial;
+
+  let num_claims = u_vec.len();
+  assert_eq!(evals_batch.len(), num_claims);
+
+  let rho = transcript.squeeze(b"r")?;
+  let powers_of_rho = powers::<E>(&rho, num_claims);
+
+  let num_rounds = u_vec.iter().map(|u| u.x.len()).collect::<Vec<_>>();
+  let num_rounds_max = *num_rounds.iter().max().unwrap();
+
+  let claims = u_vec.iter().map(|u| u.e).collect::<Vec<_>>();
+
+  let (claim_batch_final, r) =
+    sc_proof_batch.verify_batch(&claims, &num_rounds, &powers_of_rho, 2, transcript)?;
+
+  let claim_batch_final_expected = {
+    let evals_r = u_vec.iter().map(|u| {
+      let (_, r_hi) = r.split_at(num_rounds_max - u.x.len());
+      EqPolynomial::new(r_hi.to_vec()).evaluate(&u.x)
+    });
+
+    zip_with!(
+      (evals_r, evals_batch.iter(), powers_of_rho.iter()),
+      |e_i, p_i, rho_i| e_i * *p_i * rho_i
+    )
+    .sum()
+  };
+
+  if claim_batch_final != claim_batch_final_expected {
+    return Err(NovaError::InvalidSumcheckProof);
+  }
+
+  transcript.absorb(b"l", &evals_batch);
+
+  let c = transcript.squeeze(b"c")?;
+
+  let comms = u_vec.into_iter().map(|u| u.c).collect::<Vec<_>>();
+
+  let u_joint = PolyEvalInstance::batch_diff_size(&comms, evals_batch, &num_rounds, r, c);
+
+  Ok((u_joint, c))
 }
 
 /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials.
