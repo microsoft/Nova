@@ -444,23 +444,15 @@ fn batch_eval_reduce<E: Engine>(
     .iter()
     .map(|w| MultilinearPolynomial::new(w.p.clone()))
     .collect();
-  // eq(xᵢ, X)
-  let polys_eq: Vec<MultilinearPolynomial<E::Scalar>> = u_xs
-    .into_iter()
-    .map(|ux| MultilinearPolynomial::new(EqPolynomial::evals_from_points(&ux)))
-    .collect();
 
-  // For each i, check eᵢ = ∑ₓ Pᵢ(x)eq(xᵢ,x), where x ∈ {0,1}^nᵢ
-  let (sc_proof_batch, r, claims_batch) = SumcheckProof::prove_quad_batch_prod(
+  let (sc_proof_batch, r, claims_batch_left) = SumcheckProof::prove_batch_eval(
     &claims,
     &num_rounds,
     polys_P,
-    polys_eq,
+    u_xs,
     &powers_of_rho,
     transcript,
   )?;
-
-  let (claims_batch_left, _): (Vec<E::Scalar>, Vec<E::Scalar>) = claims_batch;
 
   transcript.absorb(b"l", &claims_batch_left.as_slice());
 
