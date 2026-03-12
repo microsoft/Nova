@@ -577,6 +577,55 @@ impl<E: Engine> R1CSShape<E> {
     }
   }
 
+  /// Pads the `R1CSShape` so that `num_cons` and `num_vars` are each
+  /// individually powers of two (and `num_vars > num_io`), but does
+  /// not force them to be equal.
+  ///
+  /// Like `pad()`, column indices >= `num_vars` (i.e. the IO region) are
+  /// renumbered to stay at the end of the padded variable space.
+  pub fn pad_nonsquare(&self) -> Self {
+    if self.is_regular_shape() {
+      return self.clone();
+    }
+
+    let num_vars_padded = max(self.num_vars, self.num_io + 1).next_power_of_two();
+    let num_cons_padded = self.num_cons.next_power_of_two();
+
+    let apply_pad = |mut M: SparseMatrix<E::Scalar>| -> SparseMatrix<E::Scalar> {
+      if num_vars_padded > self.num_vars {
+        M.indices.par_iter_mut().for_each(|c| {
+          if *c >= self.num_vars {
+            *c += num_vars_padded - self.num_vars
+          }
+        });
+        M.cols += num_vars_padded - self.num_vars;
+      }
+
+      if num_cons_padded > self.num_cons {
+        let ex = {
+          let nnz = M.indptr.last().unwrap();
+          vec![*nnz; num_cons_padded - self.num_cons]
+        };
+        M.indptr.extend(ex);
+      }
+      M
+    };
+
+    let A_padded = apply_pad(self.A.clone());
+    let B_padded = apply_pad(self.B.clone());
+    let C_padded = apply_pad(self.C.clone());
+
+    R1CSShape {
+      num_cons: num_cons_padded,
+      num_vars: num_vars_padded,
+      num_io: self.num_io,
+      A: A_padded,
+      B: B_padded,
+      C: C_padded,
+      digest: OnceCell::new(),
+    }
+  }
+
   /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
   pub fn sample_random_instance_witness(
     &self,
@@ -1178,6 +1227,37 @@ mod tests {
     test_pad_tiny_r1cs_with::<PallasEngine>();
     test_pad_tiny_r1cs_with::<Bn256EngineKZG>();
     test_pad_tiny_r1cs_with::<Secp256k1Engine>();
+  }
+
+  fn test_pad_nonsquare_with<E: Engine>() {
+    // tiny_r1cs(8) has num_cons=4, num_vars=8, num_io=2
+    // pad_nonsquare should keep num_cons=4 (already power of two)
+    // and num_vars=8 (already power of two), producing a non-square shape
+    let S = tiny_r1cs::<E>(8);
+    let padded = S.pad_nonsquare();
+    assert!(padded.is_regular_shape());
+    assert_eq!(padded.num_cons, 4);
+    assert_eq!(padded.num_vars, 8);
+
+    // tiny_r1cs(3) has num_cons=4, num_vars=3, num_io=2
+    // pad_nonsquare should keep num_cons=4 and round num_vars up to 4
+    let S2 = tiny_r1cs::<E>(3);
+    let padded2 = S2.pad_nonsquare();
+    assert!(padded2.is_regular_shape());
+    assert_eq!(padded2.num_cons, 4);
+    assert_eq!(padded2.num_vars, 4);
+
+    // Verify satisfiability is preserved through pad_nonsquare
+    let ck = R1CSShape::commitment_key(&[&padded], &[&*default_ck_hint()]).unwrap();
+    let (inst, wit) = padded.sample_random_instance_witness(&ck).unwrap();
+    assert!(padded.is_sat_relaxed(&ck, &inst, &wit).is_ok());
+  }
+
+  #[test]
+  fn test_pad_nonsquare() {
+    test_pad_nonsquare_with::<PallasEngine>();
+    test_pad_nonsquare_with::<Bn256EngineKZG>();
+    test_pad_nonsquare_with::<Secp256k1Engine>();
   }
 
   fn test_random_sample_with<E: Engine>() {

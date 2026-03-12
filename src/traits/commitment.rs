@@ -1,5 +1,6 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
+use crate::errors::NovaError;
 #[cfg(feature = "io")]
 use crate::provider::ptau::PtauFileError;
 use crate::traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait};
@@ -163,4 +164,23 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// on the commitment key generators, useful for precomputing correction
   /// points in circuit optimizations.
   fn ck_to_group_elements(ck: &Self::CommitmentKey) -> Vec<E::GE>;
+
+  /// Derive a commitment key of length `table_size` whose j-th generator is
+  /// `sum_{i : addresses[i] == j} ck[i]`.
+  ///
+  /// For a lookup polynomial `L[i] = T[addresses[i]]`:
+  ///   `Comm(L, ck) = Comm(T, ck_derived)`
+  ///
+  /// Table indices with no matching address get the identity generator.
+  /// The returned key must only be used with `commit()` (not with
+  /// `ck_to_coordinates`/`ck_to_group_elements`, which reject identity).
+  ///
+  /// # Errors
+  /// Returns `InvalidCommitmentKeyLength` if `addresses.len() != ck.len()`,
+  /// or `InvalidIndex` if any address is `>= table_size`.
+  fn ck_derive_by_address(
+    ck: &Self::CommitmentKey,
+    addresses: &[usize],
+    table_size: usize,
+  ) -> Result<Self::CommitmentKey, NovaError>;
 }
