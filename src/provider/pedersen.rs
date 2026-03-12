@@ -379,6 +379,23 @@ where
       .collect()
   }
 
+  fn ck_derive_by_address(
+    ck: &Self::CommitmentKey,
+    addresses: &[usize],
+    table_size: usize,
+  ) -> Self::CommitmentKey {
+    let bases = Self::ck_to_group_elements(ck);
+    let mut acc = vec![E::GE::zero(); table_size];
+    for (i, &j) in addresses.iter().enumerate() {
+      acc[j] += bases[i];
+    }
+    let ck_affine = acc.par_iter().map(|g| g.affine()).collect();
+    CommitmentKey {
+      ck: ck_affine,
+      h: ck.h,
+    }
+  }
+
   #[cfg(feature = "io")]
   fn save_setup(
     ck: &Self::CommitmentKey,

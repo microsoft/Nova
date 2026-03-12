@@ -163,4 +163,15 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
   /// on the commitment key generators, useful for precomputing correction
   /// points in circuit optimizations.
   fn ck_to_group_elements(ck: &Self::CommitmentKey) -> Vec<E::GE>;
+
+  /// Derive a commitment key of length `table_size` whose j-th generator is
+  /// `sum_{i : addresses[i] == j} ck[i]`.
+  ///
+  /// For a lookup polynomial L[i] = T[addresses[i]]:
+  ///   Comm(L, ck) = Comm(T, ck_derived)
+  fn ck_derive_by_address(
+    ck: &Self::CommitmentKey,
+    addresses: &[usize],
+    table_size: usize,
+  ) -> Self::CommitmentKey;
 }

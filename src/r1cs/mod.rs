@@ -577,6 +577,52 @@ impl<E: Engine> R1CSShape<E> {
     }
   }
 
+  /// Pads the `R1CSShape` so that `num_cons` and `num_vars` are each
+  /// individually powers of two (and `num_vars > num_io`), but does
+  /// not force them to be equal.
+  pub fn pad_nonsquare(&self) -> Self {
+    if self.is_regular_shape() {
+      return self.clone();
+    }
+
+    let num_vars_padded = max(self.num_vars, self.num_io + 1).next_power_of_two();
+    let num_cons_padded = self.num_cons.next_power_of_two();
+
+    let apply_pad = |mut M: SparseMatrix<E::Scalar>| -> SparseMatrix<E::Scalar> {
+      if num_vars_padded > self.num_vars {
+        M.indices.par_iter_mut().for_each(|c| {
+          if *c >= self.num_vars {
+            *c += num_vars_padded - self.num_vars
+          }
+        });
+        M.cols += num_vars_padded - self.num_vars;
+      }
+
+      if num_cons_padded > self.num_cons {
+        let ex = {
+          let nnz = M.indptr.last().unwrap();
+          vec![*nnz; num_cons_padded - self.num_cons]
+        };
+        M.indptr.extend(ex);
+      }
+      M
+    };
+
+    let A_padded = apply_pad(self.A.clone());
+    let B_padded = apply_pad(self.B.clone());
+    let C_padded = apply_pad(self.C.clone());
+
+    R1CSShape {
+      num_cons: num_cons_padded,
+      num_vars: num_vars_padded,
+      num_io: self.num_io,
+      A: A_padded,
+      B: B_padded,
+      C: C_padded,
+      digest: OnceCell::new(),
+    }
+  }
+
   /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
   pub fn sample_random_instance_witness(
     &self,

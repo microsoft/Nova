@@ -710,6 +710,20 @@ where
       .collect()
   }
 
+  fn ck_derive_by_address(
+    ck: &Self::CommitmentKey,
+    addresses: &[usize],
+    table_size: usize,
+  ) -> Self::CommitmentKey {
+    let bases = Self::ck_to_group_elements(ck);
+    let mut acc = vec![E::GE::zero(); table_size];
+    for (i, &j) in addresses.iter().enumerate() {
+      acc[j] += bases[i];
+    }
+    let ck_affine = acc.par_iter().map(|g| g.affine()).collect();
+    CommitmentKey::new(ck_affine, *ck.h(), *ck.tau_H())
+  }
+
   fn commit_sparse_binary(
     ck: &Self::CommitmentKey,
     non_zero_indices: &[usize],

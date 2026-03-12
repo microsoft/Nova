@@ -244,7 +244,7 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     .par_iter()
     .enumerate()
     .filter_map(|(i, s)| {
-      if bool::from(s.is_zero()) {
+      if bool::from(s.is_zero()) || bool::from(bases[i].is_identity()) {
         return None;
       }
       let neg_s = -(*s);
