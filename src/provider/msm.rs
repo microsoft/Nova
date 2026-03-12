@@ -782,4 +782,41 @@ mod tests {
     test_msm_ux_with::<secp256k1::Scalar, secp256k1::Affine>();
     test_msm_ux_with::<secq256k1::Scalar, secq256k1::Affine>();
   }
+
+  /// Regression test: MSM must handle identity bases without panicking,
+  /// and the result must match naive accumulation (identity bases contribute nothing).
+  fn test_msm_identity_bases_with<F: Field, A: CurveAffine<ScalarExt = F>>() {
+    let n = 8;
+    let mut coeffs = (0..n).map(|_| F::random(OsRng)).collect::<Vec<_>>();
+    let mut bases = (0..n)
+      .map(|_| A::from(A::generator() * F::random(OsRng)))
+      .collect::<Vec<_>>();
+
+    // Replace a few bases with identity and give them non-zero scalars
+    bases[0] = A::identity();
+    bases[3] = A::identity();
+    bases[n - 1] = A::identity();
+    coeffs[0] = F::ONE;
+    coeffs[3] = F::random(OsRng);
+
+    let naive = coeffs
+      .iter()
+      .zip(bases.iter())
+      .fold(A::CurveExt::identity(), |acc, (coeff, base)| {
+        acc + *base * coeff
+      });
+    let result = msm(&coeffs, &bases);
+
+    assert_eq!(naive, result);
+  }
+
+  #[test]
+  fn test_msm_identity_bases() {
+    test_msm_identity_bases_with::<pallas::Scalar, pallas::Affine>();
+    test_msm_identity_bases_with::<vesta::Scalar, vesta::Affine>();
+    test_msm_identity_bases_with::<bn256::Scalar, bn256::Affine>();
+    test_msm_identity_bases_with::<grumpkin::Scalar, grumpkin::Affine>();
+    test_msm_identity_bases_with::<secp256k1::Scalar, secp256k1::Affine>();
+    test_msm_identity_bases_with::<secq256k1::Scalar, secq256k1::Affine>();
+  }
 }

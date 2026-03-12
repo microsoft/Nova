@@ -383,17 +383,23 @@ where
     ck: &Self::CommitmentKey,
     addresses: &[usize],
     table_size: usize,
-  ) -> Self::CommitmentKey {
+  ) -> Result<Self::CommitmentKey, NovaError> {
     let bases = Self::ck_to_group_elements(ck);
+    if addresses.len() != bases.len() {
+      return Err(NovaError::InvalidCommitmentKeyLength);
+    }
+    if addresses.iter().any(|&j| j >= table_size) {
+      return Err(NovaError::InvalidIndex);
+    }
     let mut acc = vec![E::GE::zero(); table_size];
     for (i, &j) in addresses.iter().enumerate() {
       acc[j] += bases[i];
     }
     let ck_affine = acc.par_iter().map(|g| g.affine()).collect();
-    CommitmentKey {
+    Ok(CommitmentKey {
       ck: ck_affine,
       h: ck.h,
-    }
+    })
   }
 
   #[cfg(feature = "io")]
