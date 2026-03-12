@@ -1,8 +1,8 @@
 //! This module defines a collection of traits that define the behavior of a commitment engine
 //! We require the commitment engine to provide a commitment to vectors with a single group element
+use crate::errors::NovaError;
 #[cfg(feature = "io")]
 use crate::provider::ptau::PtauFileError;
-use crate::errors::NovaError;
 use crate::traits::{AbsorbInRO2Trait, AbsorbInROTrait, Engine, TranscriptReprTrait};
 use core::{
   fmt::Debug,
