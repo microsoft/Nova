@@ -387,6 +387,39 @@ impl<E: Engine> R1CSShape<E> {
     Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
   }
 
+  /// Like multiply_vec_pair but writes into pre-allocated buffers, avoiding allocation.
+  /// Buffers: (Az1, Bz1, Cz1, Az2, Bz2, Cz2), each of length >= num_cons.
+  #[allow(clippy::type_complexity)]
+  pub fn multiply_vec_pair_into(
+    &self,
+    z1: &[E::Scalar],
+    z2: &[E::Scalar],
+    az1: &mut [E::Scalar],
+    bz1: &mut [E::Scalar],
+    cz1: &mut [E::Scalar],
+    az2: &mut [E::Scalar],
+    bz2: &mut [E::Scalar],
+    cz2: &mut [E::Scalar],
+  ) -> Result<(), NovaError> {
+    if z1.len() != self.num_io + self.num_vars + 1
+      || z2.len() != self.num_io + self.num_vars + 1
+    {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    rayon::join(
+      || self.A.multiply_vec_pair_into(z1, z2, az1, az2),
+      || {
+        rayon::join(
+          || self.B.multiply_vec_pair_into(z1, z2, bz1, bz2),
+          || self.C.multiply_vec_pair_into(z1, z2, cz1, cz2),
+        )
+      },
+    );
+
+    Ok(())
+  }
+
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat_relaxed(
     &self,

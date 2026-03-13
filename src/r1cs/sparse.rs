@@ -109,6 +109,55 @@ impl<F: PrimeField> SparseMatrix<F> {
     }
   }
 
+  /// Multiply by two dense vectors into pre-allocated output buffers.
+  /// Avoids allocation when the same-sized outputs are reused across steps.
+  pub fn multiply_vec_pair_into(
+    &self,
+    v1: &[F],
+    v2: &[F],
+    out1: &mut [F],
+    out2: &mut [F],
+  ) {
+    debug_assert_eq!(self.cols, v1.len());
+    debug_assert_eq!(self.cols, v2.len());
+    let n = self.indptr.len() - 1;
+    debug_assert!(out1.len() >= n);
+    debug_assert!(out2.len() >= n);
+
+    if n <= 4096 {
+      for (row_idx, ptrs) in self.indptr.windows(2).enumerate() {
+        let mut s1 = F::ZERO;
+        let mut s2 = F::ZERO;
+        for (val, col_idx) in self.get_row_unchecked(ptrs.try_into().unwrap()) {
+          s1 += *val * v1[*col_idx];
+          s2 += *val * v2[*col_idx];
+        }
+        out1[row_idx] = s1;
+        out2[row_idx] = s2;
+      }
+    } else {
+      use rayon::prelude::*;
+      // Split output into chunks that can be written independently
+      let results: Vec<(F, F)> = self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in self.get_row_unchecked(ptrs.try_into().unwrap()) {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .collect();
+      for (row_idx, (s1, s2)) in results.into_iter().enumerate() {
+        out1[row_idx] = s1;
+        out2[row_idx] = s2;
+      }
+    }
+  }
+
   /// Multiply by two dense vectors simultaneously in a single pass over the matrix.
   /// Returns (M*v1, M*v2). This is faster than two separate multiply_vec calls
   /// because the sparse matrix data is only loaded from memory once.
