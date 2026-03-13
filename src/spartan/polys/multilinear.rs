@@ -68,9 +68,16 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
-    zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
-      *a += *r * (*b - *a);
-    });
+    // Use sequential iteration for small polynomials to avoid rayon overhead
+    if n < 4096 {
+      left.iter_mut().zip(right.iter()).for_each(|(a, b)| {
+        *a += *r * (*b - *a);
+      });
+    } else {
+      zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
+        *a += *r * (*b - *a);
+      });
+    }
 
     self.Z.resize(n, Scalar::ZERO);
     self.num_vars -= 1;

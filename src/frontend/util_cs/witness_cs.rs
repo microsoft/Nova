@@ -47,6 +47,17 @@ impl<Scalar> WitnessCS<Scalar>
 where
   Scalar: PrimeField,
 {
+  /// Create a new WitnessCS with pre-allocated capacity for aux and input variables.
+  /// This avoids repeated reallocations during synthesis for large circuits.
+  pub fn with_capacity(aux_capacity: usize, input_capacity: usize) -> Self {
+    let mut input_assignment = Vec::with_capacity(input_capacity + 1);
+    input_assignment.push(Scalar::ONE);
+    Self {
+      input_assignment,
+      aux_assignment: Vec::with_capacity(aux_capacity),
+    }
+  }
+
   /// Get input assignment
   pub fn input_assignment(&self) -> &[Scalar] {
     &self.input_assignment
