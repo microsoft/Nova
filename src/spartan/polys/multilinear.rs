@@ -9,6 +9,9 @@ use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Row count below which we use sequential iteration instead of rayon.
+const PARALLEL_THRESHOLD: usize = 4096;
+
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
 ///
@@ -68,8 +71,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
-    // Use sequential iteration for small polynomials to avoid rayon overhead
-    if n < 4096 {
+    if n < PARALLEL_THRESHOLD {
       left.iter_mut().zip(right.iter()).for_each(|(a, b)| {
         *a += *r * (*b - *a);
       });
@@ -127,8 +129,17 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   /// Evaluates multiple polynomials at the same point, reusing sqrt-sized eq tables.
+  /// Fuses all polynomial reductions into a single pass for cache efficiency.
   pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
+    let k = Zs.len();
+    if k == 0 {
+      return Vec::new();
+    }
+
     let s = r.len();
+    let n = 1usize << s;
+    debug_assert!(Zs.iter().all(|z| z.len() == n));
+
     let s_right = s / 2;
     let s_left = s - s_right;
     let n_left = 1 << s_left;
@@ -137,21 +148,32 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
     let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
 
-    Zs.iter()
-      .map(|Z| {
-        let reduced: Vec<Scalar> = (0..n_left)
-          .into_par_iter()
-          .map(|i| {
-            let chunk = &Z[i * n_right..(i + 1) * n_right];
-            chunk
-              .iter()
-              .zip(eq_right.iter())
-              .map(|(z, e)| *z * *e)
-              .sum()
-          })
-          .collect();
+    let k = Zs.len();
 
-        zip_with!((eq_left.par_iter(), reduced.into_par_iter()), |a, b| *a * b).sum()
+    // Fuse: reduce all k polynomials in a single pass over the row structure
+    let all_reduced: Vec<Vec<Scalar>> = (0..n_left)
+      .into_par_iter()
+      .map(|i| {
+        let start = i * n_right;
+        let mut sums = vec![Scalar::ZERO; k];
+        for j in 0..n_right {
+          let eq_val = eq_right[j];
+          for (p, z) in Zs.iter().enumerate() {
+            sums[p] += z[start + j] * eq_val;
+          }
+        }
+        sums
+      })
+      .collect();
+
+    // Dot each polynomial's reduced vector with eq_left
+    (0..k)
+      .map(|p| {
+        eq_left
+          .iter()
+          .enumerate()
+          .map(|(i, eq_l)| *eq_l * all_reduced[i][p])
+          .sum()
       })
       .collect()
   }

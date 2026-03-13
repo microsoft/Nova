@@ -23,10 +23,14 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 mod sparse;
+use sparse::PrecomputedSparseMatrix;
 pub use sparse::SparseMatrix;
 
+/// Row count below which we use sequential iteration instead of rayon.
+const PARALLEL_THRESHOLD: usize = 4096;
+
 /// A type that holds the shape of the R1CS matrices
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct R1CSShape<E: Engine> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
@@ -36,9 +40,29 @@ pub struct R1CSShape<E: Engine> {
   pub(crate) C: SparseMatrix<E::Scalar>,
   #[serde(skip, default = "OnceCell::new")]
   pub(crate) digest: OnceCell<E::Scalar>,
+  /// Precomputed SpMV accelerators (built lazily on first use)
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_A: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_B: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_C: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
 }
 
 impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
+
+impl<E: Engine> PartialEq for R1CSShape<E> {
+  fn eq(&self, other: &Self) -> bool {
+    self.num_cons == other.num_cons
+      && self.num_vars == other.num_vars
+      && self.num_io == other.num_io
+      && self.A == other.A
+      && self.B == other.B
+      && self.C == other.C
+  }
+}
+
+impl<E: Engine> Eq for R1CSShape<E> {}
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,6 +180,9 @@ impl<E: Engine> R1CSShape<E> {
       B,
       C,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     })
   }
 
@@ -327,6 +354,21 @@ impl<E: Engine> R1CSShape<E> {
       .expect("Failure in retrieving digest")
   }
 
+  /// Eagerly build the precomputed SpMV tables for A, B, C.
+  /// Call this once during setup so that folding steps don't pay the
+  /// one-time construction cost on their first multiply_vec_pair call.
+  pub fn precompute_sparse_matrices(&self) {
+    self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+  }
+
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
   // Returns false if num_cons or num_vars are not powers of two, or if num_io > num_vars
   #[inline]
@@ -346,12 +388,62 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
+    let pa = self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+
     let (Az, (Bz, Cz)) = rayon::join(
-      || self.A.multiply_vec(z),
-      || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
+      || pa.multiply_vec(z),
+      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
     );
 
     Ok((Az, Bz, Cz))
+  }
+
+  /// Multiplies A, B, C by two vectors simultaneously in a single pass per matrix.
+  /// Returns ((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)).
+  pub fn multiply_vec_pair(
+    &self,
+    z1: &[E::Scalar],
+    z2: &[E::Scalar],
+  ) -> Result<
+    (
+      (Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>),
+      (Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>),
+    ),
+    NovaError,
+  > {
+    if z1.len() != self.num_io + self.num_vars + 1 || z2.len() != self.num_io + self.num_vars + 1 {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    let pa = self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+
+    let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
+      || pa.multiply_vec_pair(z1, z2),
+      || {
+        rayon::join(
+          || pb.multiply_vec_pair(z1, z2),
+          || pc.multiply_vec_pair(z1, z2),
+        )
+      },
+    );
+
+    Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
   }
 
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
@@ -450,16 +542,29 @@ impl<E: Engine> R1CSShape<E> {
     W2: &R1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let Z = Z1
-      .into_par_iter()
-      .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
+    let z_len = W1.W.len() + 1 + U1.X.len();
+    let Z = if z_len <= PARALLEL_THRESHOLD {
+      let mut z = Vec::with_capacity(z_len);
+      W1.W
+        .iter()
+        .zip(W2.W.iter())
+        .for_each(|(w1, w2)| z.push(*w1 + *w2));
+      z.push(U1.u + E::Scalar::ONE);
+      U1.X
+        .iter()
+        .zip(U2.X.iter())
+        .for_each(|(x1, x2)| z.push(*x1 + *x2));
+      z
+    } else {
+      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+      let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+      Z1.into_par_iter()
+        .zip(Z2.into_par_iter())
+        .map(|(z1, z2)| z1 + z2)
+        .collect::<Vec<E::Scalar>>()
+    };
     let u = U1.u + E::Scalar::ONE; // U2.u = 1
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
@@ -538,6 +643,9 @@ impl<E: Engine> R1CSShape<E> {
         B: self.B.clone(),
         C: self.C.clone(),
         digest: OnceCell::new(),
+        precomputed_A: OnceCell::new(),
+        precomputed_B: OnceCell::new(),
+        precomputed_C: OnceCell::new(),
       };
     }
 
@@ -574,6 +682,9 @@ impl<E: Engine> R1CSShape<E> {
       B: B_padded,
       C: C_padded,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     }
   }
 
@@ -623,6 +734,9 @@ impl<E: Engine> R1CSShape<E> {
       B: B_padded,
       C: C_padded,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     }
   }
 
@@ -1294,5 +1408,34 @@ mod tests {
     test_random_sample_with::<PallasEngine>();
     test_random_sample_with::<Bn256EngineKZG>();
     test_random_sample_with::<Secp256k1Engine>();
+  }
+
+  fn test_multiply_vec_pair_with<E: Engine>() {
+    // tiny_r1cs(4) has num_cons=4, num_vars=4, num_io=2
+    // z has length num_vars + 1 + num_io = 7
+    let S = tiny_r1cs::<E>(4);
+    let z_len = S.num_vars + 1 + S.num_io;
+
+    let z1: Vec<E::Scalar> = (1..=z_len as u64).map(E::Scalar::from).collect();
+    let z2: Vec<E::Scalar> = (10..10 + z_len as u64).map(E::Scalar::from).collect();
+
+    let (az1, bz1, cz1) = S.multiply_vec(&z1).unwrap();
+    let (az2, bz2, cz2) = S.multiply_vec(&z2).unwrap();
+
+    let ((paz1, pbz1, pcz1), (paz2, pbz2, pcz2)) = S.multiply_vec_pair(&z1, &z2).unwrap();
+
+    assert_eq!(az1, paz1);
+    assert_eq!(bz1, pbz1);
+    assert_eq!(cz1, pcz1);
+    assert_eq!(az2, paz2);
+    assert_eq!(bz2, pbz2);
+    assert_eq!(cz2, pcz2);
+  }
+
+  #[test]
+  fn test_multiply_vec_pair() {
+    test_multiply_vec_pair_with::<PallasEngine>();
+    test_multiply_vec_pair_with::<Bn256EngineKZG>();
+    test_multiply_vec_pair_with::<Secp256k1Engine>();
   }
 }
