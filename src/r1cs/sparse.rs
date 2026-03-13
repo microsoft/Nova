@@ -85,7 +85,6 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
     if self.indptr.len() <= 4097 {
-      // Sequential path for small matrices
       self
         .indptr
         .windows(2)
@@ -107,6 +106,46 @@ impl<F: PrimeField> SparseMatrix<F> {
             .sum()
         })
         .collect()
+    }
+  }
+
+  /// Multiply by two dense vectors simultaneously in a single pass over the matrix.
+  /// Returns (M*v1, M*v2). This is faster than two separate multiply_vec calls
+  /// because the sparse matrix data is only loaded from memory once.
+  pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
+    assert_eq!(self.cols, v1.len(), "invalid shape for v1");
+    assert_eq!(self.cols, v2.len(), "invalid shape for v2");
+
+    if self.indptr.len() <= 4097 {
+      self
+        .indptr
+        .windows(2)
+        .map(|ptrs| {
+          let row = self.get_row_unchecked(ptrs.try_into().unwrap());
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in row {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .unzip()
+    } else {
+      self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          let row = self.get_row_unchecked(ptrs.try_into().unwrap());
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in row {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .unzip()
     }
   }
 

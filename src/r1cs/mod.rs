@@ -354,6 +354,39 @@ impl<E: Engine> R1CSShape<E> {
     Ok((Az, Bz, Cz))
   }
 
+  /// Multiplies A, B, C by two vectors simultaneously in a single pass per matrix.
+  /// Returns ((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)).
+  /// Faster than two separate multiply_vec calls due to reduced memory traffic.
+  pub fn multiply_vec_pair(
+    &self,
+    z1: &[E::Scalar],
+    z2: &[E::Scalar],
+  ) -> Result<
+    (
+      (Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>),
+      (Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>),
+    ),
+    NovaError,
+  > {
+    if z1.len() != self.num_io + self.num_vars + 1
+      || z2.len() != self.num_io + self.num_vars + 1
+    {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
+      || self.A.multiply_vec_pair(z1, z2),
+      || {
+        rayon::join(
+          || self.B.multiply_vec_pair(z1, z2),
+          || self.C.multiply_vec_pair(z1, z2),
+        )
+      },
+    );
+
+    Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
+  }
+
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape
   pub fn is_sat_relaxed(
     &self,
