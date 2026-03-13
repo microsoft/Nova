@@ -58,6 +58,15 @@ where
     }
   }
 
+  /// Clear the assignments while retaining allocated capacity.
+  /// This allows reusing the same WitnessCS across multiple synthesis calls
+  /// without reallocating.
+  pub fn clear(&mut self) {
+    self.input_assignment.clear();
+    self.input_assignment.push(Scalar::ONE);
+    self.aux_assignment.clear();
+  }
+
   /// Get input assignment
   pub fn input_assignment(&self) -> &[Scalar] {
     &self.input_assignment
