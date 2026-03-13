@@ -370,12 +370,26 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
+  /// Uses precomputed coefficient tables when available.
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],
   ) -> Result<(Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
     if z.len() != self.num_io + self.num_vars + 1 {
       return Err(NovaError::InvalidWitnessLength);
+    }
+
+    // Use precomputed tables if available
+    if let (Some(pa), Some(pb), Some(pc)) = (
+      self.precomputed_A.get(),
+      self.precomputed_B.get(),
+      self.precomputed_C.get(),
+    ) {
+      let (Az, (Bz, Cz)) = rayon::join(
+        || pa.multiply_vec(z),
+        || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
+      );
+      return Ok((Az, Bz, Cz));
     }
 
     let (Az, (Bz, Cz)) = rayon::join(
@@ -548,17 +562,20 @@ impl<E: Engine> R1CSShape<E> {
     W2: &R1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+    // Build Z = Z1 + Z2 in one pass without allocating Z1/Z2 separately
+    let n_w = W1.W.len();
+    let n_x = U1.X.len();
+    let z_len = n_w + 1 + n_x;
+    let mut Z = Vec::with_capacity(z_len);
+    for i in 0..n_w {
+      Z.push(W1.W[i] + W2.W[i]);
+    }
+    Z.push(U1.u + E::Scalar::ONE);
+    for i in 0..n_x {
+      Z.push(U1.X[i] + U2.X[i]);
+    }
 
-    // The following code uses the optimization suggested in
-    // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let Z = Z1
-      .into_par_iter()
-      .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
-    let u = U1.u + E::Scalar::ONE; // U2.u = 1
+    let u = U1.u + E::Scalar::ONE;
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
