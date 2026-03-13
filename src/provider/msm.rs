@@ -710,6 +710,8 @@ pub(crate) fn batch_add<C: CurveAffine>(bases: &[C], one_indices: &[usize]) -> C
 /// Booth-encoded MSM using XYZZ bucket coordinates for full-field scalars.
 /// This avoids halo2curves and uses our optimized XYZZ addition (~40% faster
 /// bucket accumulation than standard Jacobian).
+#[allow(dead_code)]
+#[allow(dead_code)]
 fn msm_large_xyzz<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   if coeffs.is_empty() {
     return C::Curve::identity();
