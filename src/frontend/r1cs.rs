@@ -31,12 +31,10 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
     shape: &R1CSShape<E>,
     ck: &CommitmentKey<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
-    let actual_len = self.aux_assignment().len();
     let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
     let X = &self.input_assignment()[1..];
 
-    // Commit only the non-padded prefix; trailing zeros don't contribute to MSM
-    let comm_W = W.commit_with_unpadded_len(ck, actual_len);
+    let comm_W = W.commit(ck);
 
     let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
 
