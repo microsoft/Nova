@@ -811,6 +811,15 @@ impl<E: Engine> R1CSWitness<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)
   }
 
+  /// Commits only the non-zero prefix of the witness.
+  /// Equivalent to commit() when trailing entries are zero (e.g., after padding),
+  /// but avoids processing zero entries in the MSM classification phase.
+  pub fn commit_with_unpadded_len(&self, ck: &CommitmentKey<E>, actual_len: usize) -> Commitment<E> {
+    debug_assert!(actual_len <= self.W.len());
+    // Only pass the non-padded prefix to MSM; zeros beyond don't contribute
+    CE::<E>::commit(ck, &self.W[..actual_len], &self.r_W)
+  }
+
   /// Pads the provided witness to the correct length
   pub fn pad(&self, S: &R1CSShape<E>) -> R1CSWitness<E> {
     let mut W = self.W.clone();
