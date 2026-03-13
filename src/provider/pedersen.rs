@@ -385,7 +385,7 @@ where
     table_size: usize,
   ) -> Result<Self::CommitmentKey, NovaError> {
     let bases = Self::ck_to_group_elements(ck);
-    if addresses.len() != bases.len() {
+    if addresses.len() > bases.len() {
       return Err(NovaError::InvalidCommitmentKeyLength);
     }
     if addresses.iter().any(|&j| j >= table_size) {
