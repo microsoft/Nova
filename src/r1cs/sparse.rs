@@ -7,6 +7,207 @@ use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// Precomputed SpMV accelerator for a fixed sparse matrix.
+///
+/// Classifies entries by coefficient magnitude to avoid expensive field
+/// multiplications for the common cases in R1CS:
+/// - ±1: just add/subtract (no multiplication)
+/// - small ±k (|k| ≤ 7): repeated addition (cheaper than field mul)
+/// - general: full field multiplication
+///
+/// For a typical R1CS circuit, 60-80% of entries are ±1, and another
+/// 10-20% are small integers, leaving only ~10-20% needing full mul.
+#[derive(Clone, Debug)]
+pub struct PrecomputedSparseMatrix<F: PrimeField> {
+  num_rows: usize,
+  /// Per-row spans into each category's column array: (start, count)
+  row_unit_pos: Vec<(u32, u16)>,
+  row_unit_neg: Vec<(u32, u16)>,
+  row_small: Vec<(u32, u16)>,
+  row_general: Vec<(u32, u16)>,
+  /// Column indices for val=+1 entries
+  unit_pos_cols: Vec<u32>,
+  /// Column indices for val=-1 entries
+  unit_neg_cols: Vec<u32>,
+  /// (column_index, signed_coeff) for small integer entries (|coeff| in 2..=7)
+  small_cols: Vec<u32>,
+  small_coeffs: Vec<i8>,
+  /// (column_index, coefficient) for general entries
+  general_cols: Vec<u32>,
+  general_vals: Vec<F>,
+}
+
+impl<F: PrimeField> PrecomputedSparseMatrix<F> {
+  /// Build from a CSR SparseMatrix by classifying entries.
+  pub fn from_sparse(m: &SparseMatrix<F>) -> Self {
+    let num_rows = m.indptr.len() - 1;
+    let one = F::ONE;
+    let neg_one = -F::ONE;
+
+    // Precompute small positive/negative field elements for comparison
+    let small_pos: Vec<F> = (2u64..=7).map(F::from).collect();
+    let small_neg: Vec<F> = (2u64..=7).map(|k| -F::from(k)).collect();
+
+    let mut row_unit_pos = Vec::with_capacity(num_rows);
+    let mut row_unit_neg = Vec::with_capacity(num_rows);
+    let mut row_small = Vec::with_capacity(num_rows);
+    let mut row_general = Vec::with_capacity(num_rows);
+    let mut unit_pos_cols = Vec::new();
+    let mut unit_neg_cols = Vec::new();
+    let mut small_cols = Vec::new();
+    let mut small_coeffs: Vec<i8> = Vec::new();
+    let mut general_cols = Vec::new();
+    let mut general_vals = Vec::new();
+
+    for ptrs in m.indptr.windows(2) {
+      let up_start = unit_pos_cols.len() as u32;
+      let un_start = unit_neg_cols.len() as u32;
+      let sm_start = small_cols.len() as u32;
+      let g_start = general_cols.len() as u32;
+
+      for (&val, &col) in m.data[ptrs[0]..ptrs[1]].iter().zip(&m.indices[ptrs[0]..ptrs[1]]) {
+        if val == one {
+          unit_pos_cols.push(col as u32);
+        } else if val == neg_one {
+          unit_neg_cols.push(col as u32);
+        } else if let Some(k) = small_pos.iter().position(|&v| v == val) {
+          small_cols.push(col as u32);
+          small_coeffs.push((k as i8) + 2);
+        } else if let Some(k) = small_neg.iter().position(|&v| v == val) {
+          small_cols.push(col as u32);
+          small_coeffs.push(-((k as i8) + 2));
+        } else {
+          general_cols.push(col as u32);
+          general_vals.push(val);
+        }
+      }
+
+      row_unit_pos.push((up_start, (unit_pos_cols.len() as u32 - up_start) as u16));
+      row_unit_neg.push((un_start, (unit_neg_cols.len() as u32 - un_start) as u16));
+      row_small.push((sm_start, (small_cols.len() as u32 - sm_start) as u16));
+      row_general.push((g_start, (general_cols.len() as u32 - g_start) as u16));
+    }
+
+
+    Self {
+      num_rows,
+      row_unit_pos,
+      row_unit_neg,
+      row_small,
+      row_general,
+      unit_pos_cols,
+      unit_neg_cols,
+      small_cols,
+      small_coeffs,
+      general_cols,
+      general_vals,
+    }
+  }
+
+  #[inline(always)]
+  fn small_mul(coeff: i8, x: F) -> F {
+    // For |coeff| in 2..=7, use doubling + addition instead of field mul
+    let abs = coeff.unsigned_abs();
+    let result = match abs {
+      2 => x.double(),
+      3 => x.double() + x,
+      4 => x.double().double(),
+      5 => x.double().double() + x,
+      6 => { let d = x.double(); d.double() + d },
+      7 => { let d = x.double(); d.double() + d + x },
+      _ => unreachable!(),
+    };
+    if coeff < 0 { -result } else { result }
+  }
+
+  #[inline(always)]
+  fn compute_row_single(&self, row: usize, v: &[F]) -> F {
+    let mut sum = F::ZERO;
+
+    let (start, count) = self.row_unit_pos[row];
+    for i in start..(start + count as u32) {
+      sum += v[self.unit_pos_cols[i as usize] as usize];
+    }
+
+    let (start, count) = self.row_unit_neg[row];
+    for i in start..(start + count as u32) {
+      sum -= v[self.unit_neg_cols[i as usize] as usize];
+    }
+
+    let (start, count) = self.row_small[row];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      sum += Self::small_mul(self.small_coeffs[idx], v[self.small_cols[idx] as usize]);
+    }
+
+    let (start, count) = self.row_general[row];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      sum += self.general_vals[idx] * v[self.general_cols[idx] as usize];
+    }
+
+    sum
+  }
+
+  #[inline(always)]
+  fn compute_row_pair(&self, row: usize, v1: &[F], v2: &[F]) -> (F, F) {
+    let mut s1 = F::ZERO;
+    let mut s2 = F::ZERO;
+
+    let (start, count) = self.row_unit_pos[row];
+    for i in start..(start + count as u32) {
+      let col = self.unit_pos_cols[i as usize] as usize;
+      s1 += v1[col];
+      s2 += v2[col];
+    }
+
+    let (start, count) = self.row_unit_neg[row];
+    for i in start..(start + count as u32) {
+      let col = self.unit_neg_cols[i as usize] as usize;
+      s1 -= v1[col];
+      s2 -= v2[col];
+    }
+
+    let (start, count) = self.row_small[row];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      let col = self.small_cols[idx] as usize;
+      let c = self.small_coeffs[idx];
+      s1 += Self::small_mul(c, v1[col]);
+      s2 += Self::small_mul(c, v2[col]);
+    }
+
+    let (start, count) = self.row_general[row];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      let col = self.general_cols[idx] as usize;
+      let val = self.general_vals[idx];
+      s1 += val * v1[col];
+      s2 += val * v2[col];
+    }
+
+    (s1, s2)
+  }
+
+  /// Fast SpMV using precomputed coefficient classification.
+  pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
+    if self.num_rows <= 4096 {
+      (0..self.num_rows).map(|r| self.compute_row_single(r, vector)).collect()
+    } else {
+      (0..self.num_rows).into_par_iter().map(|r| self.compute_row_single(r, vector)).collect()
+    }
+  }
+
+  /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
+  pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
+    if self.num_rows <= 4096 {
+      (0..self.num_rows).map(|r| self.compute_row_pair(r, v1, v2)).unzip()
+    } else {
+      (0..self.num_rows).into_par_iter().map(|r| self.compute_row_pair(r, v1, v2)).unzip()
+    }
+  }
+}
+
 /// CSR format sparse matrix, We follow the names used by scipy.
 /// Detailed explanation here: <https://stackoverflow.com/questions/52299420/scipy-csr-matrix-understand-indptr>
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

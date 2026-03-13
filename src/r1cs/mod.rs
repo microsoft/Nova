@@ -23,10 +23,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 mod sparse;
-pub use sparse::SparseMatrix;
+pub use sparse::{PrecomputedSparseMatrix, SparseMatrix};
 
 /// A type that holds the shape of the R1CS matrices
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct R1CSShape<E: Engine> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
@@ -36,9 +36,29 @@ pub struct R1CSShape<E: Engine> {
   pub(crate) C: SparseMatrix<E::Scalar>,
   #[serde(skip, default = "OnceCell::new")]
   pub(crate) digest: OnceCell<E::Scalar>,
+  /// Precomputed SpMV accelerators (built lazily on first use)
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_A: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_B: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  #[serde(skip, default = "OnceCell::new")]
+  precomputed_C: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
 }
 
 impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
+
+impl<E: Engine> PartialEq for R1CSShape<E> {
+  fn eq(&self, other: &Self) -> bool {
+    self.num_cons == other.num_cons
+      && self.num_vars == other.num_vars
+      && self.num_io == other.num_io
+      && self.A == other.A
+      && self.B == other.B
+      && self.C == other.C
+  }
+}
+
+impl<E: Engine> Eq for R1CSShape<E> {}
 
 /// A type that holds a witness for a given R1CS instance
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -156,6 +176,9 @@ impl<E: Engine> R1CSShape<E> {
       B,
       C,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     })
   }
 
@@ -327,6 +350,15 @@ impl<E: Engine> R1CSShape<E> {
       .expect("Failure in retrieving digest")
   }
 
+  /// Eagerly build the precomputed SpMV tables for A, B, C.
+  /// Call this once during setup so that folding steps don't pay the
+  /// one-time construction cost on their first multiply_vec_pair call.
+  pub fn precompute_sparse_matrices(&self) {
+    self.precomputed_A.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    self.precomputed_B.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    self.precomputed_C.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+  }
+
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
   // Returns false if num_cons or num_vars are not powers of two, or if num_io > num_vars
   #[inline]
@@ -357,6 +389,7 @@ impl<E: Engine> R1CSShape<E> {
   /// Multiplies A, B, C by two vectors simultaneously in a single pass per matrix.
   /// Returns ((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)).
   /// Faster than two separate multiply_vec calls due to reduced memory traffic.
+  /// Uses precomputed coefficient classification on second+ call.
   pub fn multiply_vec_pair(
     &self,
     z1: &[E::Scalar],
@@ -374,14 +407,13 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
+    let pa = self.precomputed_A.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self.precomputed_B.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self.precomputed_C.get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+
     let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
-      || self.A.multiply_vec_pair(z1, z2),
-      || {
-        rayon::join(
-          || self.B.multiply_vec_pair(z1, z2),
-          || self.C.multiply_vec_pair(z1, z2),
-        )
-      },
+      || pa.multiply_vec_pair(z1, z2),
+      || rayon::join(|| pb.multiply_vec_pair(z1, z2), || pc.multiply_vec_pair(z1, z2)),
     );
 
     Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
@@ -604,6 +636,9 @@ impl<E: Engine> R1CSShape<E> {
         B: self.B.clone(),
         C: self.C.clone(),
         digest: OnceCell::new(),
+        precomputed_A: OnceCell::new(),
+        precomputed_B: OnceCell::new(),
+        precomputed_C: OnceCell::new(),
       };
     }
 
@@ -640,6 +675,9 @@ impl<E: Engine> R1CSShape<E> {
       B: B_padded,
       C: C_padded,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     }
   }
 
@@ -689,6 +727,9 @@ impl<E: Engine> R1CSShape<E> {
       B: B_padded,
       C: C_padded,
       digest: OnceCell::new(),
+      precomputed_A: OnceCell::new(),
+      precomputed_B: OnceCell::new(),
+      precomputed_C: OnceCell::new(),
     }
   }
 
