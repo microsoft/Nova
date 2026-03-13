@@ -84,16 +84,30 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// Multiply by a dense vector; uses rayon/gpu.
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
-    self
-      .indptr
-      .par_windows(2)
-      .map(|ptrs| {
-        self
-          .get_row_unchecked(ptrs.try_into().unwrap())
-          .map(|(val, col_idx)| *val * vector[*col_idx])
-          .sum()
-      })
-      .collect()
+    if self.indptr.len() <= 4097 {
+      // Sequential path for small matrices
+      self
+        .indptr
+        .windows(2)
+        .map(|ptrs| {
+          self
+            .get_row_unchecked(ptrs.try_into().unwrap())
+            .map(|(val, col_idx)| *val * vector[*col_idx])
+            .sum()
+        })
+        .collect()
+    } else {
+      self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          self
+            .get_row_unchecked(ptrs.try_into().unwrap())
+            .map(|(val, col_idx)| *val * vector[*col_idx])
+            .sum()
+        })
+        .collect()
+    }
   }
 
   /// number of non-zero entries
