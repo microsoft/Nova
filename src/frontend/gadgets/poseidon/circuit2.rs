@@ -42,24 +42,23 @@ impl<Scalar: PrimeField> Elt<Scalar> {
     cs: &mut CS,
     enforce: bool,
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-    match self {
-      Self::Allocated(v) => Ok(v.clone()),
-      Self::Num(num) => {
-        let v = AllocatedNum::alloc(cs.namespace(|| "allocate for Elt::Num"), || {
-          num.get_value().ok_or(SynthesisError::AssignmentMissing)
-        })?;
+    // Always allocate a fresh variable to guarantee consistent R1CS variable
+    // count regardless of whether `self` is `Allocated` or `Num`.
+    // Without this, compact-mode Poseidon produces different variable counts
+    // for different inputs, breaking IVC schemes with fixed R1CS shapes.
+    let v = AllocatedNum::alloc(cs.namespace(|| "ensure_allocated"), || {
+      self.val().ok_or(SynthesisError::AssignmentMissing)
+    })?;
 
-        if enforce {
-          cs.enforce(
-            || "enforce num allocation preserves lc".to_string(),
-            |_| num.lc(Scalar::ONE),
-            |lc| lc + CS::one(),
-            |lc| lc + v.get_variable(),
-          );
-        }
-        Ok(v)
-      }
+    if enforce {
+      cs.enforce(
+        || "enforce allocation preserves value".to_string(),
+        |_| self.lc(),
+        |lc| lc + CS::one(),
+        |lc| lc + v.get_variable(),
+      );
     }
+    Ok(v)
   }
 
   /// Get the value of the Elt.
