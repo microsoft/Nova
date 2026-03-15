@@ -18,6 +18,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
 
+impl<Scalar: PrimeField> PoseidonConstantsCircuit<Scalar> {
+  /// Access the inner PoseidonConstants for GPU upload.
+  pub fn inner(&self) -> &PoseidonConstants<Scalar, U24> {
+    &self.0
+  }
+}
+
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
   /// Generate Poseidon constants
   fn default() -> Self {
