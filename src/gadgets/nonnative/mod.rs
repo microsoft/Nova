@@ -14,10 +14,12 @@ impl<T> OptionExt<T> for Option<T> {
   }
 }
 
+#[allow(dead_code)]
 trait BitAccess {
   fn get_bit(&self, i: usize) -> Option<bool>;
 }
 
+#[allow(dead_code)]
 impl<Scalar: PrimeField> BitAccess for Scalar {
   fn get_bit(&self, i: usize) -> Option<bool> {
     if i as u32 >= Scalar::NUM_BITS {

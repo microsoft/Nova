@@ -40,9 +40,33 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<Vec<Scalar>, SynthesisError> {
-  let mask = int_with_n_ones(limb_width);
-  let mut nat = nat.clone();
-  if nat.bits() as usize <= n_limbs * limb_width {
+  if nat.bits() as usize > n_limbs * limb_width {
+    return Err(SynthesisError::Unsatisfiable(format!(
+      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
+    )));
+  }
+  let bytes_per_limb = limb_width / 8;
+  if limb_width % 8 == 0 && bytes_per_limb <= 8 {
+    // Fast path: extract limbs directly from bytes
+    let (_, bytes) = nat.to_bytes_le();
+    Ok(
+      (0..n_limbs)
+        .map(|i| {
+          let start = i * bytes_per_limb;
+          let mut limb_val: u64 = 0;
+          for j in 0..bytes_per_limb {
+            if start + j < bytes.len() {
+              limb_val |= (bytes[start + j] as u64) << (j * 8);
+            }
+          }
+          Scalar::from(limb_val)
+        })
+        .collect(),
+    )
+  } else {
+    // Fallback for non-byte-aligned limb widths
+    let mask = int_with_n_ones(limb_width);
+    let mut nat = nat.clone();
     Ok(
       (0..n_limbs)
         .map(|_| {
@@ -52,10 +76,6 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         })
         .collect(),
     )
-  } else {
-    Err(SynthesisError::Unsatisfiable(format!(
-      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
-    )))
   }
 }
 
