@@ -234,9 +234,9 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     return msm_simple(coeffs, bases);
   }
 
-  // For small-to-medium inputs (< 4096), use sequential classification
+  // For small-to-medium inputs (< 65536), use sequential classification
   // to avoid rayon contention when many concurrent chains run
-  if n <= 4096 {
+  if n <= 65536 {
     return msm_sequential(coeffs, bases);
   }
 

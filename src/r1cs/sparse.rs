@@ -191,7 +191,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast SpMV using precomputed coefficient classification.
   pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
-    if self.num_rows <= 4096 {
+    if self.num_rows <= 65536 {
       (0..self.num_rows).map(|r| self.compute_row_single(r, vector)).collect()
     } else {
       (0..self.num_rows).into_par_iter().map(|r| self.compute_row_single(r, vector)).collect()
@@ -200,7 +200,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
   pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
-    if self.num_rows <= 4096 {
+    if self.num_rows <= 65536 {
       (0..self.num_rows).map(|r| self.compute_row_pair(r, v1, v2)).unzip()
     } else {
       (0..self.num_rows).into_par_iter().map(|r| self.compute_row_pair(r, v1, v2)).unzip()
@@ -285,7 +285,7 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// Multiply by a dense vector; uses rayon/gpu.
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
-    if self.indptr.len() <= 4097 {
+    if self.indptr.len() <= 65537 {
       self
         .indptr
         .windows(2)
@@ -366,7 +366,7 @@ impl<F: PrimeField> SparseMatrix<F> {
     assert_eq!(self.cols, v1.len(), "invalid shape for v1");
     assert_eq!(self.cols, v2.len(), "invalid shape for v2");
 
-    if self.indptr.len() <= 4097 {
+    if self.indptr.len() <= 65537 {
       self
         .indptr
         .windows(2)

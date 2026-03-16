@@ -381,7 +381,7 @@ impl<E: Engine> R1CSShape<E> {
 
     // For small circuits, skip rayon to avoid thread pool contention
     // when many concurrent chains run small CycleFold SpMVs
-    if z.len() <= 4096 {
+    if z.len() <= 65536 {
       if let (Some(pa), Some(pb), Some(pc)) = (
         self.precomputed_A.get(),
         self.precomputed_B.get(),
@@ -599,7 +599,7 @@ impl<E: Engine> R1CSShape<E> {
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
     // For small circuits, avoid rayon par_iter overhead
-    let T: Vec<E::Scalar> = if AZ.len() <= 4096 {
+    let T: Vec<E::Scalar> = if AZ.len() <= 65536 {
       AZ.iter()
         .zip(BZ.iter())
         .zip(CZ.iter())
@@ -636,7 +636,7 @@ impl<E: Engine> R1CSShape<E> {
 
     // For small circuits, avoid rayon overhead
     let z_len = Z1.len();
-    let Z: Vec<E::Scalar> = if z_len <= 4096 {
+    let Z: Vec<E::Scalar> = if z_len <= 65536 {
       Z1.into_iter()
         .zip(Z2.into_iter())
         .map(|(z1, z2)| z1 + z2)
@@ -651,7 +651,7 @@ impl<E: Engine> R1CSShape<E> {
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    let T: Vec<E::Scalar> = if AZ.len() <= 4096 {
+    let T: Vec<E::Scalar> = if AZ.len() <= 65536 {
       AZ.iter()
         .zip(BZ.iter())
         .zip(CZ.iter())
@@ -1033,12 +1033,12 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
 
     let W = W1
-      .par_iter()
+      .iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
     let E = E1
-      .par_iter()
+      .iter()
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
@@ -1066,14 +1066,14 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
 
     let W = W1
-      .par_iter()
+      .iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
     let E = E1
-      .par_iter()
+      .iter()
       .zip(T)
-      .zip(E2.par_iter())
+      .zip(E2.iter())
       .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
       .collect::<Vec<E::Scalar>>();
 
@@ -1223,7 +1223,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
 
     // weighted sum of X, comm_W, comm_E, and u
     let X = X1
-      .par_iter()
+      .iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
@@ -1252,7 +1252,7 @@ impl<E: Engine> RelaxedR1CSInstance<E> {
 
     // weighted sum of X, comm_W, comm_E, and u
     let X = X1
-      .par_iter()
+      .iter()
       .zip(X2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
