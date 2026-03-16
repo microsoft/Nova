@@ -234,6 +234,12 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     return msm_simple(coeffs, bases);
   }
 
+  // For small-to-medium inputs (< 65536), use sequential classification
+  // to avoid rayon contention when many concurrent chains run
+  if n <= 65536 {
+    return msm_sequential(coeffs, bases);
+  }
+
   // Group indices: 0=unit_pos, 1=unit_neg, 2=pos≤8, 3=neg≤8,
   // 4=pos≤16, 5=neg≤16, 6=pos≤32, 7=neg≤32, 8=pos≤64, 9=neg≤64, 10=large
   const NUM_GROUPS: usize = 11;
@@ -416,6 +422,131 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   );
 
   binary_result + small_and_large_result
+}
+
+/// Sequential MSM for medium-sized inputs (avoids rayon contention).
+/// Uses the same classification + group strategy but without parallel iterators.
+fn msm_sequential<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+  const NUM_GROUPS: usize = 11;
+
+  // Phase 1: Classify each scalar sequentially
+  let classified: Vec<u64> = coeffs
+    .iter()
+    .enumerate()
+    .filter_map(|(i, s)| {
+      if bool::from(s.is_zero()) || bool::from(bases[i].is_identity()) {
+        return None;
+      }
+      let neg_s = -(*s);
+      let bits_s = scalar_num_bits(s);
+      let bits_neg = scalar_num_bits(&neg_s);
+
+      let group = if bits_s <= 1 {
+        0u8
+      } else if bits_neg <= 1 {
+        1u8
+      } else if bits_s <= 8 {
+        2u8
+      } else if bits_neg <= 8 {
+        3u8
+      } else if bits_s <= 16 {
+        4u8
+      } else if bits_neg <= 16 {
+        5u8
+      } else if bits_s <= 32 {
+        6u8
+      } else if bits_neg <= 32 {
+        7u8
+      } else if bits_s <= 64 {
+        8u8
+      } else if bits_neg <= 64 {
+        9u8
+      } else {
+        10u8
+      };
+      Some(((i as u64) & 0x0FFF_FFFF_FFFF_FFFF) | ((group as u64) << 60))
+    })
+    .collect();
+
+  if classified.is_empty() {
+    return C::Curve::identity();
+  }
+
+  // Phase 2: Sort by group (sequential)
+  let mut classified = classified;
+  classified.sort_unstable_by_key(|v| (v >> 60) as u8);
+
+  let extract_group = |v: u64| (v >> 60) as u8;
+  let extract_index = |v: u64| (v & 0x0FFF_FFFF_FFFF_FFFF) as usize;
+
+  // Find partition boundaries
+  let mut boundaries = [0usize; NUM_GROUPS + 1];
+  {
+    let mut pos = 0;
+    for g in 0..NUM_GROUPS as u8 {
+      boundaries[g as usize] = pos;
+      pos += classified[pos..].partition_point(|v| extract_group(*v) <= g);
+    }
+    boundaries[NUM_GROUPS] = classified.len();
+  }
+
+  let extract_u64_group = |start: usize, end: usize, negate: bool| -> (Vec<C>, Vec<u64>) {
+    classified[start..end]
+      .iter()
+      .map(|&v| {
+        let idx = extract_index(v);
+        let b = bases[idx];
+        let s = if negate { -coeffs[idx] } else { coeffs[idx] };
+        (b, repr_low_u64(&s))
+      })
+      .unzip()
+  };
+
+  let extract_binary_group = |start: usize, end: usize| -> Vec<C> {
+    classified[start..end]
+      .iter()
+      .map(|&v| bases[extract_index(v)])
+      .collect()
+  };
+
+  // Phase 3: Compute MSM for each group sequentially
+  let mut result = C::Curve::identity();
+
+  // Binary groups
+  let bases_pos = extract_binary_group(boundaries[0], boundaries[1]);
+  result = result + accumulate_bases::<C>(&bases_pos);
+  let bases_neg = extract_binary_group(boundaries[1], boundaries[2]);
+  result = result - accumulate_bases::<C>(&bases_neg);
+
+  // Small scalar groups
+  let pairs = [
+    (2, 3, 8usize),
+    (4, 5, 16),
+    (6, 7, 32),
+    (8, 9, 64),
+  ];
+  for (pos_g, neg_g, max_bits) in pairs {
+    let (pos_b, pos_s) = extract_u64_group(boundaries[pos_g], boundaries[pos_g + 1], false);
+    let (neg_b, neg_s) = extract_u64_group(boundaries[neg_g], boundaries[neg_g + 1], true);
+    result = result + msm_small_with_max_num_bits(&pos_s, &pos_b, max_bits)
+      - msm_small_with_max_num_bits(&neg_s, &neg_b, max_bits);
+  }
+
+  // Large scalars
+  let g10_start = boundaries[10];
+  let g10_end = boundaries[11];
+  if g10_start < g10_end {
+    let (large_bases, large_coeffs): (Vec<C>, Vec<C::Scalar>) = classified[g10_start..g10_end]
+      .iter()
+      .map(|&v| {
+        let idx = extract_index(v);
+        (bases[idx], coeffs[idx])
+      })
+      .unzip();
+    result = result + halo2curves::msm::msm_best(&large_coeffs, &large_bases);
+  }
+
+  result
 }
 
 /// Simple MSM fallback for very small inputs.

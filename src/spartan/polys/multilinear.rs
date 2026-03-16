@@ -68,9 +68,16 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
-    zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
-      *a += *r * (*b - *a);
-    });
+    // Use sequential iteration for small polynomials to avoid rayon overhead
+    if n < 4096 {
+      left.iter_mut().zip(right.iter()).for_each(|(a, b)| {
+        *a += *r * (*b - *a);
+      });
+    } else {
+      zip_with_for_each!((left.par_iter_mut(), right.par_iter()), |a, b| {
+        *a += *r * (*b - *a);
+      });
+    }
 
     self.Z.resize(n, Scalar::ZERO);
     self.num_vars -= 1;
@@ -120,6 +127,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   }
 
   /// Evaluates multiple polynomials at the same point, reusing sqrt-sized eq tables.
+  /// Fuses all polynomial reductions into a single pass for cache efficiency.
   pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
     let s = r.len();
     let s_right = s / 2;
@@ -130,21 +138,32 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
     let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
 
-    Zs.iter()
-      .map(|Z| {
-        let reduced: Vec<Scalar> = (0..n_left)
-          .into_par_iter()
-          .map(|i| {
-            let chunk = &Z[i * n_right..(i + 1) * n_right];
-            chunk
-              .iter()
-              .zip(eq_right.iter())
-              .map(|(z, e)| *z * *e)
-              .sum()
-          })
-          .collect();
+    let k = Zs.len();
 
-        zip_with!((eq_left.par_iter(), reduced.into_par_iter()), |a, b| *a * b).sum()
+    // Fuse: reduce all k polynomials in a single pass over the row structure
+    let all_reduced: Vec<Vec<Scalar>> = (0..n_left)
+      .into_par_iter()
+      .map(|i| {
+        let start = i * n_right;
+        let mut sums = vec![Scalar::ZERO; k];
+        for j in 0..n_right {
+          let eq_val = eq_right[j];
+          for (p, z) in Zs.iter().enumerate() {
+            sums[p] += z[start + j] * eq_val;
+          }
+        }
+        sums
+      })
+      .collect();
+
+    // Dot each polynomial's reduced vector with eq_left
+    (0..k)
+      .map(|p| {
+        eq_left
+          .iter()
+          .enumerate()
+          .map(|(i, eq_l)| *eq_l * all_reduced[i][p])
+          .sum()
       })
       .collect()
   }
