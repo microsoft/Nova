@@ -370,7 +370,7 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
-  /// Uses precomputed coefficient tables when available.
+  /// Lazily builds and caches precomputed coefficient tables on first call.
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],
@@ -379,41 +379,28 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
+    // Lazily build precomputed tables on first use
+    let pa = self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+
     // For small circuits, skip rayon to avoid thread pool contention
-    // when many concurrent small SpMVs run in parallel
     if z.len() <= 65536 {
-      if let (Some(pa), Some(pb), Some(pc)) = (
-        self.precomputed_A.get(),
-        self.precomputed_B.get(),
-        self.precomputed_C.get(),
-      ) {
-        let az = pa.multiply_vec(z);
-        let bz = pb.multiply_vec(z);
-        let cz = pc.multiply_vec(z);
-        return Ok((az, bz, cz));
-      }
-      let az = self.A.multiply_vec(z);
-      let bz = self.B.multiply_vec(z);
-      let cz = self.C.multiply_vec(z);
+      let az = pa.multiply_vec(z);
+      let bz = pb.multiply_vec(z);
+      let cz = pc.multiply_vec(z);
       return Ok((az, bz, cz));
     }
 
-    // Use precomputed tables if available
-    if let (Some(pa), Some(pb), Some(pc)) = (
-      self.precomputed_A.get(),
-      self.precomputed_B.get(),
-      self.precomputed_C.get(),
-    ) {
-      let (Az, (Bz, Cz)) = rayon::join(
-        || pa.multiply_vec(z),
-        || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
-      );
-      return Ok((Az, Bz, Cz));
-    }
-
     let (Az, (Bz, Cz)) = rayon::join(
-      || self.A.multiply_vec(z),
-      || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
+      || pa.multiply_vec(z),
+      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
     );
 
     Ok((Az, Bz, Cz))
@@ -454,6 +441,7 @@ impl<E: Engine> R1CSShape<E> {
 
   /// Like multiply_vec_pair but writes into pre-allocated buffers, avoiding allocation.
   /// Buffers: (Az1, Bz1, Cz1, Az2, Bz2, Cz2), each of length >= num_cons.
+  /// Lazily builds and caches precomputed coefficient tables on first call.
   #[allow(clippy::type_complexity)]
   pub fn multiply_vec_pair_into(
     &self,
@@ -472,12 +460,22 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
+    let pa = self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+
     rayon::join(
-      || self.A.multiply_vec_pair_into(z1, z2, az1, az2),
+      || pa.multiply_vec_pair_into(z1, z2, az1, az2),
       || {
         rayon::join(
-          || self.B.multiply_vec_pair_into(z1, z2, bz1, bz2),
-          || self.C.multiply_vec_pair_into(z1, z2, cz1, cz2),
+          || pb.multiply_vec_pair_into(z1, z2, bz1, bz2),
+          || pc.multiply_vec_pair_into(z1, z2, cz1, cz2),
         )
       },
     );
@@ -586,6 +584,9 @@ impl<E: Engine> R1CSShape<E> {
     // Build Z = Z1 + Z2 in one pass without allocating Z1/Z2 separately
     let n_w = W1.W.len();
     let n_x = U1.X.len();
+    if W2.W.len() != n_w || U2.X.len() != n_x {
+      return Err(NovaError::InvalidWitnessLength);
+    }
     let z_len = n_w + 1 + n_x;
     let mut Z = Vec::with_capacity(z_len);
     for i in 0..n_w {
@@ -1027,11 +1028,19 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    let W = W1
-      .iter()
-      .zip(W2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
+    let W = if W1.len() > 65536 {
+      W1
+        .par_iter()
+        .zip(W2.par_iter())
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<E::Scalar>>()
+    } else {
+      W1
+        .iter()
+        .zip(W2)
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<E::Scalar>>()
+    };
     let E = E1
       .iter()
       .zip(T)
@@ -1060,17 +1069,34 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    let W = W1
-      .iter()
-      .zip(W2)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
-    let E = E1
-      .iter()
-      .zip(T)
-      .zip(E2.iter())
-      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
-      .collect::<Vec<E::Scalar>>();
+    let W = if W1.len() > 65536 {
+      W1
+        .par_iter()
+        .zip(W2.par_iter())
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<E::Scalar>>()
+    } else {
+      W1
+        .iter()
+        .zip(W2)
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<E::Scalar>>()
+    };
+    let E = if E1.len() > 65536 {
+      E1
+        .par_iter()
+        .zip(T.par_iter())
+        .zip(E2.par_iter())
+        .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
+        .collect::<Vec<E::Scalar>>()
+    } else {
+      E1
+        .iter()
+        .zip(T)
+        .zip(E2.iter())
+        .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
+        .collect::<Vec<E::Scalar>>()
+    };
 
     let r_W = *r_W1 + *r * r_W2;
     let r_E = *r_E1 + *r * r_T + *r * *r * *r_E2;

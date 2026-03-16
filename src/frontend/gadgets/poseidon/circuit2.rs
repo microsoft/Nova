@@ -36,12 +36,15 @@ impl<Scalar: PrimeField> Elt<Scalar> {
     Self::Num(num.add_bool_with_coeff(CS::one(), &Boolean::Constant(true), fr))
   }
 
-  /// Ensure Elt is allocated.
+  /// Ensure Elt is allocated as a fresh variable with an equality constraint.
+  /// The `enforce` parameter must always be `true` to maintain circuit soundness;
+  /// passing `false` would produce an unconstrained variable.
   pub fn ensure_allocated<CS: ConstraintSystem<Scalar>>(
     &self,
     cs: &mut CS,
     enforce: bool,
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
+    debug_assert!(enforce, "ensure_allocated must always enforce equality");
     // Always allocate a fresh variable to guarantee consistent R1CS variable
     // count regardless of whether `self` is `Allocated` or `Num`.
     // Without this, compact-mode Poseidon produces different variable counts

@@ -40,6 +40,11 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<Vec<Scalar>, SynthesisError> {
+  if nat.sign() == num_bigint::Sign::Minus {
+    return Err(SynthesisError::Unsatisfiable(format!(
+      "nat_to_limbs called with negative value {nat}"
+    )));
+  }
   if nat.bits() as usize > n_limbs * limb_width {
     return Err(SynthesisError::Unsatisfiable(format!(
       "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"

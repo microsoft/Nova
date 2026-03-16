@@ -100,6 +100,11 @@ impl<Scalar: PrimeField> Num<Scalar> {
     mut cs: CS,
     n_bits: usize,
   ) -> Result<(), SynthesisError> {
+    assert!(
+      n_bits as u32 <= Scalar::NUM_BITS,
+      "n_bits ({n_bits}) exceeds field capacity ({})",
+      Scalar::NUM_BITS
+    );
     let v = self.value;
 
     // Pre-compute all bit values from the field element's byte representation

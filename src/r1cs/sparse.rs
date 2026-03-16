@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 pub struct PrecomputedSparseMatrix<F: PrimeField> {
   num_rows: usize,
   /// Per-row spans into each category's column array: (start, count)
-  row_unit_pos: Vec<(u32, u16)>,
-  row_unit_neg: Vec<(u32, u16)>,
-  row_small: Vec<(u32, u16)>,
-  row_general: Vec<(u32, u16)>,
+  row_unit_pos: Vec<(u32, u32)>,
+  row_unit_neg: Vec<(u32, u32)>,
+  row_small: Vec<(u32, u32)>,
+  row_general: Vec<(u32, u32)>,
   /// Column indices for val=+1 entries
   unit_pos_cols: Vec<u32>,
   /// Column indices for val=-1 entries
@@ -82,10 +82,10 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
         }
       }
 
-      row_unit_pos.push((up_start, (unit_pos_cols.len() as u32 - up_start) as u16));
-      row_unit_neg.push((un_start, (unit_neg_cols.len() as u32 - un_start) as u16));
-      row_small.push((sm_start, (small_cols.len() as u32 - sm_start) as u16));
-      row_general.push((g_start, (general_cols.len() as u32 - g_start) as u16));
+      row_unit_pos.push((up_start, unit_pos_cols.len() as u32 - up_start));
+      row_unit_neg.push((un_start, unit_neg_cols.len() as u32 - un_start));
+      row_small.push((sm_start, small_cols.len() as u32 - sm_start));
+      row_general.push((g_start, general_cols.len() as u32 - g_start));
     }
 
 
@@ -206,6 +206,30 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
       (0..self.num_rows).into_par_iter().map(|r| self.compute_row_pair(r, v1, v2)).unzip()
     }
   }
+
+  /// Fast dual-vector SpMV writing directly into pre-allocated output buffers.
+  pub fn multiply_vec_pair_into(&self, v1: &[F], v2: &[F], out1: &mut [F], out2: &mut [F]) {
+    assert!(out1.len() >= self.num_rows, "out1 too short");
+    assert!(out2.len() >= self.num_rows, "out2 too short");
+
+    if self.num_rows <= 4096 {
+      for r in 0..self.num_rows {
+        let (s1, s2) = self.compute_row_pair(r, v1, v2);
+        out1[r] = s1;
+        out2[r] = s2;
+      }
+    } else {
+      let (o1, o2) = (&mut out1[..self.num_rows], &mut out2[..self.num_rows]);
+      o1.par_iter_mut()
+        .zip(o2.par_iter_mut())
+        .enumerate()
+        .for_each(|(r, (o1_val, o2_val))| {
+          let (s1, s2) = self.compute_row_pair(r, v1, v2);
+          *o1_val = s1;
+          *o2_val = s2;
+        });
+    }
+  }
 }
 
 /// CSR format sparse matrix, We follow the names used by scipy.
@@ -319,11 +343,11 @@ impl<F: PrimeField> SparseMatrix<F> {
     out1: &mut [F],
     out2: &mut [F],
   ) {
-    debug_assert_eq!(self.cols, v1.len());
-    debug_assert_eq!(self.cols, v2.len());
+    assert_eq!(self.cols, v1.len(), "invalid shape for v1");
+    assert_eq!(self.cols, v2.len(), "invalid shape for v2");
     let n = self.indptr.len() - 1;
-    debug_assert!(out1.len() >= n);
-    debug_assert!(out2.len() >= n);
+    assert!(out1.len() >= n, "out1 too short");
+    assert!(out2.len() >= n, "out2 too short");
 
     if n <= 4096 {
       for (row_idx, ptrs) in self.indptr.windows(2).enumerate() {
@@ -338,24 +362,22 @@ impl<F: PrimeField> SparseMatrix<F> {
       }
     } else {
       use rayon::prelude::*;
-      // Split output into chunks that can be written independently
-      let results: Vec<(F, F)> = self
-        .indptr
-        .par_windows(2)
-        .map(|ptrs| {
+      let (out1_slice, out2_slice) = (&mut out1[..n], &mut out2[..n]);
+      out1_slice
+        .par_iter_mut()
+        .zip(out2_slice.par_iter_mut())
+        .enumerate()
+        .for_each(|(row_idx, (o1, o2))| {
+          let ptrs = &self.indptr[row_idx..row_idx + 2];
           let mut s1 = F::ZERO;
           let mut s2 = F::ZERO;
           for (val, col_idx) in self.get_row_unchecked(ptrs.try_into().unwrap()) {
             s1 += *val * v1[*col_idx];
             s2 += *val * v2[*col_idx];
           }
-          (s1, s2)
-        })
-        .collect();
-      for (row_idx, (s1, s2)) in results.into_iter().enumerate() {
-        out1[row_idx] = s1;
-        out2[row_idx] = s2;
-      }
+          *o1 = s1;
+          *o2 = s2;
+        });
     }
   }
 
