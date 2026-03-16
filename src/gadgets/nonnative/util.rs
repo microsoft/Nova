@@ -1,4 +1,4 @@
-use super::{BitAccess, OptionExt};
+use super::OptionExt;
 use crate::frontend::{
   num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
 };
@@ -102,13 +102,30 @@ impl<Scalar: PrimeField> Num<Scalar> {
   ) -> Result<(), SynthesisError> {
     let v = self.value;
 
+    // Pre-compute all bit values from the field element's byte representation
+    // to avoid calling to_repr() per bit (which does Montgomery reduction each time).
+    let bit_values: Option<Vec<bool>> = v.map(|val| {
+      let repr = val.to_repr();
+      let bytes = repr.as_ref();
+      (0..n_bits)
+        .map(|i| {
+          let (byte_pos, bit_pos) = (i / 8, i % 8);
+          if byte_pos < bytes.len() {
+            (bytes[byte_pos] >> bit_pos) & 1 == 1
+          } else {
+            false
+          }
+        })
+        .collect()
+    });
+
     // Allocate all but the first bit.
     let bits: Vec<Variable> = (1..n_bits)
       .map(|i| {
         cs.alloc(
           || format!("bit {i}"),
           || {
-            let r = if *v.grab()?.get_bit(i).grab()? {
+            let r = if bit_values.as_ref().ok_or(SynthesisError::AssignmentMissing)?[i] {
               Scalar::ONE
             } else {
               Scalar::ZERO
@@ -179,9 +196,20 @@ impl<Scalar: PrimeField> Num<Scalar> {
     mut cs: CS,
     n_bits: usize,
   ) -> Result<Bitvector<Scalar>, SynthesisError> {
+    // Pre-compute all bit values with a single to_repr() call
     let values: Option<Vec<bool>> = self.value.as_ref().map(|v| {
-      let num = *v;
-      (0..n_bits).map(|i| num.get_bit(i).unwrap()).collect()
+      let repr = v.to_repr();
+      let bytes = repr.as_ref();
+      (0..n_bits)
+        .map(|i| {
+          let (byte_pos, bit_pos) = (i / 8, i % 8);
+          if byte_pos < bytes.len() {
+            (bytes[byte_pos] >> bit_pos) & 1 == 1
+          } else {
+            false
+          }
+        })
+        .collect()
     });
     let allocations: Vec<Bit<Scalar>> = (0..n_bits)
       .map(|bit_i| {
@@ -243,7 +271,17 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Convert a natural number to a field element.
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
-  Scalar::from_str_vartime(&format!("{n}"))
+  let (sign, bytes) = n.to_bytes_le();
+  if sign == Sign::Minus {
+    return None;
+  }
+  let mut repr = Scalar::Repr::default();
+  let repr_bytes = repr.as_mut();
+  if bytes.len() > repr_bytes.len() {
+    return None;
+  }
+  repr_bytes[..bytes.len()].copy_from_slice(&bytes);
+  Scalar::from_repr(repr).into()
 }
 
 use super::bignat::BigNat;
