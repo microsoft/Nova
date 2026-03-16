@@ -379,6 +379,25 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
+    // For small circuits, skip rayon to avoid thread pool contention
+    // when many concurrent chains run small CycleFold SpMVs
+    if z.len() <= 4096 {
+      if let (Some(pa), Some(pb), Some(pc)) = (
+        self.precomputed_A.get(),
+        self.precomputed_B.get(),
+        self.precomputed_C.get(),
+      ) {
+        let az = pa.multiply_vec(z);
+        let bz = pb.multiply_vec(z);
+        let cz = pc.multiply_vec(z);
+        return Ok((az, bz, cz));
+      }
+      let az = self.A.multiply_vec(z);
+      let bz = self.B.multiply_vec(z);
+      let cz = self.C.multiply_vec(z);
+      return Ok((az, bz, cz));
+    }
+
     // Use precomputed tables if available
     if let (Some(pa), Some(pb), Some(pc)) = (
       self.precomputed_A.get(),
@@ -579,13 +598,22 @@ impl<E: Engine> R1CSShape<E> {
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
-      .collect::<Vec<E::Scalar>>();
+    // For small circuits, avoid rayon par_iter overhead
+    let T: Vec<E::Scalar> = if AZ.len() <= 4096 {
+      AZ.iter()
+        .zip(BZ.iter())
+        .zip(CZ.iter())
+        .zip(W1.E.iter())
+        .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+        .collect()
+    } else {
+      AZ.par_iter()
+        .zip(BZ.par_iter())
+        .zip(CZ.par_iter())
+        .zip(W1.E.par_iter())
+        .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+        .collect()
+    };
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 
@@ -606,25 +634,40 @@ impl<E: Engine> R1CSShape<E> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
 
-    // The following code uses the optimization suggested in
-    // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let Z = Z1
-      .into_par_iter()
-      .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
+    // For small circuits, avoid rayon overhead
+    let z_len = Z1.len();
+    let Z: Vec<E::Scalar> = if z_len <= 4096 {
+      Z1.into_iter()
+        .zip(Z2.into_iter())
+        .map(|(z1, z2)| z1 + z2)
+        .collect()
+    } else {
+      Z1.into_par_iter()
+        .zip(Z2.into_par_iter())
+        .map(|(z1, z2)| z1 + z2)
+        .collect()
+    };
     let u = U1.u + U2.u;
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .zip(W2.E.par_iter())
-      .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
-      .collect::<Vec<E::Scalar>>();
+    let T: Vec<E::Scalar> = if AZ.len() <= 4096 {
+      AZ.iter()
+        .zip(BZ.iter())
+        .zip(CZ.iter())
+        .zip(W1.E.iter())
+        .zip(W2.E.iter())
+        .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
+        .collect()
+    } else {
+      AZ.par_iter()
+        .zip(BZ.par_iter())
+        .zip(CZ.par_iter())
+        .zip(W1.E.par_iter())
+        .zip(W2.E.par_iter())
+        .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
+        .collect()
+    };
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 
