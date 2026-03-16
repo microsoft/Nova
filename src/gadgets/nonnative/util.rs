@@ -243,7 +243,17 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Convert a natural number to a field element.
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
-  Scalar::from_str_vartime(&format!("{n}"))
+  let (sign, bytes) = n.to_bytes_le();
+  if sign == Sign::Minus {
+    return None;
+  }
+  let mut repr = Scalar::Repr::default();
+  let repr_bytes = repr.as_mut();
+  if bytes.len() > repr_bytes.len() {
+    return None;
+  }
+  repr_bytes[..bytes.len()].copy_from_slice(&bytes);
+  Scalar::from_repr(repr).into()
 }
 
 use super::bignat::BigNat;
