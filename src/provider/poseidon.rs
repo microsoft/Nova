@@ -159,7 +159,7 @@ where
       output
     };
 
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"))?;
 
     // reset the state to only contain the squeezed value
     self.state = vec![hash.clone()];
@@ -218,7 +218,7 @@ where
       output
     };
 
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"))?;
 
     // reset the state to only contain the squeezed value
     self.state = vec![hash.clone()];
