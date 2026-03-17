@@ -711,6 +711,20 @@ impl<E: Engine> R1CSWitness<E> {
 
     Self { W, r_W: self.r_W }
   }
+
+  /// Derandomizes the witness by setting its blinding factor `r_W` to zero.
+  ///
+  /// Returns a tuple containing the derandomized witness and the removed
+  /// randomness `r_W` as `E::Scalar`.
+  pub fn derandomize(&self) -> (Self, E::Scalar) {
+    (
+      R1CSWitness {
+        W: self.W.clone(),
+        r_W: E::Scalar::ZERO,
+      },
+      self.r_W,
+    )
+  }
 }
 
 impl<E: Engine> R1CSInstance<E> {
@@ -740,6 +754,14 @@ impl<E: Engine> R1CSInstance<E> {
   /// This is useful for public IO indexing (e.g., `inst.X()[i]`).
   pub fn X(&self) -> &[E::Scalar] {
     &self.X
+  }
+
+  /// Derandomizes the instance by removing the randomness from the commitment.
+  pub fn derandomize(&self, dk: &DerandKey<E>, r_W: &E::Scalar) -> R1CSInstance<E> {
+    R1CSInstance {
+      comm_W: CE::<E>::derandomize(dk, &self.comm_W, r_W),
+      X: self.X.clone(),
+    }
   }
 }
 
