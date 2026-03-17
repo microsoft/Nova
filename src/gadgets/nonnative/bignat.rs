@@ -345,6 +345,21 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     &self,
     mut cs: CS,
   ) -> Result<(), SynthesisError> {
+    // In witness mode, skip LC cloning — fits_in_bits only needs the value
+    if cs.is_witness_generator() {
+      for (i, limb_value) in self
+        .limb_values
+        .as_ref()
+        .map(|vs| vs.iter())
+        .into_iter()
+        .flatten()
+        .enumerate()
+      {
+        Num::new(Some(*limb_value), LinearCombination::zero())
+          .fits_in_bits(cs.namespace(|| format!("{i}")), self.params.limb_width)?;
+      }
+      return Ok(());
+    }
     // swap the option and iterator
     let limb_values_split =
       (0..self.limbs.len()).map(|i| self.limb_values.as_ref().map(|vs| vs[i]));
