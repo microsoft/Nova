@@ -328,8 +328,8 @@ where
     // reaching ~58 terms after 55 rounds, which inflates R1CS non-zeros.
     if self.compact {
       for i in 1..self.width {
-        let allocated = self.elements[i]
-          .ensure_allocated(&mut cs.namespace(|| format!("materialize {i}")))?;
+        let allocated =
+          self.elements[i].ensure_allocated(&mut cs.namespace(|| format!("materialize {i}")))?;
         self.elements[i] = Elt::Allocated(allocated);
       }
     }
