@@ -88,7 +88,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
 
       let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
       sponge.finish(acc).unwrap();
-      Elt::ensure_allocated(&output[0], &mut ns.namespace(|| "ensure allocated"), true)?
+      Elt::ensure_allocated(&output[0], &mut ns.namespace(|| "ensure allocated"))?
     };
 
     Ok(vec![z_out])

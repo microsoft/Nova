@@ -36,30 +36,25 @@ impl<Scalar: PrimeField> Elt<Scalar> {
     Self::Num(num.add_bool_with_coeff(CS::one(), &Boolean::Constant(true), fr))
   }
 
-  /// Ensure Elt is allocated.
+  /// Ensure Elt is allocated as a fresh variable with an equality constraint.
+  /// Always allocates a new variable and constrains it equal to the current
+  /// value, guaranteeing consistent R1CS variable count regardless of whether
+  /// `self` is `Allocated` or `Num`.
   pub fn ensure_allocated<CS: ConstraintSystem<Scalar>>(
     &self,
     cs: &mut CS,
-    enforce: bool,
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-    match self {
-      Self::Allocated(v) => Ok(v.clone()),
-      Self::Num(num) => {
-        let v = AllocatedNum::alloc(cs.namespace(|| "allocate for Elt::Num"), || {
-          num.get_value().ok_or(SynthesisError::AssignmentMissing)
-        })?;
+    let v = AllocatedNum::alloc(cs.namespace(|| "ensure_allocated"), || {
+      self.val().ok_or(SynthesisError::AssignmentMissing)
+    })?;
 
-        if enforce {
-          cs.enforce(
-            || "enforce num allocation preserves lc".to_string(),
-            |_| num.lc(Scalar::ONE),
-            |lc| lc + CS::one(),
-            |lc| lc + v.get_variable(),
-          );
-        }
-        Ok(v)
-      }
-    }
+    cs.enforce(
+      || "enforce allocation preserves value".to_string(),
+      |_| self.lc(),
+      |lc| lc + CS::one(),
+      |lc| lc + v.get_variable(),
+    );
+    Ok(v)
   }
 
   /// Get the value of the Elt.
@@ -333,8 +328,8 @@ where
     // reaching ~58 terms after 55 rounds, which inflates R1CS non-zeros.
     if self.compact {
       for i in 1..self.width {
-        let allocated = self.elements[i]
-          .ensure_allocated(&mut cs.namespace(|| format!("materialize {i}")), true)?;
+        let allocated =
+          self.elements[i].ensure_allocated(&mut cs.namespace(|| format!("materialize {i}")))?;
         self.elements[i] = Elt::Allocated(allocated);
       }
     }
