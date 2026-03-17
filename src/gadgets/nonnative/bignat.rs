@@ -153,6 +153,38 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     F: FnOnce() -> Result<Vec<Scalar>, SynthesisError>,
   {
     let values_cell = f();
+
+    // Fast witness path: batch-allocate all limbs via extend_aux
+    if cs.is_witness_generator() {
+      if let Ok(ref vs) = values_cell {
+        if vs.len() != n_limbs {
+          return Err(SynthesisError::Unsatisfiable(
+            "Values do not match stated limb count".to_string(),
+          ));
+        }
+        let base_idx = cs.aux_slice().len();
+        cs.extend_aux(vs);
+        let limbs: Vec<LinearCombination<Scalar>> = (0..n_limbs)
+          .map(|i| {
+            let var = Variable(Index::Aux(base_idx + i));
+            LinearCombination::zero() + var
+          })
+          .collect();
+        let value = limbs_to_nat::<Scalar, _, _>(vs.iter(), limb_width);
+        return Ok(Self {
+          value: Some(value),
+          limb_values: Some(vs.clone()),
+          limbs,
+          params: BigNatParams {
+            min_bits: 0,
+            n_limbs,
+            max_word: max_word.unwrap_or_else(|| int_with_n_ones(limb_width)),
+            limb_width,
+          },
+        });
+      }
+    }
+
     let mut value = None;
     let mut limb_values = None;
     let limbs = (0..n_limbs)
