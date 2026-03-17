@@ -712,7 +712,10 @@ impl<E: Engine> R1CSWitness<E> {
     Self { W, r_W: self.r_W }
   }
 
-  /// Derandomizes the witness by setting randomness to zero.
+  /// Derandomizes the witness by setting its blinding factor `r_W` to zero.
+  ///
+  /// Returns a tuple containing the derandomized witness and the removed
+  /// randomness `r_W` as `E::Scalar`.
   pub fn derandomize(&self) -> (Self, E::Scalar) {
     (
       R1CSWitness {
