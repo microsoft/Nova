@@ -2,7 +2,9 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError};
+use crate::frontend::{
+  AllocatedBit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
+};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -206,6 +208,30 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   {
     let all_values_cell =
       f().and_then(|v| Ok((nat_to_limbs::<Scalar>(&v, limb_width, n_limbs)?, v)));
+
+    // Fast witness path: batch-allocate all limbs at once
+    if cs.is_witness_generator() {
+      match all_values_cell {
+        Ok((ref limb_vals, ref nat_val)) => {
+          let base_idx = cs.aux_slice().len();
+          cs.extend_aux(limb_vals);
+          let limbs: Vec<LinearCombination<Scalar>> = (0..n_limbs)
+            .map(|i| {
+              let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+              LinearCombination::zero() + var
+            })
+            .collect();
+          return Ok(Self {
+            value: Some(nat_val.clone()),
+            limb_values: Some(limb_vals.clone()),
+            limbs,
+            params: BigNatParams::new(limb_width, n_limbs),
+          });
+        }
+        Err(e) => return Err(e),
+      }
+    }
+
     let mut value = None;
     let mut limb_values = Vec::new();
     let limbs = (0..n_limbs)
@@ -857,6 +883,25 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
         values
       })
     });
+
+    // Fast witness path: batch-allocate all product coefficients
+    if cs.is_witness_generator() {
+      if let Some(ref vals) = values {
+        let base_idx = cs.aux_slice().len();
+        cs.extend_aux(vals);
+        let coefficients: Vec<LinearCombination<Scalar>> = (0..n_product_coeffs)
+          .map(|i| {
+            let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+            LinearCombination::zero() + var
+          })
+          .collect();
+        return Ok(Polynomial {
+          coefficients,
+          values,
+        });
+      }
+    }
+
     let coefficients = (0..n_product_coeffs)
       .map(|i| {
         Ok(LinearCombination::zero() + cs.alloc(|| format!("prod {i}"), || Ok(values.grab()?[i]))?)

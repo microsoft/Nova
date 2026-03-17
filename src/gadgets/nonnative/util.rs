@@ -1,11 +1,10 @@
 use super::OptionExt;
 use crate::frontend::{
-  num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
+  num::AllocatedNum, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 use std::convert::From;
-
 #[derive(Clone)]
 /// A representation of a bit
 pub struct Bit<Scalar: PrimeField> {
@@ -101,6 +100,28 @@ impl<Scalar: PrimeField> Num<Scalar> {
     n_bits: usize,
   ) -> Result<(), SynthesisError> {
     let v = self.value;
+
+    // Fast witness path: batch-allocate all bit variables at once
+    if cs.is_witness_generator() {
+      let bit_values: Vec<Scalar> = if let Some(val) = v {
+        let repr = val.to_repr();
+        let bytes = repr.as_ref();
+        (1..n_bits)
+          .map(|i| {
+            let (byte_pos, bit_pos) = (i / 8, i % 8);
+            if byte_pos < bytes.len() && (bytes[byte_pos] >> bit_pos) & 1 == 1 {
+              Scalar::ONE
+            } else {
+              Scalar::ZERO
+            }
+          })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits - 1]
+      };
+      cs.extend_aux(&bit_values);
+      return Ok(());
+    }
 
     // Pre-compute all bit values from the field element's byte representation
     // to avoid calling to_repr() per bit (which does Montgomery reduction each time).
@@ -211,6 +232,38 @@ impl<Scalar: PrimeField> Num<Scalar> {
         })
         .collect()
     });
+
+    // Fast witness path: batch-allocate all bit variables
+    if cs.is_witness_generator() {
+      let field_vals: Vec<Scalar> = if let Some(ref bv) = values {
+        bv.iter()
+          .map(|&b| if b { Scalar::ONE } else { Scalar::ZERO })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits]
+      };
+      let base_idx = cs.aux_slice().len();
+      cs.extend_aux(&field_vals);
+
+      let allocations: Vec<Bit<Scalar>> = (0..n_bits)
+        .map(|i| {
+          let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+          Bit {
+            bit: LinearCombination::zero() + var,
+          }
+        })
+        .collect();
+      let bits: Vec<LinearCombination<Scalar>> = allocations
+        .iter()
+        .map(|a| LinearCombination::zero() + &a.bit)
+        .collect();
+      return Ok(Bitvector {
+        allocations,
+        values,
+        bits,
+      });
+    }
+
     let allocations: Vec<Bit<Scalar>> = (0..n_bits)
       .map(|bit_i| {
         Bit::alloc(
