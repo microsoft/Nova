@@ -294,6 +294,41 @@ impl<Scalar: PrimeField> Num<Scalar> {
     })
   }
 
+  /// Allocates bit decomposition variables for range checking only.
+  ///
+  /// In witness mode, skips `LinearCombination` and `Bit` construction since
+  /// range-check callers discard the returned `Bitvector`. Falls back to
+  /// full `decompose` in constraint-generation mode.
+  pub fn decompose_for_range_check<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    n_bits: usize,
+  ) -> Result<(), SynthesisError> {
+    if cs.is_witness_generator() {
+      let field_vals: Vec<Scalar> = if let Some(v) = self.value.as_ref() {
+        let repr = v.to_repr();
+        let bytes = repr.as_ref();
+        (0..n_bits)
+          .map(|i| {
+            let (byte_pos, bit_pos) = (i / 8, i % 8);
+            if byte_pos < bytes.len() && (bytes[byte_pos] >> bit_pos) & 1 == 1 {
+              Scalar::ONE
+            } else {
+              Scalar::ZERO
+            }
+          })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits]
+      };
+      cs.extend_aux(&field_vals);
+      return Ok(());
+    }
+    // Full decompose path for constraint generation
+    self.decompose(cs, n_bits)?;
+    Ok(())
+  }
+
   /// Converts the `Num` to an `AllocatedNum` in the constraint system.
   pub fn as_allocated_num<CS: ConstraintSystem<Scalar>>(
     &self,
