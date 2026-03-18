@@ -504,7 +504,7 @@ impl<E: Engine> SumcheckProof<E> {
   /// Prove sum_x eq(tau,x) * sum_i alpha_i * (A_i(x)*B_i(x) - C_i(x)) = claim
   /// for K instance triples sharing the same sumcheck structure.
   ///
-  /// Returns (proof, r, claims) where claims[i] = vec![A_i(r), B_i(r), C_i(r)].
+  /// Returns (proof, r, claims) where `claims[i] = vec![A_i(r), B_i(r), C_i(r)]`.
   pub fn prove_batched_cubic(
     claim: &E::Scalar,
     taus: Vec<E::Scalar>,
