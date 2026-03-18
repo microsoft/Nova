@@ -504,7 +504,7 @@ impl<E: Engine> SumcheckProof<E> {
   /// Prove sum_x eq(tau,x) * sum_i alpha_i * (A_i(x)*B_i(x) - C_i(x)) = claim
   /// for K instance triples sharing the same sumcheck structure.
   ///
-  /// Returns (proof, r, claims) where claims[i] = [A_i(r), B_i(r), C_i(r)] flattened.
+  /// Returns (proof, r, claims) where claims[i] = vec![A_i(r), B_i(r), C_i(r)].
   pub fn prove_batched_cubic(
     claim: &E::Scalar,
     taus: Vec<E::Scalar>,
@@ -515,6 +515,9 @@ impl<E: Engine> SumcheckProof<E> {
     transcript: &mut E::TE,
   ) -> Result<(Self, Vec<E::Scalar>, Vec<Vec<E::Scalar>>), NovaError> {
     let k = polys_A.len();
+    if k == 0 {
+      return Err(NovaError::InvalidNumInstances);
+    }
     assert_eq!(k, polys_B.len());
     assert_eq!(k, polys_C.len());
     assert_eq!(k, alphas.len());
@@ -753,11 +756,11 @@ pub mod eq_sumcheck {
       claim: E::Scalar,
     ) -> (E::Scalar, E::Scalar, E::Scalar) {
       let k = polys_A.len();
-      debug_assert_eq!(k, polys_B.len());
-      debug_assert_eq!(k, polys_C.len());
-      debug_assert_eq!(k, alphas.len());
-      debug_assert!(k > 0);
-      debug_assert_eq!(polys_A[0].len() % 2, 0);
+      assert!(k > 0);
+      assert_eq!(k, polys_B.len());
+      assert_eq!(k, polys_C.len());
+      assert_eq!(k, alphas.len());
+      assert_eq!(polys_A[0].len() % 2, 0);
 
       let in_first_half = self.round < self.first_half;
       let half_p = polys_A[0].Z.len() / 2;

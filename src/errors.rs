@@ -83,6 +83,9 @@ pub enum NovaError {
   /// returned when insecure setup is attempted in production builds
   #[error("SetupError: {0}")]
   SetupError(String),
+  /// returned when zero instances are provided where at least one is required
+  #[error("InvalidNumInstances")]
+  InvalidNumInstances,
 }
 
 impl From<SynthesisError> for NovaError {
