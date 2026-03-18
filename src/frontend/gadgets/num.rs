@@ -82,6 +82,14 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     })
   }
 
+  /// Construct an `AllocatedNum` from pre-computed value and variable.
+  ///
+  /// This is intended for witness-mode batch allocation paths where
+  /// variables have already been allocated via `extend_aux`.
+  pub fn from_raw_parts(value: Option<Scalar>, variable: Variable) -> Self {
+    AllocatedNum { value, variable }
+  }
+
   /// Allocate a `Variable` of either `Aux` or `Input` in a
   /// `ConstraintSystem`. The `Variable` is an `Input` if `is_input` is
   /// true. This allows uniform creation of circuits containing components
