@@ -72,6 +72,8 @@ where
   /// index of the next element of state to be absorbed
   pub(crate) pos: usize,
   pub(crate) constants: &'a PoseidonConstants<F, A>,
+  /// When true, emits extra aux vars matching compact circuit mode.
+  pub(crate) compact: bool,
   _f: PhantomData<F>,
 }
 
@@ -249,6 +251,7 @@ where
       elements,
       pos: 1,
       constants,
+      compact: false,
       _f: PhantomData::<F>,
     }
   }

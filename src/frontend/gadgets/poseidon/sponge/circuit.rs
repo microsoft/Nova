@@ -126,6 +126,8 @@ impl<'a, F: PrimeField, A: Arity<F>, CS: 'a + ConstraintSystem<F>> SpongeTrait<'
     self.permutation_count += 1;
 
     if ns.is_witness_generator() {
+      // Propagate compact flag so SizedWitness allocates matching variables
+      self.poseidon.compact = self.state.compact;
       self.poseidon.generate_witness_into_cs(ns);
 
       for (elt, scalar) in self

@@ -150,30 +150,35 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let k = Zs.len();
 
-    // Fuse: reduce all k polynomials in a single pass over the row structure
-    let all_reduced: Vec<Vec<Scalar>> = (0..n_left)
-      .into_par_iter()
-      .map(|i| {
+    // Fuse: reduce all k polynomials in a single pass over the row structure.
+    // Uses a flat buffer (n_left * k) to avoid per-row Vec allocations.
+    let mut all_reduced = vec![Scalar::ZERO; n_left * k];
+    all_reduced
+      .par_chunks_mut(k)
+      .enumerate()
+      .for_each(|(i, sums)| {
         let start = i * n_right;
-        let mut sums = vec![Scalar::ZERO; k];
         for j in 0..n_right {
           let eq_val = eq_right[j];
           for (p, z) in Zs.iter().enumerate() {
             sums[p] += z[start + j] * eq_val;
           }
         }
-        sums
-      })
-      .collect();
+      });
 
     // Dot each polynomial's reduced vector with eq_left
     (0..k)
       .map(|p| {
-        eq_left
-          .iter()
-          .enumerate()
-          .map(|(i, eq_l)| *eq_l * all_reduced[i][p])
-          .sum()
+        if n_left < PARALLEL_THRESHOLD {
+          (0..n_left)
+            .map(|i| eq_left[i] * all_reduced[i * k + p])
+            .sum()
+        } else {
+          (0..n_left)
+            .into_par_iter()
+            .map(|i| eq_left[i] * all_reduced[i * k + p])
+            .sum()
+        }
       })
       .collect()
   }

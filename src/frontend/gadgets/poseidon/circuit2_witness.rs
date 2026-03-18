@@ -13,7 +13,14 @@ where
   fn num_constraints(&self) -> usize {
     let s_box_cost = 3;
     let width = A::ConstantsSize::to_usize();
-    (width * s_box_cost * self.constants.full_rounds) + (s_box_cost * self.constants.partial_rounds)
+    let base = (width * s_box_cost * self.constants.full_rounds)
+      + (s_box_cost * self.constants.partial_rounds);
+    if self.compact {
+      // Compact mode: extra variables from ensure_allocated in partial rounds
+      base + (width - 1) * self.constants.partial_rounds
+    } else {
+      base
+    }
   }
 
   fn num_inputs(&self) -> usize {
@@ -162,6 +169,13 @@ where
           }
 
           elements.copy_from_slice(&elements_buffer);
+        }
+
+        // Compact mode: materialize elements[1..] to match circuit
+        if self.compact {
+          for j in 1..width {
+            push_aux!(elements[j]);
+          }
         }
       }
     }
