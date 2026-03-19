@@ -875,6 +875,24 @@ impl<E: Engine> R1CSWitness<E> {
     })
   }
 
+  /// Create a witness by reusing an existing buffer to avoid allocation overhead.
+  /// The old witness's W vector is cleared and refilled from the new data.
+  pub fn new_into(mut self, S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    self.W.clear();
+    self.W.extend_from_slice(W);
+    self.W.resize(S.num_vars, E::Scalar::ZERO);
+    self.r_W = E::Scalar::random(&mut OsRng);
+    Ok(self)
+  }
+
+  /// Create an empty dummy witness (for use as placeholder during buffer reuse)
+  pub fn dummy() -> R1CSWitness<E> {
+    R1CSWitness {
+      W: Vec::new(),
+      r_W: E::Scalar::ZERO,
+    }
+  }
+
   /// Returns a reference to the witness vector W.
   ///
   /// This is useful for cloning witness values for matrix commitments.
