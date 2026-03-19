@@ -500,6 +500,76 @@ impl<E: Engine> SumcheckProof<E> {
       vec![poly_A[0], poly_B[0], poly_C[0]],
     ))
   }
+
+  /// Prove sum_x eq(tau,x) * sum_i alpha_i * (A_i(x)*B_i(x) - C_i(x)) = claim
+  /// for K instance triples sharing the same sumcheck structure.
+  ///
+  /// Returns (proof, r, claims) where `claims[i] = vec![A_i(r), B_i(r), C_i(r)]`.
+  pub fn prove_batched_cubic(
+    claim: &E::Scalar,
+    taus: Vec<E::Scalar>,
+    polys_A: &mut [MultilinearPolynomial<E::Scalar>],
+    polys_B: &mut [MultilinearPolynomial<E::Scalar>],
+    polys_C: &mut [MultilinearPolynomial<E::Scalar>],
+    alphas: &[E::Scalar],
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<Vec<E::Scalar>>), NovaError> {
+    let k = polys_A.len();
+    if k == 0 {
+      return Err(NovaError::InvalidNumInstances);
+    }
+    assert_eq!(k, polys_B.len());
+    assert_eq!(k, polys_C.len());
+    assert_eq!(k, alphas.len());
+
+    let mut r: Vec<E::Scalar> = Vec::new();
+    let mut polys: Vec<CompressedUniPoly<E::Scalar>> = Vec::new();
+    let mut claim_per_round = *claim;
+
+    let num_rounds = taus.len();
+    let mut eq_instance = EqSumCheckInstance::<E>::new(taus);
+
+    for _ in 0..num_rounds {
+      let poly = {
+        let (eval_point_0, eval_point_bound_coeff, eval_point_inf) = eq_instance
+          .evaluation_points_batched_cubic(polys_A, polys_B, polys_C, alphas, claim_per_round);
+
+        let evals = vec![
+          eval_point_0,
+          claim_per_round - eval_point_0,
+          eval_point_bound_coeff,
+          eval_point_inf,
+        ];
+
+        UniPoly::from_evals_deg3(&evals)
+      };
+
+      transcript.absorb(b"p", &poly);
+      let r_i = transcript.squeeze(b"c")?;
+      r.push(r_i);
+      polys.push(poly.compress());
+      claim_per_round = poly.evaluate(&r_i);
+
+      polys_A
+        .par_iter_mut()
+        .chain(polys_B.par_iter_mut())
+        .chain(polys_C.par_iter_mut())
+        .for_each(|p| p.bind_poly_var_top(&r_i));
+      eq_instance.bound(&r_i);
+    }
+
+    let claims: Vec<Vec<E::Scalar>> = (0..k)
+      .map(|i| vec![polys_A[i][0], polys_B[i][0], polys_C[i][0]])
+      .collect();
+
+    Ok((
+      SumcheckProof {
+        compressed_polys: polys,
+      },
+      r,
+      claims,
+    ))
+  }
 }
 
 pub mod eq_sumcheck {
@@ -669,6 +739,153 @@ pub mod eq_sumcheck {
       let s_m1 = eq_m1 * p * t_m1;
 
       Some((s_0, s_leading, s_m1))
+    }
+
+    /// Evaluate eq(tau,X) * sum_i alpha_i * (A_i*B_i - C_i) for K instance triples.
+    ///
+    /// Each triple (A_i, B_i, C_i) represents one R1CS instance. The inner
+    /// polynomial t(X) = sum_i alpha_i * (A_i(X)*B_i(X) - C_i(X)) is still
+    /// degree 2 in X, so BDDT claim derivation applies unchanged.
+    #[inline]
+    pub fn evaluation_points_batched_cubic(
+      &self,
+      polys_A: &[MultilinearPolynomial<E::Scalar>],
+      polys_B: &[MultilinearPolynomial<E::Scalar>],
+      polys_C: &[MultilinearPolynomial<E::Scalar>],
+      alphas: &[E::Scalar],
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let k = polys_A.len();
+      assert!(k > 0);
+      assert_eq!(k, polys_B.len());
+      assert_eq!(k, polys_C.len());
+      assert_eq!(k, alphas.len());
+      assert_eq!(polys_A[0].len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+      let half_p = polys_A[0].Z.len() / 2;
+
+      // Accumulate t(0) and t(inf) across all K instances
+      let (t_0, t_inf) = if in_first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+
+            let mut sum_eval_0 = E::Scalar::ZERO;
+            let mut sum_q = E::Scalar::ZERO;
+            for i in 0..k {
+              let zero_a = polys_A[i].Z[id];
+              let one_a = polys_A[i].Z[id + half_p];
+              let zero_b = polys_B[i].Z[id];
+              let one_b = polys_B[i].Z[id + half_p];
+              let zero_c = polys_C[i].Z[id];
+
+              sum_eval_0 += alphas[i] * (zero_a * zero_b - zero_c);
+              sum_q += alphas[i] * (one_a - zero_a) * (one_b - zero_b);
+            }
+
+            (sum_eval_0 * factor, sum_q * factor)
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let eq_r = poly_eq_right[id];
+
+            let mut sum_eval_0 = E::Scalar::ZERO;
+            let mut sum_q = E::Scalar::ZERO;
+            for i in 0..k {
+              let zero_a = polys_A[i].Z[id];
+              let one_a = polys_A[i].Z[id + half_p];
+              let zero_b = polys_B[i].Z[id];
+              let one_b = polys_B[i].Z[id + half_p];
+              let zero_c = polys_C[i].Z[id];
+
+              sum_eval_0 += alphas[i] * (zero_a * zero_b - zero_c);
+              sum_q += alphas[i] * (one_a - zero_a) * (one_b - zero_b);
+            }
+
+            (sum_eval_0 * eq_r, sum_q * eq_r)
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      };
+
+      if let Some(result) = self.derive_from_claim_deg2(t_0, t_inf, claim) {
+        result
+      } else {
+        self.fallback_eval_inf_batched_cubic(t_0, t_inf, polys_A, polys_B, polys_C, alphas)
+      }
+    }
+
+    /// Fallback for batched cubic: compute eval at -1 via third N-scaling sum.
+    #[inline]
+    fn fallback_eval_inf_batched_cubic(
+      &self,
+      t_0: E::Scalar,
+      t_inf: E::Scalar,
+      polys_A: &[MultilinearPolynomial<E::Scalar>],
+      polys_B: &[MultilinearPolynomial<E::Scalar>],
+      polys_C: &[MultilinearPolynomial<E::Scalar>],
+      alphas: &[E::Scalar],
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let p = self.eval_eq_left;
+      let (eq_0, eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
+      let k = polys_A.len();
+      let half_p = polys_A[0].Z.len() / 2;
+
+      let s_0 = eq_0 * p * t_0;
+      let s_leading = eq_slope * p * t_inf;
+
+      let t_m1 = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+
+            let mut sum = E::Scalar::ZERO;
+            for i in 0..k {
+              let m1_a = polys_A[i].Z[id].double() - polys_A[i].Z[id + half_p];
+              let m1_b = polys_B[i].Z[id].double() - polys_B[i].Z[id + half_p];
+              let m1_c = polys_C[i].Z[id].double() - polys_C[i].Z[id + half_p];
+              sum += alphas[i] * (m1_a * m1_b - m1_c);
+            }
+            sum * factor
+          })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let eq_r = poly_eq_right[id];
+
+            let mut sum = E::Scalar::ZERO;
+            for i in 0..k {
+              let m1_a = polys_A[i].Z[id].double() - polys_A[i].Z[id + half_p];
+              let m1_b = polys_B[i].Z[id].double() - polys_B[i].Z[id + half_p];
+              let m1_c = polys_C[i].Z[id].double() - polys_C[i].Z[id + half_p];
+              sum += alphas[i] * (m1_a * m1_b - m1_c);
+            }
+            sum * eq_r
+          })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      };
+
+      let s_m1 = eq_m1 * p * t_m1;
+      (s_0, s_leading, s_m1)
     }
 
     /// Evaluate eq(tau,X) * (A*B - C) using 2 N-scaling sums instead of 3
