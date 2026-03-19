@@ -148,8 +148,6 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
     let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
 
-    let k = Zs.len();
-
     // Fuse: reduce all k polynomials in a single pass over the row structure.
     // Uses a flat buffer (n_left * k) to avoid per-row Vec allocations.
     let mut all_reduced = vec![Scalar::ZERO; n_left * k];
