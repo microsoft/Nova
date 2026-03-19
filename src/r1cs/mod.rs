@@ -885,6 +885,20 @@ impl<E: Engine> R1CSWitness<E> {
     Ok(self)
   }
 
+  /// Create a witness from an owned vector (zero-copy). Pads to num_vars.
+  pub fn from_vec(mut w: Vec<E::Scalar>, S: &R1CSShape<E>) -> Result<R1CSWitness<E>, NovaError> {
+    w.resize(S.num_vars, E::Scalar::ZERO);
+    Ok(R1CSWitness {
+      W: w,
+      r_W: E::Scalar::random(&mut OsRng),
+    })
+  }
+
+  /// Consume the witness and return the inner W vector.
+  pub fn into_W(self) -> Vec<E::Scalar> {
+    self.W
+  }
+
   /// Create an empty dummy witness (for use as placeholder during buffer reuse)
   pub fn dummy() -> R1CSWitness<E> {
     R1CSWitness {

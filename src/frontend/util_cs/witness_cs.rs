@@ -67,6 +67,15 @@ where
     self.aux_assignment.clear();
   }
 
+  /// Take the aux_assignment vector and replace it with the provided buffer.
+  /// The provided buffer is cleared before being installed.
+  /// This enables zero-copy witness creation by swapping buffers.
+  pub fn swap_aux(&mut self, mut buf: Vec<Scalar>) -> Vec<Scalar> {
+    buf.clear();
+    std::mem::swap(&mut self.aux_assignment, &mut buf);
+    buf // returns the old aux_assignment data
+  }
+
   /// Get input assignment
   pub fn input_assignment(&self) -> &[Scalar] {
     &self.input_assignment
