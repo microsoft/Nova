@@ -143,6 +143,7 @@ where
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      sponge.set_compact(true);
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);
@@ -202,6 +203,7 @@ where
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      sponge.set_compact(true);
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);

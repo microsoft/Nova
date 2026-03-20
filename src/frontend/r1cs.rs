@@ -31,12 +31,28 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
     shape: &R1CSShape<E>,
     ck: &CommitmentKey<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
+    let t_w0 = std::time::Instant::now();
     let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
+    let t_w1 = std::time::Instant::now();
     let X = &self.input_assignment()[1..];
 
     let comm_W = W.commit(ck);
+    let t_w2 = std::time::Instant::now();
 
     let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static IW_DETAIL: AtomicBool = AtomicBool::new(false);
+    static IW_INIT: std::sync::Once = std::sync::Once::new();
+    IW_INIT.call_once(|| {
+      IW_DETAIL.store(std::env::var("CF_TIMING").is_ok(), Ordering::Relaxed);
+    });
+    if IW_DETAIL.load(Ordering::Relaxed) {
+      eprintln!("      [r1cs_iw] witness_new={:.1}ms commit(n={})={:.1}ms",
+        (t_w1 - t_w0).as_secs_f64() * 1000.0,
+        W.W().len(),
+        (t_w2 - t_w1).as_secs_f64() * 1000.0);
+    }
 
     Ok((instance, W))
   }
