@@ -1,7 +1,7 @@
 //! This module defines R1CS related types and a folding scheme for Relaxed R1CS
 use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
-  constants::{BN_LIMB_WIDTH, BN_N_LIMBS},
+  constants::{BN_LIMB_WIDTH, BN_N_LIMBS, PARALLEL_THRESHOLD},
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   gadgets::{
@@ -25,9 +25,6 @@ use serde_with::serde_as;
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
 pub use sparse::SparseMatrix;
-
-/// Row count below which we use sequential iteration instead of rayon.
-const PARALLEL_THRESHOLD: usize = 4096;
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, Serialize, Deserialize)]

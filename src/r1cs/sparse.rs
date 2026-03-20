@@ -3,12 +3,10 @@
 //! This module defines a custom implementation of CSR/CSC sparse matrices.
 //! Specifically, we implement sparse matrix / dense vector multiplication
 //! to compute the `A z`, `B z`, and `C z` in Nova.
+use crate::constants::PARALLEL_THRESHOLD;
 use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-/// Row count below which we use sequential iteration instead of rayon.
-const PARALLEL_THRESHOLD: usize = 4096;
 
 /// Precomputed SpMV accelerator for a fixed sparse matrix.
 ///
@@ -201,7 +199,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast SpMV using precomputed coefficient classification.
   pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
-    debug_assert_eq!(self.num_cols, vector.len(), "invalid shape");
+    assert_eq!(self.num_cols, vector.len(), "invalid shape");
     if self.num_rows <= PARALLEL_THRESHOLD {
       (0..self.num_rows)
         .map(|r| self.compute_row_single(r, vector))
@@ -216,8 +214,8 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
   pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
-    debug_assert_eq!(self.num_cols, v1.len(), "invalid shape for v1");
-    debug_assert_eq!(self.num_cols, v2.len(), "invalid shape for v2");
+    assert_eq!(self.num_cols, v1.len(), "invalid shape for v1");
+    assert_eq!(self.num_cols, v2.len(), "invalid shape for v2");
     if self.num_rows <= PARALLEL_THRESHOLD {
       (0..self.num_rows)
         .map(|r| self.compute_row_pair(r, v1, v2))

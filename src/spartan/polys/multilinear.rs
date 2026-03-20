@@ -2,15 +2,13 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
+use crate::constants::PARALLEL_THRESHOLD;
 use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 use core::ops::{Add, Index};
 use ff::PrimeField;
 use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-
-/// Row count below which we use sequential iteration instead of rayon.
-const PARALLEL_THRESHOLD: usize = 4096;
 
 /// A multilinear extension of a polynomial $Z(\cdot)$, denote it as $\tilde{Z}(x_1, ..., x_m)$
 /// where the degree of each variable is at most one.
@@ -138,7 +136,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let s = r.len();
     let n = 1usize << s;
-    debug_assert!(Zs.iter().all(|z| z.len() == n));
+    assert!(Zs.iter().all(|z| z.len() == n));
 
     let s_right = s / 2;
     let s_left = s - s_right;
