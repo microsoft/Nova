@@ -11,16 +11,17 @@ use crate::{
   traits::{ROCircuitTrait, ROTrait},
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::U24;
+use generic_array::typenum::U4;
 use serde::{Deserialize, Serialize};
 
 /// All Poseidon Constants that are used in Nova
+/// Uses arity=4 (width=5) for efficient GPU Poseidon: 5×5 MDS vs 25×25.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U4>);
 
 impl<Scalar: PrimeField> PoseidonConstantsCircuit<Scalar> {
   /// Access the inner PoseidonConstants for GPU upload.
-  pub fn inner(&self) -> &PoseidonConstants<Scalar, U24> {
+  pub fn inner(&self) -> &PoseidonConstants<Scalar, U4> {
     &self.0
   }
 }
@@ -28,7 +29,7 @@ impl<Scalar: PrimeField> PoseidonConstantsCircuit<Scalar> {
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
   /// Generate Poseidon constants
   fn default() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self(Sponge::<Scalar, U4>::api_constants(Strength::Standard))
   }
 }
 
