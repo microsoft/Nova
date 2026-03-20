@@ -11,3 +11,6 @@ pub const BN_LIMB_WIDTH: usize = 64;
 
 /// Number of limbs in bignat representation.
 pub const BN_N_LIMBS: usize = 4;
+
+/// Row count below which we use sequential iteration instead of rayon.
+pub const PARALLEL_THRESHOLD: usize = 4096;

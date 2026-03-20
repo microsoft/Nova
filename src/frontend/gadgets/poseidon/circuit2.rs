@@ -148,7 +148,7 @@ where
   current_round: usize,
   constants: &'a PoseidonConstants<Scalar, A>,
   /// When true, materializes non-S-boxed elements each partial round to reduce R1CS non-zeros.
-  compact: bool,
+  pub(crate) compact: bool,
   _w: PhantomData<A>,
 }
 
