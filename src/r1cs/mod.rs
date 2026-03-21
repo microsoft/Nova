@@ -855,6 +855,17 @@ impl<E: Engine> R1CSInstance<E> {
     }
   }
 
+  /// A method to create an instance object using constituent elements without checks on their sizes
+  pub fn new_unchecked(
+    comm_W: &Commitment<E>,
+    X: &[E::Scalar],
+  ) -> Result<R1CSInstance<E>, NovaError> {
+    Ok(R1CSInstance {
+      comm_W: *comm_W,
+      X: X.to_owned(),
+    })
+  }
+
   /// Returns a reference to the commitment to the witness.
   pub fn comm_W(&self) -> &Commitment<E> {
     &self.comm_W
