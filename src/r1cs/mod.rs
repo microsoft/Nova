@@ -855,6 +855,7 @@ impl<E: Engine> R1CSInstance<E> {
     }
   }
 
+  /// A method to create an instance object using constituent elements without checks on their sizes
   pub fn new_unchecked(
     comm_W: &Commitment<E>,
     X: &[E::Scalar],
