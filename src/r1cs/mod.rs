@@ -27,7 +27,7 @@ use sparse::PrecomputedSparseMatrix;
 pub use sparse::SparseMatrix;
 
 /// A type that holds the shape of the R1CS matrices
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct R1CSShape<E: Engine> {
   pub(crate) num_cons: usize,
   pub(crate) num_vars: usize,
@@ -35,15 +35,38 @@ pub struct R1CSShape<E: Engine> {
   pub(crate) A: SparseMatrix<E::Scalar>,
   pub(crate) B: SparseMatrix<E::Scalar>,
   pub(crate) C: SparseMatrix<E::Scalar>,
-  #[serde(skip, default = "OnceCell::new")]
+  #[serde(skip)]
   pub(crate) digest: OnceCell<E::Scalar>,
-  /// Precomputed SpMV accelerators (built lazily on first use)
-  #[serde(skip, default = "OnceCell::new")]
-  precomputed_A: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
-  #[serde(skip, default = "OnceCell::new")]
-  precomputed_B: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
-  #[serde(skip, default = "OnceCell::new")]
-  precomputed_C: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  #[serde(skip)]
+  precomputed_A: PrecomputedSparseMatrix<E::Scalar>,
+  #[serde(skip)]
+  precomputed_B: PrecomputedSparseMatrix<E::Scalar>,
+  #[serde(skip)]
+  precomputed_C: PrecomputedSparseMatrix<E::Scalar>,
+}
+
+// Custom Deserialize: rebuild precomputed SpMV tables from the matrices.
+impl<'de, E: Engine> Deserialize<'de> for R1CSShape<E> {
+  fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    #[derive(Deserialize)]
+    struct R1CSShapeRaw<F: ff::PrimeField> {
+      num_cons: usize,
+      num_vars: usize,
+      num_io: usize,
+      A: SparseMatrix<F>,
+      B: SparseMatrix<F>,
+      C: SparseMatrix<F>,
+    }
+    let raw = R1CSShapeRaw::<E::Scalar>::deserialize(deserializer)?;
+    Ok(Self::make(
+      raw.num_cons,
+      raw.num_vars,
+      raw.num_io,
+      raw.A,
+      raw.B,
+      raw.C,
+    ))
+  }
 }
 
 impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
@@ -140,6 +163,38 @@ impl<E: Engine> R1CSShape<E> {
     &self.C
   }
 
+  /// Internal constructor: builds precomputed SpMV tables eagerly.
+  fn make(
+    num_cons: usize,
+    num_vars: usize,
+    num_io: usize,
+    A: SparseMatrix<E::Scalar>,
+    B: SparseMatrix<E::Scalar>,
+    C: SparseMatrix<E::Scalar>,
+  ) -> Self {
+    let (precomputed_A, (precomputed_B, precomputed_C)) = rayon::join(
+      || PrecomputedSparseMatrix::from_sparse(&A),
+      || {
+        rayon::join(
+          || PrecomputedSparseMatrix::from_sparse(&B),
+          || PrecomputedSparseMatrix::from_sparse(&C),
+        )
+      },
+    );
+    Self {
+      num_cons,
+      num_vars,
+      num_io,
+      A,
+      B,
+      C,
+      digest: OnceCell::new(),
+      precomputed_A,
+      precomputed_B,
+      precomputed_C,
+    }
+  }
+
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
     num_cons: usize,
@@ -169,18 +224,7 @@ impl<E: Engine> R1CSShape<E> {
     is_valid(num_cons, num_vars, num_io, &B)?;
     is_valid(num_cons, num_vars, num_io, &C)?;
 
-    Ok(R1CSShape {
-      num_cons,
-      num_vars,
-      num_io,
-      A,
-      B,
-      C,
-      digest: OnceCell::new(),
-      precomputed_A: OnceCell::new(),
-      precomputed_B: OnceCell::new(),
-      precomputed_C: OnceCell::new(),
-    })
+    Ok(Self::make(num_cons, num_vars, num_io, A, B, C))
   }
 
   /// Computes the maximum number of generators needed for a set of R1CS shapes.
@@ -351,21 +395,6 @@ impl<E: Engine> R1CSShape<E> {
       .expect("Failure in retrieving digest")
   }
 
-  /// Eagerly build the precomputed SpMV tables for A, B, C.
-  /// Call this once during setup so that folding steps don't pay the
-  /// one-time construction cost on their first multiply_vec_pair call.
-  pub fn precompute_sparse_matrices(&self) {
-    self
-      .precomputed_A
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
-    self
-      .precomputed_B
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
-    self
-      .precomputed_C
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
-  }
-
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
   // Returns false if num_cons or num_vars are not powers of two, or if num_io > num_vars
   #[inline]
@@ -385,19 +414,14 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    let pa = self
-      .precomputed_A
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
-    let pb = self
-      .precomputed_B
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
-    let pc = self
-      .precomputed_C
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
-
     let (Az, (Bz, Cz)) = rayon::join(
-      || pa.multiply_vec(z),
-      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
+      || self.precomputed_A.multiply_vec(z),
+      || {
+        rayon::join(
+          || self.precomputed_B.multiply_vec(z),
+          || self.precomputed_C.multiply_vec(z),
+        )
+      },
     );
 
     Ok((Az, Bz, Cz))
@@ -420,22 +444,12 @@ impl<E: Engine> R1CSShape<E> {
       return Err(NovaError::InvalidWitnessLength);
     }
 
-    let pa = self
-      .precomputed_A
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
-    let pb = self
-      .precomputed_B
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
-    let pc = self
-      .precomputed_C
-      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
-
     let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
-      || pa.multiply_vec_pair(z1, z2),
+      || self.precomputed_A.multiply_vec_pair(z1, z2),
       || {
         rayon::join(
-          || pb.multiply_vec_pair(z1, z2),
-          || pc.multiply_vec_pair(z1, z2),
+          || self.precomputed_B.multiply_vec_pair(z1, z2),
+          || self.precomputed_C.multiply_vec_pair(z1, z2),
         )
       },
     );
@@ -632,18 +646,14 @@ impl<E: Engine> R1CSShape<E> {
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.num_vars == m {
-      return R1CSShape {
-        num_cons: m,
-        num_vars: m,
-        num_io: self.num_io,
-        A: self.A.clone(),
-        B: self.B.clone(),
-        C: self.C.clone(),
-        digest: OnceCell::new(),
-        precomputed_A: OnceCell::new(),
-        precomputed_B: OnceCell::new(),
-        precomputed_C: OnceCell::new(),
-      };
+      return Self::make(
+        m,
+        m,
+        self.num_io,
+        self.A.clone(),
+        self.B.clone(),
+        self.C.clone(),
+      );
     }
 
     // otherwise, we need to pad the number of variables and renumber variable accesses
@@ -671,18 +681,14 @@ impl<E: Engine> R1CSShape<E> {
     let B_padded = apply_pad(self.B.clone());
     let C_padded = apply_pad(self.C.clone());
 
-    R1CSShape {
-      num_cons: num_cons_padded,
-      num_vars: num_vars_padded,
-      num_io: self.num_io,
-      A: A_padded,
-      B: B_padded,
-      C: C_padded,
-      digest: OnceCell::new(),
-      precomputed_A: OnceCell::new(),
-      precomputed_B: OnceCell::new(),
-      precomputed_C: OnceCell::new(),
-    }
+    Self::make(
+      num_cons_padded,
+      num_vars_padded,
+      self.num_io,
+      A_padded,
+      B_padded,
+      C_padded,
+    )
   }
 
   /// Pads the `R1CSShape` so that `num_cons` and `num_vars` are each
@@ -723,18 +729,14 @@ impl<E: Engine> R1CSShape<E> {
     let B_padded = apply_pad(self.B.clone());
     let C_padded = apply_pad(self.C.clone());
 
-    R1CSShape {
-      num_cons: num_cons_padded,
-      num_vars: num_vars_padded,
-      num_io: self.num_io,
-      A: A_padded,
-      B: B_padded,
-      C: C_padded,
-      digest: OnceCell::new(),
-      precomputed_A: OnceCell::new(),
-      precomputed_B: OnceCell::new(),
-      precomputed_C: OnceCell::new(),
-    }
+    Self::make(
+      num_cons_padded,
+      num_vars_padded,
+      self.num_io,
+      A_padded,
+      B_padded,
+      C_padded,
+    )
   }
 
   /// Samples a new random `RelaxedR1CSInstance`/`RelaxedR1CSWitness` pair
