@@ -50,6 +50,11 @@ impl<E: Engine> SumcheckProof<E> {
     Self { compressed_polys }
   }
 
+  /// Returns reference to slice of compressed round polynomials.
+  pub fn compressed_polys(&self) -> &[CompressedUniPoly<E::Scalar>] {
+    &self.compressed_polys
+  }
+
   /// Advance a running sumcheck claim after verifier challenge `r`.
   ///
   /// `evals` = `[p(0), cubic_coeff, p(-1)]` as returned by
