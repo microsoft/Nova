@@ -24,6 +24,20 @@ impl<Scalar: PrimeField> Clone for AllocatedNum<Scalar> {
 }
 
 impl<Scalar: PrimeField> AllocatedNum<Scalar> {
+  /// Construct an [`AllocatedNum`] from a variable and value without adding constraints.
+  ///
+  /// # Safety (Logical)
+  /// The caller MUST ensure that:
+  /// 1. The variable already exists in the constraint system
+  /// 2. The value correctly reflects the variable's assignment
+  ///
+  /// This is useful when a variable is known to hold a valid field element
+  /// due to constraints added separately, enabling zero-cost reinterpretation
+  /// (e.g., wrapping an [`AllocatedBit`](super::boolean::AllocatedBit)'s variable as a number).
+  pub fn from_parts(variable: Variable, value: Option<Scalar>) -> Self {
+    AllocatedNum { value, variable }
+  }
+
   /// Allocate a `Variable(Aux)` in a `ConstraintSystem`.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
