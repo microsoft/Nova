@@ -17,10 +17,22 @@ use crate::{
 use core::cmp::max;
 use ff::Field;
 use once_cell::sync::OnceCell;
-use rand_core::OsRng;
+use rand_chacha::ChaCha20Rng;
+use rand_core::{OsRng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+
+thread_local! {
+  static THREAD_RNG: std::cell::RefCell<ChaCha20Rng> =
+    std::cell::RefCell::new(ChaCha20Rng::from_rng(OsRng).unwrap());
+}
+
+/// Generate a random field element using a thread-local CSPRNG
+/// (avoids per-call getrandom syscall overhead under high thread contention).
+fn random_scalar<F: Field>() -> F {
+  THREAD_RNG.with(|rng| F::random(&mut *rng.borrow_mut()))
+}
 
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
@@ -743,13 +755,18 @@ impl<E: Engine> R1CSShape<E> {
     ck: &CommitmentKey<E>,
   ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
     // sample Z = (W, u, X)
-    let Z = (0..self.num_vars + self.num_io + 1)
-      .into_par_iter()
-      .map(|_| E::Scalar::random(&mut OsRng))
-      .collect::<Vec<E::Scalar>>();
+    let z_len = self.num_vars + self.num_io + 1;
+    let Z = if z_len <= PARALLEL_THRESHOLD {
+      (0..z_len).map(|_| random_scalar::<E::Scalar>()).collect::<Vec<E::Scalar>>()
+    } else {
+      (0..z_len)
+        .into_par_iter()
+        .map(|_| random_scalar::<E::Scalar>())
+        .collect::<Vec<E::Scalar>>()
+    };
 
-    let r_W = E::Scalar::random(&mut OsRng);
-    let r_E = E::Scalar::random(&mut OsRng);
+    let r_W = random_scalar::<E::Scalar>();
+    let r_E = random_scalar::<E::Scalar>();
 
     let u = Z[self.num_vars];
 
@@ -794,8 +811,40 @@ impl<E: Engine> R1CSWitness<E> {
 
     Ok(R1CSWitness {
       W,
-      r_W: E::Scalar::random(&mut OsRng),
+      r_W: random_scalar::<E::Scalar>(),
     })
+  }
+
+  /// Create a witness by reusing an existing buffer to avoid allocation overhead.
+  /// The old witness's W vector is cleared and refilled from the new data.
+  pub fn new_into(mut self, S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    self.W.clear();
+    self.W.extend_from_slice(W);
+    self.W.resize(S.num_vars, E::Scalar::ZERO);
+    self.r_W = random_scalar::<E::Scalar>();
+    Ok(self)
+  }
+
+  /// Create a witness from an owned vector (zero-copy). Pads to num_vars.
+  pub fn from_vec(mut w: Vec<E::Scalar>, S: &R1CSShape<E>) -> Result<R1CSWitness<E>, NovaError> {
+    w.resize(S.num_vars, E::Scalar::ZERO);
+    Ok(R1CSWitness {
+      W: w,
+      r_W: random_scalar::<E::Scalar>(),
+    })
+  }
+
+  /// Consume the witness and return the inner W vector.
+  pub fn into_W(self) -> Vec<E::Scalar> {
+    self.W
+  }
+
+  /// Create an empty dummy witness (for use as placeholder during buffer reuse)
+  pub fn dummy() -> R1CSWitness<E> {
+    R1CSWitness {
+      W: Vec::new(),
+      r_W: E::Scalar::ZERO,
+    }
   }
 
   /// Returns a reference to the witness vector W.
@@ -813,6 +862,14 @@ impl<E: Engine> R1CSWitness<E> {
   /// Commits to the witness using the supplied generators
   pub fn commit(&self, ck: &CommitmentKey<E>) -> Commitment<E> {
     CE::<E>::commit(ck, &self.W, &self.r_W)
+  }
+
+  /// Commits only the non-zero prefix of the witness.
+  /// Equivalent to commit() when trailing entries are zero (e.g., after padding),
+  /// but avoids processing zero entries in the MSM classification phase.
+  pub fn commit_with_unpadded_len(&self, ck: &CommitmentKey<E>, actual_len: usize) -> Commitment<E> {
+    debug_assert!(actual_len <= self.W.len());
+    CE::<E>::commit(ck, &self.W[..actual_len], &self.r_W)
   }
 
   /// Pads the provided witness to the correct length
@@ -1001,12 +1058,12 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
 
     let W = W1
-      .par_iter()
+      .iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
     let E = E1
-      .par_iter()
+      .iter()
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
@@ -1034,14 +1091,14 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
 
     let W = W1
-      .par_iter()
+      .iter()
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
     let E = E1
-      .par_iter()
+      .iter()
       .zip(T)
-      .zip(E2.par_iter())
+      .zip(E2.iter())
       .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
       .collect::<Vec<E::Scalar>>();
 
