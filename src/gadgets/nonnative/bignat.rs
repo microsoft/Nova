@@ -2,7 +2,9 @@ use super::{
   util::{f_to_nat, nat_to_f, Bitvector, Num},
   OptionExt,
 };
-use crate::frontend::{AllocatedBit, ConstraintSystem, LinearCombination, SynthesisError};
+use crate::frontend::{
+  AllocatedBit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
+};
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
@@ -40,9 +42,33 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
   limb_width: usize,
   n_limbs: usize,
 ) -> Result<Vec<Scalar>, SynthesisError> {
-  let mask = int_with_n_ones(limb_width);
-  let mut nat = nat.clone();
-  if nat.bits() as usize <= n_limbs * limb_width {
+  if nat.bits() as usize > n_limbs * limb_width {
+    return Err(SynthesisError::Unsatisfiable(format!(
+      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
+    )));
+  }
+  let bytes_per_limb = limb_width / 8;
+  if limb_width % 8 == 0 && bytes_per_limb <= 8 {
+    // Fast path: extract limbs directly from bytes
+    let (_, bytes) = nat.to_bytes_le();
+    Ok(
+      (0..n_limbs)
+        .map(|i| {
+          let start = i * bytes_per_limb;
+          let mut limb_val: u64 = 0;
+          for j in 0..bytes_per_limb {
+            if start + j < bytes.len() {
+              limb_val |= (bytes[start + j] as u64) << (j * 8);
+            }
+          }
+          Scalar::from(limb_val)
+        })
+        .collect(),
+    )
+  } else {
+    // Fallback for non-byte-aligned limb widths
+    let mask = int_with_n_ones(limb_width);
+    let mut nat = nat.clone();
     Ok(
       (0..n_limbs)
         .map(|_| {
@@ -52,10 +78,6 @@ pub fn nat_to_limbs<Scalar: PrimeField>(
         })
         .collect(),
     )
-  } else {
-    Err(SynthesisError::Unsatisfiable(format!(
-      "nat {nat} does not fit in {n_limbs} limbs of width {limb_width}"
-    )))
   }
 }
 
@@ -131,6 +153,38 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     F: FnOnce() -> Result<Vec<Scalar>, SynthesisError>,
   {
     let values_cell = f();
+
+    // Fast witness path: batch-allocate all limbs via extend_aux
+    if cs.is_witness_generator() {
+      if let Ok(ref vs) = values_cell {
+        if vs.len() != n_limbs {
+          return Err(SynthesisError::Unsatisfiable(
+            "Values do not match stated limb count".to_string(),
+          ));
+        }
+        let base_idx = cs.aux_slice().len();
+        cs.extend_aux(vs);
+        let limbs: Vec<LinearCombination<Scalar>> = (0..n_limbs)
+          .map(|i| {
+            let var = Variable(Index::Aux(base_idx + i));
+            LinearCombination::zero() + var
+          })
+          .collect();
+        let value = limbs_to_nat::<Scalar, _, _>(vs.iter(), limb_width);
+        return Ok(Self {
+          value: Some(value),
+          limb_values: Some(vs.clone()),
+          limbs,
+          params: BigNatParams {
+            min_bits: 0,
+            n_limbs,
+            max_word: max_word.unwrap_or_else(|| int_with_n_ones(limb_width)),
+            limb_width,
+          },
+        });
+      }
+    }
+
     let mut value = None;
     let mut limb_values = None;
     let limbs = (0..n_limbs)
@@ -186,6 +240,30 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
   {
     let all_values_cell =
       f().and_then(|v| Ok((nat_to_limbs::<Scalar>(&v, limb_width, n_limbs)?, v)));
+
+    // Fast witness path: batch-allocate all limbs at once
+    if cs.is_witness_generator() {
+      match all_values_cell {
+        Ok((ref limb_vals, ref nat_val)) => {
+          let base_idx = cs.aux_slice().len();
+          cs.extend_aux(limb_vals);
+          let limbs: Vec<LinearCombination<Scalar>> = (0..n_limbs)
+            .map(|i| {
+              let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+              LinearCombination::zero() + var
+            })
+            .collect();
+          return Ok(Self {
+            value: Some(nat_val.clone()),
+            limb_values: Some(limb_vals.clone()),
+            limbs,
+            params: BigNatParams::new(limb_width, n_limbs),
+          });
+        }
+        Err(e) => return Err(e),
+      }
+    }
+
     let mut value = None;
     let mut limb_values = Vec::new();
     let limbs = (0..n_limbs)
@@ -267,6 +345,21 @@ impl<Scalar: PrimeField> BigNat<Scalar> {
     &self,
     mut cs: CS,
   ) -> Result<(), SynthesisError> {
+    // In witness mode, skip LC cloning — fits_in_bits only needs the value
+    if cs.is_witness_generator() {
+      for (i, limb_value) in self
+        .limb_values
+        .as_ref()
+        .map(|vs| vs.iter())
+        .into_iter()
+        .flatten()
+        .enumerate()
+      {
+        Num::new(Some(*limb_value), LinearCombination::zero())
+          .fits_in_bits(cs.namespace(|| format!("{i}")), self.params.limb_width)?;
+      }
+      return Ok(());
+    }
     // swap the option and iterator
     let limb_values_split =
       (0..self.limbs.len()).map(|i| self.limb_values.as_ref().map(|vs| vs[i]));
@@ -837,6 +930,25 @@ impl<Scalar: PrimeField> Polynomial<Scalar> {
         values
       })
     });
+
+    // Fast witness path: batch-allocate all product coefficients
+    if cs.is_witness_generator() {
+      if let Some(ref vals) = values {
+        let base_idx = cs.aux_slice().len();
+        cs.extend_aux(vals);
+        let coefficients: Vec<LinearCombination<Scalar>> = (0..n_product_coeffs)
+          .map(|i| {
+            let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+            LinearCombination::zero() + var
+          })
+          .collect();
+        return Ok(Polynomial {
+          coefficients,
+          values,
+        });
+      }
+    }
+
     let coefficients = (0..n_product_coeffs)
       .map(|i| {
         Ok(LinearCombination::zero() + cs.alloc(|| format!("prod {i}"), || Ok(values.grab()?[i]))?)

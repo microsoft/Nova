@@ -1,11 +1,10 @@
-use super::{BitAccess, OptionExt};
+use super::OptionExt;
 use crate::frontend::{
-  num::AllocatedNum, ConstraintSystem, LinearCombination, SynthesisError, Variable,
+  num::AllocatedNum, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
 use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 use std::convert::From;
-
 #[derive(Clone)]
 /// A representation of a bit
 pub struct Bit<Scalar: PrimeField> {
@@ -102,13 +101,52 @@ impl<Scalar: PrimeField> Num<Scalar> {
   ) -> Result<(), SynthesisError> {
     let v = self.value;
 
+    // Fast witness path: batch-allocate all bit variables at once
+    if cs.is_witness_generator() {
+      let bit_values: Vec<Scalar> = if let Some(val) = v {
+        let repr = val.to_repr();
+        let bytes = repr.as_ref();
+        (1..n_bits)
+          .map(|i| {
+            let (byte_pos, bit_pos) = (i / 8, i % 8);
+            if byte_pos < bytes.len() && (bytes[byte_pos] >> bit_pos) & 1 == 1 {
+              Scalar::ONE
+            } else {
+              Scalar::ZERO
+            }
+          })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits - 1]
+      };
+      cs.extend_aux(&bit_values);
+      return Ok(());
+    }
+
+    // Pre-compute all bit values from the field element's byte representation
+    // to avoid calling to_repr() per bit (which does Montgomery reduction each time).
+    let bit_values: Option<Vec<bool>> = v.map(|val| {
+      let repr = val.to_repr();
+      let bytes = repr.as_ref();
+      (0..n_bits)
+        .map(|i| {
+          let (byte_pos, bit_pos) = (i / 8, i % 8);
+          if byte_pos < bytes.len() {
+            (bytes[byte_pos] >> bit_pos) & 1 == 1
+          } else {
+            false
+          }
+        })
+        .collect()
+    });
+
     // Allocate all but the first bit.
     let bits: Vec<Variable> = (1..n_bits)
       .map(|i| {
         cs.alloc(
           || format!("bit {i}"),
           || {
-            let r = if *v.grab()?.get_bit(i).grab()? {
+            let r = if bit_values.as_ref().ok_or(SynthesisError::AssignmentMissing)?[i] {
               Scalar::ONE
             } else {
               Scalar::ZERO
@@ -179,10 +217,53 @@ impl<Scalar: PrimeField> Num<Scalar> {
     mut cs: CS,
     n_bits: usize,
   ) -> Result<Bitvector<Scalar>, SynthesisError> {
+    // Pre-compute all bit values with a single to_repr() call
     let values: Option<Vec<bool>> = self.value.as_ref().map(|v| {
-      let num = *v;
-      (0..n_bits).map(|i| num.get_bit(i).unwrap()).collect()
+      let repr = v.to_repr();
+      let bytes = repr.as_ref();
+      (0..n_bits)
+        .map(|i| {
+          let (byte_pos, bit_pos) = (i / 8, i % 8);
+          if byte_pos < bytes.len() {
+            (bytes[byte_pos] >> bit_pos) & 1 == 1
+          } else {
+            false
+          }
+        })
+        .collect()
     });
+
+    // Fast witness path: batch-allocate all bit variables
+    if cs.is_witness_generator() {
+      let field_vals: Vec<Scalar> = if let Some(ref bv) = values {
+        bv.iter()
+          .map(|&b| if b { Scalar::ONE } else { Scalar::ZERO })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits]
+      };
+      let base_idx = cs.aux_slice().len();
+      cs.extend_aux(&field_vals);
+
+      let allocations: Vec<Bit<Scalar>> = (0..n_bits)
+        .map(|i| {
+          let var = Variable::new_unchecked(Index::Aux(base_idx + i));
+          Bit {
+            bit: LinearCombination::zero() + var,
+          }
+        })
+        .collect();
+      let bits: Vec<LinearCombination<Scalar>> = allocations
+        .iter()
+        .map(|a| LinearCombination::zero() + &a.bit)
+        .collect();
+      return Ok(Bitvector {
+        allocations,
+        values,
+        bits,
+      });
+    }
+
     let allocations: Vec<Bit<Scalar>> = (0..n_bits)
       .map(|bit_i| {
         Bit::alloc(
@@ -211,6 +292,41 @@ impl<Scalar: PrimeField> Num<Scalar> {
       values,
       bits,
     })
+  }
+
+  /// Allocates bit decomposition variables for range checking only.
+  ///
+  /// In witness mode, skips `LinearCombination` and `Bit` construction since
+  /// range-check callers discard the returned `Bitvector`. Falls back to
+  /// full `decompose` in constraint-generation mode.
+  pub fn decompose_for_range_check<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    n_bits: usize,
+  ) -> Result<(), SynthesisError> {
+    if cs.is_witness_generator() {
+      let field_vals: Vec<Scalar> = if let Some(v) = self.value.as_ref() {
+        let repr = v.to_repr();
+        let bytes = repr.as_ref();
+        (0..n_bits)
+          .map(|i| {
+            let (byte_pos, bit_pos) = (i / 8, i % 8);
+            if byte_pos < bytes.len() && (bytes[byte_pos] >> bit_pos) & 1 == 1 {
+              Scalar::ONE
+            } else {
+              Scalar::ZERO
+            }
+          })
+          .collect()
+      } else {
+        vec![Scalar::ZERO; n_bits]
+      };
+      cs.extend_aux(&field_vals);
+      return Ok(());
+    }
+    // Full decompose path for constraint generation
+    self.decompose(cs, n_bits)?;
+    Ok(())
   }
 
   /// Converts the `Num` to an `AllocatedNum` in the constraint system.
@@ -243,7 +359,17 @@ pub fn f_to_nat<Scalar: PrimeField>(f: &Scalar) -> BigInt {
 /// Convert a natural number to a field element.
 /// Returns `None` if the number is too big for the field.
 pub fn nat_to_f<Scalar: PrimeField>(n: &BigInt) -> Option<Scalar> {
-  Scalar::from_str_vartime(&format!("{n}"))
+  let (sign, bytes) = n.to_bytes_le();
+  if sign == Sign::Minus {
+    return None;
+  }
+  let mut repr = Scalar::Repr::default();
+  let repr_bytes = repr.as_mut();
+  if bytes.len() > repr_bytes.len() {
+    return None;
+  }
+  repr_bytes[..bytes.len()].copy_from_slice(&bytes);
+  Scalar::from_repr(repr).into()
 }
 
 use super::bignat::BigNat;
