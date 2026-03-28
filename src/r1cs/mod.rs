@@ -35,8 +35,7 @@ fn random_scalar<F: Field>() -> F {
 }
 
 mod sparse;
-use sparse::PrecomputedSparseMatrix;
-pub use sparse::SparseMatrix;
+pub use sparse::{PrecomputedSparseMatrix, SparseMatrix};
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -135,6 +134,69 @@ impl<E: Engine> R1CSShape<E> {
   /// This is useful for dimension validation.
   pub fn num_io(&self) -> usize {
     self.num_io
+  }
+
+  /// Detect which witness variables are boolean-constrained (always 0 or 1).
+  ///
+  /// Scans R1CS constraints for the pattern `b * (1-b) = 0`:
+  ///   A_i = {col_j: 1}, B_i = {col_j: -1, ONE_col: 1}, C_i = empty
+  pub fn detect_boolean_vars(&self) -> Vec<bool> {
+    let mut is_bool = vec![false; self.num_vars];
+    let one_col = self.num_vars;
+    let neg_one = -E::Scalar::ONE;
+
+    for row in 0..self.num_cons {
+      let c_start = self.C.indptr[row];
+      let c_end = self.C.indptr[row + 1];
+      if c_start != c_end {
+        continue;
+      }
+      if let Some(j) = self.check_bool_pattern(&self.A, &self.B, row, one_col, &neg_one) {
+        if j < self.num_vars {
+          is_bool[j] = true;
+        }
+        continue;
+      }
+      if let Some(j) = self.check_bool_pattern(&self.B, &self.A, row, one_col, &neg_one) {
+        if j < self.num_vars {
+          is_bool[j] = true;
+        }
+      }
+    }
+    is_bool
+  }
+
+  fn check_bool_pattern(
+    &self,
+    mat1: &SparseMatrix<E::Scalar>,
+    mat2: &SparseMatrix<E::Scalar>,
+    row: usize,
+    one_col: usize,
+    neg_one: &E::Scalar,
+  ) -> Option<usize> {
+    let a_start = mat1.indptr[row];
+    let a_end = mat1.indptr[row + 1];
+    if a_end - a_start != 1 {
+      return None;
+    }
+    let j = mat1.indices[a_start];
+    if mat1.data[a_start] != E::Scalar::ONE {
+      return None;
+    }
+    let b_start = mat2.indptr[row];
+    let b_end = mat2.indptr[row + 1];
+    if b_end - b_start != 2 {
+      return None;
+    }
+    let (bi0, bv0) = (mat2.indices[b_start], &mat2.data[b_start]);
+    let (bi1, bv1) = (mat2.indices[b_start + 1], &mat2.data[b_start + 1]);
+    if (bi0 == j && bv0 == neg_one && bi1 == one_col && bv1 == &E::Scalar::ONE)
+      || (bi1 == j && bv1 == neg_one && bi0 == one_col && bv0 == &E::Scalar::ONE)
+    {
+      Some(j)
+    } else {
+      None
+    }
   }
 
   /// Returns a reference to the A matrix of the R1CS shape.
@@ -389,12 +451,33 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
+  /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
+  /// Uses precomputed coefficient tables when available.
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],
   ) -> Result<(Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
     if z.len() != self.num_io + self.num_vars + 1 {
       return Err(NovaError::InvalidWitnessLength);
+    }
+
+    // For small circuits, skip rayon to avoid thread pool contention
+    // when many concurrent chains run small CycleFold SpMVs
+    if z.len() <= 65536 {
+      if let (Some(pa), Some(pb), Some(pc)) = (
+        self.precomputed_A.get(),
+        self.precomputed_B.get(),
+        self.precomputed_C.get(),
+      ) {
+        let az = pa.multiply_vec(z);
+        let bz = pb.multiply_vec(z);
+        let cz = pc.multiply_vec(z);
+        return Ok((az, bz, cz));
+      }
+      let az = self.A.multiply_vec(z);
+      let bz = self.B.multiply_vec(z);
+      let cz = self.C.multiply_vec(z);
+      return Ok((az, bz, cz));
     }
 
     let pa = self

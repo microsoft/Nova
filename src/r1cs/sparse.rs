@@ -3,7 +3,6 @@
 //! This module defines a custom implementation of CSR/CSC sparse matrices.
 //! Specifically, we implement sparse matrix / dense vector multiplication
 //! to compute the `A z`, `B z`, and `C z` in Nova.
-use crate::constants::PARALLEL_THRESHOLD;
 use ff::PrimeField;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -12,27 +11,29 @@ use serde::{Deserialize, Serialize};
 ///
 /// Classifies entries by coefficient magnitude to avoid expensive field
 /// multiplications for the common cases in R1CS:
-/// - +/-1: just add/subtract (no multiplication)
-/// - small +/-k (|k| <= 7): repeated addition (cheaper than field mul)
+/// - ±1: just add/subtract (no multiplication)
+/// - small ±k (|k| ≤ 7): repeated addition (cheaper than field mul)
 /// - general: full field multiplication
+///
+/// For a typical R1CS circuit, 60-80% of entries are ±1, and another
+/// 10-20% are small integers, leaving only ~10-20% needing full mul.
 #[derive(Clone, Debug)]
 pub struct PrecomputedSparseMatrix<F: PrimeField> {
   num_rows: usize,
-  num_cols: usize,
   /// Per-row spans into each category's column array: (start, count)
-  row_unit_pos: Vec<(usize, usize)>,
-  row_unit_neg: Vec<(usize, usize)>,
-  row_small: Vec<(usize, usize)>,
-  row_general: Vec<(usize, usize)>,
+  row_unit_pos: Vec<(u32, u16)>,
+  row_unit_neg: Vec<(u32, u16)>,
+  row_small: Vec<(u32, u16)>,
+  row_general: Vec<(u32, u16)>,
   /// Column indices for val=+1 entries
-  unit_pos_cols: Vec<usize>,
+  unit_pos_cols: Vec<u32>,
   /// Column indices for val=-1 entries
-  unit_neg_cols: Vec<usize>,
+  unit_neg_cols: Vec<u32>,
   /// (column_index, signed_coeff) for small integer entries (|coeff| in 2..=7)
-  small_cols: Vec<usize>,
+  small_cols: Vec<u32>,
   small_coeffs: Vec<i8>,
   /// (column_index, coefficient) for general entries
-  general_cols: Vec<usize>,
+  general_cols: Vec<u32>,
   general_vals: Vec<F>,
 }
 
@@ -59,40 +60,37 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
     let mut general_vals = Vec::new();
 
     for ptrs in m.indptr.windows(2) {
-      let up_start = unit_pos_cols.len();
-      let un_start = unit_neg_cols.len();
-      let sm_start = small_cols.len();
-      let g_start = general_cols.len();
+      let up_start = unit_pos_cols.len() as u32;
+      let un_start = unit_neg_cols.len() as u32;
+      let sm_start = small_cols.len() as u32;
+      let g_start = general_cols.len() as u32;
 
-      for (&val, &col) in m.data[ptrs[0]..ptrs[1]]
-        .iter()
-        .zip(&m.indices[ptrs[0]..ptrs[1]])
-      {
+      for (&val, &col) in m.data[ptrs[0]..ptrs[1]].iter().zip(&m.indices[ptrs[0]..ptrs[1]]) {
         if val == one {
-          unit_pos_cols.push(col);
+          unit_pos_cols.push(col as u32);
         } else if val == neg_one {
-          unit_neg_cols.push(col);
+          unit_neg_cols.push(col as u32);
         } else if let Some(k) = small_pos.iter().position(|&v| v == val) {
-          small_cols.push(col);
+          small_cols.push(col as u32);
           small_coeffs.push((k as i8) + 2);
         } else if let Some(k) = small_neg.iter().position(|&v| v == val) {
-          small_cols.push(col);
+          small_cols.push(col as u32);
           small_coeffs.push(-((k as i8) + 2));
         } else {
-          general_cols.push(col);
+          general_cols.push(col as u32);
           general_vals.push(val);
         }
       }
 
-      row_unit_pos.push((up_start, unit_pos_cols.len() - up_start));
-      row_unit_neg.push((un_start, unit_neg_cols.len() - un_start));
-      row_small.push((sm_start, small_cols.len() - sm_start));
-      row_general.push((g_start, general_cols.len() - g_start));
+      row_unit_pos.push((up_start, (unit_pos_cols.len() as u32 - up_start) as u16));
+      row_unit_neg.push((un_start, (unit_neg_cols.len() as u32 - un_start) as u16));
+      row_small.push((sm_start, (small_cols.len() as u32 - sm_start) as u16));
+      row_general.push((g_start, (general_cols.len() as u32 - g_start) as u16));
     }
 
-    Self {
+
+    let result = Self {
       num_rows,
-      num_cols: m.cols,
       row_unit_pos,
       row_unit_neg,
       row_small,
@@ -103,7 +101,8 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
       small_coeffs,
       general_cols,
       general_vals,
-    }
+    };
+    result
   }
 
   #[inline(always)]
@@ -115,21 +114,11 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
       3 => x.double() + x,
       4 => x.double().double(),
       5 => x.double().double() + x,
-      6 => {
-        let d = x.double();
-        d.double() + d
-      }
-      7 => {
-        let d = x.double();
-        d.double() + d + x
-      }
+      6 => { let d = x.double(); d.double() + d },
+      7 => { let d = x.double(); d.double() + d + x },
       _ => unreachable!(),
     };
-    if coeff < 0 {
-      -result
-    } else {
-      result
-    }
+    if coeff < 0 { -result } else { result }
   }
 
   #[inline(always)]
@@ -137,23 +126,25 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
     let mut sum = F::ZERO;
 
     let (start, count) = self.row_unit_pos[row];
-    for i in start..(start + count) {
-      sum += v[self.unit_pos_cols[i]];
+    for i in start..(start + count as u32) {
+      sum += v[self.unit_pos_cols[i as usize] as usize];
     }
 
     let (start, count) = self.row_unit_neg[row];
-    for i in start..(start + count) {
-      sum -= v[self.unit_neg_cols[i]];
+    for i in start..(start + count as u32) {
+      sum -= v[self.unit_neg_cols[i as usize] as usize];
     }
 
     let (start, count) = self.row_small[row];
-    for i in start..(start + count) {
-      sum += Self::small_mul(self.small_coeffs[i], v[self.small_cols[i]]);
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      sum += Self::small_mul(self.small_coeffs[idx], v[self.small_cols[idx] as usize]);
     }
 
     let (start, count) = self.row_general[row];
-    for i in start..(start + count) {
-      sum += self.general_vals[i] * v[self.general_cols[i]];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      sum += self.general_vals[idx] * v[self.general_cols[idx] as usize];
     }
 
     sum
@@ -165,31 +156,33 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
     let mut s2 = F::ZERO;
 
     let (start, count) = self.row_unit_pos[row];
-    for i in start..(start + count) {
-      let col = self.unit_pos_cols[i];
+    for i in start..(start + count as u32) {
+      let col = self.unit_pos_cols[i as usize] as usize;
       s1 += v1[col];
       s2 += v2[col];
     }
 
     let (start, count) = self.row_unit_neg[row];
-    for i in start..(start + count) {
-      let col = self.unit_neg_cols[i];
+    for i in start..(start + count as u32) {
+      let col = self.unit_neg_cols[i as usize] as usize;
       s1 -= v1[col];
       s2 -= v2[col];
     }
 
     let (start, count) = self.row_small[row];
-    for i in start..(start + count) {
-      let col = self.small_cols[i];
-      let c = self.small_coeffs[i];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      let col = self.small_cols[idx] as usize;
+      let c = self.small_coeffs[idx];
       s1 += Self::small_mul(c, v1[col]);
       s2 += Self::small_mul(c, v2[col]);
     }
 
     let (start, count) = self.row_general[row];
-    for i in start..(start + count) {
-      let col = self.general_cols[i];
-      let val = self.general_vals[i];
+    for i in start..(start + count as u32) {
+      let idx = i as usize;
+      let col = self.general_cols[idx] as usize;
+      let val = self.general_vals[idx];
       s1 += val * v1[col];
       s2 += val * v2[col];
     }
@@ -199,32 +192,19 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast SpMV using precomputed coefficient classification.
   pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
-    assert_eq!(self.num_cols, vector.len(), "invalid shape");
-    if self.num_rows <= PARALLEL_THRESHOLD {
-      (0..self.num_rows)
-        .map(|r| self.compute_row_single(r, vector))
-        .collect()
+    if self.num_rows <= 65536 {
+      (0..self.num_rows).map(|r| self.compute_row_single(r, vector)).collect()
     } else {
-      (0..self.num_rows)
-        .into_par_iter()
-        .map(|r| self.compute_row_single(r, vector))
-        .collect()
+      (0..self.num_rows).into_par_iter().map(|r| self.compute_row_single(r, vector)).collect()
     }
   }
 
   /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
   pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
-    assert_eq!(self.num_cols, v1.len(), "invalid shape for v1");
-    assert_eq!(self.num_cols, v2.len(), "invalid shape for v2");
-    if self.num_rows <= PARALLEL_THRESHOLD {
-      (0..self.num_rows)
-        .map(|r| self.compute_row_pair(r, v1, v2))
-        .unzip()
+    if self.num_rows <= 65536 {
+      (0..self.num_rows).map(|r| self.compute_row_pair(r, v1, v2)).unzip()
     } else {
-      (0..self.num_rows)
-        .into_par_iter()
-        .map(|r| self.compute_row_pair(r, v1, v2))
-        .unzip()
+      (0..self.num_rows).into_par_iter().map(|r| self.compute_row_pair(r, v1, v2)).unzip()
     }
   }
 }
@@ -306,16 +286,118 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// Multiply by a dense vector; uses rayon/gpu.
   /// This does not check that the shape of the matrix/vector are compatible.
   pub fn multiply_vec_unchecked(&self, vector: &[F]) -> Vec<F> {
-    self
-      .indptr
-      .par_windows(2)
-      .map(|ptrs| {
-        self
-          .get_row_unchecked(ptrs.try_into().unwrap())
-          .map(|(val, col_idx)| *val * vector[*col_idx])
-          .sum()
-      })
-      .collect()
+    if self.indptr.len() <= 65537 {
+      self
+        .indptr
+        .windows(2)
+        .map(|ptrs| {
+          self
+            .get_row_unchecked(ptrs.try_into().unwrap())
+            .map(|(val, col_idx)| *val * vector[*col_idx])
+            .sum()
+        })
+        .collect()
+    } else {
+      self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          self
+            .get_row_unchecked(ptrs.try_into().unwrap())
+            .map(|(val, col_idx)| *val * vector[*col_idx])
+            .sum()
+        })
+        .collect()
+    }
+  }
+
+  /// Multiply by two dense vectors into pre-allocated output buffers.
+  /// Avoids allocation when the same-sized outputs are reused across steps.
+  pub fn multiply_vec_pair_into(
+    &self,
+    v1: &[F],
+    v2: &[F],
+    out1: &mut [F],
+    out2: &mut [F],
+  ) {
+    debug_assert_eq!(self.cols, v1.len());
+    debug_assert_eq!(self.cols, v2.len());
+    let n = self.indptr.len() - 1;
+    debug_assert!(out1.len() >= n);
+    debug_assert!(out2.len() >= n);
+
+    if n <= 4096 {
+      for (row_idx, ptrs) in self.indptr.windows(2).enumerate() {
+        let mut s1 = F::ZERO;
+        let mut s2 = F::ZERO;
+        for (val, col_idx) in self.get_row_unchecked(ptrs.try_into().unwrap()) {
+          s1 += *val * v1[*col_idx];
+          s2 += *val * v2[*col_idx];
+        }
+        out1[row_idx] = s1;
+        out2[row_idx] = s2;
+      }
+    } else {
+      use rayon::prelude::*;
+      // Split output into chunks that can be written independently
+      let results: Vec<(F, F)> = self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in self.get_row_unchecked(ptrs.try_into().unwrap()) {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .collect();
+      for (row_idx, (s1, s2)) in results.into_iter().enumerate() {
+        out1[row_idx] = s1;
+        out2[row_idx] = s2;
+      }
+    }
+  }
+
+  /// Multiply by two dense vectors simultaneously in a single pass over the matrix.
+  /// Returns (M*v1, M*v2). This is faster than two separate multiply_vec calls
+  /// because the sparse matrix data is only loaded from memory once.
+  pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
+    assert_eq!(self.cols, v1.len(), "invalid shape for v1");
+    assert_eq!(self.cols, v2.len(), "invalid shape for v2");
+
+    if self.indptr.len() <= 65537 {
+      self
+        .indptr
+        .windows(2)
+        .map(|ptrs| {
+          let row = self.get_row_unchecked(ptrs.try_into().unwrap());
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in row {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .unzip()
+    } else {
+      self
+        .indptr
+        .par_windows(2)
+        .map(|ptrs| {
+          let row = self.get_row_unchecked(ptrs.try_into().unwrap());
+          let mut s1 = F::ZERO;
+          let mut s2 = F::ZERO;
+          for (val, col_idx) in row {
+            s1 += *val * v1[*col_idx];
+            s2 += *val * v2[*col_idx];
+          }
+          (s1, s2)
+        })
+        .unzip()
+    }
   }
 
   /// number of non-zero entries
@@ -399,7 +481,7 @@ mod tests {
     provider::PallasEngine,
     traits::{Engine, Group},
   };
-  use ff::{Field, PrimeField};
+  use ff::PrimeField;
   use proptest::{
     prelude::*,
     strategy::{BoxedStrategy, Just, Strategy},
