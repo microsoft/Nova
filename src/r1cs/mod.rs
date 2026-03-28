@@ -634,40 +634,38 @@ impl<E: Engine> R1CSShape<E> {
     W2: &R1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    // The following code uses the optimization suggested in
-    // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let z_len = W1.W.len() + 1 + U1.X.len();
-    let Z = if z_len <= PARALLEL_THRESHOLD {
-      let mut z = Vec::with_capacity(z_len);
-      W1.W
-        .iter()
-        .zip(W2.W.iter())
-        .for_each(|(w1, w2)| z.push(*w1 + *w2));
-      z.push(U1.u + E::Scalar::ONE);
-      U1.X
-        .iter()
-        .zip(U2.X.iter())
-        .for_each(|(x1, x2)| z.push(*x1 + *x2));
-      z
-    } else {
-      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-      let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-      Z1.into_par_iter()
-        .zip(Z2.into_par_iter())
-        .map(|(z1, z2)| z1 + z2)
-        .collect::<Vec<E::Scalar>>()
-    };
-    let u = U1.u + E::Scalar::ONE; // U2.u = 1
+    // Build Z = Z1 + Z2 in one pass without allocating Z1/Z2 separately
+    let n_w = W1.W.len();
+    let n_x = U1.X.len();
+    let z_len = n_w + 1 + n_x;
+    let mut Z = Vec::with_capacity(z_len);
+    for i in 0..n_w {
+      Z.push(W1.W[i] + W2.W[i]);
+    }
+    Z.push(U1.u + E::Scalar::ONE);
+    for i in 0..n_x {
+      Z.push(U1.X[i] + U2.X[i]);
+    }
+
+    let u = U1.u + E::Scalar::ONE;
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
-      .collect::<Vec<E::Scalar>>();
+    let T: Vec<E::Scalar> = if AZ.len() <= 65536 {
+      AZ.iter()
+        .zip(BZ.iter())
+        .zip(CZ.iter())
+        .zip(W1.E.iter())
+        .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+        .collect()
+    } else {
+      AZ.par_iter()
+        .zip(BZ.par_iter())
+        .zip(CZ.par_iter())
+        .zip(W1.E.par_iter())
+        .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
+        .collect()
+    };
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 
@@ -688,25 +686,39 @@ impl<E: Engine> R1CSShape<E> {
     let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
     let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
 
-    // The following code uses the optimization suggested in
-    // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let Z = Z1
-      .into_par_iter()
-      .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
+    let z_len = Z1.len();
+    let Z: Vec<E::Scalar> = if z_len <= 65536 {
+      Z1.into_iter()
+        .zip(Z2.into_iter())
+        .map(|(z1, z2)| z1 + z2)
+        .collect()
+    } else {
+      Z1.into_par_iter()
+        .zip(Z2.into_par_iter())
+        .map(|(z1, z2)| z1 + z2)
+        .collect()
+    };
     let u = U1.u + U2.u;
 
     let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
 
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .zip(W2.E.par_iter())
-      .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
-      .collect::<Vec<E::Scalar>>();
+    let T: Vec<E::Scalar> = if AZ.len() <= 65536 {
+      AZ.iter()
+        .zip(BZ.iter())
+        .zip(CZ.iter())
+        .zip(W1.E.iter())
+        .zip(W2.E.iter())
+        .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
+        .collect()
+    } else {
+      AZ.par_iter()
+        .zip(BZ.par_iter())
+        .zip(CZ.par_iter())
+        .zip(W1.E.par_iter())
+        .zip(W2.E.par_iter())
+        .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
+        .collect()
+    };
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 

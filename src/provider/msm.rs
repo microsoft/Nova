@@ -234,6 +234,12 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     return msm_simple(coeffs, bases);
   }
 
+  // For small-to-medium inputs (< 65536), use sequential classification
+  // to avoid rayon contention when many concurrent chains run
+  if n <= 65536 {
+    return msm_sequential(coeffs, bases);
+  }
+
   // Group indices: 0=unit_pos, 1=unit_neg, 2=pos≤8, 3=neg≤8,
   // 4=pos≤16, 5=neg≤16, 6=pos≤32, 7=neg≤32, 8=pos≤64, 9=neg≤64, 10=large
   const NUM_GROUPS: usize = 11;
@@ -416,6 +422,135 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   );
 
   binary_result + small_and_large_result
+}
+
+/// Sequential MSM for medium-sized inputs (avoids rayon contention).
+/// Uses the same classification + group strategy but without parallel iterators.
+fn msm_sequential<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+  const NUM_GROUPS: usize = 11;
+
+  // Phase 1: Classify each scalar sequentially
+  let classified: Vec<u64> = coeffs
+    .iter()
+    .enumerate()
+    .filter_map(|(i, s)| {
+      if bool::from(s.is_zero()) || bool::from(bases[i].is_identity()) {
+        return None;
+      }
+      let neg_s = -(*s);
+      let bits_s = scalar_num_bits(s);
+      let bits_neg = scalar_num_bits(&neg_s);
+
+      let group = if bits_s <= 1 {
+        0u8
+      } else if bits_neg <= 1 {
+        1u8
+      } else if bits_s <= 8 {
+        2u8
+      } else if bits_neg <= 8 {
+        3u8
+      } else if bits_s <= 16 {
+        4u8
+      } else if bits_neg <= 16 {
+        5u8
+      } else if bits_s <= 32 {
+        6u8
+      } else if bits_neg <= 32 {
+        7u8
+      } else if bits_s <= 64 {
+        8u8
+      } else if bits_neg <= 64 {
+        9u8
+      } else {
+        10u8
+      };
+      Some(((i as u64) & 0x0FFF_FFFF_FFFF_FFFF) | ((group as u64) << 60))
+    })
+    .collect();
+
+  if classified.is_empty() {
+    return C::Curve::identity();
+  }
+
+  // Phase 2: Sort by group (sequential)
+  let mut classified = classified;
+  classified.sort_unstable_by_key(|v| (v >> 60) as u8);
+
+  let extract_group = |v: u64| (v >> 60) as u8;
+  let extract_index = |v: u64| (v & 0x0FFF_FFFF_FFFF_FFFF) as usize;
+
+  // Find partition boundaries
+  let mut boundaries = [0usize; NUM_GROUPS + 1];
+  {
+    let mut pos = 0;
+    for g in 0..NUM_GROUPS as u8 {
+      boundaries[g as usize] = pos;
+      pos += classified[pos..].partition_point(|v| extract_group(*v) <= g);
+    }
+    boundaries[NUM_GROUPS] = classified.len();
+  }
+
+  let extract_u64_group = |start: usize, end: usize, negate: bool| -> (Vec<C>, Vec<u64>) {
+    classified[start..end]
+      .iter()
+      .map(|&v| {
+        let idx = extract_index(v);
+        let b = bases[idx];
+        let s = if negate { -coeffs[idx] } else { coeffs[idx] };
+        (b, repr_low_u64(&s))
+      })
+      .unzip()
+  };
+
+  let extract_binary_group = |start: usize, end: usize| -> Vec<C> {
+    classified[start..end]
+      .iter()
+      .map(|&v| bases[extract_index(v)])
+      .collect()
+  };
+
+  // Phase 3: Compute MSM for each group sequentially
+  let mut result = C::Curve::identity();
+
+  // Binary groups
+  let bases_pos = extract_binary_group(boundaries[0], boundaries[1]);
+  result = result + accumulate_bases::<C>(&bases_pos);
+  let bases_neg = extract_binary_group(boundaries[1], boundaries[2]);
+  result = result - accumulate_bases::<C>(&bases_neg);
+
+  // Small scalar groups
+  let pairs = [
+    (2, 3, 8usize),
+    (4, 5, 16),
+    (6, 7, 32),
+    (8, 9, 64),
+  ];
+  for (pos_g, neg_g, max_bits) in pairs {
+    let (pos_b, pos_s) = extract_u64_group(boundaries[pos_g], boundaries[pos_g + 1], false);
+    let (neg_b, neg_s) = extract_u64_group(boundaries[neg_g], boundaries[neg_g + 1], true);
+    result = result + msm_small_with_max_num_bits(&pos_s, &pos_b, max_bits)
+      - msm_small_with_max_num_bits(&neg_s, &neg_b, max_bits);
+  }
+
+  // Large scalars
+  let g10_start = boundaries[10];
+  let g10_end = boundaries[11];
+  if g10_start < g10_end {
+    let (large_bases, large_coeffs): (Vec<C>, Vec<C::Scalar>) = classified[g10_start..g10_end]
+      .iter()
+      .map(|&v| {
+        let idx = extract_index(v);
+        (bases[idx], coeffs[idx])
+      })
+      .unzip();
+    // Use msm_serial (not msm_best) to avoid nested rayon contention
+    // when many chains call msm_sequential concurrently
+    let mut large_acc = C::Curve::identity();
+    halo2curves::msm::msm_serial(&large_coeffs, &large_bases, &mut large_acc);
+    result = result + large_acc;
+  }
+
+  result
 }
 
 /// Simple MSM fallback for very small inputs.
@@ -705,6 +840,105 @@ pub(crate) fn batch_add<C: CurveAffine>(bases: &[C], one_indices: &[usize]) -> C
     .reduce(C::Curve::identity, |sum, evl| sum + evl);
 
   comm
+}
+
+/// Booth-encoded MSM using XYZZ bucket coordinates for full-field scalars.
+/// This avoids halo2curves and uses our optimized XYZZ addition (~40% faster
+/// bucket accumulation than standard Jacobian).
+#[allow(dead_code)]
+#[allow(dead_code)]
+fn msm_large_xyzz<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+  if coeffs.is_empty() {
+    return C::Curve::identity();
+  }
+
+  fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
+    let skip_bits = (window_index * window_size).saturating_sub(1);
+    let skip_bytes = skip_bits / 8;
+    let mut v: [u8; 4] = [0; 4];
+    for (dst, src) in v.iter_mut().zip(el.iter().skip(skip_bytes)) {
+      *dst = *src;
+    }
+    let mut tmp = u32::from_le_bytes(v);
+    if window_index == 0 {
+      tmp <<= 1;
+    }
+    tmp >>= skip_bits - (skip_bytes * 8);
+    tmp &= (1 << (window_size + 1)) - 1;
+    let sign = tmp & (1 << window_size) == 0;
+    tmp = (tmp + 1) >> 1;
+    if sign {
+      tmp as i32
+    } else {
+      -((1 << window_size) as i32 - tmp as i32)
+    }
+  }
+
+  fn msm_large_xyzz_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    let coeffs_repr: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
+
+    let c = if bases.len() < 4 {
+      1
+    } else if bases.len() < 32 {
+      3
+    } else {
+      (bases.len() as f64).ln().ceil() as usize
+    };
+
+    let field_byte_size = C::Scalar::NUM_BITS.div_ceil(8u32) as usize;
+    let mut acc_or = vec![0u8; field_byte_size];
+    for coeff in &coeffs_repr {
+      for (acc_limb, limb) in acc_or.iter_mut().zip(coeff.as_ref().iter()) {
+        *acc_limb |= *limb;
+      }
+    }
+    let max_byte_size = field_byte_size
+      - acc_or.iter().rev().position(|v| *v != 0).unwrap_or(field_byte_size);
+    if max_byte_size == 0 {
+      return C::Curve::identity();
+    }
+    let number_of_windows = max_byte_size * 8 / c + 1;
+
+    let mut acc: BucketXYZZ<C::Base> = BucketXYZZ::zero();
+
+    for current_window in (0..number_of_windows).rev() {
+      for _ in 0..c {
+        acc.double_in_place();
+      }
+
+      let mut buckets: Vec<BucketXYZZ<C::Base>> = vec![BucketXYZZ::zero(); 1 << (c - 1)];
+
+      for (coeff, base) in coeffs_repr.iter().zip(bases.iter()) {
+        let idx = get_booth_index(current_window, c, coeff.as_ref());
+        if idx > 0 {
+          bucket_add_affine::<C>(&mut buckets[(idx - 1) as usize], base);
+        } else if idx < 0 {
+          let neg = base.neg();
+          bucket_add_affine::<C>(&mut buckets[(idx.unsigned_abs() - 1) as usize], &neg);
+        }
+      }
+
+      let mut running_sum: BucketXYZZ<C::Base> = BucketXYZZ::zero();
+      for b in buckets.into_iter().rev() {
+        running_sum.add_assign_bucket(&b);
+        acc.add_assign_bucket(&running_sum);
+      }
+    }
+
+    bucket_to_curve::<C>(&acc)
+  }
+
+  let num_threads = current_num_threads();
+  if coeffs.len() > num_threads * 4 {
+    let chunk_size = (coeffs.len() + num_threads - 1) / num_threads;
+    coeffs
+      .par_chunks(chunk_size)
+      .zip(bases.par_chunks(chunk_size))
+      .map(|(s, b)| msm_large_xyzz_serial(s, b))
+      .reduce(C::Curve::identity, |a, b| a + b)
+  } else {
+    msm_large_xyzz_serial(coeffs, bases)
+  }
 }
 
 #[cfg(test)]
