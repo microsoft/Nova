@@ -11,17 +11,25 @@ use crate::{
   traits::{ROCircuitTrait, ROTrait},
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::U24;
+use generic_array::typenum::U4;
 use serde::{Deserialize, Serialize};
 
-/// All Poseidon Constants that are used in Nova
+/// All Poseidon Constants that are used in Nova.
+/// Uses arity=4 (width=5) for a smaller 5×5 MDS matrix (vs 25×25 at width-25).
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U4>);
+
+impl<Scalar: PrimeField> PoseidonConstantsCircuit<Scalar> {
+  /// Access the inner PoseidonConstants.
+  pub fn inner(&self) -> &PoseidonConstants<Scalar, U4> {
+    &self.0
+  }
+}
 
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
   /// Generate Poseidon constants
   fn default() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self(Sponge::<Scalar, U4>::api_constants(Strength::Standard))
   }
 }
 
@@ -135,6 +143,7 @@ where
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      sponge.set_compact(true);
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);
@@ -194,6 +203,7 @@ where
 
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
+      sponge.set_compact(true);
       let acc = &mut ns;
 
       sponge.start(parameter, None, acc);

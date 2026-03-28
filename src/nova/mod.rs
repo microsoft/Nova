@@ -1125,17 +1125,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["9e459d7e9450cce023a7adad2e4552170170b031e75b65333713ea161a294503"],
+      &expect!["8e49e17c042884aaa33ea7778dd1f25d70298ed09f0a62a7c3ab083594376502"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["aa8f0e6d8be0c4028ddf7a7a733cf8d1ceeff408d6ec9a8aefa815b2668b2402"],
+      &expect!["442752b760dc2e38bfc9c18939e72e3dab38e427cc92bed9793758d579111e01"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["719f988d15984fe6e838dd6267455265e1081beeb3b7313594a26d702afe5702"],
+      &expect!["bec10c50644a52129cf9956204c70c362f442655ae35bb4034d2f9b6799be203"],
     );
   }
 

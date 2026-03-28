@@ -87,18 +87,23 @@ where
 /// See original [Poseidon paper](https://eprint.iacr.org/2019/458.pdf) for more details.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoseidonConstants<F: PrimeField, A: Arity<F>> {
-  pub(crate) mds_matrices: MdsMatrices<F>,
-  pub(crate) round_constants: Option<Vec<F>>, // TODO: figure out how to automatically allocate `None`
-  pub(crate) compressed_round_constants: Vec<F>,
-  pub(crate) pre_sparse_matrix: Matrix<F>,
-  pub(crate) sparse_matrixes: Vec<SparseMatrix<F>>,
+  /// MDS matrices for the Poseidon permutation
+  pub mds_matrices: MdsMatrices<F>,
+  pub(crate) round_constants: Option<Vec<F>>,
+  /// Compressed round constants (optimized static mode)
+  pub compressed_round_constants: Vec<F>,
+  /// Pre-sparse matrix for the transition round
+  pub pre_sparse_matrix: Matrix<F>,
+  /// Sparse matrices for partial rounds
+  pub sparse_matrixes: Vec<SparseMatrix<F>>,
   pub(crate) strength: Strength,
   /// The domain tag is the first element of a Poseidon permutation.
-  /// This extra element is necessary for 128-bit security.
-  pub(crate) domain_tag: F,
+  pub domain_tag: F,
   pub(crate) full_rounds: usize,
-  pub(crate) half_full_rounds: usize,
-  pub(crate) partial_rounds: usize,
+  /// Number of half full rounds
+  pub half_full_rounds: usize,
+  /// Number of partial rounds
+  pub partial_rounds: usize,
   pub(crate) hash_type: HashType<F, A>,
   pub(crate) _a: PhantomData<A>,
 }

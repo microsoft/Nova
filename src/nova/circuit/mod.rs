@@ -451,8 +451,8 @@ mod tests {
 
   #[test]
   fn test_recursive_circuit() {
-    test_recursive_circuit_with::<PallasEngine, VestaEngine>(9833, 10365);
-    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(10001, 10554);
-    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(10280, 10977);
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(13646, 14178);
+    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(13814, 14367);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(14093, 14790);
   }
 }
