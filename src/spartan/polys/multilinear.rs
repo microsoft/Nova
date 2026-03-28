@@ -2,7 +2,6 @@
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
 
-use crate::constants::PARALLEL_THRESHOLD;
 use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 use core::ops::{Add, Index};
 use ff::PrimeField;
@@ -69,7 +68,8 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
 
     let (left, right) = self.Z.split_at_mut(n);
 
-    if n < PARALLEL_THRESHOLD {
+    // Use sequential iteration for small polynomials to avoid rayon overhead
+    if n < 4096 {
       left.iter_mut().zip(right.iter()).for_each(|(a, b)| {
         *a += *r * (*b - *a);
       });
@@ -129,15 +129,7 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Evaluates multiple polynomials at the same point, reusing sqrt-sized eq tables.
   /// Fuses all polynomial reductions into a single pass for cache efficiency.
   pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
-    let k = Zs.len();
-    if k == 0 {
-      return Vec::new();
-    }
-
     let s = r.len();
-    let n = 1usize << s;
-    assert!(Zs.iter().all(|z| z.len() == n));
-
     let s_right = s / 2;
     let s_left = s - s_right;
     let n_left = 1 << s_left;
@@ -146,35 +138,32 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     let eq_left = EqPolynomial::evals_from_points(&r[..s_left]);
     let eq_right = EqPolynomial::evals_from_points(&r[s_left..]);
 
-    // Fuse: reduce all k polynomials in a single pass over the row structure.
-    // Uses a flat buffer (n_left * k) to avoid per-row Vec allocations.
-    let mut all_reduced = vec![Scalar::ZERO; n_left * k];
-    all_reduced
-      .par_chunks_mut(k)
-      .enumerate()
-      .for_each(|(i, sums)| {
+    let k = Zs.len();
+
+    // Fuse: reduce all k polynomials in a single pass over the row structure
+    let all_reduced: Vec<Vec<Scalar>> = (0..n_left)
+      .into_par_iter()
+      .map(|i| {
         let start = i * n_right;
+        let mut sums = vec![Scalar::ZERO; k];
         for j in 0..n_right {
           let eq_val = eq_right[j];
           for (p, z) in Zs.iter().enumerate() {
             sums[p] += z[start + j] * eq_val;
           }
         }
-      });
+        sums
+      })
+      .collect();
 
     // Dot each polynomial's reduced vector with eq_left
     (0..k)
       .map(|p| {
-        if n_left < PARALLEL_THRESHOLD {
-          (0..n_left)
-            .map(|i| eq_left[i] * all_reduced[i * k + p])
-            .sum()
-        } else {
-          (0..n_left)
-            .into_par_iter()
-            .map(|i| eq_left[i] * all_reduced[i * k + p])
-            .sum()
-        }
+        eq_left
+          .iter()
+          .enumerate()
+          .map(|(i, eq_l)| *eq_l * all_reduced[i][p])
+          .sum()
       })
       .collect()
   }

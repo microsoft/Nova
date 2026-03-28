@@ -481,7 +481,7 @@ mod tests {
     provider::PallasEngine,
     traits::{Engine, Group},
   };
-  use ff::PrimeField;
+  use ff::{Field, PrimeField};
   use proptest::{
     prelude::*,
     strategy::{BoxedStrategy, Just, Strategy},
