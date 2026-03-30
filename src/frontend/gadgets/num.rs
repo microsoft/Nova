@@ -569,16 +569,22 @@ mod tests {
 
   #[test]
   fn test_allocated_num_one() {
+    let mut cs = TestConstraintSystem::<Fr>::new();
+
+    // AllocatedNum::one() should add zero constraints
     let one = AllocatedNum::<Fr>::one::<TestConstraintSystem<Fr>>();
-
-    // Value should be ONE
     assert_eq!(one.get_value(), Some(Fr::ONE));
-
-    // Variable should be the built-in CS::one()
     assert_eq!(one.get_variable(), TestConstraintSystem::<Fr>::one());
-
-    // No constraints should have been added
-    let cs = TestConstraintSystem::<Fr>::new();
     assert_eq!(cs.num_constraints(), 0);
+
+    // Compare: the old alloc + enforce pattern adds 1 constraint
+    let one_old = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || Fr::ONE);
+    cs.enforce(
+      || "check one is valid",
+      |lc| lc + TestConstraintSystem::<Fr>::one(),
+      |lc| lc + TestConstraintSystem::<Fr>::one(),
+      |lc| lc + one_old.get_variable(),
+    );
+    assert_eq!(cs.num_constraints(), 1);
   }
 }
