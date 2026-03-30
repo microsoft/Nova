@@ -36,7 +36,8 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
   /// (e.g., wrapping an [`AllocatedBit`](super::boolean::AllocatedBit)'s variable as a number).
   pub fn from_parts(variable: Variable, value: Option<Scalar>) -> Self {
     AllocatedNum { value, variable }
-  
+  }
+
   /// Returns an `AllocatedNum` wrapping the built-in `CS::one()` variable.
   /// Costs zero constraints since it uses the input-0 wire directly.
   pub fn one<CS: ConstraintSystem<Scalar>>() -> Self {
