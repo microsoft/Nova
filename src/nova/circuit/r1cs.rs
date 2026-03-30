@@ -9,7 +9,7 @@ use crate::{
       util::{f_to_nat, Num},
     },
     utils::{
-      alloc_bignat_constant, alloc_one, alloc_scalar_as_base, alloc_zero, conditionally_select,
+      alloc_bignat_constant, alloc_scalar_as_base, alloc_zero, conditionally_select,
       conditionally_select2, conditionally_select_bignat, le_bits_to_num,
     },
   },
@@ -169,7 +169,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   ) -> Result<Self, SynthesisError> {
     let E = AllocatedPoint::default(cs.namespace(|| "allocate default E"))?;
 
-    let u = alloc_one(cs.namespace(|| "one"));
+    let u = AllocatedNum::one::<CS>();
 
     let X0 = BigNat::from_num(
       cs.namespace(|| "allocate X0 from relaxed r1cs"),

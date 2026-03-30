@@ -36,6 +36,14 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
   /// (e.g., wrapping an [`AllocatedBit`](super::boolean::AllocatedBit)'s variable as a number).
   pub fn from_parts(variable: Variable, value: Option<Scalar>) -> Self {
     AllocatedNum { value, variable }
+  
+  /// Returns an `AllocatedNum` wrapping the built-in `CS::one()` variable.
+  /// Costs zero constraints since it uses the input-0 wire directly.
+  pub fn one<CS: ConstraintSystem<Scalar>>() -> Self {
+    AllocatedNum {
+      value: Some(Scalar::ONE),
+      variable: CS::one(),
+    }
   }
 
   /// Allocate a `Variable(Aux)` in a `ConstraintSystem`.
@@ -562,5 +570,34 @@ impl<Scalar: PrimeField> Num<Scalar> {
     }
 
     self
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::frontend::util_cs::test_cs::TestConstraintSystem;
+  use ff::Field;
+  use halo2curves::pasta::Fq as Fr;
+
+  #[test]
+  fn test_allocated_num_one() {
+    let mut cs = TestConstraintSystem::<Fr>::new();
+
+    // AllocatedNum::one() should add zero constraints
+    let one = AllocatedNum::<Fr>::one::<TestConstraintSystem<Fr>>();
+    assert_eq!(one.get_value(), Some(Fr::ONE));
+    assert_eq!(one.get_variable(), TestConstraintSystem::<Fr>::one());
+    assert_eq!(cs.num_constraints(), 0);
+
+    // Compare: the old alloc + enforce pattern adds 1 constraint
+    let one_old = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || Fr::ONE);
+    cs.enforce(
+      || "check one is valid",
+      |lc| lc + TestConstraintSystem::<Fr>::one(),
+      |lc| lc + TestConstraintSystem::<Fr>::one(),
+      |lc| lc + one_old.get_variable(),
+    );
+    assert_eq!(cs.num_constraints(), 1);
   }
 }
