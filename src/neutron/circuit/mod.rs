@@ -436,8 +436,8 @@ mod tests {
 
   #[test]
   fn test_neutron_recursive_circuit_pasta() {
-    test_recursive_circuit_with::<PallasEngine, VestaEngine>(&expect!["5494"]);
-    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(&expect!["5774"]);
-    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(&expect!["6239"]);
+    test_recursive_circuit_with::<PallasEngine, VestaEngine>(&expect!["5493"]);
+    test_recursive_circuit_with::<Bn256EngineKZG, GrumpkinEngine>(&expect!["5773"]);
+    test_recursive_circuit_with::<Secp256k1Engine, Secq256k1Engine>(&expect!["6238"]);
   }
 }
