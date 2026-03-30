@@ -24,6 +24,15 @@ impl<Scalar: PrimeField> Clone for AllocatedNum<Scalar> {
 }
 
 impl<Scalar: PrimeField> AllocatedNum<Scalar> {
+  /// Returns an `AllocatedNum` wrapping the built-in `CS::one()` variable.
+  /// Costs zero constraints since it uses the input-0 wire directly.
+  pub fn one<CS: ConstraintSystem<Scalar>>() -> Self {
+    AllocatedNum {
+      value: Some(Scalar::ONE),
+      variable: CS::one(),
+    }
+  }
+
   /// Allocate a `Variable(Aux)` in a `ConstraintSystem`.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
@@ -548,5 +557,28 @@ impl<Scalar: PrimeField> Num<Scalar> {
     }
 
     self
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::frontend::util_cs::test_cs::TestConstraintSystem;
+  use ff::Field;
+  use halo2curves::pasta::Fq as Fr;
+
+  #[test]
+  fn test_allocated_num_one() {
+    let one = AllocatedNum::<Fr>::one::<TestConstraintSystem<Fr>>();
+
+    // Value should be ONE
+    assert_eq!(one.get_value(), Some(Fr::ONE));
+
+    // Variable should be the built-in CS::one()
+    assert_eq!(one.get_variable(), TestConstraintSystem::<Fr>::one());
+
+    // No constraints should have been added
+    let cs = TestConstraintSystem::<Fr>::new();
+    assert_eq!(cs.num_constraints(), 0);
   }
 }

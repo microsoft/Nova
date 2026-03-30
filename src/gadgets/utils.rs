@@ -54,6 +54,7 @@ pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> Allocat
 }
 
 /// Allocate a variable that is set to one
+#[deprecated(note = "Use AllocatedNum::one::<CS>() instead — zero constraint cost")]
 pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> AllocatedNum<F> {
   let one = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || F::ONE);
   cs.enforce(
