@@ -86,7 +86,7 @@ pub trait AbsorbInRO2Trait<E: Engine> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base: PrimeField> {
+pub trait ROTrait<Base: PrimeField>: Clone {
   /// The circuit alter ego of this trait impl - this constrains it to use the same constants
   type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
 

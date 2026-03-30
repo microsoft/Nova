@@ -34,7 +34,7 @@ impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
 }
 
 /// A Poseidon-based RO to use outside circuits
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PoseidonRO<Base: PrimeField> {
   // internal State
   state: Vec<Base>,
