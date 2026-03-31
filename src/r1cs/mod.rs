@@ -48,13 +48,14 @@ pub struct R1CSShape<E: Engine> {
   pub(crate) C: SparseMatrix<E::Scalar>,
   #[serde(skip, default = "OnceCell::new")]
   pub(crate) digest: OnceCell<E::Scalar>,
-  /// Precomputed SpMV accelerators (built lazily on first use)
+  /// Precomputed SpMV accelerators (built lazily on first use).
+  /// `None` inside the OnceCell means the matrix was too large for compact indices.
   #[serde(skip, default = "OnceCell::new")]
-  precomputed_A: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  precomputed_A: OnceCell<Option<PrecomputedSparseMatrix<E::Scalar>>>,
   #[serde(skip, default = "OnceCell::new")]
-  precomputed_B: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  precomputed_B: OnceCell<Option<PrecomputedSparseMatrix<E::Scalar>>>,
   #[serde(skip, default = "OnceCell::new")]
-  precomputed_C: OnceCell<PrecomputedSparseMatrix<E::Scalar>>,
+  precomputed_C: OnceCell<Option<PrecomputedSparseMatrix<E::Scalar>>>,
 }
 
 impl<E: Engine> SimpleDigestible for R1CSShape<E> {}
@@ -427,7 +428,8 @@ impl<E: Engine> R1CSShape<E> {
 
   /// Eagerly build the precomputed SpMV tables for A, B, C.
   /// Call this once during setup so that folding steps don't pay the
-  /// one-time construction cost on their first multiply_vec_pair call.
+  /// one-time construction cost on their first multiply_vec call.
+  /// Silently skips if the matrix dimensions exceed compact index limits.
   pub fn precompute_sparse_matrices(&self) {
     self
       .precomputed_A
@@ -451,8 +453,7 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
-  /// Multiplies the R1CS matrices A, B, C by a vector z and returns (Az, Bz, Cz).
-  /// Uses precomputed coefficient tables when available.
+  /// Uses precomputed coefficient tables when available, falls back to standard SpMV.
   pub fn multiply_vec(
     &self,
     z: &[E::Scalar],
@@ -464,7 +465,7 @@ impl<E: Engine> R1CSShape<E> {
     // For small circuits, skip rayon to avoid thread pool contention
     // when many concurrent chains run small CycleFold SpMVs
     if z.len() <= 65536 {
-      if let (Some(pa), Some(pb), Some(pc)) = (
+      if let (Some(Some(pa)), Some(Some(pb)), Some(Some(pc))) = (
         self.precomputed_A.get(),
         self.precomputed_B.get(),
         self.precomputed_C.get(),
@@ -480,6 +481,7 @@ impl<E: Engine> R1CSShape<E> {
       return Ok((az, bz, cz));
     }
 
+    // Try precomputed path; fall back to standard SparseMatrix if unavailable
     let pa = self
       .precomputed_A
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
@@ -490,12 +492,19 @@ impl<E: Engine> R1CSShape<E> {
       .precomputed_C
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
-    let (Az, (Bz, Cz)) = rayon::join(
-      || pa.multiply_vec(z),
-      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
-    );
-
-    Ok((Az, Bz, Cz))
+    if let (Some(pa), Some(pb), Some(pc)) = (pa.as_ref(), pb.as_ref(), pc.as_ref()) {
+      let (Az, (Bz, Cz)) = rayon::join(
+        || pa.multiply_vec(z),
+        || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
+      );
+      Ok((Az, Bz, Cz))
+    } else {
+      let (Az, (Bz, Cz)) = rayon::join(
+        || self.A.multiply_vec(z),
+        || rayon::join(|| self.B.multiply_vec(z), || self.C.multiply_vec(z)),
+      );
+      Ok((Az, Bz, Cz))
+    }
   }
 
   /// Multiplies A, B, C by two vectors simultaneously in a single pass per matrix.
@@ -525,17 +534,30 @@ impl<E: Engine> R1CSShape<E> {
       .precomputed_C
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
-    let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
-      || pa.multiply_vec_pair(z1, z2),
-      || {
-        rayon::join(
-          || pb.multiply_vec_pair(z1, z2),
-          || pc.multiply_vec_pair(z1, z2),
-        )
-      },
-    );
-
-    Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
+    if let (Some(pa), Some(pb), Some(pc)) = (pa.as_ref(), pb.as_ref(), pc.as_ref()) {
+      let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
+        || pa.multiply_vec_pair(z1, z2),
+        || {
+          rayon::join(
+            || pb.multiply_vec_pair(z1, z2),
+            || pc.multiply_vec_pair(z1, z2),
+          )
+        },
+      );
+      Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
+    } else {
+      let (Az1, Bz1, Cz1) = (
+        self.A.multiply_vec(z1),
+        self.B.multiply_vec(z1),
+        self.C.multiply_vec(z1),
+      );
+      let (Az2, Bz2, Cz2) = (
+        self.A.multiply_vec(z2),
+        self.B.multiply_vec(z2),
+        self.C.multiply_vec(z2),
+      );
+      Ok(((Az1, Bz1, Cz1), (Az2, Bz2, Cz2)))
+    }
   }
 
   /// Checks if the Relaxed R1CS instance is satisfiable given a witness and its shape

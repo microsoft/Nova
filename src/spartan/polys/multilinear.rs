@@ -130,6 +130,13 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
   /// Fuses all polynomial reductions into a single pass for cache efficiency.
   pub fn multi_evaluate_with(Zs: &[&[Scalar]], r: &[Scalar]) -> Vec<Scalar> {
     let s = r.len();
+    let n = 1usize << s;
+    debug_assert!(
+      Zs.iter().all(|z| z.len() == n),
+      "multi_evaluate_with: all polynomials must have length {}, got {:?}",
+      n,
+      Zs.iter().map(|z| z.len()).collect::<Vec<_>>()
+    );
     let s_right = s / 2;
     let s_left = s - s_right;
     let n_left = 1 << s_left;

@@ -2,7 +2,7 @@
 //! The output of each step tracks the current tail of the hash chain
 use ff::Field;
 use flate2::{write::ZlibEncoder, Compression};
-use generic_array::typenum::U24;
+use generic_array::typenum::U4;
 use nova_snark::{
   frontend::{
     gadgets::poseidon::{
@@ -76,7 +76,7 @@ impl<G: Group> StepCircuit<G::Scalar> for HashChainCircuit<G> {
 
     let parameter = IOPattern(vec![SpongeOp::Absorb(num_absorbs), SpongeOp::Squeeze(1u32)]);
 
-    let pc = Sponge::<G::Scalar, U24>::api_constants(Strength::Standard);
+    let pc = Sponge::<G::Scalar, U4>::api_constants(Strength::Standard);
     let mut ns = cs.namespace(|| "ns");
 
     let z_out = {

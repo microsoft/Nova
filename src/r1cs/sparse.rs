@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug)]
 pub struct PrecomputedSparseMatrix<F: PrimeField> {
   num_rows: usize,
+  num_cols: usize,
   /// Per-row spans into each category's column array: (start, count)
   row_unit_pos: Vec<(u32, u16)>,
   row_unit_neg: Vec<(u32, u16)>,
@@ -39,8 +40,17 @@ pub struct PrecomputedSparseMatrix<F: PrimeField> {
 
 impl<F: PrimeField> PrecomputedSparseMatrix<F> {
   /// Build from a CSR SparseMatrix by classifying entries.
-  pub fn from_sparse(m: &SparseMatrix<F>) -> Self {
+  /// Returns `None` if the matrix dimensions exceed compact index limits
+  /// (>4B columns or >65K entries per row per category), in which case
+  /// callers should fall back to the standard SparseMatrix path.
+  pub fn from_sparse(m: &SparseMatrix<F>) -> Option<Self> {
     let num_rows = m.indptr.len() - 1;
+    let num_cols = m.cols;
+
+    if num_cols > u32::MAX as usize {
+      return None;
+    }
+
     let one = F::ONE;
     let neg_one = -F::ONE;
 
@@ -82,15 +92,27 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
         }
       }
 
-      row_unit_pos.push((up_start, (unit_pos_cols.len() as u32 - up_start) as u16));
-      row_unit_neg.push((un_start, (unit_neg_cols.len() as u32 - un_start) as u16));
-      row_small.push((sm_start, (small_cols.len() as u32 - sm_start) as u16));
-      row_general.push((g_start, (general_cols.len() as u32 - g_start) as u16));
+      let up_count = unit_pos_cols.len() as u32 - up_start;
+      let un_count = unit_neg_cols.len() as u32 - un_start;
+      let sm_count = small_cols.len() as u32 - sm_start;
+      let g_count = general_cols.len() as u32 - g_start;
+      if up_count > u16::MAX as u32
+        || un_count > u16::MAX as u32
+        || sm_count > u16::MAX as u32
+        || g_count > u16::MAX as u32
+      {
+        return None;
+      }
+      row_unit_pos.push((up_start, up_count as u16));
+      row_unit_neg.push((un_start, un_count as u16));
+      row_small.push((sm_start, sm_count as u16));
+      row_general.push((g_start, g_count as u16));
     }
 
 
-    let result = Self {
+    Some(Self {
       num_rows,
+      num_cols,
       row_unit_pos,
       row_unit_neg,
       row_small,
@@ -101,8 +123,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
       small_coeffs,
       general_cols,
       general_vals,
-    };
-    result
+    })
   }
 
   #[inline(always)]
@@ -192,6 +213,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast SpMV using precomputed coefficient classification.
   pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
+    debug_assert_eq!(self.num_cols, vector.len(), "SpMV: vector length mismatch");
     if self.num_rows <= 65536 {
       (0..self.num_rows).map(|r| self.compute_row_single(r, vector)).collect()
     } else {
@@ -201,6 +223,8 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 
   /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
   pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
+    debug_assert_eq!(self.num_cols, v1.len(), "SpMV pair: v1 length mismatch");
+    debug_assert_eq!(self.num_cols, v2.len(), "SpMV pair: v2 length mismatch");
     if self.num_rows <= 65536 {
       (0..self.num_rows).map(|r| self.compute_row_pair(r, v1, v2)).unzip()
     } else {
@@ -605,7 +629,7 @@ mod tests {
   fn test_precomputed_multiply_vec() {
     let (matrix, vector) = mixed_coefficient_matrix();
     let expected = matrix.multiply_vec(&vector);
-    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
+    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix).unwrap();
     let result = precomputed.multiply_vec(&vector);
     assert_eq!(expected, result);
   }
@@ -618,7 +642,7 @@ mod tests {
     let expected1 = matrix.multiply_vec(&v1);
     let expected2 = matrix.multiply_vec(&v2);
 
-    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
+    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix).unwrap();
     let (result1, result2) = precomputed.multiply_vec_pair(&v1, &v2);
 
     assert_eq!(expected1, result1);
@@ -633,7 +657,7 @@ mod tests {
       let coo_matrix = coo_matrix.into_iter().map(|(row, col, val)| (row, col, val.0)).collect::<Vec<_>>();
 
       let matrix = SparseMatrix::new(&coo_matrix, 100, 100);
-      let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
+      let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix).unwrap();
 
       let v1: Vec<Fr> = (0..100).map(|i| Fr::from(i + 1)).collect();
       let v2: Vec<Fr> = (0..100).map(|i| Fr::from(i * 3 + 7)).collect();

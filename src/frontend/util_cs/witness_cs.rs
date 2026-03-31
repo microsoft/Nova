@@ -84,9 +84,16 @@ where
   /// Take the aux_assignment vector and replace it with the provided buffer.
   /// The provided buffer is cleared before being installed.
   /// This enables zero-copy witness creation by swapping buffers.
+  ///
+  /// Clears all boolean tracking state so the CS is consistent with the
+  /// new (empty) aux_assignment.  Callers must re-synthesize before using
+  /// `take_bool_bitfields`.
   pub fn swap_aux(&mut self, mut buf: Vec<Scalar>) -> Vec<Scalar> {
     buf.clear();
     std::mem::swap(&mut self.aux_assignment, &mut buf);
+    self.aux_is_bool.clear();
+    self.aux_bool_val.clear();
+    self.unclassified_ranges.clear();
     buf // returns the old aux_assignment data
   }
 
