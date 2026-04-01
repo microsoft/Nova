@@ -13,6 +13,7 @@ use ff::Field;
 use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 /// An NIFS message from NeutronNova's folding scheme
 #[allow(clippy::upper_case_acronyms)]
@@ -197,6 +198,7 @@ impl<E: Engine> NIFS<E> {
   /// In particular, it requires that `U1` and `U2` are such that the hash of `U1` is stored in the public IO of `U2`.
   /// In this particular setting, this means that if `U2` is absorbed in the RO, it implicitly absorbs `U1` as well.
   /// So the code below avoids absorbing `U1` in the RO.
+  #[instrument(skip_all, name = "neutron::NIFS::prove")]
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &RO2Constants<E>,
@@ -294,6 +296,7 @@ impl<E: Engine> NIFS<E> {
   /// with the guarantee that the folded instance `U`
   /// if and only if `U1` and `U2` are satisfiable.
   #[cfg(test)]
+  #[instrument(skip_all, name = "neutron::NIFS::verify")]
   pub fn verify(
     &self,
     ro_consts: &RO2Constants<E>,

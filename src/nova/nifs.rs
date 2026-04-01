@@ -11,6 +11,7 @@ use crate::{
 use ff::Field;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 /// An NIFS message from Nova's folding scheme
 #[allow(clippy::upper_case_acronyms)]
@@ -33,6 +34,7 @@ impl<E: Engine> NIFS<E> {
   /// In particular, it requires that `U1` and `U2` are such that the hash of `U1` is stored in the public IO of `U2`.
   /// In this particular setting, this means that if `U2` is absorbed in the RO, it implicitly absorbs `U1` as well.
   /// So the code below avoids absorbing `U1` in the RO.
+  #[instrument(skip_all, name = "nova::NIFS::prove")]
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
@@ -77,6 +79,7 @@ impl<E: Engine> NIFS<E> {
   /// and outputs a folded instance `U` with the same shape,
   /// with the guarantee that the folded instance `U`
   /// if and only if `U1` and `U2` are satisfiable.
+  #[instrument(skip_all, name = "nova::NIFS::verify")]
   pub fn verify(
     &self,
     ro_consts: &ROConstants<E>,
@@ -117,6 +120,7 @@ pub struct NIFSRelaxed<E: Engine> {
 
 impl<E: Engine> NIFSRelaxed<E> {
   /// Same as `prove`, but takes two Relaxed R1CS Instance/Witness pairs
+  #[instrument(skip_all, name = "nova::NIFSRelaxed::prove")]
   pub fn prove(
     ck: &CommitmentKey<E>,
     ro_consts: &ROConstants<E>,
@@ -167,6 +171,7 @@ impl<E: Engine> NIFSRelaxed<E> {
   }
 
   /// Same as `verify`, but takes two Relaxed R1CS Instance/Witness pairs
+  #[instrument(skip_all, name = "nova::NIFSRelaxed::verify")]
   pub fn verify(
     &self,
     ro_consts: &ROConstants<E>,
