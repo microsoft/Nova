@@ -21,7 +21,9 @@ use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use tracing::{info, warn};
+#[cfg(feature = "io")]
+use tracing::info;
+use tracing::warn;
 
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
