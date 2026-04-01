@@ -96,6 +96,7 @@ use std::{
   path::Path,
   str::{from_utf8, Utf8Error},
 };
+use tracing::{debug, info, warn};
 
 /// Errors that can occur when reading or writing PTAU files.
 #[derive(thiserror::Error, Debug)]
@@ -259,12 +260,14 @@ fn read_meta_data(reader: &mut (impl Read + Seek)) -> Result<MetaData, PtauFileE
     let mut buf = [0u8; 4];
     reader.read_exact(&mut buf)?;
     if from_utf8(&buf)? != "ptau" {
+      warn!("ptau file has invalid magic header");
       return Err(PtauFileError::InvalidHead);
     }
   }
   {
     let version = reader.read_u32::<LittleEndian>()?;
     if version != PTAU_VERSION {
+      warn!(version, expected = PTAU_VERSION, "unsupported ptau version");
       return Err(PtauFileError::UnsupportedVersion(version));
     }
   }
@@ -272,6 +275,7 @@ fn read_meta_data(reader: &mut (impl Read + Seek)) -> Result<MetaData, PtauFileE
     let num_sections = reader.read_u32::<LittleEndian>()?;
     // Accept both full (11 sections) and pruned (3 sections) ptau files
     if num_sections != NUM_SECTIONS_FULL && num_sections != NUM_SECTIONS_PRUNED {
+      warn!(num_sections, "invalid number of sections in ptau file");
       return Err(PtauFileError::InvalidNumSections(num_sections));
     }
     num_sections
@@ -330,6 +334,7 @@ fn read_header<Base: PrimeField>(
     let modulus_expected = BigUint::parse_bytes(&Base::MODULUS.as_bytes()[2..], 16).unwrap();
 
     if modulus != modulus_expected {
+      warn!("ptau file has wrong prime modulus");
       return Err(PtauFileError::InvalidPrime(modulus));
     }
   }
@@ -340,12 +345,24 @@ fn read_header<Base: PrimeField>(
   let max_num_g2 = 1 << power;
   let max_num_g1 = max_num_g2 * 2 - 1;
   if num_g1 > max_num_g1 {
+    warn!(
+      power,
+      required = max_num_g1,
+      requested = num_g1,
+      "insufficient G1 generators in ptau"
+    );
     return Err(PtauFileError::InsufficientPowerForG1 {
       power,
       required: max_num_g1,
     });
   }
   if num_g2 > max_num_g2 {
+    warn!(
+      power,
+      required = max_num_g2,
+      requested = num_g2,
+      "insufficient G2 generators in ptau"
+    );
     return Err(PtauFileError::InsufficientPowerForG2 {
       power,
       required: max_num_g2,
@@ -379,6 +396,8 @@ where
   G1: halo2curves::serde::SerdeObject + CurveAffine,
   G2: halo2curves::serde::SerdeObject + CurveAffine,
 {
+  debug!(num_g1, num_g2, "reading ptau file");
+
   let metadata = read_meta_data(&mut reader)?;
 
   reader.seek(SeekFrom::Start(metadata.pos_header))?;
@@ -389,6 +408,8 @@ where
 
   reader.seek(SeekFrom::Start(metadata.pos_tau_g2))?;
   let g2_points = read_points::<G2>(&mut reader, num_g2)?;
+
+  info!(num_g1, num_g2, "ptau file loaded successfully");
 
   Ok((g1_points, g2_points))
 }

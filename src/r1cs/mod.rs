@@ -21,6 +21,7 @@ use rand_core::OsRng;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use tracing::{info, warn};
 
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
@@ -322,12 +323,16 @@ impl<E: Engine> R1CSShape<E> {
     }
 
     let ptau_path = ptau_path.ok_or_else(|| {
-      crate::errors::NovaError::PtauFileError(format!(
+      let err = format!(
         "No suitable ptau file found in {:?}. Need at least {} generators (power >= {}). \
          Expected files named ppot_pruned_XX.ptau or ppot_0080_XX.ptau where XX >= {:02}",
         ptau_dir, max_size, min_power, min_power
-      ))
+      );
+      warn!("{}", err);
+      crate::errors::NovaError::PtauFileError(err)
     })?;
+
+    info!(path = %ptau_path.display(), num_generators = max_size, "loading ptau file");
 
     let file = File::open(&ptau_path).map_err(|e| {
       crate::errors::NovaError::PtauFileError(format!(
@@ -475,12 +480,14 @@ impl<E: Engine> R1CSShape<E> {
     };
 
     if !res_eq {
+      warn!("relaxed R1CS is unsatisfiable");
       return Err(NovaError::UnSat {
         reason: "Relaxed R1CS is unsatisfiable".to_string(),
       });
     }
 
     if !res_comm {
+      warn!("relaxed R1CS commitment mismatch");
       return Err(NovaError::UnSat {
         reason: "Invalid commitments".to_string(),
       });
@@ -514,12 +521,14 @@ impl<E: Engine> R1CSShape<E> {
     let res_comm = U.comm_W == CE::<E>::commit(ck, &W.W, &W.r_W);
 
     if !res_eq {
+      warn!("R1CS is unsatisfiable");
       return Err(NovaError::UnSat {
         reason: "R1CS is unsatisfiable".to_string(),
       });
     }
 
     if !res_comm {
+      warn!("R1CS commitment mismatch");
       return Err(NovaError::UnSat {
         reason: "Invalid commitment".to_string(),
       });

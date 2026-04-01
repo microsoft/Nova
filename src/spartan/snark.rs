@@ -26,6 +26,7 @@ use ff::Field;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, instrument};
 
 /// A type that represents the prover's key
 #[derive(Serialize, Deserialize)]
@@ -91,6 +92,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   type ProverKey = ProverKey<E, EE>;
   type VerifierKey = VerifierKey<E, EE>;
 
+  #[instrument(skip_all, name = "spartan::RelaxedR1CSSNARK::setup")]
   fn setup(
     ck: &CommitmentKey<E>,
     S: &R1CSShape<E>,
@@ -110,6 +112,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 
   /// produces a succinct proof of satisfiability of a `RelaxedR1CS` instance
+  #[instrument(skip_all, name = "spartan::RelaxedR1CSSNARK::prove")]
   fn prove(
     ck: &CommitmentKey<E>,
     pk: &Self::ProverKey,
@@ -254,6 +257,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
+  #[instrument(skip_all, name = "spartan::RelaxedR1CSSNARK::verify")]
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<E>) -> Result<(), NovaError> {
     let mut transcript = E::TE::new(b"RelaxedR1CSSNARK");
 
@@ -385,6 +389,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       &batched_u.e,
       &self.eval_arg,
     )?;
+
+    debug!("SNARK verification passed");
 
     Ok(())
   }

@@ -37,6 +37,7 @@ use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use tracing::{debug, instrument, warn};
 
 fn padded<E: Engine>(v: &[E::Scalar], n: usize, e: &E::Scalar) -> Vec<E::Scalar> {
   let mut v_padded = vec![*e; n];
@@ -1024,12 +1025,18 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     })
   }
 
+  #[instrument(skip_all, name = "spartan::ppsnark::setup")]
   fn setup(
     ck: &CommitmentKey<E>,
     S: &R1CSShape<E>,
   ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
     // check the provided commitment key meets minimal requirements
     if ck.length() < Self::ck_floor()(S) {
+      warn!(
+        required = Self::ck_floor()(S),
+        actual = ck.length(),
+        "invalid commitment key length"
+      );
       return Err(NovaError::InvalidCommitmentKeyLength);
     }
     let (pk_ee, vk_ee) = EE::setup(ck)?;
@@ -1053,6 +1060,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 
   /// produces a succinct proof of satisfiability of a `RelaxedR1CS` instance
+  #[instrument(skip_all, name = "spartan::ppsnark::prove")]
   fn prove(
     ck: &CommitmentKey<E>,
     pk: &Self::ProverKey,
@@ -1385,6 +1393,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
   }
 
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
+  #[instrument(skip_all, name = "spartan::ppsnark::verify")]
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<E>) -> Result<(), NovaError> {
     let mut transcript = E::TE::new(b"RelaxedR1CSSNARK");
 
@@ -1415,6 +1424,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
         - U.u * self.eval_Cz_at_r_outer
         - self.eval_E_at_r_outer);
     if claim_sc_outer_expected != claim_sc_outer_final {
+      warn!("outer sumcheck claim mismatch");
       return Err(NovaError::InvalidSumcheckProof);
     }
 
@@ -1650,6 +1660,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
       &u.e,
       &self.eval_arg,
     )?;
+
+    debug!("ppsnark verification passed");
 
     Ok(())
   }
