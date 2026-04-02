@@ -80,7 +80,7 @@ tracing_subscriber::fmt()
 Then control verbosity with the `RUST_LOG` environment variable:
 
 ```bash
-RUST_LOG=info cargo test --release ...    # setup complete, compression complete
+RUST_LOG=info cargo test --release ...    # setup complete, CompressedSNARK proof generated
 RUST_LOG=debug cargo test --release ...   # per-step prove_step, base case, verification
 ```
 
