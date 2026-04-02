@@ -33,7 +33,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
   ///
   /// This is useful when a variable is known to hold a valid field element
   /// due to constraints added separately, enabling zero-cost reinterpretation
-  /// (e.g., wrapping an [`AllocatedBit`](super::boolean::AllocatedBit)'s variable as a number).
+  /// (e.g., wrapping an [`AllocatedBit`]'s variable as a number).
   pub fn from_parts(variable: Variable, value: Option<Scalar>) -> Self {
     AllocatedNum { value, variable }
   }
