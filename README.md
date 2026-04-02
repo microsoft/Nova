@@ -90,7 +90,7 @@ RUST_LOG=debug cargo test --release ...   # per-step prove_step, base case, veri
 |---------|----------------|
 | `info`  | Setup complete, CompressedSNARK generated, constraint counts |
 | `debug` | Per-step prove_step, base case init, verification passed |
-| `warn`  | Validation failures (unused currently — reserved for downstream) |
+| `warn`  | Validation and consistency failures (e.g., invalid commitment key length, sumcheck mismatch, unsat checks, ptau validation) |
 
 Applications that depend on this library automatically see these spans nested under their own tracing subscriber with zero integration work.
 
