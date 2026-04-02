@@ -22,6 +22,7 @@ pub trait Arity<T>: ArrayLength {
   /// Must be Arity + 1.
   type ConstantsSize: ArrayLength;
 
+  /// Returns the tag value for this arity.
   fn tag() -> T;
 }
 

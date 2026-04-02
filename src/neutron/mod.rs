@@ -105,7 +105,7 @@ where
   /// let ck_hint2 = &*SPrime::<E2>::ck_floor();
   ///
   /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2)?;
-  /// Ok(())
+  /// Ok::<(), nova_snark::errors::NovaError>(())
   /// ```
   pub fn setup(
     c: &C,
@@ -544,17 +544,17 @@ mod tests {
   fn test_pp_digest() {
     test_pp_digest_with::<PallasEngine, VestaEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["a92fc0374a5f9fc21e5269476b4d978597606fd30e35e7e6a8673152746c3a00"],
+      &expect!["4d22b1021985b02532b1cc83ab566d503d8db8cf7de1acac525d39e3c2508e03"],
     );
 
     test_pp_digest_with::<Bn256EngineIPA, GrumpkinEngine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["5bca2e81847be57a6ee39b1e7c11cafb23cd946d9d26658149223f999df44300"],
+      &expect!["fdea1f44a4d102141c6f31efa72c04606c5e6d3ec9a6b37208238152717a4c03"],
     );
 
     test_pp_digest_with::<Secp256k1Engine, Secq256k1Engine, _>(
       &TrivialCircuit::<_>::default(),
-      &expect!["17fbf2a863d82c73e546fee2ca4854818e1c1973531d099af1fee258d91e6703"],
+      &expect!["bdcf8157e37b5d99c5c7168774e16ec11a24594833b078ebe6312e83fdfda600"],
     );
   }
 

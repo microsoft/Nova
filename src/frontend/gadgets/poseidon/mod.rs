@@ -15,6 +15,7 @@ mod serde_impl;
 mod sponge;
 
 pub use circuit2::Elt;
+pub(crate) use poseidon_inner::Arity;
 pub use poseidon_inner::PoseidonConstants;
 use round_constants::generate_constants;
 use round_numbers::{round_numbers_base, round_numbers_strengthened};
