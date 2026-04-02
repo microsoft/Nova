@@ -8,6 +8,24 @@ use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 
+/// Selects the internal width of the random oracle.
+///
+/// `Wide` (default) uses the full-width sponge, appropriate for
+/// general-purpose hashing with many absorptions.
+/// `Narrow` uses a reduced-width sponge that produces fewer R1CS
+/// constraints per squeeze, suitable for lightweight transcripts
+/// that absorb only a few elements per round.
+///
+/// RO implementations that do not support multiple widths may ignore this.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ROMode {
+  /// Full-width sponge (default).
+  #[default]
+  Wide,
+  /// Reduced-width sponge for lightweight transcripts.
+  Narrow,
+}
+
 pub mod commitment;
 pub mod evm_serde;
 pub use evm_serde::CustomSerdeTrait;
@@ -96,6 +114,16 @@ pub trait ROTrait<Base: PrimeField> {
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
 
+  /// Initializes the hash function with an explicit width mode.
+  ///
+  /// The default implementation ignores `mode` and delegates to [`new`](ROTrait::new).
+  fn new_with_mode(constants: Self::Constants, _mode: ROMode) -> Self
+  where
+    Self: Sized,
+  {
+    Self::new(constants)
+  }
+
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: Base);
 
@@ -114,6 +142,16 @@ pub trait ROCircuitTrait<Base: PrimeField> {
 
   /// Initializes the hash function
   fn new(constants: Self::Constants) -> Self;
+
+  /// Initializes the hash function with an explicit width mode.
+  ///
+  /// The default implementation ignores `mode` and delegates to [`new`](ROCircuitTrait::new).
+  fn new_with_mode(constants: Self::Constants, _mode: ROMode) -> Self
+  where
+    Self: Sized,
+  {
+    Self::new(constants)
+  }
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: &AllocatedNum<Base>);
@@ -134,6 +172,10 @@ pub trait ROCircuitTrait<Base: PrimeField> {
     &mut self,
     cs: CS,
   ) -> Result<AllocatedNum<Base>, SynthesisError>;
+
+  /// Enable compact mode to reduce R1CS non-zeros at the cost of extra constraints.
+  /// Default is a no-op; backends that support it (e.g. Poseidon) override this.
+  fn set_compact(&mut self, _compact: bool) {}
 }
 
 /// An alias for constants associated with E::RO

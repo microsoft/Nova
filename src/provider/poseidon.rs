@@ -2,35 +2,63 @@
 use crate::{
   frontend::{
     gadgets::poseidon::{
-      Elt, IOPattern, PoseidonConstants, Simplex, Sponge, SpongeAPI, SpongeCircuit, SpongeOp,
-      SpongeTrait, Strength,
+      Arity, Elt, IOPattern, PoseidonConstants, Simplex, Sponge, SpongeAPI, SpongeCircuit,
+      SpongeOp, SpongeTrait, Strength,
     },
     num::AllocatedNum,
     AllocatedBit, Boolean, ConstraintSystem, SynthesisError,
   },
-  traits::{ROCircuitTrait, ROTrait},
+  traits::{ROCircuitTrait, ROMode, ROTrait},
 };
 use ff::{PrimeField, PrimeFieldBits};
-use generic_array::typenum::U24;
+use generic_array::typenum::{U24, U5};
 use serde::{Deserialize, Serialize};
 
-/// All Poseidon Constants that are used in Nova
+/// All Poseidon Constants that are used in Nova.
+///
+/// Holds constants for both the wide (U24) and narrow (U5) sponge widths so
+/// that the same constants object can be used with either [`ROMode`].
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+pub struct PoseidonConstantsCircuit<Scalar: PrimeField> {
+  wide: PoseidonConstants<Scalar, U24>,
+  narrow: PoseidonConstants<Scalar, U5>,
+}
 
 impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
-  /// Generate Poseidon constants
+  /// Generate Poseidon constants for both wide and narrow arities.
   fn default() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self {
+      wide: Sponge::<Scalar, U24>::api_constants(Strength::Standard),
+      narrow: Sponge::<Scalar, U5>::api_constants(Strength::Standard),
+    }
   }
 }
 
-/// A Poseidon-based RO to use outside circuits
+/// A Poseidon-based RO to use outside circuits.
 #[derive(Serialize, Deserialize)]
 pub struct PoseidonRO<Base: PrimeField> {
   // internal State
   state: Vec<Base>,
   constants: PoseidonConstantsCircuit<Base>,
+  mode: ROMode,
+}
+
+/// Run through a Poseidon sponge with the given constants and return the hash.
+fn poseidon_squeeze_native<Base: PrimeField, A: Arity<Base>>(
+  constants: &PoseidonConstants<Base, A>,
+  state: &[Base],
+) -> Base {
+  let mut sponge = Sponge::new_with_constants(constants, Simplex);
+  let acc = &mut ();
+  let parameter = IOPattern(vec![
+    SpongeOp::Absorb(state.len() as u32),
+    SpongeOp::Squeeze(1u32),
+  ]);
+  sponge.start(parameter, None, acc);
+  SpongeAPI::absorb(&mut sponge, state.len() as u32, state, acc);
+  let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
+  sponge.finish(acc).unwrap();
+  hash[0]
 }
 
 impl<Base> ROTrait<Base> for PoseidonRO<Base>
@@ -44,6 +72,15 @@ where
     Self {
       state: Vec::new(),
       constants,
+      mode: ROMode::Wide,
+    }
+  }
+
+  fn new_with_mode(constants: PoseidonConstantsCircuit<Base>, mode: ROMode) -> Self {
+    Self {
+      state: Vec::new(),
+      constants,
+      mode,
     }
   }
 
@@ -54,23 +91,16 @@ where
 
   /// Compute a challenge by hashing the current state
   fn squeeze(&mut self, num_bits: usize, start_with_one: bool) -> Base {
-    let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
-    let acc = &mut ();
-    let parameter = IOPattern(vec![
-      SpongeOp::Absorb(self.state.len() as u32),
-      SpongeOp::Squeeze(1u32),
-    ]);
-
-    sponge.start(parameter, None, acc);
-    SpongeAPI::absorb(&mut sponge, self.state.len() as u32, &self.state, acc);
-    let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
-    sponge.finish(acc).unwrap();
+    let hash = match self.mode {
+      ROMode::Wide => poseidon_squeeze_native(&self.constants.wide, &self.state),
+      ROMode::Narrow => poseidon_squeeze_native(&self.constants.narrow, &self.state),
+    };
 
     // reset the state to only contain the squeezed value
-    self.state = vec![hash[0]];
+    self.state = vec![hash];
 
     // Only return `num_bits`
-    let bits = hash[0].to_le_bits();
+    let bits = hash.to_le_bits();
     let mut res = Base::ZERO;
     let mut coeff = Base::ONE;
     for bit in bits[..num_bits].into_iter() {
@@ -98,6 +128,41 @@ pub struct PoseidonROCircuit<Scalar: PrimeField> {
   // Internal state
   state: Vec<AllocatedNum<Scalar>>,
   constants: PoseidonConstantsCircuit<Scalar>,
+  mode: ROMode,
+  compact: bool,
+}
+
+/// Sponge circuit squeeze: allocates a Poseidon sponge, absorbs `state`, squeezes one element.
+/// Used as a helper inside ROCircuitTrait methods to avoid duplicating the absorb/squeeze logic.
+macro_rules! poseidon_squeeze_circuit {
+  ($constants:expr, $state:expr, $compact:expr, $ns:expr) => {{
+    let parameter = IOPattern(vec![
+      SpongeOp::Absorb($state.len() as u32),
+      SpongeOp::Squeeze(1u32),
+    ]);
+
+    let hash = {
+      let mut sponge = SpongeCircuit::new_with_constants($constants, Simplex);
+      sponge.set_compact($compact);
+
+      sponge.start(parameter, None, $ns);
+      SpongeAPI::absorb(
+        &mut sponge,
+        $state.len() as u32,
+        &$state
+          .iter()
+          .map(|e| Elt::Allocated(e.clone()))
+          .collect::<Vec<Elt<_>>>(),
+        $ns,
+      );
+
+      let output = SpongeAPI::squeeze(&mut sponge, 1, $ns);
+      sponge.finish($ns).unwrap();
+      output
+    };
+
+    Elt::ensure_allocated(&hash[0], &mut $ns.namespace(|| "ensure allocated"))
+  }};
 }
 
 impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
@@ -112,6 +177,17 @@ where
     Self {
       state: Vec::new(),
       constants,
+      mode: ROMode::Wide,
+      compact: false,
+    }
+  }
+
+  fn new_with_mode(constants: PoseidonConstantsCircuit<Scalar>, mode: ROMode) -> Self {
+    Self {
+      state: Vec::new(),
+      constants,
+      mode,
+      compact: false,
     }
   }
 
@@ -127,32 +203,16 @@ where
     num_bits: usize,
     start_with_one: bool,
   ) -> Result<Vec<AllocatedBit>, SynthesisError> {
-    let parameter = IOPattern(vec![
-      SpongeOp::Absorb(self.state.len() as u32),
-      SpongeOp::Squeeze(1u32),
-    ]);
     let mut ns = cs.namespace(|| "ns");
 
-    let hash = {
-      let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
-      let acc = &mut ns;
-
-      sponge.start(parameter, None, acc);
-      SpongeAPI::absorb(
-        &mut sponge,
-        self.state.len() as u32,
-        &(0..self.state.len())
-          .map(|i| Elt::Allocated(self.state[i].clone()))
-          .collect::<Vec<Elt<Scalar>>>(),
-        acc,
-      );
-
-      let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
-      sponge.finish(acc).unwrap();
-      output
+    let hash = match self.mode {
+      ROMode::Wide => {
+        poseidon_squeeze_circuit!(&self.constants.wide, &self.state, self.compact, &mut ns)?
+      }
+      ROMode::Narrow => {
+        poseidon_squeeze_circuit!(&self.constants.narrow, &self.state, self.compact, &mut ns)?
+      }
     };
-
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"))?;
 
     // reset the state to only contain the squeezed value
     self.state = vec![hash.clone()];
@@ -186,37 +246,25 @@ where
     &mut self,
     mut cs: CS,
   ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-    let parameter = IOPattern(vec![
-      SpongeOp::Absorb(self.state.len() as u32),
-      SpongeOp::Squeeze(1u32),
-    ]);
     let mut ns = cs.namespace(|| "ns");
 
-    let hash = {
-      let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
-      let acc = &mut ns;
-
-      sponge.start(parameter, None, acc);
-      SpongeAPI::absorb(
-        &mut sponge,
-        self.state.len() as u32,
-        &(0..self.state.len())
-          .map(|i| Elt::Allocated(self.state[i].clone()))
-          .collect::<Vec<Elt<Scalar>>>(),
-        acc,
-      );
-
-      let output = SpongeAPI::squeeze(&mut sponge, 1, acc);
-      sponge.finish(acc).unwrap();
-      output
+    let hash = match self.mode {
+      ROMode::Wide => {
+        poseidon_squeeze_circuit!(&self.constants.wide, &self.state, self.compact, &mut ns)?
+      }
+      ROMode::Narrow => {
+        poseidon_squeeze_circuit!(&self.constants.narrow, &self.state, self.compact, &mut ns)?
+      }
     };
-
-    let hash = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"))?;
 
     // reset the state to only contain the squeezed value
     self.state = vec![hash.clone()];
 
     Ok(hash)
+  }
+
+  fn set_compact(&mut self, compact: bool) {
+    self.compact = compact;
   }
 }
 
@@ -268,5 +316,39 @@ mod tests {
     test_poseidon_ro_with::<GrumpkinEngine>();
     test_poseidon_ro_with::<Secp256k1Engine>();
     test_poseidon_ro_with::<Secq256k1Engine>();
+  }
+
+  fn test_poseidon_ro_narrow_with<E: Engine>() {
+    let mut csprng: OsRng = OsRng;
+    let constants = PoseidonConstantsCircuit::<E::Scalar>::default();
+    let num_absorbs = 4;
+    let mut ro: PoseidonRO<E::Scalar> =
+      PoseidonRO::new_with_mode(constants.clone(), ROMode::Narrow);
+    let mut ro_gadget: PoseidonROCircuit<E::Scalar> =
+      PoseidonROCircuit::new_with_mode(constants, ROMode::Narrow);
+    let mut cs = SatisfyingAssignment::<E>::new();
+    for i in 0..num_absorbs {
+      let num = E::Scalar::random(&mut csprng);
+      ro.absorb(num);
+      let num_gadget = AllocatedNum::alloc_infallible(cs.namespace(|| format!("data {i}")), || num);
+      num_gadget
+        .inputize(&mut cs.namespace(|| format!("input {i}")))
+        .unwrap();
+      ro_gadget.absorb(&num_gadget);
+    }
+    let num = ro.squeeze(NUM_CHALLENGE_BITS, false);
+    let num2_bits = ro_gadget
+      .squeeze(&mut cs, NUM_CHALLENGE_BITS, false)
+      .unwrap();
+    let num2 = le_bits_to_num(&mut cs, &num2_bits).unwrap();
+    assert_eq!(num, num2.get_value().unwrap());
+  }
+
+  #[test]
+  fn test_poseidon_ro_narrow() {
+    test_poseidon_ro_narrow_with::<PallasEngine>();
+    test_poseidon_ro_narrow_with::<VestaEngine>();
+    test_poseidon_ro_narrow_with::<Bn256EngineKZG>();
+    test_poseidon_ro_narrow_with::<GrumpkinEngine>();
   }
 }
