@@ -69,6 +69,11 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
     Variable::new_unchecked(Index::Input(0))
   }
 
+  /// Return the "zero" auxiliary variable (Aux(0), enforced to equal zero)
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   /// Allocate a private variable in the constraint system. The provided function is used to
   /// determine the assignment of the variable. The given `annotation` function is invoked
   /// in testing contexts in order to derive a unique name for this variable in the current
@@ -244,6 +249,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
     CS::one()
   }
 
+  fn zero() -> Variable {
+    CS::zero()
+  }
+
   fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<Scalar, SynthesisError>,
@@ -330,6 +339,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> 
 
   fn one() -> Variable {
     CS::one()
+  }
+
+  fn zero() -> Variable {
+    CS::zero()
   }
 
   fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>

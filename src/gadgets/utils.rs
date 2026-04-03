@@ -41,16 +41,10 @@ where
   Ok(num)
 }
 
-/// Allocate a variable that is set to zero
-pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(mut cs: CS) -> AllocatedNum<F> {
-  let zero = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || F::ZERO);
-  cs.enforce(
-    || "check zero is valid",
-    |lc| lc,
-    |lc| lc,
-    |lc| lc + zero.get_variable(),
-  );
-  zero
+/// Allocate a variable that is set to zero.
+/// Uses the built-in CS::zero() wire (Aux(0)), so this is free (no extra constraints).
+pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(_cs: CS) -> AllocatedNum<F> {
+  AllocatedNum::zero::<CS>()
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!

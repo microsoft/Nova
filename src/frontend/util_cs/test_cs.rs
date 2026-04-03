@@ -73,13 +73,19 @@ impl<Scalar: PrimeField> Default for TestConstraintSystem<Scalar> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var);
+    map.insert("ZERO".into(), NamedObject::Var);
+
+    let zero_var = Variable::new_unchecked(Index::Aux(0));
+    let a = LinearCombination::<Scalar>::zero();
+    let b = LinearCombination::<Scalar>::zero();
+    let c = LinearCombination::<Scalar>::zero() + zero_var;
 
     TestConstraintSystem {
       named_objects: map,
       current_namespace: vec![],
-      constraints: vec![],
+      constraints: vec![(a, b, c, "ZERO".into())],
       inputs: vec![(Scalar::ONE, "ONE".into())],
-      aux: vec![],
+      aux: vec![(Scalar::ZERO, "ZERO".into())],
     }
   }
 }

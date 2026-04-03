@@ -45,10 +45,15 @@ impl<E: Engine> ShapeCS<E> {
 
 impl<E: Engine> Default for ShapeCS<E> {
   fn default() -> Self {
+    let zero_var = Variable::new_unchecked(Index::Aux(0));
+    // Enforce Aux(0) = 0: the constraint 0 * 0 = Aux(0)
+    let a = LinearCombination::<<E as Engine>::Scalar>::zero();
+    let b = LinearCombination::<<E as Engine>::Scalar>::zero();
+    let c = LinearCombination::<<E as Engine>::Scalar>::zero() + zero_var;
     ShapeCS {
-      constraints: vec![],
+      constraints: vec![(a, b, c)],
       inputs: 1,
-      aux: 0,
+      aux: 1, // Aux(0) reserved for zero
     }
   }
 }
