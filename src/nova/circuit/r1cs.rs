@@ -9,8 +9,8 @@ use crate::{
       util::{f_to_nat, Num},
     },
     utils::{
-      alloc_bignat_constant, alloc_scalar_as_base, alloc_zero, conditionally_select,
-      conditionally_select2, conditionally_select_bignat, le_bits_to_num,
+      alloc_bignat_constant, alloc_scalar_as_base, conditionally_select, conditionally_select2,
+      conditionally_select_bignat, le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -55,7 +55,7 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
     // so we can use it as a canonical representation for infinity.
     let (_, b, _, _) = E::GE::group_params();
     if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      let zero = AllocatedNum::zero::<CS>();
       let x = conditionally_select2(
         cs.namespace(|| "select x"),
         &zero,
@@ -205,7 +205,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // so we can use it as a canonical representation for infinity.
     let (_, b, _, _) = E::GE::group_params();
     if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      let zero = AllocatedNum::zero::<CS>();
       // Absorb W
       let w_x = conditionally_select2(
         cs.namespace(|| "select W.x"),
@@ -300,7 +300,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     // When B != 0, use (0,0) for infinity
     let (_, b, _, _) = E::GE::group_params();
     if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for T absorb"));
+      let zero = AllocatedNum::zero::<CS>();
       let t_x = conditionally_select2(cs.namespace(|| "select T.x"), &zero, &T.x, &T.is_infinity)?;
       let t_y = conditionally_select2(cs.namespace(|| "select T.y"), &zero, &T.y, &T.is_infinity)?;
       ro.absorb(&t_x);

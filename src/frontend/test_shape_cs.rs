@@ -219,12 +219,13 @@ where
 impl<E: Engine> Default for TestShapeCS<E> {
   fn default() -> Self {
     let mut map = HashMap::new();
+    map.insert("ZERO".into(), NamedObject::Var(TestShapeCS::<E>::zero()));
     map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<E>::one()));
     TestShapeCS {
       named_objects: map,
       current_namespace: vec![],
       constraints: vec![],
-      inputs: vec![String::from("ONE")],
+      inputs: vec![String::from("ZERO"), String::from("ONE")],
       aux: vec![],
     }
   }

@@ -47,7 +47,7 @@ impl<E: Engine> Default for ShapeCS<E> {
   fn default() -> Self {
     ShapeCS {
       constraints: vec![],
-      inputs: 1,
+      inputs: 2, // Input(0) = ZERO, Input(1) = ONE
       aux: 0,
     }
   }

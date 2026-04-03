@@ -77,6 +77,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
 {
   type Root = Self;
 
+  fn zero() -> Variable {
+    CS::zero()
+  }
+
   fn one() -> Variable {
     CS::one()
   }

@@ -75,7 +75,7 @@ impl<E: Engine> Structure<E> {
     W: &FoldedWitness<E>,
   ) -> Result<(), NovaError> {
     // check if the witness is satisfying
-    let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
+    let z = [W.W.clone(), vec![E::Scalar::ZERO, U.u], U.X.clone()].concat();
     let (Az, Bz, Cz) = self.S.multiply_vec(&z)?;
 
     // full_E is the outer product of E1 and E2
