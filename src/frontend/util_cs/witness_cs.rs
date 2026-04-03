@@ -51,9 +51,11 @@ where
   pub fn with_capacity(aux_capacity: usize, input_capacity: usize) -> Self {
     let mut input_assignment = Vec::with_capacity(input_capacity + 1);
     input_assignment.push(Scalar::ONE);
+    let mut aux_assignment = Vec::with_capacity(aux_capacity + 1);
+    aux_assignment.push(Scalar::ZERO);
     Self {
       input_assignment,
-      aux_assignment: Vec::with_capacity(aux_capacity),
+      aux_assignment,
     }
   }
 
@@ -62,6 +64,7 @@ where
     self.input_assignment.clear();
     self.input_assignment.push(Scalar::ONE);
     self.aux_assignment.clear();
+    self.aux_assignment.push(Scalar::ZERO);
   }
 
   /// Get input assignment
@@ -81,12 +84,17 @@ where
 {
   type Root = Self;
 
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   fn new() -> Self {
     let input_assignment = vec![Scalar::ONE];
+    let aux_assignment = vec![Scalar::ZERO];
 
     Self {
       input_assignment,
-      aux_assignment: vec![],
+      aux_assignment,
     }
   }
 
@@ -147,9 +155,10 @@ where
 
   fn extend(&mut self, other: &Self) {
     self.input_assignment
-            // Skip first input, which must have been a temporarily allocated one variable.
+            // Skip built-in Input(0) = ONE, which is always the first input.
             .extend(&other.input_assignment[1..]);
-    self.aux_assignment.extend(&other.aux_assignment);
+    // Skip built-in Aux(0) = ZERO, which is always the first aux.
+    self.aux_assignment.extend(&other.aux_assignment[1..]);
   }
 
   ////////////////////////////////////////////////////////////////////////////////

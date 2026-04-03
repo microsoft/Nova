@@ -47,6 +47,15 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     }
   }
 
+  /// Returns an `AllocatedNum` wrapping the built-in `CS::zero()` variable.
+  /// Costs zero constraints since Aux(0) is pre-constrained to zero by the CS.
+  pub fn zero<CS: ConstraintSystem<Scalar>>() -> Self {
+    AllocatedNum {
+      value: Some(Scalar::ZERO),
+      variable: CS::zero(),
+    }
+  }
+
   /// Allocate a `Variable(Aux)` in a `ConstraintSystem`.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
@@ -585,11 +594,14 @@ mod tests {
   fn test_allocated_num_one() {
     let mut cs = TestConstraintSystem::<Fr>::new();
 
+    // TestConstraintSystem starts with 1 constraint (the built-in zero enforcement)
+    let base_constraints = cs.num_constraints();
+
     // AllocatedNum::one() should add zero constraints
     let one = AllocatedNum::<Fr>::one::<TestConstraintSystem<Fr>>();
     assert_eq!(one.get_value(), Some(Fr::ONE));
     assert_eq!(one.get_variable(), TestConstraintSystem::<Fr>::one());
-    assert_eq!(cs.num_constraints(), 0);
+    assert_eq!(cs.num_constraints(), base_constraints);
 
     // Compare: the old alloc + enforce pattern adds 1 constraint
     let one_old = AllocatedNum::alloc_infallible(cs.namespace(|| "alloc"), || Fr::ONE);
@@ -599,6 +611,18 @@ mod tests {
       |lc| lc + TestConstraintSystem::<Fr>::one(),
       |lc| lc + one_old.get_variable(),
     );
-    assert_eq!(cs.num_constraints(), 1);
+    assert_eq!(cs.num_constraints(), base_constraints + 1);
+  }
+
+  #[test]
+  fn test_allocated_num_zero() {
+    let cs = TestConstraintSystem::<Fr>::new();
+    let base_constraints = cs.num_constraints();
+
+    // AllocatedNum::zero() should add zero constraints
+    let zero = AllocatedNum::<Fr>::zero::<TestConstraintSystem<Fr>>();
+    assert_eq!(zero.get_value(), Some(Fr::ZERO));
+    assert_eq!(zero.get_variable(), TestConstraintSystem::<Fr>::zero());
+    assert_eq!(cs.num_constraints(), base_constraints);
   }
 }
