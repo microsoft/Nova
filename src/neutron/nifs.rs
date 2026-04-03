@@ -235,11 +235,16 @@ impl<E: Engine> NIFS<E> {
 
     let (res1, res2) = rayon::join(
       || {
-        let z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+        let z1 = [W1.W.clone(), vec![E::Scalar::ZERO, U1.u], U1.X.clone()].concat();
         S.S.multiply_vec(&z1)
       },
       || {
-        let z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+        let z2 = [
+          W2.W.clone(),
+          vec![E::Scalar::ZERO, E::Scalar::ONE],
+          U2.X.clone(),
+        ]
+        .concat();
         S.S.multiply_vec(&z2)
       },
     );
@@ -550,7 +555,7 @@ mod benchmarks {
         .map(|i| (i, i, E::Scalar::ONE))
         .collect::<Vec<_>>(),
       num_cons,
-      num_vars + 1 + num_io,
+      num_vars + 2 + num_io,
     );
     let B = A.clone();
     let C = A.clone();

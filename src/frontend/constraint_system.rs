@@ -64,9 +64,16 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
         );
   }
 
+  /// Return the "zero" input variable.
+  /// This is a structural part of the R1CS vector `z = [w, 0, 1, x]`,
+  /// requiring no auxiliary variable or enforcement constraint.
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Input(0))
+  }
+
   /// Return the "one" input variable
   fn one() -> Variable {
-    Variable::new_unchecked(Index::Input(0))
+    Variable::new_unchecked(Index::Input(1))
   }
 
   /// Allocate a private variable in the constraint system. The provided function is used to
@@ -240,6 +247,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
 {
   type Root = CS::Root;
 
+  fn zero() -> Variable {
+    CS::zero()
+  }
+
   fn one() -> Variable {
     CS::one()
   }
@@ -327,6 +338,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> Drop for Namespace<'_, Sc
 /// constraint systems.
 impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> for &'_ mut CS {
   type Root = CS::Root;
+
+  fn zero() -> Variable {
+    CS::zero()
+  }
 
   fn one() -> Variable {
     CS::one()

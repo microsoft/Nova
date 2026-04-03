@@ -49,7 +49,8 @@ where
 {
   /// Create a new WitnessCS with pre-allocated capacity for aux and input variables.
   pub fn with_capacity(aux_capacity: usize, input_capacity: usize) -> Self {
-    let mut input_assignment = Vec::with_capacity(input_capacity + 1);
+    let mut input_assignment = Vec::with_capacity(input_capacity + 2);
+    input_assignment.push(Scalar::ZERO);
     input_assignment.push(Scalar::ONE);
     Self {
       input_assignment,
@@ -60,6 +61,7 @@ where
   /// Clear the assignments while retaining allocated capacity.
   pub fn clear(&mut self) {
     self.input_assignment.clear();
+    self.input_assignment.push(Scalar::ZERO);
     self.input_assignment.push(Scalar::ONE);
     self.aux_assignment.clear();
   }
@@ -82,7 +84,7 @@ where
   type Root = Self;
 
   fn new() -> Self {
-    let input_assignment = vec![Scalar::ONE];
+    let input_assignment = vec![Scalar::ZERO, Scalar::ONE];
 
     Self {
       input_assignment,
@@ -147,8 +149,8 @@ where
 
   fn extend(&mut self, other: &Self) {
     self.input_assignment
-            // Skip first input, which must have been a temporarily allocated one variable.
-            .extend(&other.input_assignment[1..]);
+            // Skip built-in Input(0) = ZERO and Input(1) = ONE.
+            .extend(&other.input_assignment[2..]);
     self.aux_assignment.extend(&other.aux_assignment);
   }
 

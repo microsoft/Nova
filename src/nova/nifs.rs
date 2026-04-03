@@ -446,51 +446,51 @@ mod tests {
       // `(Z2 + 5) * 1 - I1 = 0`
 
       // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
-      // constraint and a column for every entry in z = (vars, u, inputs)
+      // constraint and a column for every entry in z = (vars, 0, u, inputs)
       // An R1CS instance is satisfiable iff:
-      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
+      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 0, 1, inputs)
       let mut A: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut B: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut C: Vec<(usize, usize, E::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
-      A.push((0, num_vars + 1, one));
-      B.push((0, num_vars + 1, one));
+      A.push((0, num_vars + 2, one));
+      B.push((0, num_vars + 2, one));
       C.push((0, 0, one));
 
       // constraint 1 entries in (A,B,C)
       // `Z0 * I0 - Z1 = 0`
       A.push((1, 0, one));
-      B.push((1, num_vars + 1, one));
+      B.push((1, num_vars + 2, one));
       C.push((1, 1, one));
 
       // constraint 2 entries in (A,B,C)
       // `(Z1 + I0) * 1 - Z2 = 0`
       A.push((2, 1, one));
-      A.push((2, num_vars + 1, one));
-      B.push((2, num_vars, one));
+      A.push((2, num_vars + 2, one));
+      B.push((2, num_vars + 1, one));
       C.push((2, 2, one));
 
       // constraint 3 entries in (A,B,C)
       // `(Z2 + 5) * 1 - I1 = 0`
       A.push((3, 2, one));
-      A.push((3, num_vars, one + one + one + one + one));
-      B.push((3, num_vars, one));
-      C.push((3, num_vars + 2, one));
+      A.push((3, num_vars + 1, one + one + one + one + one));
+      B.push((3, num_vars + 1, one));
+      C.push((3, num_vars + 3, one));
 
       (num_cons, num_vars, num_io, A, B, C)
     };
 
     // create a shape object
     let rows = num_cons;
-    let num_inputs = num_io + 1;
+    let num_inputs = num_io + 2;
     let cols = num_vars + num_inputs;
     let S = {
       let res = R1CSShape::new(
         num_cons,
         num_vars,
-        num_inputs - 1,
+        num_inputs - 2,
         SparseMatrix::new(&A, rows, cols),
         SparseMatrix::new(&B, rows, cols),
         SparseMatrix::new(&C, rows, cols),
@@ -582,51 +582,51 @@ mod tests {
       // `(Z2 + 5) * 1 - I1 = 0`
 
       // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
-      // constraint and a column for every entry in z = (vars, u, inputs)
+      // constraint and a column for every entry in z = (vars, 0, u, inputs)
       // An R1CS instance is satisfiable iff:
-      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
+      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 0, 1, inputs)
       let mut A: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut B: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut C: Vec<(usize, usize, E::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
-      A.push((0, num_vars + 1, one));
-      B.push((0, num_vars + 1, one));
+      A.push((0, num_vars + 2, one));
+      B.push((0, num_vars + 2, one));
       C.push((0, 0, one));
 
       // constraint 1 entries in (A,B,C)
       // `Z0 * I0 - Z1 = 0`
       A.push((1, 0, one));
-      B.push((1, num_vars + 1, one));
+      B.push((1, num_vars + 2, one));
       C.push((1, 1, one));
 
       // constraint 2 entries in (A,B,C)
       // `(Z1 + I0) * 1 - Z2 = 0`
       A.push((2, 1, one));
-      A.push((2, num_vars + 1, one));
-      B.push((2, num_vars, one));
+      A.push((2, num_vars + 2, one));
+      B.push((2, num_vars + 1, one));
       C.push((2, 2, one));
 
       // constraint 3 entries in (A,B,C)
       // `(Z2 + 5) * 1 - I1 = 0`
       A.push((3, 2, one));
-      A.push((3, num_vars, one + one + one + one + one));
-      B.push((3, num_vars, one));
-      C.push((3, num_vars + 2, one));
+      A.push((3, num_vars + 1, one + one + one + one + one));
+      B.push((3, num_vars + 1, one));
+      C.push((3, num_vars + 3, one));
 
       (num_cons, num_vars, num_io, A, B, C)
     };
 
     // create a shape object
     let rows = num_cons;
-    let num_inputs = num_io + 1;
+    let num_inputs = num_io + 2;
     let cols = num_vars + num_inputs;
     let S = {
       let res = R1CSShape::new(
         num_cons,
         num_vars,
-        num_inputs - 1,
+        num_inputs - 2,
         SparseMatrix::new(&A, rows, cols),
         SparseMatrix::new(&B, rows, cols),
         SparseMatrix::new(&C, rows, cols),

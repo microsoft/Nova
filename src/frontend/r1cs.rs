@@ -32,7 +32,7 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
     ck: &CommitmentKey<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
     let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
-    let X = &self.input_assignment()[1..];
+    let X = &self.input_assignment()[2..];
 
     let comm_W = W.commit(ck);
 
@@ -74,8 +74,8 @@ macro_rules! impl_nova_shape {
         B.cols = num_vars + num_inputs;
         C.cols = num_vars + num_inputs;
 
-        // Don't count One as an input for shape's purposes.
-        R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C)
+        // Don't count Zero and One as inputs for shape's purposes.
+        R1CSShape::new(num_constraints, num_vars, num_inputs - 2, A, B, C)
       }
     }
   };
@@ -107,8 +107,8 @@ fn add_constraint<S: PrimeField>(
     if *coeff != S::ZERO {
       match index {
         Index::Input(idx) => {
-          // Inputs come last, with input 0, representing 'one',
-          // at position num_vars within the witness vector.
+          // Inputs come last: Input(0)=zero at num_vars, Input(1)=one at num_vars+1,
+          // then public IO at num_vars+2..
           let idx = idx + num_vars;
           M.data.push(*coeff);
           M.indices.push(idx);

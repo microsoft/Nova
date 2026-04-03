@@ -1072,8 +1072,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     transcript.absorb(b"vk", &pk.vk_digest);
     transcript.absorb(b"U", U);
 
-    // compute the full satisfying assignment by concatenating W.W, U.u, and U.X
-    let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
+    // compute the full satisfying assignment by concatenating W.W, 0, U.u, and U.X
+    let z = [W.W.clone(), vec![E::Scalar::ZERO, U.u], U.X.clone()].concat();
 
     // compute Az, Bz, Cz
     let (Az, Bz, Cz) = S.multiply_vec(&z)?;
@@ -1538,8 +1538,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
           };
 
           let eval_X = {
-            // public IO is (u, X)
-            let X = vec![U.u]
+            // public IO is (0, u, X)
+            let X = vec![E::Scalar::ZERO, U.u]
               .into_iter()
               .chain(U.X.iter().cloned())
               .collect::<Vec<E::Scalar>>();
