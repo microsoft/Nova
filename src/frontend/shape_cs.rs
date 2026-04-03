@@ -61,6 +61,10 @@ impl<E: Engine> Default for ShapeCS<E> {
 impl<E: Engine> ConstraintSystem<E::Scalar> for ShapeCS<E> {
   type Root = Self;
 
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   fn alloc<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<E::Scalar, SynthesisError>,

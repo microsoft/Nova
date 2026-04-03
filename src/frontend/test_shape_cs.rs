@@ -241,6 +241,10 @@ where
 {
   type Root = Self;
 
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<E::Scalar, SynthesisError>,

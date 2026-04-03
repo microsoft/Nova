@@ -613,4 +613,16 @@ mod tests {
     );
     assert_eq!(cs.num_constraints(), base_constraints + 1);
   }
+
+  #[test]
+  fn test_allocated_num_zero() {
+    let cs = TestConstraintSystem::<Fr>::new();
+    let base_constraints = cs.num_constraints();
+
+    // AllocatedNum::zero() should add zero constraints
+    let zero = AllocatedNum::<Fr>::zero::<TestConstraintSystem<Fr>>();
+    assert_eq!(zero.get_value(), Some(Fr::ZERO));
+    assert_eq!(zero.get_variable(), TestConstraintSystem::<Fr>::zero());
+    assert_eq!(cs.num_constraints(), base_constraints);
+  }
 }

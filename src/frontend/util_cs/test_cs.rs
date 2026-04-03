@@ -159,6 +159,10 @@ fn compute_path(ns: &[String], this: &str) -> String {
 impl<Scalar: PrimeField> ConstraintSystem<Scalar> for TestConstraintSystem<Scalar> {
   type Root = Self;
 
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<Scalar, SynthesisError>,

@@ -69,10 +69,15 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
     Variable::new_unchecked(Index::Input(0))
   }
 
-  /// Return the "zero" auxiliary variable (Aux(0), enforced to equal zero)
-  fn zero() -> Variable {
-    Variable::new_unchecked(Index::Aux(0))
-  }
+  /// Return the "zero" auxiliary variable.
+  ///
+  /// # Implementor invariants
+  ///
+  /// * `Aux(0)` **must** be reserved at construction time and **must not** be
+  ///   returned by [`alloc`](ConstraintSystem::alloc).
+  /// * A constraint `0 * 0 = Aux(0)` (i.e. `Aux(0) == 0`) **must** be added
+  ///   by the constructor so the variable is properly enforced.
+  fn zero() -> Variable;
 
   /// Allocate a private variable in the constraint system. The provided function is used to
   /// determine the assignment of the variable. The given `annotation` function is invoked

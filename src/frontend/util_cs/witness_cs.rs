@@ -84,6 +84,10 @@ where
 {
   type Root = Self;
 
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
+
   fn new() -> Self {
     let input_assignment = vec![Scalar::ONE];
     let aux_assignment = vec![Scalar::ZERO];
@@ -151,9 +155,9 @@ where
 
   fn extend(&mut self, other: &Self) {
     self.input_assignment
-            // Skip first input, which must have been a temporarily allocated one variable.
+            // Skip built-in Input(0) = ONE, which is always the first input.
             .extend(&other.input_assignment[1..]);
-    // Skip first aux, which must have been a temporarily allocated zero variable.
+    // Skip built-in Aux(0) = ZERO, which is always the first aux.
     self.aux_assignment.extend(&other.aux_assignment[1..]);
   }
 
