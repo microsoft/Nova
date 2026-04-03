@@ -11,7 +11,7 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedNonnativePoint,
-    utils::{alloc_num_equals, alloc_zero, conditionally_select_vec, le_bits_to_num},
+    utils::{alloc_num_equals, conditionally_select_vec, le_bits_to_num},
   },
   neutron::{nifs::NIFS, relation::FoldedInstance},
   r1cs::R1CSInstance,
@@ -283,7 +283,7 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> NeutronAugmentedCircuit<'_, E, SC> {
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
-    let zero = alloc_zero(cs.namespace(|| "zero"));
+    let zero = AllocatedNum::zero::<CS>();
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // synthesize base case

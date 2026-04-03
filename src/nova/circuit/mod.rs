@@ -11,9 +11,7 @@ use crate::{
   },
   gadgets::{
     ecc::AllocatedPoint,
-    utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
-    },
+    utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec, le_bits_to_num},
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{
@@ -254,7 +252,7 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
       self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
 
     // Compute variable indicating if this is the base case
-    let zero = alloc_zero(cs.namespace(|| "zero"));
+    let zero = AllocatedNum::zero::<CS>();
     let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
 
     // compute hash of the non-deterministic inputs

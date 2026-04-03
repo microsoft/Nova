@@ -41,12 +41,6 @@ where
   Ok(num)
 }
 
-/// Allocate a variable that is set to zero.
-/// Uses the built-in CS::zero() wire (Aux(0)), so this is free (no extra constraints).
-pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(_cs: CS) -> AllocatedNum<F> {
-  AllocatedNum::zero::<CS>()
-}
-
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
 pub fn alloc_scalar_as_base<E, CS>(
   mut cs: CS,
