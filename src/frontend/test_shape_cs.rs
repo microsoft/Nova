@@ -220,11 +220,12 @@ impl<E: Engine> Default for TestShapeCS<E> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<E>::one()));
+    map.insert("ZERO".into(), NamedObject::Var(TestShapeCS::<E>::zero()));
     TestShapeCS {
       named_objects: map,
       current_namespace: vec![],
       constraints: vec![],
-      inputs: vec![String::from("ONE")],
+      inputs: vec![String::from("ONE"), String::from("ZERO")],
       aux: vec![],
     }
   }

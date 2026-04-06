@@ -49,8 +49,9 @@ where
 {
   /// Create a new WitnessCS with pre-allocated capacity for aux and input variables.
   pub fn with_capacity(aux_capacity: usize, input_capacity: usize) -> Self {
-    let mut input_assignment = Vec::with_capacity(input_capacity + 1);
+    let mut input_assignment = Vec::with_capacity(input_capacity + 2);
     input_assignment.push(Scalar::ONE);
+    input_assignment.push(Scalar::ZERO);
     Self {
       input_assignment,
       aux_assignment: Vec::with_capacity(aux_capacity),
@@ -61,6 +62,7 @@ where
   pub fn clear(&mut self) {
     self.input_assignment.clear();
     self.input_assignment.push(Scalar::ONE);
+    self.input_assignment.push(Scalar::ZERO);
     self.aux_assignment.clear();
   }
 
@@ -82,7 +84,7 @@ where
   type Root = Self;
 
   fn new() -> Self {
-    let input_assignment = vec![Scalar::ONE];
+    let input_assignment = vec![Scalar::ONE, Scalar::ZERO];
 
     Self {
       input_assignment,
@@ -147,8 +149,8 @@ where
 
   fn extend(&mut self, other: &Self) {
     self.input_assignment
-            // Skip first input, which must have been a temporarily allocated one variable.
-            .extend(&other.input_assignment[1..]);
+            // Skip built-in Input(0) = ONE and Input(1) = ZERO.
+            .extend(&other.input_assignment[2..]);
     self.aux_assignment.extend(&other.aux_assignment);
   }
 
@@ -188,5 +190,39 @@ where
 
   fn aux_slice(&self) -> &[Scalar] {
     &self.aux_assignment
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::frontend::ConstraintSystem;
+  use ff::Field;
+  use halo2curves::pasta::Fq as Scalar;
+
+  #[test]
+  fn test_extend_skips_builtin_inputs() {
+    // `other` has the 2 built-in inputs (ONE, ZERO) plus one user input
+    let mut other = WitnessCS::<Scalar>::new();
+    other
+      .alloc_input(|| "user_input", || Ok(Scalar::from(42u64)))
+      .unwrap();
+    assert_eq!(other.input_assignment.len(), 3); // ONE, ZERO, user
+
+    // `self` starts with just the 2 built-in inputs
+    let mut base = WitnessCS::<Scalar>::new();
+    assert_eq!(base.input_assignment.len(), 2); // ONE, ZERO
+
+    base.extend(&other);
+
+    // Only the user input should be copied, not the built-in ONE or ZERO
+    assert_eq!(
+      base.input_assignment.len(),
+      3,
+      "extend should copy only user inputs, not built-in ONE/ZERO"
+    );
+    assert_eq!(base.input_assignment[0], Scalar::ONE); // ONE
+    assert_eq!(base.input_assignment[1], Scalar::ZERO); // ZERO
+    assert_eq!(base.input_assignment[2], Scalar::from(42u64)); // user input
   }
 }
