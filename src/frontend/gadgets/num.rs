@@ -47,6 +47,15 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     }
   }
 
+  /// Returns an `AllocatedNum` wrapping the built-in `CS::zero()` variable.
+  /// Costs zero constraints since it uses the input-1 wire directly.
+  pub fn zero<CS: ConstraintSystem<Scalar>>() -> Self {
+    AllocatedNum {
+      value: Some(Scalar::ZERO),
+      variable: CS::zero(),
+    }
+  }
+
   /// Allocate a `Variable(Aux)` in a `ConstraintSystem`.
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where

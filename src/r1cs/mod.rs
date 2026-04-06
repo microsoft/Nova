@@ -156,7 +156,7 @@ impl<E: Engine> R1CSShape<E> {
      -> Result<Vec<()>, NovaError> {
       M.iter()
         .map(|(row, col, _val)| {
-          if row >= num_cons || col > num_io + num_vars {
+          if row >= num_cons || col > num_io + num_vars + 1 {
             Err(NovaError::InvalidIndex)
           } else {
             Ok(())
@@ -367,12 +367,12 @@ impl<E: Engine> R1CSShape<E> {
   }
 
   // Checks regularity conditions on the R1CSShape, required in Spartan-class SNARKs
-  // Returns false if num_cons or num_vars are not powers of two, or if num_io > num_vars
+  // Returns false if num_cons or num_vars are not powers of two, or if num_io+2 > num_vars
   #[inline]
   pub(crate) fn is_regular_shape(&self) -> bool {
     let cons_valid = self.num_cons.next_power_of_two() == self.num_cons;
     let vars_valid = self.num_vars.next_power_of_two() == self.num_vars;
-    let io_lt_vars = self.num_io < self.num_vars;
+    let io_lt_vars = self.num_io + 1 < self.num_vars;
     cons_valid && vars_valid && io_lt_vars
   }
 
@@ -381,7 +381,7 @@ impl<E: Engine> R1CSShape<E> {
     &self,
     z: &[E::Scalar],
   ) -> Result<(Vec<E::Scalar>, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
-    if z.len() != self.num_io + self.num_vars + 1 {
+    if z.len() != self.num_io + self.num_vars + 2 {
       return Err(NovaError::InvalidWitnessLength);
     }
 
@@ -416,7 +416,7 @@ impl<E: Engine> R1CSShape<E> {
     ),
     NovaError,
   > {
-    if z1.len() != self.num_io + self.num_vars + 1 || z2.len() != self.num_io + self.num_vars + 1 {
+    if z1.len() != self.num_io + self.num_vars + 2 || z2.len() != self.num_io + self.num_vars + 2 {
       return Err(NovaError::InvalidWitnessLength);
     }
 
@@ -456,7 +456,7 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if Az * Bz = u*Cz + E
     let res_eq = {
-      let z = [W.W.clone(), vec![U.u], U.X.clone()].concat();
+      let z = [W.W.clone(), vec![U.u, E::Scalar::ZERO], U.X.clone()].concat();
       let (Az, Bz, Cz) = self.multiply_vec(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
@@ -501,7 +501,12 @@ impl<E: Engine> R1CSShape<E> {
 
     // verify if Az * Bz = u*Cz
     let res_eq = {
-      let z = [W.W.clone(), vec![E::Scalar::ONE], U.X.clone()].concat();
+      let z = [
+        W.W.clone(),
+        vec![E::Scalar::ONE, E::Scalar::ZERO],
+        U.X.clone(),
+      ]
+      .concat();
       let (Az, Bz, Cz) = self.multiply_vec(&z)?;
       assert_eq!(Az.len(), self.num_cons);
       assert_eq!(Bz.len(), self.num_cons);
@@ -541,7 +546,7 @@ impl<E: Engine> R1CSShape<E> {
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let z_len = W1.W.len() + 1 + U1.X.len();
+    let z_len = W1.W.len() + 2 + U1.X.len();
     let Z = if z_len <= PARALLEL_THRESHOLD {
       let mut z = Vec::with_capacity(z_len);
       W1.W
@@ -549,14 +554,20 @@ impl<E: Engine> R1CSShape<E> {
         .zip(W2.W.iter())
         .for_each(|(w1, w2)| z.push(*w1 + *w2));
       z.push(U1.u + E::Scalar::ONE);
+      z.push(E::Scalar::ZERO);
       U1.X
         .iter()
         .zip(U2.X.iter())
         .for_each(|(x1, x2)| z.push(*x1 + *x2));
       z
     } else {
-      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-      let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
+      let Z1 = [W1.W.clone(), vec![U1.u, E::Scalar::ZERO], U1.X.clone()].concat();
+      let Z2 = [
+        W2.W.clone(),
+        vec![E::Scalar::ONE, E::Scalar::ZERO],
+        U2.X.clone(),
+      ]
+      .concat();
       Z1.into_par_iter()
         .zip(Z2.into_par_iter())
         .map(|(z1, z2)| z1 + z2)
@@ -590,8 +601,8 @@ impl<E: Engine> R1CSShape<E> {
     W2: &RelaxedR1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
+    let Z1 = [W1.W.clone(), vec![U1.u, E::Scalar::ZERO], U1.X.clone()].concat();
+    let Z2 = [W2.W.clone(), vec![U2.u, E::Scalar::ZERO], U2.X.clone()].concat();
 
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
@@ -696,7 +707,7 @@ impl<E: Engine> R1CSShape<E> {
       return self.clone();
     }
 
-    let num_vars_padded = max(self.num_vars, self.num_io + 1).next_power_of_two();
+    let num_vars_padded = max(self.num_vars, self.num_io + 2).next_power_of_two();
     let num_cons_padded = self.num_cons.next_power_of_two();
 
     let apply_pad = |mut M: SparseMatrix<E::Scalar>| -> SparseMatrix<E::Scalar> {
@@ -742,11 +753,14 @@ impl<E: Engine> R1CSShape<E> {
     &self,
     ck: &CommitmentKey<E>,
   ) -> Result<(RelaxedR1CSInstance<E>, RelaxedR1CSWitness<E>), NovaError> {
-    // sample Z = (W, u, X)
-    let Z = (0..self.num_vars + self.num_io + 1)
+    // sample Z = (W, u, 0, X)
+    let mut Z = (0..self.num_vars + self.num_io + 2)
       .into_par_iter()
       .map(|_| E::Scalar::random(&mut OsRng))
       .collect::<Vec<E::Scalar>>();
+
+    // Force the zero-wire position to be zero
+    Z[self.num_vars + 1] = E::Scalar::ZERO;
 
     let r_W = E::Scalar::random(&mut OsRng);
     let r_E = E::Scalar::random(&mut OsRng);
@@ -774,7 +788,7 @@ impl<E: Engine> R1CSShape<E> {
         comm_W,
         comm_E,
         u,
-        X: Z[self.num_vars + 1..].to_vec(),
+        X: Z[self.num_vars + 2..].to_vec(),
       },
       RelaxedR1CSWitness {
         W: Z[..self.num_vars].to_vec(),
@@ -1305,29 +1319,29 @@ mod tests {
       // `(Z2 + 5) * 1 - I1 = 0`
 
       // Relaxed R1CS is a set of three sparse matrices (A B C), where there is a row for every
-      // constraint and a column for every entry in z = (vars, u, inputs)
+      // constraint and a column for every entry in z = (vars, u, 0, inputs)
       // An R1CS instance is satisfiable iff:
-      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, inputs)
+      // Az \circ Bz = u \cdot Cz + E, where z = (vars, 1, 0, inputs)
       let mut A: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut B: Vec<(usize, usize, E::Scalar)> = Vec::new();
       let mut C: Vec<(usize, usize, E::Scalar)> = Vec::new();
 
       // constraint 0 entries in (A,B,C)
       // `I0 * I0 - Z0 = 0`
-      A.push((0, num_vars + 1, one));
-      B.push((0, num_vars + 1, one));
+      A.push((0, num_vars + 2, one));
+      B.push((0, num_vars + 2, one));
       C.push((0, 0, one));
 
       // constraint 1 entries in (A,B,C)
       // `Z0 * I0 - Z1 = 0`
       A.push((1, 0, one));
-      B.push((1, num_vars + 1, one));
+      B.push((1, num_vars + 2, one));
       C.push((1, 1, one));
 
       // constraint 2 entries in (A,B,C)
       // `(Z1 + I0) * 1 - Z2 = 0`
       A.push((2, 1, one));
-      A.push((2, num_vars + 1, one));
+      A.push((2, num_vars + 2, one));
       B.push((2, num_vars, one));
       C.push((2, 2, one));
 
@@ -1336,14 +1350,14 @@ mod tests {
       A.push((3, 2, one));
       A.push((3, num_vars, one + one + one + one + one));
       B.push((3, num_vars, one));
-      C.push((3, num_vars + 2, one));
+      C.push((3, num_vars + 3, one));
 
       (num_cons, num_vars, num_io, A, B, C)
     };
 
     // create a shape object
     let rows = num_cons;
-    let cols = num_vars + num_io + 1;
+    let cols = num_vars + num_io + 2;
 
     let res = R1CSShape::new(
       num_cons,
@@ -1420,9 +1434,9 @@ mod tests {
 
   fn test_multiply_vec_pair_with<E: Engine>() {
     // tiny_r1cs(4) has num_cons=4, num_vars=4, num_io=2
-    // z has length num_vars + 1 + num_io = 7
+    // z has length num_vars + 2 + num_io = 8
     let S = tiny_r1cs::<E>(4);
-    let z_len = S.num_vars + 1 + S.num_io;
+    let z_len = S.num_vars + 2 + S.num_io;
 
     let z1: Vec<E::Scalar> = (1..=z_len as u64).map(E::Scalar::from).collect();
     let z2: Vec<E::Scalar> = (10..10 + z_len as u64).map(E::Scalar::from).collect();

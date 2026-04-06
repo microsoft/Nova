@@ -8,7 +8,7 @@ use crate::{
   gadgets::{
     nonnative::{bignat::BigNat, util::f_to_nat},
     utils::{
-      alloc_bignat_constant, alloc_constant, alloc_num_equals, alloc_zero, conditionally_select,
+      alloc_bignat_constant, alloc_constant, alloc_num_equals, conditionally_select,
       conditionally_select2, conditionally_select_bignat, select_num_or_one, select_num_or_zero,
       select_num_or_zero2, select_one_or_diff2, select_one_or_num2, select_zero_or_num2,
     },
@@ -109,8 +109,8 @@ where
   }
 
   /// Allocates a default point on the curve, set to the identity point.
-  pub fn default<CS: ConstraintSystem<E::Base>>(mut cs: CS) -> Result<Self, SynthesisError> {
-    let zero = alloc_zero(cs.namespace(|| "zero"));
+  pub fn default<CS: ConstraintSystem<E::Base>>(_cs: CS) -> Result<Self, SynthesisError> {
+    let zero = AllocatedNum::zero::<CS>();
     let one = AllocatedNum::one::<CS>();
 
     Ok(AllocatedPoint {
@@ -607,7 +607,7 @@ where
   ) -> Result<(), SynthesisError> {
     let (_, b, _, _) = E::GE::group_params();
     if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
+      let zero = AllocatedNum::zero::<CS>();
       let x = conditionally_select2(
         cs.namespace(|| "select x"),
         &zero,
