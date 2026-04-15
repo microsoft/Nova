@@ -428,6 +428,25 @@ where
 
     Commitment { comm }
   }
+
+  fn commit_sparse(
+    ck: &Self::CommitmentKey,
+    indices: &[usize],
+    scalars: &[E::Scalar],
+    r: &E::Scalar,
+  ) -> Self::Commitment {
+    assert_eq!(indices.len(), scalars.len());
+
+    let bases: Vec<_> = indices.par_iter().map(|&i| ck.ck[i]).collect();
+
+    let mut comm = E::GE::vartime_multiscalar_mul(scalars, &bases);
+
+    if r != &E::Scalar::ZERO {
+      comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+    }
+
+    Commitment { comm }
+  }
 }
 
 /// A trait listing properties of a commitment key that can be managed in a divide-and-conquer fashion
