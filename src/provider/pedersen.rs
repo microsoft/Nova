@@ -1,14 +1,16 @@
 //! This module provides an implementation of a commitment engine
-use crate::provider::msm::batch_add;
 #[cfg(feature = "io")]
 use crate::provider::ptau::{read_points, write_points, PtauFileError};
-use crate::traits::evm_serde::EvmCompatSerde;
 use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
-  provider::traits::{DlogGroup, DlogGroupExt},
+  provider::{
+    msm::{batch_add, batch_add_address_grouped, batch_add_multi},
+    traits::{DlogGroup, DlogGroupExt},
+  },
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
+    evm_serde::EvmCompatSerde,
     AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptReprTrait,
   },
 };
@@ -326,6 +328,14 @@ where
     Commitment { comm: res }
   }
 
+  fn commit_signed(ck: &Self::CommitmentKey, v: &[i128], r: &E::Scalar) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul_signed(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
+    }
+  }
+
   fn derandomize(
     dk: &Self::DerandKey,
     commit: &Self::Commitment,
@@ -427,6 +437,44 @@ where
     }
 
     Commitment { comm }
+  }
+
+  fn commit_sparse_binary_batch(
+    ck: &Self::CommitmentKey,
+    hot_per_poly: &[&[usize]],
+    r: &<E as Engine>::Scalar,
+  ) -> Vec<Self::Commitment> {
+    let comms = batch_add_multi(&ck.ck, hot_per_poly);
+    comms
+      .into_iter()
+      .map(|comm| {
+        let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+        if r != &E::Scalar::ZERO {
+          comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+        }
+        Commitment { comm }
+      })
+      .collect()
+  }
+
+  fn commit_address_grouped(
+    ck: &Self::CommitmentKey,
+    addrs: &[&[u16]],
+    num_entries: usize,
+    subtable_size: usize,
+    r: &<E as Engine>::Scalar,
+  ) -> Vec<Self::Commitment> {
+    let comms = batch_add_address_grouped(&ck.ck, addrs, num_entries, subtable_size);
+    comms
+      .into_iter()
+      .map(|comm| {
+        let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+        if r != &E::Scalar::ZERO {
+          comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+        }
+        Commitment { comm }
+      })
+      .collect()
   }
 }
 

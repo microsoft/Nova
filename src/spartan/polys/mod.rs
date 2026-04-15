@@ -1,5 +1,8 @@
 //! This module contains the definitions of polynomial types used in the Spartan SNARK.
 
+/// Module providing compact multilinear polynomial types.
+pub mod compact;
+
 /// Module providing the equality polynomial.
 pub mod eq;
 

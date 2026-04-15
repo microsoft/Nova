@@ -12,7 +12,7 @@ use crate::{
   errors::NovaError,
   gadgets::utils::to_bignat_repr,
   provider::{
-    msm::batch_add,
+    msm::{batch_add, batch_add_address_grouped, batch_add_multi_tree},
     traits::{DlogGroup, DlogGroupExt, PairingGroup},
   },
   traits::{
@@ -692,6 +692,47 @@ where
     Commitment { comm: res }
   }
 
+  fn commit_signed(ck: &Self::CommitmentKey, v: &[i128], r: &E::Scalar) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul_signed(v, &ck.ck[..v.len()])
+        + <E::GE as DlogGroup>::group(&ck.h) * r,
+    }
+  }
+
+  fn commit_sparse_signed(ck: &Self::CommitmentKey, v: &[i128], r: &E::Scalar) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    let nz_count = v.iter().filter(|&&x| x != 0).count();
+    // Only use sparse path when < 25% non-zero (base copy overhead is significant)
+    if nz_count == 0 {
+      let mut comm = E::GE::zero();
+      if r != &E::Scalar::ZERO {
+        comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+      }
+      return Commitment { comm };
+    }
+    if nz_count > v.len() / 4 {
+      return Self::commit_signed(ck, v, r);
+    }
+    // Extract sparse entries
+    let mut sparse_scalars = Vec::with_capacity(nz_count);
+    let mut sparse_bases = Vec::with_capacity(nz_count);
+    for (i, &val) in v.iter().enumerate() {
+      if val != 0 {
+        sparse_scalars.push(val);
+        sparse_bases.push(ck.ck[i]);
+      }
+    }
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul_signed(&sparse_scalars, &sparse_bases)
+        + if r != &E::Scalar::ZERO {
+          <E::GE as DlogGroup>::group(&ck.h) * r
+        } else {
+          E::GE::zero()
+        },
+    }
+  }
+
   fn ck_to_coordinates(ck: &Self::CommitmentKey) -> Vec<(E::Base, E::Base)> {
     ck.to_coordinates()
   }
@@ -708,6 +749,38 @@ where
         ge
       })
       .collect()
+  }
+
+  fn commit_sparse(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
+    assert!(ck.ck.len() >= v.len());
+    let nz_count = v.iter().filter(|&&x| x != E::Scalar::ZERO).count();
+    if nz_count == 0 {
+      let mut comm = E::GE::zero();
+      if r != &E::Scalar::ZERO {
+        comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+      }
+      return Commitment { comm };
+    }
+    // Only use sparse path when < 50% non-zero (break-even with base copy overhead)
+    if nz_count > v.len() / 2 {
+      return Self::commit(ck, v, r);
+    }
+    let mut sparse_scalars = Vec::with_capacity(nz_count);
+    let mut sparse_bases = Vec::with_capacity(nz_count);
+    for (i, &val) in v.iter().enumerate() {
+      if val != E::Scalar::ZERO {
+        sparse_scalars.push(val);
+        sparse_bases.push(ck.ck[i]);
+      }
+    }
+    Commitment {
+      comm: E::GE::vartime_multiscalar_mul(&sparse_scalars, &sparse_bases)
+        + if r != &E::Scalar::ZERO {
+          <E::GE as DlogGroup>::group(&ck.h) * r
+        } else {
+          E::GE::zero()
+        },
+    }
   }
 
   fn ck_derive_by_address(
@@ -743,6 +816,44 @@ where
     }
 
     Commitment { comm }
+  }
+
+  fn commit_sparse_binary_batch(
+    ck: &Self::CommitmentKey,
+    hot_per_poly: &[&[usize]],
+    r: &<E as Engine>::Scalar,
+  ) -> Vec<Self::Commitment> {
+    let comms = batch_add_multi_tree(&ck.ck, hot_per_poly);
+    comms
+      .into_iter()
+      .map(|comm| {
+        let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+        if r != &E::Scalar::ZERO {
+          comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+        }
+        Commitment { comm }
+      })
+      .collect()
+  }
+
+  fn commit_address_grouped(
+    ck: &Self::CommitmentKey,
+    addrs: &[&[u16]],
+    num_entries: usize,
+    subtable_size: usize,
+    r: &<E as Engine>::Scalar,
+  ) -> Vec<Self::Commitment> {
+    let comms = batch_add_address_grouped(&ck.ck, addrs, num_entries, subtable_size);
+    comms
+      .into_iter()
+      .map(|comm| {
+        let mut comm = <E::GE as DlogGroup>::group(&comm.into());
+        if r != &E::Scalar::ZERO {
+          comm += <E::GE as DlogGroup>::group(&ck.h) * r;
+        }
+        Commitment { comm }
+      })
+      .collect()
   }
 }
 

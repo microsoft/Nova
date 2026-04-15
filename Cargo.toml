@@ -35,10 +35,10 @@ itertools = "0.14.0"
 
 # Use halo2curves ASM on x86_64 by default; disable ASM on non-x86_64
 [target.'cfg(target_arch = "x86_64")'.dependencies]
-halo2curves = { version = "0.9.0", features = ["std", "bits", "derive_serde", "asm"] }
+halo2curves = { version = "0.9.0", features = ["std", "bits", "derive_serde", "asm", "bn256-table"] }
 
 [target.'cfg(not(target_arch = "x86_64"))'.dependencies]
-halo2curves = { version = "0.9.0", features = ["std", "bits", "derive_serde"] }
+halo2curves = { version = "0.9.0", features = ["std", "bits", "derive_serde", "bn256-table"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.15", default-features = false, features = ["js"] }

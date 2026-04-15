@@ -113,6 +113,10 @@ pub trait DlogGroupExt: DlogGroup {
       .map(|scalar| Self::vartime_multiscalar_mul_small(scalar, &bases[..scalar.len()]))
       .collect::<Vec<_>>()
   }
+
+  /// A method to compute a multiexponentation with signed (i64) scalars.
+  /// Splits into positive/negative MSMs for efficient handling.
+  fn vartime_multiscalar_mul_signed(scalars: &[i128], bases: &[Self::AffineGroupElement]) -> Self;
 }
 
 /// A trait that defines extensions to the DlogGroup trait, to be implemented for
@@ -386,6 +390,13 @@ macro_rules! impl_traits {
         max_num_bits: usize,
       ) -> Self {
         msm_small_with_max_num_bits(scalars, bases, max_num_bits)
+      }
+
+      fn vartime_multiscalar_mul_signed(
+        scalars: &[i128],
+        bases: &[Self::AffineGroupElement],
+      ) -> Self {
+        msm_signed(scalars, bases)
       }
     }
   };

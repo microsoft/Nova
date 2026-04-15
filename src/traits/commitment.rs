@@ -110,6 +110,25 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     r: &E::Scalar,
   ) -> Self::Commitment;
 
+  /// Commits to a batch of sparse binary vectors, deduplicating shared hot indices.
+  /// Default: delegates to individual commit_sparse_binary calls.
+  fn commit_sparse_binary_batch(
+    ck: &Self::CommitmentKey,
+    hot_per_poly: &[&[usize]],
+    r: &E::Scalar,
+  ) -> Vec<Self::Commitment>;
+
+  /// Commits to chunked RA polynomials with address-grouped accumulation.
+  /// Each polynomial's hot index is `addr * num_entries + i`, where addr ∈ 0..subtable_size.
+  /// Groups entries by address for sequential SRS access + affine tree reduction.
+  fn commit_address_grouped(
+    ck: &Self::CommitmentKey,
+    addrs: &[&[u16]],
+    num_entries: usize,
+    subtable_size: usize,
+    r: &E::Scalar,
+  ) -> Vec<Self::Commitment>;
+
   /// Commits to the provided vector of "small" scalars (at most 64 bits) using the provided generators and random blind
   fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     ck: &Self::CommitmentKey,
@@ -125,6 +144,24 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     range: Range<usize>,
     max_num_bits: usize,
   ) -> Self::Commitment;
+
+  /// Commits to the provided vector of signed i64 scalars using the provided generators and random blind.
+  /// Internally splits into positive/negative MSMs for efficient handling.
+  fn commit_signed(ck: &Self::CommitmentKey, v: &[i128], r: &E::Scalar) -> Self::Commitment;
+
+  /// Commits to a sparse signed vector, skipping zero entries for faster MSM.
+  /// Falls back to `commit_signed` when the vector is mostly non-zero.
+  fn commit_sparse_signed(ck: &Self::CommitmentKey, v: &[i128], r: &E::Scalar) -> Self::Commitment {
+    // Default: delegate to dense signed commit
+    Self::commit_signed(ck, v, r)
+  }
+
+  /// Commits to a sparse Fr vector, skipping zero entries for faster MSM.
+  /// Falls back to `commit` when the vector is mostly non-zero.
+  fn commit_sparse(ck: &Self::CommitmentKey, v: &[E::Scalar], r: &E::Scalar) -> Self::Commitment {
+    // Default: delegate to dense commit
+    Self::commit(ck, v, r)
+  }
 
   /// Batch commits to the provided vectors of "small" scalars (at most 64 bits) using the provided generators and random blind
   fn batch_commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
