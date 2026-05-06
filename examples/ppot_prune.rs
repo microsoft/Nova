@@ -176,8 +176,8 @@ fn download_ptau(power: u32, dest: &PathBuf) -> Result<(), PrunerError> {
     downloaded += bytes_read as u64;
 
     // Print progress every 10%
-    if total_size > 0 {
-      let percent = (downloaded * 100 / total_size) as u32;
+    if let Some(percent) = (downloaded * 100).checked_div(total_size) {
+      let percent = percent as u32;
       if percent >= last_percent + 10 {
         println!(
           "  {}% downloaded ({:.2} MB)",
