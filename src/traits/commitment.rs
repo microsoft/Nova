@@ -110,6 +110,15 @@ pub trait CommitmentEngineTrait<E: Engine>: Clone + Send + Sync {
     r: &E::Scalar,
   ) -> Self::Commitment;
 
+  /// Commits to the provided vector of sparse scalars given by (indices, scalars),
+  /// using the provided generators and random blind
+  fn commit_sparse(
+    ck: &Self::CommitmentKey,
+    indices: &[usize],
+    scalars: &[E::Scalar],
+    r: &E::Scalar,
+  ) -> Self::Commitment;
+
   /// Commits to the provided vector of "small" scalars (at most 64 bits) using the provided generators and random blind
   fn commit_small<T: Integer + Into<u64> + Copy + Sync + ToPrimitive>(
     ck: &Self::CommitmentKey,

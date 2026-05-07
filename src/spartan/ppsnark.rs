@@ -935,8 +935,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARK<E, EE> {
 
       let evals: Vec<Vec<E::Scalar>> = evals_mem
         .into_iter()
-        .chain(evals_inner.into_iter())
-        .chain(evals_witness.into_iter())
+        .chain(evals_inner)
+        .chain(evals_witness)
         .collect::<Vec<Vec<E::Scalar>>>();
       assert_eq!(evals.len(), claims.len());
 
