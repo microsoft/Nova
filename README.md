@@ -63,6 +63,37 @@ To run an example:
 cargo run --release --example minroot
 ```
 
+## Logging
+
+This library uses the [`tracing`](https://docs.rs/tracing) crate for structured, leveled logging. It emits tracing events and spans but **does not install a subscriber** — the application decides how (and whether) to consume output. When no subscriber is registered, all tracing macros are no-ops with near-zero overhead.
+
+To see log output, install a `tracing-subscriber` in your application:
+
+```rust
+use tracing_subscriber::EnvFilter;
+
+tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::from_default_env())
+    .init();
+```
+
+Then control verbosity with the `RUST_LOG` environment variable:
+
+```bash
+RUST_LOG=info cargo test --release ...    # setup complete, CompressedSNARK proof generated
+RUST_LOG=debug cargo test --release ...   # per-step prove_step, base case, verification
+```
+
+**Tracing levels used:**
+
+| Level   | What it covers |
+|---------|----------------|
+| `info`  | Setup complete, CompressedSNARK generated, constraint counts |
+| `debug` | Per-step prove_step, base case init, verification passed |
+| `warn`  | Validation and consistency failures (e.g., invalid commitment key length, sumcheck mismatch, unsat checks, ptau validation) |
+
+Applications that depend on this library automatically see these spans nested under their own tracing subscriber with zero integration work.
+
 ## References
 The following paper, which appeared at CRYPTO 2022, provides details of the Nova proof system and a proof of security:
 
