@@ -220,12 +220,17 @@ impl<E: Engine> Default for TestShapeCS<E> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var(TestShapeCS::<E>::one()));
+    map.insert("ZERO".into(), NamedObject::Var(TestShapeCS::<E>::zero()));
+    let zero_var = Variable::new_unchecked(Index::Aux(0));
+    let a = LinearCombination::<<E as Engine>::Scalar>::zero();
+    let b = LinearCombination::<<E as Engine>::Scalar>::zero();
+    let c = LinearCombination::<<E as Engine>::Scalar>::zero() + zero_var;
     TestShapeCS {
       named_objects: map,
       current_namespace: vec![],
-      constraints: vec![],
+      constraints: vec![(a, b, c, "ZERO".into())],
       inputs: vec![String::from("ONE")],
-      aux: vec![],
+      aux: vec![String::from("ZERO")],
     }
   }
 }
@@ -235,6 +240,10 @@ where
   E::Scalar: PrimeField,
 {
   type Root = Self;
+
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Aux(0))
+  }
 
   fn alloc<F, A, AR>(&mut self, annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
