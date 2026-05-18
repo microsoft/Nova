@@ -117,22 +117,20 @@ impl UInt32 {
     }
   }
 
-  fn triop<Scalar, CS, F, U>(
+  /// Compute the `maj` value (a and b) xor (a and c) xor (b and c)
+  /// during SHA256.
+  pub fn sha256_maj<Scalar, CS>(
     mut cs: CS,
     a: &Self,
     b: &Self,
     c: &Self,
-    tri_fn: F,
-    circuit_fn: U,
   ) -> Result<Self, SynthesisError>
   where
     Scalar: PrimeField,
     CS: ConstraintSystem<Scalar>,
-    F: Fn(u32, u32, u32) -> u32,
-    U: Fn(&mut CS, usize, &Boolean, &Boolean, &Boolean) -> Result<Boolean, SynthesisError>,
   {
     let new_value = match (a.value, b.value, c.value) {
-      (Some(a), Some(b), Some(c)) => Some(tri_fn(a, b, c)),
+      (Some(a), Some(b), Some(c)) => Some((a & b) ^ (a & c) ^ (b & c)),
       _ => None,
     };
 
@@ -142,7 +140,7 @@ impl UInt32 {
       .zip(b.bits.iter())
       .zip(c.bits.iter())
       .enumerate()
-      .map(|(i, ((a, b), c))| circuit_fn(&mut cs, i, a, b, c))
+      .map(|(i, ((a, b), c))| Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c))
       .collect::<Result<_, _>>()?;
 
     Ok(UInt32 {
@@ -151,10 +149,10 @@ impl UInt32 {
     })
   }
 
-  /// Compute the `maj` value (a and b) xor (a and c) xor (b and c)
+  /// Compute the `ch` value `(a and b) xor ((not a) and c)`
   /// during SHA256.
-  pub fn sha256_maj<Scalar, CS>(
-    cs: CS,
+  pub fn sha256_ch<Scalar, CS>(
+    mut cs: CS,
     a: &Self,
     b: &Self,
     c: &Self,
@@ -163,31 +161,24 @@ impl UInt32 {
     Scalar: PrimeField,
     CS: ConstraintSystem<Scalar>,
   {
-    Self::triop(
-      cs,
-      a,
-      b,
-      c,
-      |a, b, c| (a & b) ^ (a & c) ^ (b & c),
-      |cs, i, a, b, c| Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c),
-    )
-  }
+    let new_value = match (a.value, b.value, c.value) {
+      (Some(a), Some(b), Some(c)) => Some((a & b) ^ ((!a) & c)),
+      _ => None,
+    };
 
-  /// Compute the `ch` value `(a and b) xor ((not a) and c)`
-  /// during SHA256.
-  pub fn sha256_ch<Scalar, CS>(cs: CS, a: &Self, b: &Self, c: &Self) -> Result<Self, SynthesisError>
-  where
-    Scalar: PrimeField,
-    CS: ConstraintSystem<Scalar>,
-  {
-    Self::triop(
-      cs,
-      a,
-      b,
-      c,
-      |a, b, c| (a & b) ^ ((!a) & c),
-      |cs, i, a, b, c| Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c),
-    )
+    let bits = a
+      .bits
+      .iter()
+      .zip(b.bits.iter())
+      .zip(c.bits.iter())
+      .enumerate()
+      .map(|(i, ((a, b), c))| Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c))
+      .collect::<Result<_, _>>()?;
+
+    Ok(UInt32 {
+      bits,
+      value: new_value,
+    })
   }
 
   /// XOR this `UInt32` with another `UInt32`
