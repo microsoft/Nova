@@ -279,7 +279,10 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
     CS: ConstraintSystem<Scalar>,
     Scalar: PrimeFieldBits,
   {
-    let bits = boolean::field_into_allocated_bits_le(&mut cs, self.value)?;
+    let bits = boolean::field_into_allocated_bits_le(
+      cs.namespace(|| "field_into_allocated_bits_le"),
+      self.value,
+    )?;
 
     let mut lc = LinearCombination::zero();
     let mut coeff = Scalar::ONE;
