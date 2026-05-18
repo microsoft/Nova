@@ -140,9 +140,7 @@ impl UInt32 {
       .zip(b.bits.iter())
       .zip(c.bits.iter())
       .enumerate()
-      .map(|(i, ((a, b), c))| {
-        Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c)
-      })
+      .map(|(i, ((a, b), c))| Boolean::sha256_maj(cs.namespace(|| format!("maj {i}")), a, b, c))
       .collect::<Result<_, _>>()?;
 
     Ok(UInt32 {
@@ -174,9 +172,7 @@ impl UInt32 {
       .zip(b.bits.iter())
       .zip(c.bits.iter())
       .enumerate()
-      .map(|(i, ((a, b), c))| {
-        Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c)
-      })
+      .map(|(i, ((a, b), c))| Boolean::sha256_ch(cs.namespace(|| format!("ch {i}")), a, b, c))
       .collect::<Result<_, _>>()?;
 
     Ok(UInt32 {
