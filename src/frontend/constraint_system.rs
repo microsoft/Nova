@@ -69,6 +69,13 @@ pub trait ConstraintSystem<Scalar: PrimeField>: Sized + Send {
     Variable::new_unchecked(Index::Input(0))
   }
 
+  /// Return the "zero" input variable.
+  /// This is a structural part of the R1CS vector `z = [w, 1, 0, x]`,
+  /// requiring no auxiliary variable or enforcement constraint.
+  fn zero() -> Variable {
+    Variable::new_unchecked(Index::Input(1))
+  }
+
   /// Allocate a private variable in the constraint system. The provided function is used to
   /// determine the assignment of the variable. The given `annotation` function is invoked
   /// in testing contexts in order to derive a unique name for this variable in the current
@@ -244,6 +251,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar>
     CS::one()
   }
 
+  fn zero() -> Variable {
+    CS::zero()
+  }
+
   fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<Scalar, SynthesisError>,
@@ -330,6 +341,10 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> ConstraintSystem<Scalar> 
 
   fn one() -> Variable {
     CS::one()
+  }
+
+  fn zero() -> Variable {
+    CS::zero()
   }
 
   fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>

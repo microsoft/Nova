@@ -73,12 +73,13 @@ impl<Scalar: PrimeField> Default for TestConstraintSystem<Scalar> {
   fn default() -> Self {
     let mut map = HashMap::new();
     map.insert("ONE".into(), NamedObject::Var);
+    map.insert("ZERO".into(), NamedObject::Var);
 
     TestConstraintSystem {
       named_objects: map,
       current_namespace: vec![],
       constraints: vec![],
-      inputs: vec![(Scalar::ONE, "ONE".into())],
+      inputs: vec![(Scalar::ONE, "ONE".into()), (Scalar::ZERO, "ZERO".into())],
       aux: vec![],
     }
   }

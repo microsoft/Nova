@@ -1,10 +1,7 @@
 //! This module implements various gadgets necessary for folding R1CS types with NeutronNova folding scheme.
 use crate::{
   frontend::{num::AllocatedNum, Boolean, ConstraintSystem, SynthesisError},
-  gadgets::{
-    ecc::AllocatedNonnativePoint,
-    utils::{alloc_zero, conditionally_select},
-  },
+  gadgets::{ecc::AllocatedNonnativePoint, utils::conditionally_select},
   neutron::{circuit::r1cs::AllocatedNonnativeR1CSInstance, relation::FoldedInstance},
   traits::{commitment::CommitmentTrait, Engine, ROCircuitTrait},
 };
@@ -71,7 +68,7 @@ impl<E: Engine> AllocatedFoldedInstance<E> {
     let comm_E = comm_W.clone();
 
     // Allocate T = 0. Similar to X0 and X1, we do not need to check that T is well-formed
-    let T = alloc_zero(cs.namespace(|| "allocate T"));
+    let T = AllocatedNum::zero::<CS>();
 
     let u = T.clone();
 
