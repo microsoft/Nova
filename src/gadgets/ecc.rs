@@ -644,31 +644,13 @@ where
   /// This matches Nova's native Commitment absorb behavior.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
     &self,
-    mut cs: CS,
+    _cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    let (_, b, _, _) = E::GE::group_params();
-    if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
-      let x = conditionally_select2(
-        cs.namespace(|| "select x"),
-        &zero,
-        &self.x,
-        &self.is_infinity,
-      )?;
-      let y = conditionally_select2(
-        cs.namespace(|| "select y"),
-        &zero,
-        &self.y,
-        &self.is_infinity,
-      )?;
-      ro.absorb(&x);
-      ro.absorb(&y);
-    } else {
-      ro.absorb(&self.x);
-      ro.absorb(&self.y);
-      ro.absorb(&self.is_infinity);
-    }
+    // Absorb the affine coordinates and the infinity flag.
+    ro.absorb(&self.x);
+    ro.absorb(&self.y);
+    ro.absorb(&self.is_infinity);
 
     Ok(())
   }
@@ -1008,11 +990,7 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
       ro.absorb(&limb_num);
     }
 
-    // Only absorb is_infinity when B == 0 (matching native AbsorbInRO2Trait for Commitment)
-    let (_, b, _, _) = E::GE::group_params();
-    if b == E::Base::ZERO {
-      ro.absorb(&self.is_infinity);
-    }
+    ro.absorb(&self.is_infinity);
 
     Ok(())
   }
