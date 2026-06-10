@@ -203,26 +203,12 @@ where
     );
 
     // use_equal_x ? result_for_equal_x : result_from_add (add_internal)
-    let x = conditionally_select2(
-      cs.namespace(|| "select x"),
-      &result_for_equal_x.x,
-      &result_from_add.x,
+    AllocatedPoint::conditionally_select2(
+      cs.namespace(|| "use_equal_x ? result_for_equal_x : result_from_add"),
+      &result_for_equal_x,
+      &result_from_add,
       &use_equal_x,
-    )?;
-    let y = conditionally_select2(
-      cs.namespace(|| "select y"),
-      &result_for_equal_x.y,
-      &result_from_add.y,
-      &use_equal_x,
-    )?;
-    let is_infinity = conditionally_select2(
-      cs.namespace(|| "select is_infinity"),
-      &result_for_equal_x.is_infinity,
-      &result_from_add.is_infinity,
-      &use_equal_x,
-    )?;
-
-    Ok(Self { x, y, is_infinity })
+    )
   }
 
   /// Adds `other` to `self` and returns the result, along with the flag
@@ -597,6 +583,27 @@ where
     let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
 
     let is_infinity = conditionally_select(
+      cs.namespace(|| "select is_infinity"),
+      &a.is_infinity,
+      &b.is_infinity,
+      condition,
+    )?;
+
+    Ok(Self { x, y, is_infinity })
+  }
+
+  /// Conditional select using an `AllocatedNum` (constrained to `{0, 1}`) instead of `Boolean`.
+  pub fn conditionally_select2<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    a: &Self,
+    b: &Self,
+    condition: &AllocatedNum<E::Base>,
+  ) -> Result<Self, SynthesisError> {
+    let x = conditionally_select2(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
+
+    let y = conditionally_select2(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+
+    let is_infinity = conditionally_select2(
       cs.namespace(|| "select is_infinity"),
       &a.is_infinity,
       &b.is_infinity,
