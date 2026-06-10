@@ -639,15 +639,13 @@ where
 
   /// Absorb the point into a random oracle circuit.
   ///
-  /// When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
-  /// so we can use it as a canonical representation for infinity.
-  /// This matches Nova's native Commitment absorb behavior.
+  /// Absorbs the affine coordinates and the `is_infinity` flag, matching
+  /// Nova's native `Commitment` absorb behavior.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
     &self,
     _cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    // Absorb the affine coordinates and the infinity flag.
     ro.absorb(&self.x);
     ro.absorb(&self.y);
     ro.absorb(&self.is_infinity);
@@ -970,9 +968,8 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
 
   /// Absorb the provided instance in the RO
   ///
-  /// Note: For curves with B != 0 (e.g., Pallas, Vesta), we only absorb x and y coordinates.
-  /// For curves with B == 0 (e.g., secp256k1), we also absorb is_infinity.
-  /// This matches the native `AbsorbInRO2Trait` implementation in Pedersen.
+  /// Absorbs the `x` and `y` coordinate limbs followed by the `is_infinity`
+  /// flag, matching the native `AbsorbInRO2Trait` implementation in Pedersen.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,

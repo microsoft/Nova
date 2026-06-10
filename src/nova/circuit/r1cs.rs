@@ -45,7 +45,6 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
     &self,
     _cs: CS,
@@ -174,7 +173,6 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  /// When B != 0, uses (0,0) for infinity points to save one absorption per point.
   pub fn absorb_in_ro<CS: ConstraintSystem<<E as Engine>::Base>>(
     &self,
     mut cs: CS,
