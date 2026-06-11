@@ -211,3 +211,52 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
     })
   }
 }
+
+#[cfg(all(test, feature = "evm"))]
+mod evm_serde_tests {
+  use super::bn256;
+  use crate::traits::evm_serde::EvmCompatSerde;
+  use halo2curves::group::{cofactor::CofactorCurveAffine, Curve};
+  use serde::{Deserialize, Serialize};
+  use serde_with::serde_as;
+
+  #[serde_as]
+  #[derive(Debug, PartialEq, Serialize, Deserialize)]
+  struct WrappedAffine(#[serde_as(as = "EvmCompatSerde")] bn256::Affine);
+
+  #[test]
+  fn test_on_curve_point_round_trips() {
+    let affine = bn256::Point::generator().to_affine();
+    let bytes =
+      bincode::serde::encode_to_vec(WrappedAffine(affine), bincode::config::legacy()).unwrap();
+    assert_eq!(bytes.len(), 64);
+    let (decoded, _): (WrappedAffine, usize) =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy()).unwrap();
+    assert_eq!(decoded.0, affine);
+  }
+
+  #[test]
+  fn test_identity_round_trips() {
+    let identity = bn256::Affine::identity();
+    let bytes =
+      bincode::serde::encode_to_vec(WrappedAffine(identity), bincode::config::legacy()).unwrap();
+    let (decoded, _): (WrappedAffine, usize) =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy()).unwrap();
+    assert_eq!(decoded.0, identity);
+  }
+
+  #[test]
+  fn test_off_curve_point_is_rejected() {
+    // x = y = 1 are canonical (< p) but do not satisfy y^2 = x^3 + 3,
+    // so they do not lie on the BN254 G1 curve.
+    let mut bytes = [0u8; 64];
+    bytes[31] = 1; // x = 1 (big-endian)
+    bytes[63] = 1; // y = 1 (big-endian)
+    let result: Result<(WrappedAffine, usize), _> =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy());
+    assert!(
+      result.is_err(),
+      "off-curve point (1, 1) must be rejected on deserialization"
+    );
+  }
+}
