@@ -658,11 +658,7 @@ where
   ///
   /// Absorbs the affine coordinates and the `is_infinity` flag, matching
   /// Nova's native `Commitment` absorb behavior.
-  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
-    &self,
-    _cs: CS,
-    ro: &mut E::ROCircuit,
-  ) -> Result<(), SynthesisError> {
+  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) -> Result<(), SynthesisError> {
     ro.absorb(&self.x);
     ro.absorb(&self.y);
     ro.absorb(&self.is_infinity);

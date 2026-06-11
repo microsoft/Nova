@@ -45,14 +45,8 @@ impl<E: Engine> AllocatedR1CSInstance<E> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
-    &self,
-    _cs: CS,
-    ro: &mut E::ROCircuit,
-  ) -> Result<(), SynthesisError> {
-    ro.absorb(&self.comm_W.x);
-    ro.absorb(&self.comm_W.y);
-    ro.absorb(&self.comm_W.is_infinity);
+  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) -> Result<(), SynthesisError> {
+    self.comm_W.absorb_in_ro(ro)?;
     ro.absorb(&self.X0);
     ro.absorb(&self.X1);
     Ok(())
@@ -178,12 +172,8 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     mut cs: CS,
     ro: &mut E::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    ro.absorb(&self.W.x);
-    ro.absorb(&self.W.y);
-    ro.absorb(&self.W.is_infinity);
-    ro.absorb(&self.E.x);
-    ro.absorb(&self.E.y);
-    ro.absorb(&self.E.is_infinity);
+    self.W.absorb_in_ro(ro)?;
+    self.E.absorb_in_ro(ro)?;
     ro.absorb(&self.u);
 
     // Analyze X0 as limbs
@@ -235,11 +225,9 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     ro.absorb(params);
 
     // running instance `U` does not need to absorbed since u.X[0] = Hash(params, U, i, z0, zi)
-    u.absorb_in_ro(cs.namespace(|| "absorb u"), &mut ro)?;
+    u.absorb_in_ro(&mut ro)?;
 
-    ro.absorb(&T.x);
-    ro.absorb(&T.y);
-    ro.absorb(&T.is_infinity);
+    T.absorb_in_ro(&mut ro)?;
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS, false)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
