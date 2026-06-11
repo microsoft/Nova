@@ -144,6 +144,24 @@ where
     mut cs: CS,
     other: &AllocatedPoint<E>,
   ) -> Result<Self, SynthesisError> {
+    // Overview of the curve-addition logic implemented below:
+    //
+    //   equal_x          = (self.x == other.x)
+    //   equal_y          = (self.y == other.y)
+    //   at_least_one_inf = self.is_infinity OR other.is_infinity
+    //
+    //   result_from_add    = add_internal(self, other)  // chord law; also handles O+P, P+O
+    //   result_from_double = double(self)               // tangent law: 2*self
+    //
+    //   // same x and neither operand is O => either self == other or self == -other
+    //   result_for_equal_x = equal_y ? result_from_double : INFINITY
+    //
+    //   // take the equal-x branch only when neither operand is O; otherwise
+    //   // add_internal already returns the right answer (O+P=P, P+O=P)
+    //   use_equal_x = equal_x AND (NOT at_least_one_inf)
+    //
+    //   return use_equal_x ? result_for_equal_x : result_from_add
+
     // Compute boolean equal indicating if self = other
 
     let equal_x = alloc_num_equals(
@@ -165,16 +183,8 @@ where
       self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
     let result_from_double = self.double(cs.namespace(|| "double"))?;
 
-    // Output:
-    // If (self == other) {
-    //  return double(self)
-    // }else {
-    //  if (self.x == other.x){
-    //      return infinity [negation]
-    //  } else {
-    //      return add(self, other)
-    //  }
-    // }
+    // result_for_equal_x is the result when x's match and neither operand is O:
+    //   self == other (equal_y) -> 2*self;  self == -other -> O
     let result_for_equal_x = AllocatedPoint::select_point_or_infinity(
       cs.namespace(|| "equal_y ? result_from_double : infinity"),
       &result_from_double,
