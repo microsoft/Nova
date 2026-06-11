@@ -190,6 +190,8 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
   fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     use crate::traits::evm_serde::EvmCompatSerde;
     use halo2curves::bn256::Fq2;
+    use halo2curves::group::cofactor::CofactorGroup;
+    use serde::de::Error;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 
@@ -204,11 +206,26 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
     struct HelperAffine(HelperBase, HelperBase);
 
     let affine = HelperAffine::deserialize(deserializer)?;
+    let x = Fq2::new(affine.0 .0, affine.0 .1);
+    let y = Fq2::new(affine.1 .0, affine.1 .1);
 
-    Ok(G2Affine {
-      x: Fq2::new(affine.0 .0, affine.0 .1),
-      y: Fq2::new(affine.1 .0, affine.1 .1),
-    })
+    // Validate the decoded coordinates with the checked constructor, which
+    // accepts on-curve points (including the canonical identity) and returns a
+    // deserialize error otherwise.
+    let point: G2Affine = Option::from(G2Affine::from_xy(x, y))
+      .ok_or_else(|| D::Error::custom("deserialized G2 point is not on the curve"))?;
+
+    // bn256 G2 has a non-trivial cofactor, so being on the curve does not by
+    // itself imply prime-order subgroup membership; additionally require the
+    // point to be torsion-free. (G1, with cofactor 1, needs only the on-curve
+    // check above.)
+    if bool::from(point.to_curve().is_torsion_free()) {
+      Ok(point)
+    } else {
+      Err(D::Error::custom(
+        "deserialized G2 point is not in the prime-order subgroup",
+      ))
+    }
   }
 }
 
@@ -257,6 +274,75 @@ mod evm_serde_tests {
     assert!(
       result.is_err(),
       "off-curve point (1, 1) must be rejected on deserialization"
+    );
+  }
+
+  #[serde_as]
+  #[derive(Debug, PartialEq, Serialize, Deserialize)]
+  struct WrappedG2(#[serde_as(as = "EvmCompatSerde")] halo2curves::bn256::G2Affine);
+
+  #[test]
+  fn test_g2_on_curve_in_subgroup_round_trips() {
+    use halo2curves::bn256::G2;
+    let affine = G2::generator().to_affine();
+    let bytes =
+      bincode::serde::encode_to_vec(WrappedG2(affine), bincode::config::legacy()).unwrap();
+    assert_eq!(bytes.len(), 128);
+    let (decoded, _): (WrappedG2, usize) =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy()).unwrap();
+    assert_eq!(decoded.0, affine);
+  }
+
+  #[test]
+  fn test_g2_identity_round_trips() {
+    let identity = halo2curves::bn256::G2Affine::identity();
+    let bytes =
+      bincode::serde::encode_to_vec(WrappedG2(identity), bincode::config::legacy()).unwrap();
+    let (decoded, _): (WrappedG2, usize) =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy()).unwrap();
+    assert_eq!(decoded.0, identity);
+  }
+
+  #[test]
+  fn test_g2_off_curve_is_rejected() {
+    // x = y = 1 (each Fq2 component canonical, < p) do not satisfy the G2 curve
+    // equation, so the point is off-curve and must be rejected.
+    let mut bytes = [0u8; 128];
+    bytes[31] = 1; // x.c0 = 1 (big-endian)
+    bytes[95] = 1; // y.c0 = 1 (big-endian)
+    let result: Result<(WrappedG2, usize), _> =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy());
+    assert!(result.is_err(), "off-curve G2 point must be rejected");
+  }
+
+  #[test]
+  fn test_g2_non_subgroup_is_rejected() {
+    use ff::Field;
+    use halo2curves::bn256::{Fq2, G2Affine, G2};
+    use halo2curves::group::cofactor::CofactorGroup;
+    use halo2curves::{CurveAffine, CurveExt};
+    // bn256 G2 has a large cofactor, so a point obtained by solving the curve
+    // equation for an arbitrary x is overwhelmingly outside the prime-order
+    // subgroup. Such an on-curve point serializes fine but must be rejected on
+    // deserialization for failing the subgroup check.
+    let b = G2::b();
+    let mut x = Fq2::ONE;
+    let point = loop {
+      let rhs = x.square() * x + b;
+      if let Some(y) = Option::<Fq2>::from(rhs.sqrt()) {
+        let p = G2Affine::from_xy(x, y).unwrap();
+        if !bool::from(p.to_curve().is_torsion_free()) {
+          break p;
+        }
+      }
+      x += Fq2::ONE;
+    };
+    let bytes = bincode::serde::encode_to_vec(WrappedG2(point), bincode::config::legacy()).unwrap();
+    let result: Result<(WrappedG2, usize), _> =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy());
+    assert!(
+      result.is_err(),
+      "on-curve but non-subgroup G2 point must be rejected"
     );
   }
 }
