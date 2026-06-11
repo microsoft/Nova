@@ -4,7 +4,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
-use halo2curves::{serde::SerdeObject, CurveAffine};
+use halo2curves::{group::cofactor::CofactorCurveAffine, serde::SerdeObject, CurveAffine};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -50,6 +50,7 @@ pub trait DlogGroup:
     + for<'de> Deserialize<'de>
     + TranscriptReprTrait<Self>
     + CurveAffine
+    + CofactorCurveAffine
     + SerdeObject
     + crate::traits::evm_serde::CustomSerdeTrait;
 

@@ -134,6 +134,14 @@ pub enum PtauFileError {
     required: usize,
   },
 
+  /// A deserialized point does not lie on the curve
+  #[error("Point is not on the curve")]
+  PointNotOnCurve,
+
+  /// A deserialized point is not in the prime-order subgroup
+  #[error("Point is not in the prime-order subgroup")]
+  PointNotInSubgroup,
+
   /// IO error during file operations
   #[error(transparent)]
   IoError(#[from] io::Error),
@@ -364,7 +372,15 @@ where
 {
   let mut res = Vec::with_capacity(num);
   for _ in 0..num {
-    res.push(G::read_raw(&mut reader)?);
+    let p = G::read_raw(&mut reader)?;
+    // Require every loaded point to be on the curve (read_raw validates only
+    // per-coordinate canonicity). This covers all loaded points — both ptau SRS
+    // points and Pedersen commitment-key bases; read_ptau additionally checks
+    // G2 prime-order-subgroup membership.
+    if !bool::from(p.is_on_curve()) {
+      return Err(PtauFileError::PointNotOnCurve);
+    }
+    res.push(p);
   }
   Ok(res)
 }
@@ -377,7 +393,9 @@ pub fn read_ptau<G1, G2>(
 ) -> Result<(Vec<G1>, Vec<G2>), PtauFileError>
 where
   G1: halo2curves::serde::SerdeObject + CurveAffine,
-  G2: halo2curves::serde::SerdeObject + CurveAffine,
+  G2: halo2curves::serde::SerdeObject
+    + CurveAffine
+    + halo2curves::group::cofactor::CofactorCurveAffine,
 {
   let metadata = read_meta_data(&mut reader)?;
 
@@ -389,6 +407,19 @@ where
 
   reader.seek(SeekFrom::Start(metadata.pos_tau_g2))?;
   let g2_points = read_points::<G2>(&mut reader, num_g2)?;
+
+  // read_points already checked every point is on the curve. G2 has a
+  // non-trivial cofactor, so on-curve does not by itself imply prime-order
+  // subgroup membership; additionally require each G2 point to be torsion-free.
+  // (G1 has cofactor 1, so on-curve already implies subgroup membership.)
+  {
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    for p in &g2_points {
+      if !bool::from(CofactorCurveAffine::to_curve(p).is_torsion_free()) {
+        return Err(PtauFileError::PointNotInSubgroup);
+      }
+    }
+  }
 
   Ok((g1_points, g2_points))
 }
@@ -408,4 +439,98 @@ where
 
   reader.seek(SeekFrom::Start(metadata.pos_header))?;
   read_header::<G1::Base>(&mut reader, num_g1, num_g2)
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use halo2curves::bn256::{G1Affine, G2Affine, G1, G2};
+  use halo2curves::group::Curve;
+  use std::io::Cursor;
+
+  // An on-curve G2 point that is NOT in the prime-order subgroup. bn256 G2 has
+  // a large cofactor, so solving the curve equation for an arbitrary x almost
+  // always yields such a point.
+  fn non_subgroup_g2() -> G2Affine {
+    use ff::Field;
+    use halo2curves::bn256::Fq2;
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    use halo2curves::{CurveAffine, CurveExt};
+    let b = G2::b();
+    let mut x = Fq2::ONE;
+    loop {
+      let rhs = x.square() * x + b;
+      if let Some(y) = Option::<Fq2>::from(rhs.sqrt()) {
+        let p = G2Affine::from_xy(x, y).unwrap();
+        if !bool::from(p.to_curve().is_torsion_free()) {
+          return p;
+        }
+      }
+      x += Fq2::ONE;
+    }
+  }
+
+  #[test]
+  fn test_read_ptau_accepts_subgroup_g2() {
+    let g1 = vec![G1::generator().to_affine(), G1::generator().to_affine()];
+    let g2 = vec![G2::generator().to_affine(), G2::generator().to_affine()];
+    let mut buf = Vec::new();
+    write_ptau(&mut Cursor::new(&mut buf), g1.clone(), g2.clone(), 1).unwrap();
+    let (r1, r2): (Vec<G1Affine>, Vec<G2Affine>) = read_ptau(&mut Cursor::new(&buf), 2, 2).unwrap();
+    assert_eq!(r1, g1);
+    assert_eq!(r2, g2);
+  }
+
+  #[test]
+  fn test_read_ptau_rejects_non_subgroup_g2() {
+    let g1 = vec![G1::generator().to_affine(), G1::generator().to_affine()];
+    let g2 = vec![G2::generator().to_affine(), non_subgroup_g2()];
+    let mut buf = Vec::new();
+    write_ptau(&mut Cursor::new(&mut buf), g1, g2, 1).unwrap();
+    let res: Result<(Vec<G1Affine>, Vec<G2Affine>), _> = read_ptau(&mut Cursor::new(&buf), 2, 2);
+    assert!(
+      matches!(res, Err(PtauFileError::PointNotInSubgroup)),
+      "non-subgroup G2 point in ptau must be rejected"
+    );
+  }
+
+  #[test]
+  fn test_read_ptau_rejects_off_curve_g1() {
+    use ff::Field;
+    use halo2curves::bn256::Fq;
+    // (1, 1): canonical coordinates, but 1 != 1^3 + 3, so off the G1 curve.
+    let off = G1Affine {
+      x: Fq::ONE,
+      y: Fq::ONE,
+    };
+    let g1 = vec![off, G1::generator().to_affine()];
+    let g2 = vec![G2::generator().to_affine(), G2::generator().to_affine()];
+    let mut buf = Vec::new();
+    write_ptau(&mut Cursor::new(&mut buf), g1, g2, 1).unwrap();
+    let res: Result<(Vec<G1Affine>, Vec<G2Affine>), _> = read_ptau(&mut Cursor::new(&buf), 2, 2);
+    assert!(
+      matches!(res, Err(PtauFileError::PointNotOnCurve)),
+      "off-curve G1 point in ptau must be rejected"
+    );
+  }
+
+  #[test]
+  fn test_read_ptau_rejects_off_curve_g2() {
+    use ff::Field;
+    use halo2curves::bn256::Fq2;
+    // (1, 1) in Fq2: canonical coordinates, but not on the G2 curve.
+    let off = G2Affine {
+      x: Fq2::ONE,
+      y: Fq2::ONE,
+    };
+    let g1 = vec![G1::generator().to_affine(), G1::generator().to_affine()];
+    let g2 = vec![G2::generator().to_affine(), off];
+    let mut buf = Vec::new();
+    write_ptau(&mut Cursor::new(&mut buf), g1, g2, 1).unwrap();
+    let res: Result<(Vec<G1Affine>, Vec<G2Affine>), _> = read_ptau(&mut Cursor::new(&buf), 2, 2);
+    assert!(
+      matches!(res, Err(PtauFileError::PointNotOnCurve)),
+      "off-curve G2 point in ptau must be rejected"
+    );
+  }
 }
