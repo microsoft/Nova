@@ -13,8 +13,8 @@
 
 use halo2curves::bn256::{Bn256, Fq as Bn256Fq, Fr as Bn256Fr, G1Affine, G2Affine, Gt, G1, G2};
 use halo2curves::ff::{Field, FromUniformBytes, PrimeField};
-use halo2curves::grumpkin::G1 as GrumpkinG1;
 use halo2curves::group::{prime::PrimeCurveAffine, Curve, Group};
+use halo2curves::grumpkin::G1 as GrumpkinG1;
 use halo2curves::msm::msm_best;
 use halo2curves::pairing::Engine;
 use halo2curves::secp256k1::Fq as Secp256k1Fq;
@@ -155,8 +155,8 @@ fn pairing_properties() {
     // Additivity in the first argument (additive Gt notation = multiplicative target):
     // e([a]P, Q) + e([b]P, Q) == e([a+b]P, Q).
     let abp = (g1 * (a + b)).to_affine();
-    let lhs = Bn256::pairing(&(g1 * a).to_affine(), &q_aff)
-      + Bn256::pairing(&(g1 * b).to_affine(), &q_aff);
+    let lhs =
+      Bn256::pairing(&(g1 * a).to_affine(), &q_aff) + Bn256::pairing(&(g1 * b).to_affine(), &q_aff);
     assert_eq!(lhs, Bn256::pairing(&abp, &q_aff));
   }
 }
@@ -202,7 +202,13 @@ fn msm_best_matches_naive() {
     // Scalar set C: mix of zero and (r-1) == -ONE (the maximal scalar).
     let r_minus_one = -Bn256Fr::ONE;
     let mix_scalars: Vec<Bn256Fr> = (0..n)
-      .map(|i| if i % 2 == 0 { Bn256Fr::ZERO } else { r_minus_one })
+      .map(|i| {
+        if i % 2 == 0 {
+          Bn256Fr::ZERO
+        } else {
+          r_minus_one
+        }
+      })
       .collect();
 
     for scalars in [&random_scalars, &equal_scalars, &mix_scalars] {
