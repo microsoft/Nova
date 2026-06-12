@@ -227,6 +227,23 @@ impl crate::traits::evm_serde::CustomSerdeTrait for G2Affine {
       ))
     }
   }
+
+  #[cfg(not(feature = "evm"))]
+  fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    use serde::de::Error;
+    // Non-evm builds decode with the default (compressed) serde, which already
+    // enforces on-curve. bn256 G2 has a non-trivial cofactor, so additionally
+    // require the point to be torsion-free, matching the evm path above.
+    let point = <Self as serde::Deserialize>::deserialize(deserializer)?;
+    if bool::from(CofactorCurveAffine::to_curve(&point).is_torsion_free()) {
+      Ok(point)
+    } else {
+      Err(D::Error::custom(
+        "deserialized G2 point is not in the prime-order subgroup",
+      ))
+    }
+  }
 }
 
 #[cfg(all(test, feature = "evm"))]
