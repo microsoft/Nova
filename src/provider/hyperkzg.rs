@@ -19,8 +19,7 @@ use crate::{
     commitment::{CommitmentEngineTrait, CommitmentTrait, Len},
     evaluation::EvaluationEngineTrait,
     evm_serde::EvmCompatSerde,
-    AbsorbInRO2Trait, AbsorbInROTrait, Engine, Group, ROTrait, TranscriptEngineTrait,
-    TranscriptReprTrait,
+    AbsorbInRO2Trait, AbsorbInROTrait, Engine, ROTrait, TranscriptEngineTrait, TranscriptReprTrait,
   },
 };
 use core::{
@@ -179,31 +178,14 @@ where
   E::GE: PairingGroup,
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
-    use crate::traits::Group;
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    // Get curve parameter B to determine encoding strategy
-    let (_, b, _, _) = E::GE::group_params();
-
-    if b != E::Base::ZERO {
-      // For curves with B!=0 (like BN254 with B=3, Grumpkin with B=-5),
-      // (0, 0) doesn't lie on the curve (since 0 != 0 + 0 + B),
-      // so point at infinity can be safely encoded as (0, 0).
-      let (x, y) = if is_infinity {
-        (E::Base::ZERO, E::Base::ZERO)
-      } else {
-        (x, y)
-      };
-      [x.to_transcript_bytes(), y.to_transcript_bytes()].concat()
-    } else {
-      // For curves with B=0, (0, 0) lies on the curve, so we need the is_infinity flag
-      let is_infinity_byte = (!is_infinity).into();
-      [
-        x.to_transcript_bytes(),
-        y.to_transcript_bytes(),
-        [is_infinity_byte].to_vec(),
-      ]
-      .concat()
-    }
+    let is_infinity_byte = (!is_infinity).into();
+    [
+      x.to_transcript_bytes(),
+      y.to_transcript_bytes(),
+      [is_infinity_byte].to_vec(),
+    ]
+    .concat()
   }
 }
 
@@ -213,26 +195,14 @@ where
 {
   fn absorb_in_ro(&self, ro: &mut E::RO) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    // When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
-    // so we can use it as a canonical representation for infinity.
-    let (_, b, _, _) = E::GE::group_params();
-    if b != E::Base::ZERO {
-      let (x, y) = if is_infinity {
-        (E::Base::ZERO, E::Base::ZERO)
-      } else {
-        (x, y)
-      };
-      ro.absorb(x);
-      ro.absorb(y);
+    // Absorb the affine coordinates and the infinity flag.
+    ro.absorb(x);
+    ro.absorb(y);
+    ro.absorb(if is_infinity {
+      E::Base::ONE
     } else {
-      ro.absorb(x);
-      ro.absorb(y);
-      ro.absorb(if is_infinity {
-        E::Base::ONE
-      } else {
-        E::Base::ZERO
-      });
-    }
+      E::Base::ZERO
+    });
   }
 }
 
@@ -242,13 +212,6 @@ where
 {
   fn absorb_in_ro2(&self, ro: &mut E::RO2) {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    // When B != 0, use (0,0) for infinity
-    let (_, b, _, _) = E::GE::group_params();
-    let (x, y) = if b != E::Base::ZERO && is_infinity {
-      (E::Base::ZERO, E::Base::ZERO)
-    } else {
-      (x, y)
-    };
 
     // we have to absorb x and y in big num format
     let limbs_x = to_bignat_repr(&x);
@@ -257,14 +220,11 @@ where
     for limb in limbs_x.iter().chain(limbs_y.iter()) {
       ro.absorb(*limb);
     }
-    // Only absorb is_infinity when B == 0
-    if b == E::Base::ZERO {
-      ro.absorb(if is_infinity {
-        E::Scalar::ONE
-      } else {
-        E::Scalar::ZERO
-      });
-    }
+    ro.absorb(if is_infinity {
+      E::Scalar::ONE
+    } else {
+      E::Scalar::ZERO
+    });
   }
 }
 
