@@ -1,6 +1,8 @@
 //! This module implements Nova's traits using the following several different combinations
 
 pub mod bn256_grumpkin;
+#[cfg(test)]
+mod curve_property_tests;
 pub mod hyperkzg;
 pub mod ipa_pc;
 pub mod keccak;
