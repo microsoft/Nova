@@ -21,6 +21,7 @@ use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info, instrument};
 
 mod circuit;
 pub mod nifs;
@@ -107,6 +108,7 @@ where
   /// let pp = PublicParams::setup(&circuit, ck_hint1, ck_hint2)?;
   /// Ok::<(), nova_snark::errors::NovaError>(())
   /// ```
+  #[instrument(skip_all, name = "neutron::PublicParams::setup")]
   pub fn setup(
     c: &C,
     ck_hint1: &CommitmentKeyHint<E1>,
@@ -131,6 +133,7 @@ where
     // Generate the commitment key
     let ck = R1CSShape::commitment_key(&[&r1cs_shape], &[ck_hint1])?;
 
+    let num_cons = r1cs_shape.num_cons;
     let structure = Structure::new(&r1cs_shape);
 
     let pp = PublicParams {
@@ -147,6 +150,8 @@ where
 
     // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
     let _ = pp.digest();
+
+    info!(num_cons = %num_cons, "setup complete");
 
     Ok(pp)
   }
@@ -166,6 +171,7 @@ where
   /// * `ck_hint2`: A `CommitmentKeyHint` for the secondary circuit (unused but kept for API consistency).
   /// * `ptau_dir`: Path to the directory containing pruned ptau files.
   #[cfg(feature = "io")]
+  #[instrument(skip_all, name = "neutron::PublicParams::setup_with_ptau_dir")]
   pub fn setup_with_ptau_dir(
     c: &C,
     ck_hint1: &CommitmentKeyHint<E1>,
@@ -194,6 +200,7 @@ where
     // Load the commitment key from ptau directory
     let ck = R1CSShape::commitment_key_from_ptau_dir(&[&r1cs_shape], &[ck_hint1], ptau_dir)?;
 
+    let num_cons = r1cs_shape.num_cons;
     let structure = Structure::new(&r1cs_shape);
 
     let pp = PublicParams {
@@ -210,6 +217,8 @@ where
 
     // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
     let _ = pp.digest();
+
+    info!(num_cons = %num_cons, "setup complete");
 
     Ok(pp)
   }
@@ -256,6 +265,7 @@ where
   C: StepCircuit<E1::Scalar>,
 {
   /// Create new instance of recursive SNARK
+  #[instrument(skip_all, name = "neutron::RecursiveSNARK::new")]
   pub fn new(pp: &PublicParams<E1, E2, C>, c: &C, z0: &[E1::Scalar]) -> Result<Self, NovaError> {
     if z0.len() != pp.F_arity {
       return Err(NovaError::InvalidInitialInputLength);
@@ -291,6 +301,8 @@ where
       .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
       .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
 
+    debug!("base case initialized");
+
     Ok(Self {
       z0: z0.to_vec(),
       r_W: FoldedWitness::default(&pp.structure),
@@ -305,6 +317,7 @@ where
   }
 
   /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
+  #[instrument(skip_all, name = "neutron::RecursiveSNARK::prove_step", fields(step = self.i))]
   pub fn prove_step(&mut self, pp: &PublicParams<E1, E2, C>, c: &C) -> Result<(), NovaError> {
     // first step was already done in the constructor
     if self.i == 0 {
@@ -363,10 +376,13 @@ where
     self.l_u = l_u;
     self.l_w = l_w;
 
+    debug!(step = self.i, "step complete");
+
     Ok(())
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
+  #[instrument(skip_all, name = "neutron::RecursiveSNARK::verify", fields(num_steps))]
   pub fn verify(
     &self,
     pp: &PublicParams<E1, E2, C>,
@@ -427,6 +443,8 @@ where
     // check the returned res objects
     res_r?;
     res_l?;
+
+    debug!("verification passed");
 
     Ok(self.zi.clone())
   }

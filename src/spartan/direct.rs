@@ -24,6 +24,7 @@ use core::marker::PhantomData;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use tracing::{debug, instrument};
 
 /// A direct circuit that can be synthesized
 pub struct DirectCircuit<E: Engine, SC: StepCircuit<E::Scalar>> {
@@ -118,6 +119,7 @@ where
 
 impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSNARK<E, S, C> {
   /// Produces prover and verifier keys for the direct SNARK
+  #[instrument(skip_all, name = "DirectSNARK::setup")]
   pub fn setup(sc: C) -> Result<(ProverKey<E, S>, VerifierKey<E, S>), NovaError> {
     // construct a circuit that can be synthesized
     let circuit: DirectCircuit<E, C> = DirectCircuit { z_i: None, sc };
@@ -140,6 +142,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
   }
 
   /// Produces a proof of satisfiability of the provided circuit
+  #[instrument(skip_all, name = "DirectSNARK::prove")]
   pub fn prove(pk: &ProverKey<E, S>, sc: C, z_i: &[E::Scalar]) -> Result<Self, NovaError> {
     let mut cs = SatisfyingAssignment::<E>::new();
 
@@ -183,6 +186,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
   }
 
   /// Verifies a proof of satisfiability
+  #[instrument(skip_all, name = "DirectSNARK::verify")]
   pub fn verify(&self, vk: &VerifierKey<E, S>, io: &[E::Scalar]) -> Result<(), NovaError> {
     // derandomize/unblind commitments
     let comm_W = E::CE::derandomize(&vk.dk, &self.comm_W, &self.blind_r_W);
@@ -192,6 +196,8 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
     // verify the snark using the constructed instance
     self.snark.verify(&vk.vk, &u_relaxed)?;
+
+    debug!("DirectSNARK verification passed");
 
     Ok(())
   }

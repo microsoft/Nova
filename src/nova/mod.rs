@@ -28,6 +28,7 @@ use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use tracing::{debug, info, instrument};
 
 mod circuit;
 pub mod nifs;
@@ -122,6 +123,7 @@ where
   /// Ok(())
   /// # }
   /// ```
+  #[instrument(skip_all, name = "nova::PublicParams::setup")]
   pub fn setup(
     c: &C,
     ck_hint1: &CommitmentKeyHint<E1>,
@@ -159,6 +161,8 @@ where
       return Err(NovaError::InvalidStepCircuitIO);
     }
 
+    let num_cons = r1cs_shape_primary.num_cons;
+
     let pp = PublicParams {
       F_arity,
 
@@ -180,6 +184,8 @@ where
 
     // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
     let _ = pp.digest();
+
+    info!(num_cons = %num_cons, "setup complete");
 
     Ok(pp)
   }
@@ -219,6 +225,7 @@ where
   /// )?;
   /// ```
   #[cfg(feature = "io")]
+  #[instrument(skip_all, name = "nova::PublicParams::setup_with_ptau_dir")]
   pub fn setup_with_ptau_dir(
     c: &C,
     ck_hint1: &CommitmentKeyHint<E1>,
@@ -264,6 +271,8 @@ where
       return Err(NovaError::InvalidStepCircuitIO);
     }
 
+    let num_cons = r1cs_shape_primary.num_cons;
+
     let pp = PublicParams {
       F_arity,
 
@@ -285,6 +294,8 @@ where
 
     // call pp.digest() so the digest is computed here rather than in RecursiveSNARK methods
     let _ = pp.digest();
+
+    info!(num_cons = %num_cons, "setup complete");
 
     Ok(pp)
   }
@@ -351,6 +362,7 @@ where
   C: StepCircuit<E1::Scalar>,
 {
   /// Create new instance of recursive SNARK
+  #[instrument(skip_all, name = "nova::RecursiveSNARK::new")]
   pub fn new(pp: &PublicParams<E1, E2, C>, c: &C, z0: &[E1::Scalar]) -> Result<Self, NovaError> {
     if z0.len() != pp.F_arity {
       return Err(NovaError::InvalidInitialInputLength);
@@ -430,6 +442,8 @@ where
       .map(|v| v.get_value().ok_or(SynthesisError::AssignmentMissing))
       .collect::<Result<Vec<<E1 as Engine>::Scalar>, _>>()?;
 
+    debug!("base case initialized");
+
     Ok(Self {
       z0: z0.to_vec(),
 
@@ -453,6 +467,7 @@ where
   }
 
   /// Updates the provided `RecursiveSNARK` by executing a step of the incremental computation
+  #[instrument(skip_all, name = "nova::RecursiveSNARK::prove_step", fields(step = self.i))]
   pub fn prove_step(&mut self, pp: &PublicParams<E1, E2, C>, c: &C) -> Result<(), NovaError> {
     // first step was already done in the constructor
     if self.i == 0 {
@@ -560,10 +575,13 @@ where
     self.ri_primary = r_next_primary;
     self.ri_secondary = r_next_secondary;
 
+    debug!(step = self.i, "step complete");
+
     Ok(())
   }
 
   /// Verify the correctness of the `RecursiveSNARK`
+  #[instrument(skip_all, name = "nova::RecursiveSNARK::verify", fields(num_steps))]
   pub fn verify(
     &self,
     pp: &PublicParams<E1, E2, C>,
@@ -660,6 +678,8 @@ where
     res_r_primary?;
     res_r_secondary?;
     res_l_secondary?;
+
+    debug!("verification passed");
 
     Ok(self.zi.clone())
   }
@@ -759,6 +779,7 @@ where
   S2: RelaxedR1CSSNARKTrait<E2>,
 {
   /// Creates prover and verifier keys for `CompressedSNARK`
+  #[instrument(skip_all, name = "nova::CompressedSNARK::setup")]
   pub fn setup(
     pp: &PublicParams<E1, E2, C>,
   ) -> Result<(ProverKey<E1, E2, C, S1, S2>, VerifierKey<E1, E2, C, S1, S2>), NovaError> {
@@ -783,10 +804,13 @@ where
       _p: Default::default(),
     };
 
+    info!("CompressedSNARK setup complete");
+
     Ok((pk, vk))
   }
 
   /// Create a new `CompressedSNARK` (provides zero-knowledge)
+  #[instrument(skip_all, name = "nova::CompressedSNARK::prove")]
   pub fn prove(
     pp: &PublicParams<E1, E2, C>,
     pk: &ProverKey<E1, E2, C, S1, S2>,
@@ -877,6 +901,8 @@ where
       },
     );
 
+    info!("CompressedSNARK proof generated");
+
     Ok(Self {
       r_U_secondary: recursive_snark.r_U_secondary.clone(),
       ri_secondary: recursive_snark.ri_secondary,
@@ -906,6 +932,7 @@ where
   }
 
   /// Verify the correctness of the `CompressedSNARK` (provides zero-knowledge)
+  #[instrument(skip_all, name = "nova::CompressedSNARK::verify", fields(num_steps))]
   pub fn verify(
     &self,
     vk: &VerifierKey<E1, E2, C, S1, S2>,
@@ -1020,6 +1047,8 @@ where
 
     res_primary?;
     res_secondary?;
+
+    debug!("CompressedSNARK verification passed");
 
     Ok(self.zn.clone())
   }
