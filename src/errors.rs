@@ -35,6 +35,13 @@ pub enum NovaError {
   /// returned if the provided commitment key is not of sufficient length
   #[error("InvalidCommitmentKeyLength")]
   InvalidCommitmentKeyLength,
+  /// returned if a commitment key contains a point that is not on the curve,
+  /// or (for points in G2) not in the prime-order subgroup
+  #[error("InvalidCommitmentKey: {reason}")]
+  InvalidCommitmentKey {
+    /// The reason the commitment key is invalid
+    reason: String,
+  },
   /// returned if the provided number of steps is zero
   #[error("InvalidNumSteps")]
   InvalidNumSteps,

@@ -207,7 +207,13 @@ where
   Ok(())
 }
 
-/// Save Ptau File
+/// Save Ptau File.
+///
+/// Trusts the caller to provide valid points: G1 points are assumed on-curve, and
+/// G2 points on-curve and in the prime-order subgroup. Validation is enforced at
+/// the entry boundaries — in-memory construction (e.g. `CommitmentKey::new`) and
+/// reading untrusted input via [`read_ptau`] — not when exporting already-trusted
+/// data, because the threat model is malformed/adversarial serialized setup input.
 pub fn write_ptau<G1, G2>(
   mut writer: &mut (impl Write + Seek),
   g1_points: Vec<G1>,
@@ -385,7 +391,14 @@ where
   Ok(res)
 }
 
-/// Load Ptau File
+/// Load Ptau File.
+///
+/// This is the validation boundary for SRS input: every loaded point is checked
+/// to be on the curve, and each G2 point is additionally required to be in the
+/// prime-order subgroup (bn256 G2 has a non-trivial cofactor). Off-curve or
+/// non-subgroup points are rejected with [`PtauFileError::PointNotOnCurve`] /
+/// [`PtauFileError::PointNotInSubgroup`]. Because untrusted/adversarial input is
+/// validated here, the in-memory writer [`write_ptau`] trusts its caller.
 pub fn read_ptau<G1, G2>(
   mut reader: &mut (impl Read + Seek),
   num_g1: usize,
