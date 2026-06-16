@@ -49,6 +49,28 @@ type G2Affine<E> = <<<E as Engine>::GE as PairingGroup>::G2 as DlogGroup>::Affin
 /// Default number of target chunks used in splitting up polynomial division in the kzg_open closure
 const DEFAULT_TARGET_CHUNKS: usize = 1 << 10;
 
+/// Deserialize a G2 point and require prime-order subgroup membership.
+///
+/// bn256 G2 has a non-trivial cofactor, so the default (on-curve) decode is not
+/// sufficient on its own; this preserves the wire format and adds the subgroup
+/// check (the SRS `read_ptau` loader applies the same guard).
+fn deserialize_g2_in_subgroup<'de, D, G2>(deserializer: D) -> Result<G2, D::Error>
+where
+  D: serde::Deserializer<'de>,
+  G2: serde::Deserialize<'de> + halo2curves::group::cofactor::CofactorCurveAffine,
+{
+  use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+  use serde::de::Error;
+  let point = G2::deserialize(deserializer)?;
+  if bool::from(CofactorCurveAffine::to_curve(&point).is_torsion_free()) {
+    Ok(point)
+  } else {
+    Err(D::Error::custom(
+      "commitment-key tau_H is not in the prime-order subgroup",
+    ))
+  }
+}
+
 /// KZG commitment key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitmentKey<E: Engine>
@@ -57,6 +79,7 @@ where
 {
   ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
   h: <E::GE as DlogGroup>::AffineGroupElement,
+  #[serde(deserialize_with = "deserialize_g2_in_subgroup")]
   tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement, // needed only for the verifier key
 }
 
@@ -64,13 +87,47 @@ impl<E: Engine> CommitmentKey<E>
 where
   E::GE: PairingGroup,
 {
-  /// Create a new commitment key
+  /// Create a new commitment key, validating the supplied points.
+  ///
+  /// Construction is a trust boundary, so — like the deserialize and SRS-load
+  /// paths — this checks every point and rejects invalid ones, ensuring an
+  /// in-memory `CommitmentKey` can never hold off-curve or non-subgroup values
+  /// (halo2curves affine coordinates are public, so such points can otherwise be
+  /// built directly and passed in). The G1 bases and blinding generator `h` must
+  /// be on-curve (G1 has cofactor 1, so on-curve already implies prime-order
+  /// subgroup membership); the verifier-key element `tau_H` must be on-curve and
+  /// in the prime-order subgroup (bn256 G2 has a non-trivial cofactor).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`NovaError::InvalidCommitmentKey`] if any point is off-curve, or if
+  /// `tau_H` is not in the prime-order subgroup.
   pub fn new(
     ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
     h: <E::GE as DlogGroup>::AffineGroupElement,
     tau_H: <<E::GE as PairingGroup>::G2 as DlogGroup>::AffineGroupElement,
-  ) -> Self {
-    Self { ck, h, tau_H }
+  ) -> Result<Self, NovaError> {
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    use halo2curves::CurveAffine;
+
+    for g in ck.iter().chain(iter::once(&h)) {
+      if !bool::from(g.is_on_curve()) {
+        return Err(NovaError::InvalidCommitmentKey {
+          reason: "a G1 base is not on the curve".to_string(),
+        });
+      }
+    }
+    if !bool::from(tau_H.is_on_curve()) {
+      return Err(NovaError::InvalidCommitmentKey {
+        reason: "tau_H is not on the curve".to_string(),
+      });
+    }
+    if !bool::from(CofactorCurveAffine::to_curve(&tau_H).is_torsion_free()) {
+      return Err(NovaError::InvalidCommitmentKey {
+        reason: "tau_H is not in the prime-order subgroup".to_string(),
+      });
+    }
+    Ok(Self { ck, h, tau_H })
   }
 
   /// Returns a reference to the ck field
@@ -687,7 +744,7 @@ where
       acc[j] += bases[i];
     }
     let ck_affine = acc.par_iter().map(|g| g.affine()).collect();
-    Ok(CommitmentKey::new(ck_affine, *ck.h(), *ck.tau_H()))
+    CommitmentKey::new(ck_affine, *ck.h(), *ck.tau_H())
   }
 
   fn commit_sparse_binary(
@@ -1446,6 +1503,104 @@ mod tests {
     for i in 0..ck.ck.len() {
       assert_eq!(ck.ck[i], read_ck.ck[i]);
     }
+  }
+
+  #[test]
+  fn test_commitment_key_deser_rejects_non_subgroup_tau_h() {
+    use ff::Field;
+    use halo2curves::bn256::{Fq2, G2Affine, G2};
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    use halo2curves::{CurveAffine as _, CurveExt as _};
+    // An on-curve but non-subgroup G2 point (bn256 G2 has a large cofactor).
+    let bad_tau_h = {
+      let b = G2::b();
+      let mut x = Fq2::ONE;
+      loop {
+        let rhs = x.square() * x + b;
+        if let Some(y) = Option::<Fq2>::from(rhs.sqrt()) {
+          let p = G2Affine::from_xy(x, y).unwrap();
+          if !bool::from(p.to_curve().is_torsion_free()) {
+            break p;
+          }
+        }
+        x += Fq2::ONE;
+      }
+    };
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", 4).unwrap();
+    // The validating constructor must itself reject the non-subgroup tau_H.
+    assert!(
+      CommitmentKey::<E>::new(ck.ck().to_vec(), *ck.h(), bad_tau_h).is_err(),
+      "CommitmentKey::new must reject a non-subgroup tau_H"
+    );
+    // Build a tampered key directly (bypassing the validating constructor) to
+    // confirm serialization does not validate but the guarded deserialize does.
+    let tampered = CommitmentKey::<E> {
+      ck: ck.ck().to_vec(),
+      h: *ck.h(),
+      tau_H: bad_tau_h,
+    };
+    let bytes = bincode::serde::encode_to_vec(&tampered, bincode::config::legacy()).unwrap();
+    let res: Result<(CommitmentKey<E>, usize), _> =
+      bincode::serde::decode_from_slice(&bytes, bincode::config::legacy());
+    assert!(
+      res.is_err(),
+      "CommitmentKey with a non-subgroup tau_H must be rejected on deserialization"
+    );
+  }
+
+  #[test]
+  fn test_commitment_key_new_rejects_invalid_points() {
+    use ff::Field;
+    use halo2curves::bn256::{Fq, Fq2, G2Affine, G2};
+    use halo2curves::group::cofactor::{CofactorCurveAffine, CofactorGroup};
+    use halo2curves::{CurveAffine as _, CurveExt as _};
+
+    let ck: CommitmentKey<E> = CommitmentEngine::setup(b"test", 4).unwrap();
+
+    // A key assembled from already-validated components is accepted.
+    assert!(CommitmentKey::<E>::new(ck.ck().to_vec(), *ck.h(), *ck.tau_H()).is_ok());
+
+    // An off-curve G1 base is rejected.
+    let off_g1 = halo2curves::bn256::G1Affine {
+      x: Fq::ONE,
+      y: Fq::ONE,
+    };
+    let mut bad_ck = ck.ck().to_vec();
+    bad_ck[0] = off_g1;
+    assert!(
+      CommitmentKey::<E>::new(bad_ck, *ck.h(), *ck.tau_H()).is_err(),
+      "an off-curve G1 base must be rejected"
+    );
+
+    // An off-curve tau_H is rejected.
+    let off_g2 = G2Affine {
+      x: Fq2::ONE,
+      y: Fq2::ONE,
+    };
+    assert!(
+      CommitmentKey::<E>::new(ck.ck().to_vec(), *ck.h(), off_g2).is_err(),
+      "an off-curve tau_H must be rejected"
+    );
+
+    // An on-curve but non-subgroup tau_H is rejected.
+    let non_subgroup_tau_h = {
+      let b = G2::b();
+      let mut x = Fq2::ONE;
+      loop {
+        let rhs = x.square() * x + b;
+        if let Some(y) = Option::<Fq2>::from(rhs.sqrt()) {
+          let p = G2Affine::from_xy(x, y).unwrap();
+          if !bool::from(p.to_curve().is_torsion_free()) {
+            break p;
+          }
+        }
+        x += Fq2::ONE;
+      }
+    };
+    assert!(
+      CommitmentKey::<E>::new(ck.ck().to_vec(), *ck.h(), non_subgroup_tau_h).is_err(),
+      "a non-subgroup tau_H must be rejected"
+    );
   }
 
   #[cfg(feature = "io")]

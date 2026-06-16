@@ -4,7 +4,7 @@ use core::{
   fmt::Debug,
   ops::{Add, AddAssign, Sub, SubAssign},
 };
-use halo2curves::{serde::SerdeObject, CurveAffine};
+use halo2curves::{group::cofactor::CofactorCurveAffine, serde::SerdeObject, CurveAffine};
 use num_integer::Integer;
 use num_traits::ToPrimitive;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -50,6 +50,7 @@ pub trait DlogGroup:
     + for<'de> Deserialize<'de>
     + TranscriptReprTrait<Self>
     + CurveAffine
+    + CofactorCurveAffine
     + SerdeObject
     + crate::traits::evm_serde::CustomSerdeTrait;
 
@@ -206,10 +207,15 @@ macro_rules! impl_traits_no_dlog_ext {
         );
 
         let affine = HelperAffine::deserialize(deserializer)?;
-        Ok($name::Affine {
-          x: affine.0,
-          y: affine.1,
-        })
+        use halo2curves::CurveAffine;
+        use serde::de::Error;
+        // Reject coordinates that do not lie on the curve. `from_xy` validates
+        // the curve equation via `is_on_curve` (which also accepts the canonical
+        // identity), so the point-at-infinity still deserializes successfully.
+        // The instantiated G1 curves have cofactor 1, hence on-curve implies the
+        // point is in the prime-order subgroup.
+        Option::from(<$name::Affine as CurveAffine>::from_xy(affine.0, affine.1))
+          .ok_or_else(|| D::Error::custom("deserialized point is not on the curve"))
       }
     }
 
