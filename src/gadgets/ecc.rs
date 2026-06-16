@@ -144,6 +144,24 @@ where
     mut cs: CS,
     other: &AllocatedPoint<E>,
   ) -> Result<Self, SynthesisError> {
+    // Overview of the curve-addition logic implemented below:
+    //
+    //   equal_x          = (self.x == other.x)
+    //   equal_y          = (self.y == other.y)
+    //   at_least_one_inf = self.is_infinity OR other.is_infinity
+    //
+    //   result_from_add    = add_internal(self, other)  // chord law; also handles O+P, P+O
+    //   result_from_double = double(self)               // tangent law: 2*self
+    //
+    //   // same x and neither operand is O => either self == other or self == -other
+    //   result_for_equal_x = equal_y ? result_from_double : INFINITY
+    //
+    //   // take the equal-x branch only when neither operand is O; otherwise
+    //   // add_internal already returns the right answer (O+P=P, P+O=P)
+    //   use_equal_x = equal_x AND (NOT at_least_one_inf)
+    //
+    //   return use_equal_x ? result_for_equal_x : result_from_add
+
     // Compute boolean equal indicating if self = other
 
     let equal_x = alloc_num_equals(
@@ -158,42 +176,60 @@ where
       &other.y,
     )?;
 
-    // Compute the result of the addition and the result of double self
-    let result_from_add = self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
+    // Compute the result of the addition and the result of double self.
+    // `add_internal` also returns `at_least_one_inf` = self.is_infinity OR
+    // other.is_infinity, which we reuse below to avoid recomputing the product.
+    let (result_from_add, at_least_one_inf) =
+      self.add_internal(cs.namespace(|| "add internal"), other, &equal_x)?;
     let result_from_double = self.double(cs.namespace(|| "double"))?;
 
-    // Output:
-    // If (self == other) {
-    //  return double(self)
-    // }else {
-    //  if (self.x == other.x){
-    //      return infinity [negation]
-    //  } else {
-    //      return add(self, other)
-    //  }
-    // }
+    // result_for_equal_x is the result when x's match and neither operand is O:
+    //   self == other (equal_y) -> 2*self;  self == -other -> O
     let result_for_equal_x = AllocatedPoint::select_point_or_infinity(
       cs.namespace(|| "equal_y ? result_from_double : infinity"),
       &result_from_double,
       &Boolean::from(equal_y),
     )?;
 
-    AllocatedPoint::conditionally_select(
-      cs.namespace(|| "equal ? result_from_double : result_from_add"),
+    // `add_internal` already returns the correct result whenever either operand
+    // is the identity (O + P = P, P + O = P). The double / negation-to-identity
+    // branch (`result_for_equal_x`) is only valid when neither operand is the
+    // identity, so select it only in that case and otherwise defer to
+    // `add_internal`. `neither_inf = 1 - at_least_one_inf` is already available
+    // from `add_internal`, so the only constraint added here is the product below.
+    let use_equal_x = AllocatedNum::alloc(cs.namespace(|| "equal_x and neither_inf"), || {
+      let ex = if *equal_x.get_value().get()? {
+        E::Base::ONE
+      } else {
+        E::Base::ZERO
+      };
+      Ok(ex * (E::Base::ONE - *at_least_one_inf.get_value().get()?))
+    })?;
+    cs.enforce(
+      || "use_equal_x = equal_x * (1 - at_least_one_inf)",
+      |lc| lc + equal_x.get_variable(),
+      |lc| lc + CS::one() - at_least_one_inf.get_variable(),
+      |lc| lc + use_equal_x.get_variable(),
+    );
+
+    // use_equal_x ? result_for_equal_x : result_from_add (add_internal)
+    AllocatedPoint::conditionally_select2(
+      cs.namespace(|| "use_equal_x ? result_for_equal_x : result_from_add"),
       &result_for_equal_x,
       &result_from_add,
-      &Boolean::from(equal_x),
+      &use_equal_x,
     )
   }
 
-  /// Adds other point to this point and returns the result. Assumes that the two points are
-  /// different and that both `other.is_infinity` and `this.is_infinity` are bits
+  /// Adds `other` to `self` and returns the result, along with the flag
+  /// `at_least_one_inf` (= `self.is_infinity` OR `other.is_infinity`) so callers
+  /// can reuse it. Assumes both `self.is_infinity` and `other.is_infinity` are bits.
   pub fn add_internal<CS: ConstraintSystem<E::Base>>(
     &self,
     mut cs: CS,
     other: &AllocatedPoint<E>,
     equal_x: &AllocatedBit,
-  ) -> Result<Self, SynthesisError> {
+  ) -> Result<(Self, AllocatedNum<E::Base>), SynthesisError> {
     //************************************************************************/
     // lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
     //************************************************************************/
@@ -347,7 +383,9 @@ where
       &self.is_infinity,
     )?;
 
-    Ok(Self { x, y, is_infinity })
+    // Also return `at_least_one_inf` so `add` can reuse it instead of recomputing
+    // the (1 - self.is_infinity)(1 - other.is_infinity) product.
+    Ok((Self { x, y, is_infinity }, at_least_one_inf))
   }
 
   /// Doubles the supplied point.
@@ -564,6 +602,27 @@ where
     Ok(Self { x, y, is_infinity })
   }
 
+  /// Conditional select using an `AllocatedNum` (constrained to `{0, 1}`) instead of `Boolean`.
+  pub fn conditionally_select2<CS: ConstraintSystem<E::Base>>(
+    mut cs: CS,
+    a: &Self,
+    b: &Self,
+    condition: &AllocatedNum<E::Base>,
+  ) -> Result<Self, SynthesisError> {
+    let x = conditionally_select2(cs.namespace(|| "select x"), &a.x, &b.x, condition)?;
+
+    let y = conditionally_select2(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
+
+    let is_infinity = conditionally_select2(
+      cs.namespace(|| "select is_infinity"),
+      &a.is_infinity,
+      &b.is_infinity,
+      condition,
+    )?;
+
+    Ok(Self { x, y, is_infinity })
+  }
+
   /// If condition outputs a otherwise infinity
   pub fn select_point_or_infinity<CS: ConstraintSystem<E::Base>>(
     mut cs: CS,
@@ -597,36 +656,12 @@ where
 
   /// Absorb the point into a random oracle circuit.
   ///
-  /// When B != 0 (true for BN254, Grumpkin, etc.), (0,0) is not on the curve
-  /// so we can use it as a canonical representation for infinity.
-  /// This matches Nova's native Commitment absorb behavior.
-  pub fn absorb_in_ro<CS: ConstraintSystem<E::Base>>(
-    &self,
-    mut cs: CS,
-    ro: &mut E::ROCircuit,
-  ) -> Result<(), SynthesisError> {
-    let (_, b, _, _) = E::GE::group_params();
-    if b != E::Base::ZERO {
-      let zero = alloc_zero(cs.namespace(|| "zero for absorb"));
-      let x = conditionally_select2(
-        cs.namespace(|| "select x"),
-        &zero,
-        &self.x,
-        &self.is_infinity,
-      )?;
-      let y = conditionally_select2(
-        cs.namespace(|| "select y"),
-        &zero,
-        &self.y,
-        &self.is_infinity,
-      )?;
-      ro.absorb(&x);
-      ro.absorb(&y);
-    } else {
-      ro.absorb(&self.x);
-      ro.absorb(&self.y);
-      ro.absorb(&self.is_infinity);
-    }
+  /// Absorbs the affine coordinates and the `is_infinity` flag, matching
+  /// Nova's native `Commitment` absorb behavior.
+  pub fn absorb_in_ro(&self, ro: &mut E::ROCircuit) -> Result<(), SynthesisError> {
+    ro.absorb(&self.x);
+    ro.absorb(&self.y);
+    ro.absorb(&self.is_infinity);
 
     Ok(())
   }
@@ -946,9 +981,8 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
 
   /// Absorb the provided instance in the RO
   ///
-  /// Note: For curves with B != 0 (e.g., Pallas, Vesta), we only absorb x and y coordinates.
-  /// For curves with B == 0 (e.g., secp256k1), we also absorb is_infinity.
-  /// This matches the native `AbsorbInRO2Trait` implementation in Pedersen.
+  /// Absorbs the `x` and `y` coordinate limbs followed by the `is_infinity`
+  /// flag, matching the native `AbsorbInRO2Trait` implementation in Pedersen.
   pub fn absorb_in_ro<CS: ConstraintSystem<E::Scalar>>(
     &self,
     mut cs: CS,
@@ -966,11 +1000,7 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
       ro.absorb(&limb_num);
     }
 
-    // Only absorb is_infinity when B == 0 (matching native AbsorbInRO2Trait for Commitment)
-    let (_, b, _, _) = E::GE::group_params();
-    if b == E::Base::ZERO {
-      ro.absorb(&self.is_infinity);
-    }
+    ro.absorb(&self.is_infinity);
 
     Ok(())
   }
@@ -1383,6 +1413,59 @@ mod tests {
     );
     assert!(e_p.is_infinity);
     // Make sure that it is satisfiable
+    assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
+  }
+
+  // Completeness edge case: `add` must return `P` for `O + P` even when the
+  // identity operand happens to share `P`'s x-coordinate (so `equal_x` is set).
+  fn synthesize_add_identity_matching_x<E, CS>(mut cs: CS) -> (AllocatedPoint<E>, AllocatedPoint<E>)
+  where
+    E: Engine,
+    CS: ConstraintSystem<E::Base>,
+  {
+    // P: a random non-infinity point.
+    let p = alloc_random_point(cs.namespace(|| "p")).unwrap();
+    // O': the identity, witnessed with x == P.x so that `equal_x` is set.
+    let o = AllocatedPoint::<E> {
+      x: p.x.clone(),
+      y: AllocatedNum::alloc(cs.namespace(|| "o.y"), || Ok(E::Base::ONE)).unwrap(),
+      is_infinity: AllocatedNum::alloc(cs.namespace(|| "o.is_infinity"), || Ok(E::Base::ONE))
+        .unwrap(),
+    };
+    let sum = o.add(cs.namespace(|| "O + P"), &p).unwrap();
+    (sum, p)
+  }
+
+  #[test]
+  fn test_ecc_circuit_add_identity_matching_x() {
+    test_ecc_circuit_add_identity_matching_x_with::<PallasEngine, VestaEngine>();
+    test_ecc_circuit_add_identity_matching_x_with::<Bn256EngineKZG, GrumpkinEngine>();
+    test_ecc_circuit_add_identity_matching_x_with::<Secp256k1Engine, Secq256k1Engine>();
+  }
+
+  fn test_ecc_circuit_add_identity_matching_x_with<E1, E2>()
+  where
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
+  {
+    // Build the shape.
+    let mut cs: TestShapeCS<E2> = TestShapeCS::new();
+    let _ = synthesize_add_identity_matching_x::<E1, _>(cs.namespace(|| "shape"));
+    let shape = cs.r1cs_shape().unwrap();
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
+
+    // Build the satisfying assignment.
+    let mut cs = SatisfyingAssignment::<E2>::new();
+    let (sum, p) = synthesize_add_identity_matching_x::<E1, _>(cs.namespace(|| "assignment"));
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
+
+    // O + P must equal P (and must NOT be the point at infinity).
+    assert!(
+      sum.is_infinity.get_value().unwrap() == <E1 as Engine>::Base::ZERO,
+      "O + P incorrectly returned the point at infinity"
+    );
+    assert_eq!(sum.x.get_value().unwrap(), p.x.get_value().unwrap());
+    assert_eq!(sum.y.get_value().unwrap(), p.y.get_value().unwrap());
     assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }
 }
