@@ -17,7 +17,7 @@ const KECCAK256_PREFIX_CHALLENGE_HI: u8 = 1;
 /// Provides an implementation of `TranscriptEngine`
 #[derive(Debug, Clone)]
 pub struct Keccak256Transcript<E: Engine> {
-  round: u16,
+  round: u64,
   state: [u8; KECCAK256_STATE_SIZE],
   transcript: Keccak256,
   /// Bytes absorbed since the last squeeze (used to reconstruct `transcript` on deserialize)
@@ -40,7 +40,7 @@ impl<'de, E: Engine> Deserialize<'de> for Keccak256Transcript<E> {
   fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
     #[derive(Deserialize)]
     struct Helper {
-      round: u16,
+      round: u64,
       state: Vec<u8>,
       #[serde(default)]
       transcript_buffer: Vec<u8>,
@@ -138,7 +138,7 @@ impl<E: Engine> TranscriptEngineTrait<E> for Keccak256Transcript<E> {
     let output = compute_updated_state(keccak_instance.clone(), &input);
 
     Self {
-      round: 0u16,
+      round: 0u64,
       state: output,
       transcript: keccak_instance,
       transcript_buffer: Vec::new(),
@@ -242,18 +242,18 @@ mod tests {
   #[cfg(not(feature = "evm"))]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<PallasEngine>(
-      "5ddffa8dc091862132788b8976af88b9a2c70594727e611c7217ba4c30c8c70a",
-      "4d4bf42c065870395749fa1c4fb641df1e0d53f05309b03d5b1db7f0be3aa13d",
+      "60dba8657186ff1abbeb237854707faf6ea79361546f8aae65a8fbb722c9ca0c",
+      "8bb5dcd9f95115fbc178a1e76d04955423610f5788c7ef2ed200611fecfdf60b",
     );
 
     test_keccak_transcript_with::<Bn256EngineKZG>(
-      "9fb71e3b74bfd0b60d97349849b895595779a240b92a6fae86bd2812692b6b0e",
-      "bfd4c50b7d6317e9267d5d65c985eb455a3561129c0b3beef79bfc8461a84f18",
+      "0f8d4f359394760435374d3d603ce0e970ea12f7a05e88eccd52d845f4ac542a",
+      "6b32523d63dedd6fb51d5dfc127b9d133cad433ea0b38c4627abadd0e4404c10",
     );
 
     test_keccak_transcript_with::<Secp256k1Engine>(
-      "9723aafb69ec8f0e9c7de756df0993247d98cf2b2f72fa353e3de654a177e310",
-      "a6a90fcb6e1b1a2a2f84c950ef1510d369aea8e42085f5c629bfa66d00255f25",
+      "6dbabc32c27f3512d7592ca08e50e2ded102959bd4bb01245f2ea8dcbae74ec4",
+      "c4a806654016a01dd6a0c80e2a5484cba5af27ec4a0fd838ecca11eb1b4437bd",
     );
   }
 
@@ -261,18 +261,18 @@ mod tests {
   #[cfg(feature = "evm")]
   fn test_keccak_transcript() {
     test_keccak_transcript_with::<PallasEngine>(
-      "cc8899e834968eae4269b223856518ab44d04bd381b95fda44969eedcd233710",
-      "21dd7314db7c10274ef62a25175704ac9dc86dd3be2e87cad2fe44f95ec4271b",
+      "78cce45b5f6cdc2021d9bba6c69c8c78c80c9a6ed65604db82d12166b28d212c",
+      "7de5b755566a6a0423117770a9f3427f64fc0133dd6fc38a5e1f0790d3c6b20a",
     );
 
     test_keccak_transcript_with::<Bn256EngineKZG>(
-      "4bcc2d614503c68d32df47c87c7698bfdebb71bcd9c76b5a463f806ff7bec212",
-      "d7ee88576da267c5c38cc39063e98c517aacc7581cdb6e5924b19de8218b8f01",
+      "59b12afc64ee9e2e1740bcd6d881ca1fab187a6261366b48aaeb5e23d949cf20",
+      "b17d158ee602f2434af680597b09b9770022408c98276f0f46cbbf13bd86e020",
     );
 
     test_keccak_transcript_with::<Secp256k1Engine>(
-      "788f8ff3cf50d6d1509dd923abd427f16cb934721a5c8883c47cd1cc228a0e71",
-      "011ffa1afa7d3342100ec63101f6be02ed784e503e36f74f0e74a28b30dc85fb",
+      "f7ce678fa4de4f3bdbf1deaa5fc68e567f65e23ea2639585b01dc5127887721b",
+      "a7fc93173c05e007ef1b30631400ed112463958e80a3af4d2508e4ac0e9a7409",
     );
   }
 
@@ -322,7 +322,7 @@ mod tests {
   #[cfg(not(feature = "evm"))]
   fn squeeze_for_testing(
     transcript: &[u8],
-    round: u16,
+    round: u64,
     state: [u8; KECCAK256_STATE_SIZE],
     label: &'static [u8],
   ) -> [u8; 64] {
@@ -340,7 +340,7 @@ mod tests {
   #[cfg(feature = "evm")]
   fn squeeze_for_testing(
     transcript: &[u8],
-    round: u16,
+    round: u64,
     state: [u8; KECCAK256_STATE_SIZE],
     label: &'static [u8],
   ) -> [u8; 64] {
@@ -388,7 +388,7 @@ mod tests {
     // make a challenge
     let c1: <E as Engine>::Scalar = transcript.squeeze(b"c1").unwrap();
 
-    let c1_bytes = squeeze_for_testing(&manual_transcript[..], 0u16, initial_state, b"c1");
+    let c1_bytes = squeeze_for_testing(&manual_transcript[..], 0u64, initial_state, b"c1");
     let to_hex = |g: E::Scalar| hex::encode(g.to_repr().as_ref());
     assert_eq!(to_hex(c1), to_hex(E::Scalar::from_uniform(&c1_bytes)));
   }
