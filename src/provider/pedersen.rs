@@ -106,7 +106,8 @@ where
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    let is_infinity_byte = (!is_infinity).into();
+    // Encode the infinity flag as 1 = infinity, matching the RO and in-circuit conventions.
+    let is_infinity_byte = is_infinity.into();
     [
       x.to_transcript_bytes(),
       y.to_transcript_bytes(),

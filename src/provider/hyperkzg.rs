@@ -236,7 +236,8 @@ where
 {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.comm.to_coordinates();
-    let is_infinity_byte = (!is_infinity).into();
+    // Encode the infinity flag as 1 = infinity, matching the RO and in-circuit conventions.
+    let is_infinity_byte = is_infinity.into();
     [
       x.to_transcript_bytes(),
       y.to_transcript_bytes(),
@@ -813,10 +814,8 @@ pub struct EvaluationArgument<E: Engine>
 where
   E::GE: PairingGroup,
 {
-  #[serde_as(as = "Vec<EvmCompatSerde>")]
-  com: Vec<G1Affine<E>>,
-  #[serde_as(as = "[EvmCompatSerde; 3]")]
-  w: [G1Affine<E>; 3],
+  com: Vec<Commitment<E>>,
+  w: [Commitment<E>; 3],
   #[serde_as(as = "Vec<[EvmCompatSerde; 3]>")]
   v: Vec<[E::Scalar; 3]>,
 }
@@ -826,15 +825,15 @@ where
   E::GE: PairingGroup,
 {
   /// Create a new evaluation argument
-  pub fn new(com: Vec<G1Affine<E>>, w: [G1Affine<E>; 3], v: Vec<[E::Scalar; 3]>) -> Self {
+  pub fn new(com: Vec<Commitment<E>>, w: [Commitment<E>; 3], v: Vec<[E::Scalar; 3]>) -> Self {
     Self { com, w, v }
   }
   /// The KZG commitments to intermediate polynomials
-  pub fn com(&self) -> &[G1Affine<E>] {
+  pub fn com(&self) -> &[Commitment<E>] {
     &self.com
   }
   /// The KZG witnesses for batch openings
-  pub fn w(&self) -> &[G1Affine<E>] {
+  pub fn w(&self) -> &[Commitment<E>] {
     &self.w
   }
   /// The evaluations of the polynomials at challenge points
@@ -855,7 +854,7 @@ where
 {
   // This impl block defines helper functions that are not a part of
   // EvaluationEngineTrait, but that we will use to implement the trait methods.
-  fn compute_challenge(com: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
+  fn compute_challenge(com: &[Commitment<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
     transcript.absorb(b"c", &com.to_vec().as_slice());
 
     transcript.squeeze(b"c").unwrap()
@@ -885,7 +884,10 @@ where
     q_powers
   }
 
-  fn verifier_second_challenge(W: &[G1Affine<E>], transcript: &mut <E as Engine>::TE) -> E::Scalar {
+  fn verifier_second_challenge(
+    W: &[Commitment<E>],
+    transcript: &mut <E as Engine>::TE,
+  ) -> E::Scalar {
     transcript.absorb(b"W", &W.to_vec().as_slice());
 
     transcript.squeeze(b"d").unwrap()
@@ -929,7 +931,7 @@ where
     let x: Vec<E::Scalar> = point.to_vec();
 
     //////////////// begin helper closures //////////
-    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> G1Affine<E> {
+    let kzg_open = |f: &[E::Scalar], u: E::Scalar| -> Commitment<E> {
       // Divides polynomial f(x) by (x - u) to obtain the witness polynomial h(x) = f(x)/(x - u)
       // for KZG opening.
       //
@@ -995,13 +997,13 @@ where
       let target_chunks = DEFAULT_TARGET_CHUNKS;
       let h = &div_by_monomial(f, u, target_chunks);
 
-      E::CE::commit(ck, h, &E::Scalar::ZERO).comm.affine()
+      E::CE::commit(ck, h, &E::Scalar::ZERO)
     };
 
     let kzg_open_batch = |f: &[Vec<E::Scalar>],
                           u: &[E::Scalar; 3],
                           transcript: &mut <E as Engine>::TE|
-     -> (Vec<G1Affine<E>>, Vec<[E::Scalar; 3]>) {
+     -> (Vec<Commitment<E>>, Vec<[E::Scalar; 3]>) {
       let poly_eval = |f: &[E::Scalar], u: E::Scalar| -> E::Scalar {
         // Horner's method
         let mut acc = E::Scalar::ZERO;
@@ -1056,7 +1058,7 @@ where
       let w = u
         .into_par_iter()
         .map(|ui| kzg_open(&B, *ui))
-        .collect::<Vec<G1Affine<E>>>();
+        .collect::<Vec<Commitment<E>>>();
 
       // The prover computes the challenge to keep the transcript in the same
       // state as that of the verifier
@@ -1091,10 +1093,7 @@ where
     // We do not need to commit to the first polynomial as it is already committed.
     // Compute commitments in parallel
     let r = vec![E::Scalar::ZERO; ell - 1];
-    let com: Vec<G1Affine<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice())
-      .par_iter()
-      .map(|i| i.comm.affine())
-      .collect();
+    let com: Vec<Commitment<E>> = E::CE::batch_commit(ck, &polys[1..], r.as_slice());
 
     // Phase 2
     // We do not need to add x to the transcript, because in our context x was obtained from the transcript.
@@ -1198,6 +1197,9 @@ where
       })
       .collect::<Vec<E::Scalar>>();
 
+    let com_affine: Vec<G1Affine<E>> = pi.com.iter().map(|c| c.into_inner().affine()).collect();
+    let w_affine: Vec<G1Affine<E>> = pi.w.iter().map(|c| c.into_inner().affine()).collect();
+
     let L = E::GE::vartime_multiscalar_mul(
       &[
         &q_powers_multiplied[..],
@@ -1211,16 +1213,16 @@ where
       .concat(),
       &[
         &[C.comm.affine()][..],
-        &pi.com,
-        &pi.w,
+        &com_affine,
+        &w_affine,
         slice::from_ref(&vk.G),
       ]
       .concat(),
     );
 
-    let R0 = E::GE::group(&pi.w[0]);
-    let R1 = E::GE::group(&pi.w[1]);
-    let R2 = E::GE::group(&pi.w[2]);
+    let R0 = pi.w[0].into_inner();
+    let R1 = pi.w[1].into_inner();
+    let R2 = pi.w[2].into_inner();
     let R = R0 + R1 * d_0 + R2 * d_1;
 
     // Check that e(L, vk.H) == e(R, vk.tau_H)
