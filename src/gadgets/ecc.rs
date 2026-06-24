@@ -234,12 +234,12 @@ where
     // lambda = (other.y - self.y) * (other.x - self.x).invert().unwrap();
     //************************************************************************/
     // First compute (other.x - self.x).inverse()
-    // If either self or other are the infinity point or self.x = other.x  then compute bogus values
+    // If either self or other are the infinity point or self.x = other.x then compute bogus values
     // Specifically,
     // x_diff = self != inf && other != inf && self.x == other.x ? (other.x - self.x) : 1
 
     // Compute self.is_infinity OR other.is_infinity =
-    // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
+    // NOT(NOT(self.is_infinity) AND NOT(other.is_infinity))
     let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
       Ok(
         E::Base::ONE
