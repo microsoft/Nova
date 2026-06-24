@@ -49,7 +49,7 @@ fn bench_ppsnark(c: &mut Criterion) {
     let (pk, vk) =
       DirectSNARK::<E, S, NonTrivialCircuit<<E as Engine>::Scalar>>::setup(c.clone()).unwrap();
 
-    // Bench time to produce a  ppSNARK;
+    // Bench time to produce a ppSNARK;
     group.bench_function("Prove", |b| {
       b.iter(|| {
         let res = DirectSNARK::prove(
