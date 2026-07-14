@@ -1,4 +1,5 @@
 use crate::{
+  constants::PARALLEL_THRESHOLD,
   errors::NovaError,
   spartan::{
     polys::{
@@ -10,6 +11,7 @@ use crate::{
   traits::{Engine, TranscriptEngineTrait},
 };
 use ff::{Field, PrimeField};
+use itertools::Itertools as _;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +31,21 @@ pub trait SumcheckEngine<E: Engine>: Send + Sync {
   /// For degree-3 (cubic) claims: [p(0), cubic_coeff, p(-1)]
   /// For degree-2 (quadratic) claims: [p(0), 0, p(-1)]
   fn evaluation_points(&mut self) -> Vec<Vec<E::Scalar>>;
+
+  /// Optional hook: once the batched prover's linear-combination coefficients
+  /// are known (squeezed inside `prove_helper`), an instance may collapse its
+  /// several equally-shaped claims into a single random linear combination so it
+  /// scans/binds one polynomial per round instead of many. `coeffs` are exactly
+  /// this instance's slice of the batch coefficients (same order as
+  /// [`Self::initial_claims`]). The default is a no-op.
+  ///
+  /// Correctness contract: after fusing, [`Self::evaluation_points`] must still
+  /// return one triple per original claim so positional `Σ coeffs[i]·evals[i]`
+  /// in the batched prover is unchanged. Fusing instances therefore return the
+  /// combined triple in slot 0 (whose coefficient is 1 when it leads the batch)
+  /// and zeros elsewhere, which is byte-identical to computing each triple
+  /// separately and summing.
+  fn fuse_with_coeffs(&mut self, _coeffs: &[E::Scalar]) {}
 
   /// bounds a variable in the constituent polynomials
   fn bound(&mut self, r: &E::Scalar);
@@ -442,6 +459,85 @@ impl<E: Engine> SumcheckProof<E> {
       )
   }
 
+  /// Computes cubic evaluation points while replacing every polynomial's high
+  /// half with its top-variable delta.
+  ///
+  /// The caller must bind all three polynomials with
+  /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta` before reading
+  /// their high halves again.
+  ///
+  /// Returns `(eval_0, cubic_coeff, eval_inf)`, the same layout as
+  /// [`Self::compute_eval_points_cubic`].
+  #[inline]
+  pub fn compute_eval_points_cubic_with_cached_deltas(
+    poly_A: &mut MultilinearPolynomial<E::Scalar>,
+    poly_B: &mut MultilinearPolynomial<E::Scalar>,
+    poly_C: &mut MultilinearPolynomial<E::Scalar>,
+  ) -> (E::Scalar, E::Scalar, E::Scalar) {
+    let len = poly_A.len() / 2;
+    assert_eq!(poly_B.len(), poly_A.len());
+    assert_eq!(poly_C.len(), poly_A.len());
+
+    let (a_low, a_delta) = poly_A.Z.split_at_mut(len);
+    let (b_low, b_delta) = poly_B.Z.split_at_mut(len);
+    let (c_low, c_delta) = poly_C.Z.split_at_mut(len);
+
+    let eval = |a_low: &E::Scalar,
+                a_delta: &mut E::Scalar,
+                b_low: &E::Scalar,
+                b_delta: &mut E::Scalar,
+                c_low: &E::Scalar,
+                c_delta: &mut E::Scalar| {
+      *a_delta -= a_low;
+      *b_delta -= b_low;
+      *c_delta -= c_low;
+
+      (
+        *a_low * *b_low * *c_low,
+        *a_delta * *b_delta * *c_delta,
+        (*a_low - *a_delta) * (*b_low - *b_delta) * (*c_low - *c_delta),
+      )
+    };
+
+    if len < PARALLEL_THRESHOLD {
+      zip_with!(
+        (
+          a_low.iter(),
+          a_delta.iter_mut(),
+          b_low.iter(),
+          b_delta.iter_mut(),
+          c_low.iter(),
+          c_delta.iter_mut()
+        ),
+        |a_low, a_delta, b_low, b_delta, c_low, c_delta| eval(
+          a_low, a_delta, b_low, b_delta, c_low, c_delta
+        )
+      )
+      .fold(
+        (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+        |acc, item| (acc.0 + item.0, acc.1 + item.1, acc.2 + item.2),
+      )
+    } else {
+      zip_with!(
+        (
+          a_low.par_iter(),
+          a_delta.par_iter_mut(),
+          b_low.par_iter(),
+          b_delta.par_iter_mut(),
+          c_low.par_iter(),
+          c_delta.par_iter_mut()
+        ),
+        |a_low, a_delta, b_low, b_delta, c_low, c_delta| eval(
+          a_low, a_delta, b_low, b_delta, c_low, c_delta
+        )
+      )
+      .reduce(
+        || (E::Scalar::ZERO, E::Scalar::ZERO, E::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2),
+      )
+    }
+  }
+
   /// Prove poly_A * poly_B - poly_C
   pub fn prove_cubic_with_three_inputs(
     claim: &E::Scalar,
@@ -585,8 +681,11 @@ pub mod eq_sumcheck {
   //!
   //! The claim-derived evaluation points (computing only 2 N-scaling sums per round
   //! instead of 3) follow BDDT (eprint 2025/1117, Section 6.2).
-  use crate::{spartan::polys::multilinear::MultilinearPolynomial, traits::Engine};
-  use ff::Field;
+  use crate::{
+    constants::PARALLEL_THRESHOLD, spartan::polys::multilinear::MultilinearPolynomial,
+    traits::Engine,
+  };
+  use ff::{Field, PrimeField};
   use rayon::{iter::ZipEq, prelude::*, slice::Iter};
 
   /// Instance for optimized equality polynomial sumcheck.
@@ -601,6 +700,146 @@ pub mod eq_sumcheck {
     poly_eq_left: Vec<Vec<E::Scalar>>,
     poly_eq_right: Vec<Vec<E::Scalar>>,
     eq_tau_0_a_inf: Vec<(E::Scalar, E::Scalar, E::Scalar)>,
+  }
+
+  struct LogupGateCell<'a, Scalar> {
+    nl_0: Scalar,
+    nl_delta: &'a mut Scalar,
+    nr_0: Scalar,
+    nr_delta: &'a mut Scalar,
+    dl_0: Scalar,
+    dl_delta: &'a mut Scalar,
+    dr_0: Scalar,
+    dr_delta: &'a mut Scalar,
+  }
+
+  impl<Scalar: PrimeField> LogupGateCell<'_, Scalar> {
+    fn cache_and_evaluate(self, weights: (Scalar, Scalar)) -> (Scalar, Scalar) {
+      *self.nl_delta -= self.nl_0;
+      *self.nr_delta -= self.nr_0;
+      *self.dl_delta -= self.dl_0;
+      *self.dr_delta -= self.dr_0;
+
+      let (w_num, w_den) = weights;
+      (
+        w_num * (self.nl_0 * self.dr_0 + self.nr_0 * self.dl_0) + w_den * (self.dl_0 * self.dr_0),
+        w_num * (*self.nl_delta * *self.dr_delta + *self.nr_delta * *self.dl_delta)
+          + w_den * (*self.dl_delta * *self.dr_delta),
+      )
+    }
+  }
+
+  struct LogupGateInstanceSlices<'a, Scalar> {
+    nl_low: &'a [Scalar],
+    nl_delta: &'a mut [Scalar],
+    nr_low: &'a [Scalar],
+    nr_delta: &'a mut [Scalar],
+    dl_low: &'a [Scalar],
+    dl_delta: &'a mut [Scalar],
+    dr_low: &'a [Scalar],
+    dr_delta: &'a mut [Scalar],
+  }
+
+  impl<'a, Scalar: PrimeField> LogupGateInstanceSlices<'a, Scalar> {
+    fn new(
+      nl: &'a mut MultilinearPolynomial<Scalar>,
+      nr: &'a mut MultilinearPolynomial<Scalar>,
+      dl: &'a mut MultilinearPolynomial<Scalar>,
+      dr: &'a mut MultilinearPolynomial<Scalar>,
+    ) -> Self {
+      let half = nl.Z.len() / 2;
+      let (nl_low, nl_delta) = nl.Z.split_at_mut(half);
+      let (nr_low, nr_delta) = nr.Z.split_at_mut(half);
+      let (dl_low, dl_delta) = dl.Z.split_at_mut(half);
+      let (dr_low, dr_delta) = dr.Z.split_at_mut(half);
+      Self {
+        nl_low,
+        nl_delta,
+        nr_low,
+        nr_delta,
+        dl_low,
+        dl_delta,
+        dr_low,
+        dr_delta,
+      }
+    }
+
+    fn par_iter_mut(&mut self) -> impl IndexedParallelIterator<Item = LogupGateCell<'_, Scalar>> {
+      zip_with!(
+        (
+          self.nl_low.par_iter(),
+          self.nl_delta.par_iter_mut(),
+          self.nr_low.par_iter(),
+          self.nr_delta.par_iter_mut(),
+          self.dl_low.par_iter(),
+          self.dl_delta.par_iter_mut(),
+          self.dr_low.par_iter(),
+          self.dr_delta.par_iter_mut()
+        ),
+        |nl_0, nl_delta, nr_0, nr_delta, dl_0, dl_delta, dr_0, dr_delta| LogupGateCell {
+          nl_0: *nl_0,
+          nl_delta,
+          nr_0: *nr_0,
+          nr_delta,
+          dl_0: *dl_0,
+          dl_delta,
+          dr_0: *dr_0,
+          dr_delta,
+        }
+      )
+    }
+  }
+
+  fn cache_four_logup_gate_deltas<Scalar, Factor>(
+    nl: &mut [MultilinearPolynomial<Scalar>],
+    nr: &mut [MultilinearPolynomial<Scalar>],
+    dl: &mut [MultilinearPolynomial<Scalar>],
+    dr: &mut [MultilinearPolynomial<Scalar>],
+    weights: &[(Scalar, Scalar)],
+    factor: &Factor,
+  ) -> (Scalar, Scalar)
+  where
+    Scalar: PrimeField,
+    Factor: Fn(usize) -> Scalar + Sync,
+  {
+    let mut instances: Vec<_> = nl
+      .iter_mut()
+      .zip(nr.iter_mut())
+      .zip(dl.iter_mut())
+      .zip(dr.iter_mut())
+      .map(|(((nl, nr), dl), dr)| LogupGateInstanceSlices::new(nl, nr, dl, dr))
+      .collect();
+    let [i0, i1, i2, i3] = instances.as_mut_slice() else {
+      unreachable!("the ppSNARK Logup-GKR gate has four sub-instances");
+    };
+    let [w0, w1, w2, w3] = weights else {
+      unreachable!("the ppSNARK Logup-GKR gate has four weight pairs");
+    };
+
+    zip_with!(
+      (
+        i0.par_iter_mut(),
+        i1.par_iter_mut(),
+        i2.par_iter_mut(),
+        i3.par_iter_mut()
+      ),
+      |c0, c1, c2, c3| {
+        let g0 = c0.cache_and_evaluate(*w0);
+        let g1 = c1.cache_and_evaluate(*w1);
+        let g2 = c2.cache_and_evaluate(*w2);
+        let g3 = c3.cache_and_evaluate(*w3);
+        (g0.0 + g1.0 + g2.0 + g3.0, g0.1 + g1.1 + g2.1 + g3.1)
+      }
+    )
+    .enumerate()
+    .map(|(id, gate)| {
+      let eq_factor = factor(id);
+      (gate.0 * eq_factor, gate.1 * eq_factor)
+    })
+    .reduce(
+      || (Scalar::ZERO, Scalar::ZERO),
+      |a, b| (a.0 + b.0, a.1 + b.1),
+    )
   }
 
   impl<E: Engine> EqSumCheckInstance<E> {
@@ -893,6 +1132,249 @@ pub mod eq_sumcheck {
       (s_0, s_leading, s_m1)
     }
 
+    /// Evaluates `eq(tau, X)` times a weighted sum of fractional-add gates
+    /// without modifying the input MLEs.
+    ///
+    /// Each instance contributes
+    /// `w_num * (nL * dR + nR * dL) + w_den * dL * dR`. The degree-2 inner
+    /// polynomial uses BDDT claim derivation from `t(0)` and `t(inf)`, falling
+    /// back to a third sum when `tau = 0`.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluation_points_logup_gate(
+      &self,
+      nl: &[MultilinearPolynomial<E::Scalar>],
+      nr: &[MultilinearPolynomial<E::Scalar>],
+      dl: &[MultilinearPolynomial<E::Scalar>],
+      dr: &[MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let m = nl.len();
+      assert!(m > 0);
+      assert_eq!(m, nr.len());
+      assert_eq!(m, dl.len());
+      assert_eq!(m, dr.len());
+      assert_eq!(m, weights.len());
+      assert_eq!(nl[0].Z.len() % 2, 0);
+
+      let half_p = nl[0].Z.len() / 2;
+      let gate_0_inf = |id: usize| -> (E::Scalar, E::Scalar) {
+        let mut sum_0 = E::Scalar::ZERO;
+        let mut sum_inf = E::Scalar::ZERO;
+        for i in 0..m {
+          let (w_num, w_den) = weights[i];
+          let nl_0 = nl[i].Z[id];
+          let nr_0 = nr[i].Z[id];
+          let dl_0 = dl[i].Z[id];
+          let dr_0 = dr[i].Z[id];
+          let nl_s = nl[i].Z[id + half_p] - nl_0;
+          let nr_s = nr[i].Z[id + half_p] - nr_0;
+          let dl_s = dl[i].Z[id + half_p] - dl_0;
+          let dr_s = dr[i].Z[id + half_p] - dr_0;
+          sum_0 += w_num * (nl_0 * dr_0 + nr_0 * dl_0) + w_den * (dl_0 * dr_0);
+          sum_inf += w_num * (nl_s * dr_s + nr_s * dl_s) + w_den * (dl_s * dr_s);
+        }
+        (sum_0, sum_inf)
+      };
+
+      let (t_0, t_inf) = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+            let gate = gate_0_inf(id);
+            (gate.0 * factor, gate.1 * factor)
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let gate = gate_0_inf(id);
+            (gate.0 * poly_eq_right[id], gate.1 * poly_eq_right[id])
+          })
+          .reduce(
+            || (E::Scalar::ZERO, E::Scalar::ZERO),
+            |a, b| (a.0 + b.0, a.1 + b.1),
+          )
+      };
+
+      if let Some(result) = self.derive_from_claim_deg2(t_0, t_inf, claim) {
+        result
+      } else {
+        self.fallback_eval_inf_logup_gate(t_0, t_inf, nl, nr, dl, dr, weights)
+      }
+    }
+
+    /// Computes the Logup-GKR evaluation at `-1` when `tau = 0` prevents claim
+    /// derivation.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn fallback_eval_inf_logup_gate(
+      &self,
+      t_0: E::Scalar,
+      t_inf: E::Scalar,
+      nl: &[MultilinearPolynomial<E::Scalar>],
+      nr: &[MultilinearPolynomial<E::Scalar>],
+      dl: &[MultilinearPolynomial<E::Scalar>],
+      dr: &[MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let p = self.eval_eq_left;
+      let (eq_0, eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
+      let m = nl.len();
+      let half_p = nl[0].Z.len() / 2;
+      let s_0 = eq_0 * p * t_0;
+      let s_leading = eq_slope * p * t_inf;
+
+      let gate_m1 = |id: usize| -> E::Scalar {
+        let mut sum = E::Scalar::ZERO;
+        for i in 0..m {
+          let (w_num, w_den) = weights[i];
+          let nl_m1 = nl[i].Z[id].double() - nl[i].Z[id + half_p];
+          let nr_m1 = nr[i].Z[id].double() - nr[i].Z[id + half_p];
+          let dl_m1 = dl[i].Z[id].double() - dl[i].Z[id + half_p];
+          let dr_m1 = dr[i].Z[id].double() - dr[i].Z[id + half_p];
+          sum += w_num * (nl_m1 * dr_m1 + nr_m1 * dl_m1) + w_den * (dl_m1 * dr_m1);
+        }
+        sum
+      };
+
+      let t_m1 = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| gate_m1(id) * poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask])
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| gate_m1(id) * poly_eq_right[id])
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      };
+
+      let s_m1 = eq_m1 * p * t_m1;
+      (s_0, s_leading, s_m1)
+    }
+
+    /// Evaluates ppSNARK's four Logup-GKR sub-instances and caches each
+    /// top-variable delta in its MLE's high half.
+    ///
+    /// The inner polynomial is degree 2 in `X` (product of two linear factors),
+    /// so BDDT claim derivation applies: only `t(0)` and `t(inf)` are summed over
+    /// `N`, and `s(-1)` is derived from the claim (2 N-scaling sums, not 3).
+    /// Falls back to a third sum when `tau=0` makes the derivation impossible.
+    /// Every input must subsequently be bound with
+    /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless exactly four sub-instances are supplied, matching
+    /// ppSNARK's row/column table/access layout.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluation_points_logup_gate_and_cache_deltas(
+      &self,
+      nl: &mut [MultilinearPolynomial<E::Scalar>],
+      nr: &mut [MultilinearPolynomial<E::Scalar>],
+      dl: &mut [MultilinearPolynomial<E::Scalar>],
+      dr: &mut [MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let m = nl.len();
+      assert!(m > 0);
+      assert_eq!(m, nr.len());
+      assert_eq!(m, dl.len());
+      assert_eq!(m, dr.len());
+      assert_eq!(m, weights.len());
+      assert_eq!(nl[0].Z.len() % 2, 0);
+      assert_eq!(
+        m, 4,
+        "cached Logup-GKR evaluation is specialized for ppSNARK's four sub-instances"
+      );
+
+      let (t_0, t_inf) = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        let factor = |id| poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+        cache_four_logup_gate_deltas(nl, nr, dl, dr, weights, &factor)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        let factor = |id| poly_eq_right[id];
+        cache_four_logup_gate_deltas(nl, nr, dl, dr, weights, &factor)
+      };
+
+      if let Some(result) = self.derive_from_claim_deg2(t_0, t_inf, claim) {
+        result
+      } else {
+        self.fallback_eval_inf_logup_gate_with_cached_deltas(t_0, t_inf, nl, nr, dl, dr, weights)
+      }
+    }
+
+    /// Fallback for the Logup-GKR gate after the top-variable deltas have been
+    /// cached in every high half.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn fallback_eval_inf_logup_gate_with_cached_deltas(
+      &self,
+      t_0: E::Scalar,
+      t_inf: E::Scalar,
+      nl: &[MultilinearPolynomial<E::Scalar>],
+      nr: &[MultilinearPolynomial<E::Scalar>],
+      dl: &[MultilinearPolynomial<E::Scalar>],
+      dr: &[MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let p = self.eval_eq_left;
+      let (eq_0, eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
+      let m = nl.len();
+      let half_p = nl[0].Z.len() / 2;
+
+      let s_0 = eq_0 * p * t_0;
+      let s_leading = eq_slope * p * t_inf;
+
+      // m(-1) = low - (high - low) = low - cached_delta.
+      let gate_m1 = |id: usize| -> E::Scalar {
+        let mut sum = E::Scalar::ZERO;
+        for i in 0..m {
+          let (w_num, w_den) = weights[i];
+          let nl_m1 = nl[i].Z[id] - nl[i].Z[id + half_p];
+          let nr_m1 = nr[i].Z[id] - nr[i].Z[id + half_p];
+          let dl_m1 = dl[i].Z[id] - dl[i].Z[id + half_p];
+          let dr_m1 = dr[i].Z[id] - dr[i].Z[id + half_p];
+          sum += w_num * (nl_m1 * dr_m1 + nr_m1 * dl_m1) + w_den * (dl_m1 * dr_m1);
+        }
+        sum
+      };
+
+      let t_m1 = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+            gate_m1(id) * factor
+          })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| gate_m1(id) * poly_eq_right[id])
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      };
+
+      let s_m1 = eq_m1 * p * t_m1;
+      (s_0, s_leading, s_m1)
+    }
+
     /// Evaluate eq(tau,X) * (A*B - C) using 2 N-scaling sums instead of 3
     /// (BDDT, eprint 2025/1117 Section 6.2).
     /// Falls back to computing all 3 sums when tau=0 makes derivation impossible.
@@ -1079,6 +1561,76 @@ pub mod eq_sumcheck {
       }
     }
 
+    /// Evaluates `eq(tau, X) * A(X)` while caching `A(high) - A(low)` in
+    /// `A`'s high half for the following bind.
+    ///
+    /// The caller must use
+    /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta` for this round.
+    #[inline]
+    pub fn evaluation_points_quadratic_with_one_input_and_cached_delta(
+      &self,
+      poly_A: &mut MultilinearPolynomial<E::Scalar>,
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      debug_assert_eq!(poly_A.len() % 2, 0);
+
+      let in_first_half = self.round < self.first_half;
+      let half_p = poly_A.Z.len() / 2;
+      let (low, delta) = poly_A.Z.split_at_mut(half_p);
+
+      let t_0 = if in_first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        let eval = |id: usize, low: &E::Scalar, delta: &mut E::Scalar| {
+          *delta -= low;
+          *low * poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask]
+        };
+
+        if half_p < PARALLEL_THRESHOLD {
+          low
+            .iter()
+            .zip(delta.iter_mut())
+            .enumerate()
+            .map(|(id, (low, delta))| eval(id, low, delta))
+            .sum()
+        } else {
+          low
+            .par_iter()
+            .zip(delta.par_iter_mut())
+            .enumerate()
+            .map(|(id, (low, delta))| eval(id, low, delta))
+            .sum()
+        }
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        let eval = |id: usize, low: &E::Scalar, delta: &mut E::Scalar| {
+          *delta -= low;
+          *low * poly_eq_right[id]
+        };
+
+        if half_p < PARALLEL_THRESHOLD {
+          low
+            .iter()
+            .zip(delta.iter_mut())
+            .enumerate()
+            .map(|(id, (low, delta))| eval(id, low, delta))
+            .sum()
+        } else {
+          low
+            .par_iter()
+            .zip(delta.par_iter_mut())
+            .enumerate()
+            .map(|(id, (low, delta))| eval(id, low, delta))
+            .sum()
+        }
+      };
+
+      if let Some(result) = self.derive_from_claim_deg1(t_0, claim) {
+        result
+      } else {
+        self.fallback_eval_inf_one_input_with_cached_delta(t_0, poly_A)
+      }
+    }
+
     /// Fallback for three-input case: compute eval_inf via third N-scaling sum
     /// when claim-based derivation is impossible (tau=0).
     #[inline]
@@ -1214,6 +1766,44 @@ pub mod eq_sumcheck {
             let m1_a = a.0.double() - *a.1;
             m1_a * eq_r
           })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      };
+
+      let s_m1 = eq_m1 * p * t_m1;
+      (s_0, s_leading, s_m1)
+    }
+
+    /// Computes the one-input evaluation at `-1` from the cached delta when
+    /// `tau = 0` prevents claim derivation.
+    #[inline]
+    fn fallback_eval_inf_one_input_with_cached_delta(
+      &self,
+      t_0: E::Scalar,
+      poly_A: &MultilinearPolynomial<E::Scalar>,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let p = self.eval_eq_left;
+      let (eq_0, _eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
+
+      let s_0 = eq_0 * p * t_0;
+      let s_leading = E::Scalar::ZERO;
+
+      let half_p = poly_A.Z.len() / 2;
+      let (low, delta) = poly_A.Z.split_at(half_p);
+
+      let t_m1 = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+            (low[id] - delta[id]) * factor
+          })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| (low[id] - delta[id]) * poly_eq_right[id])
           .reduce(|| E::Scalar::ZERO, |a, b| a + b)
       };
 
