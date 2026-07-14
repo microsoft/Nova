@@ -228,7 +228,7 @@ impl<Scalar: PrimeField> AllocatedNum<Scalar> {
             cs.namespace(|| format!("run ending at {i}")),
             &current_run,
           )?);
-          current_run.truncate(0);
+          current_run.clear();
         }
 
         // If `last_run` is true, `a` must be false, or it would

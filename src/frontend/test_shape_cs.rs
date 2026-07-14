@@ -141,7 +141,7 @@ where
     let mut s = String::new();
 
     for input in &self.inputs {
-      writeln!(s, "INPUT {}", &input).unwrap()
+      writeln!(s, "INPUT {}", input).unwrap()
     }
 
     let negone = -<E::Scalar>::ONE;
@@ -174,10 +174,10 @@ where
 
         match var.0.get_unchecked() {
           Index::Input(i) => {
-            write!(s, "`I{}`", &self.inputs[i]).unwrap();
+            write!(s, "`I{}`", self.inputs[i]).unwrap();
           }
           Index::Aux(i) => {
-            write!(s, "`A{}`", &self.aux[i]).unwrap();
+            write!(s, "`A{}`", self.aux[i]).unwrap();
           }
         }
       }
