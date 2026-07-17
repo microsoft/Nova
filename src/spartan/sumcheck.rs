@@ -714,7 +714,10 @@ pub mod eq_sumcheck {
   }
 
   impl<Scalar: PrimeField> LogupGateCell<'_, Scalar> {
-    fn cache_and_evaluate(self, weights: (Scalar, Scalar)) -> (Scalar, Scalar) {
+    fn cache_and_evaluate<const EVALUATE_T_0: bool>(
+      self,
+      weights: (Scalar, Scalar),
+    ) -> (Scalar, Scalar) {
       *self.nl_delta -= self.nl_0;
       *self.nr_delta -= self.nr_0;
       *self.dl_delta -= self.dl_0;
@@ -722,7 +725,11 @@ pub mod eq_sumcheck {
 
       let (w_num, w_den) = weights;
       (
-        w_num * (self.nl_0 * self.dr_0 + self.nr_0 * self.dl_0) + w_den * (self.dl_0 * self.dr_0),
+        if EVALUATE_T_0 {
+          w_num * (self.nl_0 * self.dr_0 + self.nr_0 * self.dl_0) + w_den * (self.dl_0 * self.dr_0)
+        } else {
+          Scalar::ZERO
+        },
         w_num * (*self.nl_delta * *self.dr_delta + *self.nr_delta * *self.dl_delta)
           + w_den * (*self.dl_delta * *self.dr_delta),
       )
@@ -790,7 +797,7 @@ pub mod eq_sumcheck {
     }
   }
 
-  fn cache_four_logup_gate_deltas<Scalar, Factor>(
+  fn cache_four_logup_gate_deltas<const EVALUATE_T_0: bool, Scalar, Factor>(
     nl: &mut [MultilinearPolynomial<Scalar>],
     nr: &mut [MultilinearPolynomial<Scalar>],
     dl: &mut [MultilinearPolynomial<Scalar>],
@@ -824,10 +831,10 @@ pub mod eq_sumcheck {
         i3.par_iter_mut()
       ),
       |c0, c1, c2, c3| {
-        let g0 = c0.cache_and_evaluate(*w0);
-        let g1 = c1.cache_and_evaluate(*w1);
-        let g2 = c2.cache_and_evaluate(*w2);
-        let g3 = c3.cache_and_evaluate(*w3);
+        let g0 = c0.cache_and_evaluate::<EVALUATE_T_0>(*w0);
+        let g1 = c1.cache_and_evaluate::<EVALUATE_T_0>(*w1);
+        let g2 = c2.cache_and_evaluate::<EVALUATE_T_0>(*w2);
+        let g3 = c3.cache_and_evaluate::<EVALUATE_T_0>(*w3);
         (g0.0 + g1.0 + g2.0 + g3.0, g0.1 + g1.1 + g2.1 + g3.1)
       }
     )
@@ -840,6 +847,32 @@ pub mod eq_sumcheck {
       || (Scalar::ZERO, Scalar::ZERO),
       |a, b| (a.0 + b.0, a.1 + b.1),
     )
+  }
+
+  /// Caches four Logup-GKR instances' deltas, optionally taking `t(0)` from the
+  /// caller instead of evaluating it over the low halves.
+  #[allow(clippy::too_many_arguments)]
+  fn cache_four_logup_gate_deltas_with_t_0<Scalar, Factor>(
+    nl: &mut [MultilinearPolynomial<Scalar>],
+    nr: &mut [MultilinearPolynomial<Scalar>],
+    dl: &mut [MultilinearPolynomial<Scalar>],
+    dr: &mut [MultilinearPolynomial<Scalar>],
+    weights: &[(Scalar, Scalar)],
+    t_0: Option<Scalar>,
+    factor: &Factor,
+  ) -> (Scalar, Scalar)
+  where
+    Scalar: PrimeField,
+    Factor: Fn(usize) -> Scalar + Sync,
+  {
+    match t_0 {
+      Some(t_0) => {
+        let (_, t_inf) =
+          cache_four_logup_gate_deltas::<false, _, _>(nl, nr, dl, dr, weights, factor);
+        (t_0, t_inf)
+      }
+      None => cache_four_logup_gate_deltas::<true, _, _>(nl, nr, dl, dr, weights, factor),
+    }
   }
 
   impl<E: Engine> EqSumCheckInstance<E> {
@@ -1267,17 +1300,18 @@ pub mod eq_sumcheck {
     /// Evaluates ppSNARK's four Logup-GKR sub-instances and caches each
     /// top-variable delta in its MLE's high half.
     ///
-    /// The inner polynomial is degree 2 in `X` (product of two linear factors),
-    /// so BDDT claim derivation applies: only `t(0)` and `t(inf)` are summed over
-    /// `N`, and `s(-1)` is derived from the claim (2 N-scaling sums, not 3).
-    /// Falls back to a third sum when `tau=0` makes the derivation impossible.
+    /// The scan evaluates `t(0)` and `t(inf)`. BDDT claim derivation obtains
+    /// `s(-1)`, falling back to a third sum when the equality factor at `X=1`
+    /// is noninvertible.
+    /// `claim` must be the current `s(0) + s(1)` claim. Returns
+    /// `(s(0), X^3 coefficient of s, s(-1))`.
     /// Every input must subsequently be bound with
     /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta`.
     ///
     /// # Panics
     ///
-    /// Panics unless exactly four sub-instances are supplied, matching
-    /// ppSNARK's row/column table/access layout.
+    /// Panics unless all argument slices contain four equally sized, nonconstant
+    /// MLEs matching the current equality-sumcheck round.
     #[inline]
     #[allow(clippy::too_many_arguments)]
     pub fn evaluation_points_logup_gate_and_cache_deltas(
@@ -1287,6 +1321,57 @@ pub mod eq_sumcheck {
       dl: &mut [MultilinearPolynomial<E::Scalar>],
       dr: &mut [MultilinearPolynomial<E::Scalar>],
       weights: &[(E::Scalar, E::Scalar)],
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      self.evaluation_points_logup_gate_and_cache_deltas_inner(nl, nr, dl, dr, weights, None, claim)
+    }
+
+    /// Round-0 specialization that accepts the already-evaluated inner `t(0)`.
+    ///
+    /// `t_0` is the weighted inner gate sum at `X=0`, before multiplication by
+    /// the current equality factor. This method still caches every `high - low`
+    /// delta and returns `(s(0), X^3 coefficient of s, s(-1))`; callers must
+    /// subsequently bind with
+    /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless called in round 0 with exactly four compatible
+    /// sub-instances.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluation_points_logup_gate_and_cache_deltas_with_t_0(
+      &self,
+      nl: &mut [MultilinearPolynomial<E::Scalar>],
+      nr: &mut [MultilinearPolynomial<E::Scalar>],
+      dl: &mut [MultilinearPolynomial<E::Scalar>],
+      dr: &mut [MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+      t_0: E::Scalar,
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      assert_eq!(self.round, 1, "precomputed t(0) is only valid in round 0");
+      self.evaluation_points_logup_gate_and_cache_deltas_inner(
+        nl,
+        nr,
+        dl,
+        dr,
+        weights,
+        Some(t_0),
+        claim,
+      )
+    }
+
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn evaluation_points_logup_gate_and_cache_deltas_inner(
+      &self,
+      nl: &mut [MultilinearPolynomial<E::Scalar>],
+      nr: &mut [MultilinearPolynomial<E::Scalar>],
+      dl: &mut [MultilinearPolynomial<E::Scalar>],
+      dr: &mut [MultilinearPolynomial<E::Scalar>],
+      weights: &[(E::Scalar, E::Scalar)],
+      known_t_0: Option<E::Scalar>,
       claim: E::Scalar,
     ) -> (E::Scalar, E::Scalar, E::Scalar) {
       let m = nl.len();
@@ -1304,11 +1389,11 @@ pub mod eq_sumcheck {
       let (t_0, t_inf) = if self.round < self.first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
         let factor = |id| poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
-        cache_four_logup_gate_deltas(nl, nr, dl, dr, weights, &factor)
+        cache_four_logup_gate_deltas_with_t_0(nl, nr, dl, dr, weights, known_t_0, &factor)
       } else {
         let poly_eq_right = self.poly_eq_right_last_half();
         let factor = |id| poly_eq_right[id];
-        cache_four_logup_gate_deltas(nl, nr, dl, dr, weights, &factor)
+        cache_four_logup_gate_deltas_with_t_0(nl, nr, dl, dr, weights, known_t_0, &factor)
       };
 
       if let Some(result) = self.derive_from_claim_deg2(t_0, t_inf, claim) {
@@ -1318,8 +1403,8 @@ pub mod eq_sumcheck {
       }
     }
 
-    /// Fallback for the Logup-GKR gate after the top-variable deltas have been
-    /// cached in every high half.
+    /// Computes `s(-1)` from cached deltas when claim derivation cannot invert
+    /// the current equality factor.
     #[inline]
     #[allow(clippy::too_many_arguments)]
     fn fallback_eval_inf_logup_gate_with_cached_deltas(

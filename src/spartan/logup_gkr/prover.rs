@@ -1,9 +1,7 @@
 //! Prover for the Logup-GKR fractional-sum argument.
 //!
-//! **This prover satisfies the verifier.** The protocol — transcript order,
-//! challenge labels, and the per-layer sumcheck contract — is defined in
-//! `verifier.rs`; this file produces a proof the verifier accepts, importing the
-//! verifier's `spec` labels and `absorb_fraction` rather than restating them.
+//! Implements the prover side of the Logup-GKR protocol defined in
+//! `verifier.rs`, sharing its transcript labels and fraction-absorption order.
 //!
 //! It builds one equal-height tree per input, folds them leaf→root, and for each
 //! internal depth runs one transparent cubic sumcheck
@@ -44,10 +42,9 @@ use crate::spartan::logup_gkr::verifier::{absorb_fraction, spec};
 ///
 /// The `eq(τ, ·)` factor is handled by the shared `EqSumCheckInstance`
 /// (Gruen eq-factoring, eprint 2024/108: half-size eq tables + O(1) per-round
-/// bind), and each round polynomial is built from 2 N-scaling sums via BDDT
-/// claim derivation (eprint 2025/1117 §6.2) — `t(0)` and `t(∞)`, with `s(-1)`
-/// derived from the running claim. This matches the verifier's reconciliation
-/// of the final value as the transparent `eq(τ,r) · G(r)`.
+/// bind), and BDDT claim derivation (eprint 2025/1117 §6.2). The four-instance
+/// path reuses the preceding layer's left claims for round-0 `t(0)`, so that
+/// round scans only for `t(∞)`; later rounds normally scan for both values.
 ///
 /// The four half-MLEs are passed struct-of-arrays (`nl`/`nr`/`dl`/`dr`, one
 /// entry per instance) so the eq instance can index them directly. Returns the
@@ -56,7 +53,8 @@ use crate::spartan::logup_gkr::verifier::{absorb_fraction, spec};
 ///
 /// ppSNARK's four-sub-instance path caches each top-variable delta during
 /// evaluation and reuses it during binding; other instance counts retain the
-/// general non-mutating evaluation path.
+/// general non-mutating evaluation path. `previous_finals` must be the preceding
+/// parent reduction's claims in the same instance order as the four MLE slices.
 #[allow(clippy::type_complexity)]
 fn prove_layer_sumcheck<E: Engine>(
   claim: E::Scalar,
@@ -66,6 +64,7 @@ fn prove_layer_sumcheck<E: Engine>(
   dl: &mut [MultilinearPolynomial<E::Scalar>],
   dr: &mut [MultilinearPolynomial<E::Scalar>],
   lambda: E::Scalar,
+  previous_finals: &[LayerFinalClaim<E>],
   transcript: &mut E::TE,
 ) -> Result<
   (
@@ -101,11 +100,40 @@ fn prove_layer_sumcheck<E: Engine>(
     })
     .collect();
 
-  for _ in 0..num_rounds {
+  // The preceding layer's left claims are this layer's round-0 t(0)
+  // evaluations at `taus[1..]`.
+  let round0_t_0 = cache_deltas.then(|| {
+    assert_eq!(previous_finals.len(), m);
+    previous_finals
+      .iter()
+      .zip(&weights)
+      .map(|(fc, (w_num, w_den))| *w_num * fc.left.num + *w_den * fc.left.den)
+      .sum()
+  });
+
+  for round in 0..num_rounds {
     // Round polynomial s(X) = eq(τ,X) · G(X), degree 3. BDDT derivation returns
     // (s(0), cubic coeff, s(-1)); the verifier reconstructs s(1) = claim - s(0).
     let (s_0, s_cubic, s_m1) = if cache_deltas {
-      eq.evaluation_points_logup_gate_and_cache_deltas(nl, nr, dl, dr, &weights, claim_per_round)
+      match (round, round0_t_0) {
+        (0, Some(t_0)) => eq.evaluation_points_logup_gate_and_cache_deltas_with_t_0(
+          nl,
+          nr,
+          dl,
+          dr,
+          &weights,
+          t_0,
+          claim_per_round,
+        ),
+        _ => eq.evaluation_points_logup_gate_and_cache_deltas(
+          nl,
+          nr,
+          dl,
+          dr,
+          &weights,
+          claim_per_round,
+        ),
+      }
     } else {
       eq.evaluation_points_logup_gate(nl, nr, dl, dr, &weights, claim_per_round)
     };
@@ -235,6 +263,9 @@ pub fn prove<E: Engine>(
     } else {
       // Sumcheck over (num_vars - j) variables. The 2m sub-claims are batched by
       // distinct powers of λ (Horner over [p_0,q_0,p_1,q_1,...]) — see verifier.
+      let previous_finals = final_claims_by_layer
+        .last()
+        .expect("every sumcheck layer follows a completed parent reduction");
       let claim: E::Scalar = {
         let mut acc = E::Scalar::ZERO;
         let mut pw = E::Scalar::ONE;
@@ -273,6 +304,7 @@ pub fn prove<E: Engine>(
         &mut dl,
         &mut dr,
         lambda,
+        previous_finals,
         transcript,
       )?;
 
@@ -337,10 +369,6 @@ mod tests {
     MultilinearPolynomial::new(v.into_iter().map(Fr::from).collect())
   }
 
-  fn frac_eq(n0: Fr, d0: Fr, n1: Fr, d1: Fr) -> bool {
-    n0 * d1 == n1 * d0
-  }
-
   // Full prove→verify round trip: the verifier must accept, and its returned
   // openings must equal the prover's actual input-layer fractions at the shared
   // evaluation point.
@@ -364,7 +392,8 @@ mod tests {
     let mut tr_v = <E as Engine>::TE::new(b"gkr-test");
     let vclaim = verifier::verify::<E>(&proof, &mut tr_v).expect("verify");
 
-    // Verifier's eval_point and openings must match the prover's.
+    // The verifier point must match the prover point; opening components must
+    // match direct input-MLE evaluations there.
     assert_eq!(
       vclaim.eval_point(),
       claim.eval_point(),
@@ -375,10 +404,8 @@ mod tests {
       let en = n.evaluate(pt);
       let ed = d.evaluate(pt);
       let op = vclaim.openings()[i];
-      assert!(
-        frac_eq(en, ed, op.num, op.den),
-        "opening[{i}] must equal input layer fraction at eval_point"
-      );
+      assert_eq!(op.num, en, "opening[{i}] numerator mismatch");
+      assert_eq!(op.den, ed, "opening[{i}] denominator mismatch");
     }
   }
 
@@ -402,6 +429,24 @@ mod tests {
       (vec![3, 1, 4, 1, 5, 9, 2, 6], vec![2, 7, 1, 8, 2, 8, 1, 8]),
       (vec![1, 1, 1, 1, 1, 1, 1, 1], vec![3, 1, 4, 1, 5, 9, 2, 6]),
     ]);
+  }
+
+  // Exercises cached sumchecks with 1-4 rounds and both eq-factor branches.
+  #[test]
+  fn round_trip_four_instances_n32() {
+    let gen = |seed: u64| -> (Vec<u64>, Vec<u64>) {
+      let mut s = seed.wrapping_mul(0x9e3779b97f4a7c15).wrapping_add(1);
+      let mut next = || {
+        s = s
+          .wrapping_mul(6364136223846793005)
+          .wrapping_add(1442695040888963407);
+        (s >> 33) | 1
+      };
+      let num = (0..32).map(|_| next()).collect();
+      let den = (0..32).map(|_| next()).collect();
+      (num, den)
+    };
+    round_trip(vec![gen(5), gen(6), gen(7), gen(8)]);
   }
 
   #[test]
