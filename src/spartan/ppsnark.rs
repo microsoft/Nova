@@ -768,11 +768,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     // Step 1: Outer sum-check (standalone, degree-3) on size-m polynomials
     // Proves: 0 = Σ_{x∈{0,1}^log(m)} eq(τ,x) * (Az(x) * Bz(x) - (u·Cz(x) + E(x)))
-    let uCz_E: Vec<E::Scalar> = Cz
-      .iter()
-      .zip(W_padded.E.iter())
-      .map(|(cz, e)| U.u * *cz + *e)
-      .collect();
+    let uCz_E: Vec<E::Scalar> =
+      zip_with!(par_iter, (Cz, W_padded.E), |cz, e| U.u * *cz + *e).collect();
     let mut poly_Az = MultilinearPolynomial::new(Az);
     let mut poly_Bz = MultilinearPolynomial::new(Bz);
     let mut poly_uCz_E = MultilinearPolynomial::new(uCz_E);
