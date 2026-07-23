@@ -9,6 +9,7 @@ pub mod direct;
 pub mod logup_gkr;
 pub mod mem_check_logup;
 pub mod mem_check_logup_gkr;
+pub mod mem_check_logup_gkr_fused;
 pub mod ppsnark;
 pub mod snark;
 

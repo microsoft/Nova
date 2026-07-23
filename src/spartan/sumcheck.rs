@@ -423,6 +423,62 @@ impl<E: Engine> SumcheckProof<E> {
       )
   }
 
+  /// Quadratic (`poly_A * poly_B`) evaluation points that also cache each
+  /// top-variable delta into the high halves, mirroring
+  /// [`Self::compute_eval_points_cubic_with_cached_deltas`]. The caller must bind
+  /// both polynomials with
+  /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta` afterwards.
+  ///
+  /// Returns `(eval_0, eval_inf)`.
+  #[inline]
+  pub fn compute_eval_points_quadratic_with_cached_deltas(
+    poly_A: &mut MultilinearPolynomial<E::Scalar>,
+    poly_B: &mut MultilinearPolynomial<E::Scalar>,
+  ) -> (E::Scalar, E::Scalar) {
+    let len = poly_A.len() / 2;
+    assert_eq!(poly_B.len(), poly_A.len());
+
+    let (a_low, a_delta) = poly_A.Z.split_at_mut(len);
+    let (b_low, b_delta) = poly_B.Z.split_at_mut(len);
+
+    let eval =
+      |a_low: &E::Scalar, a_delta: &mut E::Scalar, b_low: &E::Scalar, b_delta: &mut E::Scalar| {
+        *a_delta -= a_low;
+        *b_delta -= b_low;
+        // eval_0 = A_lo·B_lo; eval_inf = A(-1)·B(-1) = (A_lo - dA)·(B_lo - dB).
+        (*a_low * *b_low, (*a_low - *a_delta) * (*b_low - *b_delta))
+      };
+
+    if len < PARALLEL_THRESHOLD {
+      zip_with!(
+        (
+          a_low.iter(),
+          a_delta.iter_mut(),
+          b_low.iter(),
+          b_delta.iter_mut()
+        ),
+        |a_low, a_delta, b_low, b_delta| eval(a_low, a_delta, b_low, b_delta)
+      )
+      .fold((E::Scalar::ZERO, E::Scalar::ZERO), |acc, item| {
+        (acc.0 + item.0, acc.1 + item.1)
+      })
+    } else {
+      zip_with!(
+        (
+          a_low.par_iter(),
+          a_delta.par_iter_mut(),
+          b_low.par_iter(),
+          b_delta.par_iter_mut()
+        ),
+        |a_low, a_delta, b_low, b_delta| eval(a_low, a_delta, b_low, b_delta)
+      )
+      .reduce(
+        || (E::Scalar::ZERO, E::Scalar::ZERO),
+        |a, b| (a.0 + b.0, a.1 + b.1),
+      )
+    }
+  }
+
   /// Computes evaluation points for a cubic product sumcheck round (`poly_A * poly_B * poly_C`).
   ///
   /// Returns `(eval_0, cubic_coeff, eval_inf)` where:
@@ -1716,6 +1772,105 @@ pub mod eq_sumcheck {
       }
     }
 
+    /// Evaluates `eq(tau, X) * ((1 - q0) * e0(X) + q0 * e1(X))` while caching
+    /// `high - low` in both `e0`'s and `e1`'s high halves for the following bind.
+    ///
+    /// This fuses the MSB-weighted `E` combination into the round evaluation, so
+    /// the fused prover never materializes `e_weighted = (1-q0)*e0 + q0*e1`. The
+    /// combined inner polynomial is still degree 1 in `X`, so BDDT claim
+    /// derivation (`derive_from_claim_deg1`) applies unchanged. Both `e0`
+    /// and `e1` must then bind with
+    /// `MultilinearPolynomial::bind_poly_var_top_with_cached_delta`.
+    #[inline]
+    pub fn evaluation_points_quadratic_with_two_inputs_and_cached_delta(
+      &self,
+      poly_e0: &mut MultilinearPolynomial<E::Scalar>,
+      poly_e1: &mut MultilinearPolynomial<E::Scalar>,
+      q0: E::Scalar,
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      debug_assert_eq!(poly_e0.len() % 2, 0);
+      debug_assert_eq!(poly_e0.len(), poly_e1.len());
+      let one_minus_q0 = E::Scalar::ONE - q0;
+
+      let in_first_half = self.round < self.first_half;
+      let half_p = poly_e0.Z.len() / 2;
+      let (e0_low, e0_delta) = poly_e0.Z.split_at_mut(half_p);
+      let (e1_low, e1_delta) = poly_e1.Z.split_at_mut(half_p);
+
+      let t_0 = if in_first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        let eval = |id: usize,
+                    e0_low: &E::Scalar,
+                    e0_delta: &mut E::Scalar,
+                    e1_low: &E::Scalar,
+                    e1_delta: &mut E::Scalar| {
+          *e0_delta -= e0_low;
+          *e1_delta -= e1_low;
+          let combined = one_minus_q0 * *e0_low + q0 * *e1_low;
+          combined * poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask]
+        };
+
+        if half_p < PARALLEL_THRESHOLD {
+          e0_low
+            .iter()
+            .zip(e0_delta.iter_mut())
+            .zip(e1_low.iter())
+            .zip(e1_delta.iter_mut())
+            .enumerate()
+            .map(|(id, (((e0l, e0d), e1l), e1d))| eval(id, e0l, e0d, e1l, e1d))
+            .sum()
+        } else {
+          e0_low
+            .par_iter()
+            .zip(e0_delta.par_iter_mut())
+            .zip(e1_low.par_iter())
+            .zip(e1_delta.par_iter_mut())
+            .enumerate()
+            .map(|(id, (((e0l, e0d), e1l), e1d))| eval(id, e0l, e0d, e1l, e1d))
+            .sum()
+        }
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        let eval = |id: usize,
+                    e0_low: &E::Scalar,
+                    e0_delta: &mut E::Scalar,
+                    e1_low: &E::Scalar,
+                    e1_delta: &mut E::Scalar| {
+          *e0_delta -= e0_low;
+          *e1_delta -= e1_low;
+          let combined = one_minus_q0 * *e0_low + q0 * *e1_low;
+          combined * poly_eq_right[id]
+        };
+
+        if half_p < PARALLEL_THRESHOLD {
+          e0_low
+            .iter()
+            .zip(e0_delta.iter_mut())
+            .zip(e1_low.iter())
+            .zip(e1_delta.iter_mut())
+            .enumerate()
+            .map(|(id, (((e0l, e0d), e1l), e1d))| eval(id, e0l, e0d, e1l, e1d))
+            .sum()
+        } else {
+          e0_low
+            .par_iter()
+            .zip(e0_delta.par_iter_mut())
+            .zip(e1_low.par_iter())
+            .zip(e1_delta.par_iter_mut())
+            .enumerate()
+            .map(|(id, (((e0l, e0d), e1l), e1d))| eval(id, e0l, e0d, e1l, e1d))
+            .sum()
+        }
+      };
+
+      if let Some(result) = self.derive_from_claim_deg1(t_0, claim) {
+        result
+      } else {
+        self.fallback_eval_inf_two_inputs_with_cached_delta(t_0, poly_e0, poly_e1, q0)
+      }
+    }
+
     /// Fallback for three-input case: compute eval_inf via third N-scaling sum
     /// when claim-based derivation is impossible (tau=0).
     #[inline]
@@ -1889,6 +2044,57 @@ pub mod eq_sumcheck {
         (0..half_p)
           .into_par_iter()
           .map(|id| (low[id] - delta[id]) * poly_eq_right[id])
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      };
+
+      let s_m1 = eq_m1 * p * t_m1;
+      (s_0, s_leading, s_m1)
+    }
+
+    /// `tau = 0` fallback for the two-input (`e0`/`e1`) cached-delta kernel:
+    /// computes `s(-1)` from the already-cached deltas when claim derivation
+    /// cannot invert the equality factor.
+    #[inline]
+    fn fallback_eval_inf_two_inputs_with_cached_delta(
+      &self,
+      t_0: E::Scalar,
+      poly_e0: &MultilinearPolynomial<E::Scalar>,
+      poly_e1: &MultilinearPolynomial<E::Scalar>,
+      q0: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      let one_minus_q0 = E::Scalar::ONE - q0;
+      let p = self.eval_eq_left;
+      let (eq_0, _eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
+
+      let s_0 = eq_0 * p * t_0;
+      let s_leading = E::Scalar::ZERO;
+
+      let half_p = poly_e0.Z.len() / 2;
+      let (e0_low, e0_delta) = poly_e0.Z.split_at(half_p);
+      let (e1_low, e1_delta) = poly_e1.Z.split_at(half_p);
+
+      // combined(-1) = (1-q0)*(e0_low - e0_delta) + q0*(e1_low - e1_delta),
+      // where e{0,1}_delta already hold high - low from the eval pass.
+      let t_m1 = if self.round < self.first_half {
+        let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let factor = poly_eq_left[id >> second_half] * poly_eq_right[id & low_mask];
+            let combined_m1 =
+              one_minus_q0 * (e0_low[id] - e0_delta[id]) + q0 * (e1_low[id] - e1_delta[id]);
+            combined_m1 * factor
+          })
+          .reduce(|| E::Scalar::ZERO, |a, b| a + b)
+      } else {
+        let poly_eq_right = self.poly_eq_right_last_half();
+        (0..half_p)
+          .into_par_iter()
+          .map(|id| {
+            let combined_m1 =
+              one_minus_q0 * (e0_low[id] - e0_delta[id]) + q0 * (e1_low[id] - e1_delta[id]);
+            combined_m1 * poly_eq_right[id]
+          })
           .reduce(|| E::Scalar::ZERO, |a, b| a + b)
       };
 

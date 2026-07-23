@@ -101,6 +101,24 @@ pub struct LogupGkrProof<E: Engine> {
   pub sumchecks: Vec<LayerSumcheck<E>>,
 }
 
+/// The GKR **prefix** proof: every layer reduction except the last. Carried by
+/// the ppSNARK fused memory-check, where the last layer is proven jointly with
+/// the Inner sumcheck instead of being folded down here.
+///
+/// For height `N = 2^n`, `prefix_final_claims` holds the `n-1` prefix layers
+/// (output→input) and `prefix_sumchecks` the `n-2` sumchecks (the root reduction
+/// carries none). For `n = 1` both are empty (the single layer is the last one).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct LogupGkrPrefixProof<E: Engine> {
+  /// Per-instance output-layer (root) claims, absorbed first.
+  pub initial_claims: Vec<LayerClaim<E>>,
+  /// The `n-1` prefix layers' split final claims, output→input.
+  pub prefix_final_claims: Vec<Vec<LayerFinalClaim<E>>>,
+  /// The `n-2` prefix layer sumchecks.
+  pub prefix_sumchecks: Vec<LayerSumcheck<E>>,
+}
+
 /// Verifier output — a **continuation token** carrying the shared opening
 /// claim, with its point field named Nova's `eval_point`.
 ///
