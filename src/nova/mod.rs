@@ -1176,6 +1176,66 @@ mod tests {
     test_ivc_trivial_with::<Secp256k1Engine, Secq256k1Engine>();
   }
 
+  /// A `RecursiveSNARK` whose witness vectors do not match the shape must be
+  /// rejected, not abort the process.
+  ///
+  /// `RecursiveSNARK` derives `Deserialize` with no validation of its internal
+  /// vector lengths, so a verifier that accepts one from an untrusted source —
+  /// which is what a succinct proof is for — can be handed any shape at all.
+  /// `verify`'s pre-checks cover `i`, `z0` and the `X` lengths, and the
+  /// output-hash check does not cover `W` or `E`, so a proof with one witness
+  /// element added or removed reaches the satisfiability check with a length
+  /// that used to be asserted rather than returned.
+  fn test_ivc_malformed_witness_is_rejected_with<E1, E2>()
+  where
+    E1: Engine<Base = <E2 as Engine>::Scalar>,
+    E2: Engine<Base = <E1 as Engine>::Scalar>,
+  {
+    let test_circuit = TrivialCircuit::<<E1 as Engine>::Scalar>::default();
+    let pp = PublicParams::<E1, E2, TrivialCircuit<<E1 as Engine>::Scalar>>::setup(
+      &test_circuit,
+      &*default_ck_hint(),
+      &*default_ck_hint(),
+    )
+    .unwrap();
+    let z0 = [<E1 as Engine>::Scalar::ZERO];
+
+    let mut recursive_snark = RecursiveSNARK::new(&pp, &test_circuit, &z0).unwrap();
+    recursive_snark.prove_step(&pp, &test_circuit).unwrap();
+    assert!(recursive_snark.verify(&pp, 1, &z0).is_ok());
+
+    // One element too many in the primary running witness.
+    let mut grown = recursive_snark.clone();
+    grown.r_W_primary.W.push(<E1 as Engine>::Scalar::ZERO);
+    assert!(matches!(
+      grown.verify(&pp, 1, &z0),
+      Err(NovaError::InvalidWitnessLength)
+    ));
+
+    // One element too few in the primary error vector.
+    let mut shrunk = recursive_snark.clone();
+    shrunk.r_W_primary.E.pop();
+    assert!(matches!(
+      shrunk.verify(&pp, 1, &z0),
+      Err(NovaError::InvalidWitnessLength)
+    ));
+
+    // And on the secondary curve, whose incoming witness goes through
+    // `is_sat` rather than `is_sat_relaxed`.
+    let mut secondary = recursive_snark.clone();
+    secondary.l_w_secondary.W.push(<E2 as Engine>::Scalar::ZERO);
+    assert!(matches!(
+      secondary.verify(&pp, 1, &z0),
+      Err(NovaError::InvalidWitnessLength)
+    ));
+  }
+
+  #[test]
+  fn test_ivc_malformed_witness_is_rejected() {
+    test_ivc_malformed_witness_is_rejected_with::<PallasEngine, VestaEngine>();
+    test_ivc_malformed_witness_is_rejected_with::<Bn256EngineKZG, GrumpkinEngine>();
+  }
+
   fn test_ivc_nontrivial_with<E1, E2>()
   where
     E1: Engine<Base = <E2 as Engine>::Scalar>,

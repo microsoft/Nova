@@ -450,9 +450,21 @@ impl<E: Engine> R1CSShape<E> {
     U: &RelaxedR1CSInstance<E>,
     W: &RelaxedR1CSWitness<E>,
   ) -> Result<(), NovaError> {
-    assert_eq!(W.W.len(), self.num_vars);
-    assert_eq!(W.E.len(), self.num_cons);
-    assert_eq!(U.X.len(), self.num_io);
+    // A `RelaxedR1CSWitness` can arrive from `Deserialize` with any lengths at
+    // all, so these are checks on untrusted input rather than internal
+    // invariants: assert here and a verifier that accepts a proof from a peer
+    // aborts instead of rejecting it.
+    //
+    // `W` and `X` are also covered one call deeper, since `multiply_vec`
+    // returns `InvalidWitnessLength` when `z` does not match the shape.
+    // `E` is not: it is not part of `z`, and a short one is an out-of-bounds
+    // index in the satisfiability loop below.
+    if W.W.len() != self.num_vars || W.E.len() != self.num_cons {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+    if U.X.len() != self.num_io {
+      return Err(NovaError::InvalidInputLength);
+    }
 
     // verify if Az * Bz = u*Cz + E
     let res_eq = {
@@ -496,8 +508,14 @@ impl<E: Engine> R1CSShape<E> {
     U: &R1CSInstance<E>,
     W: &R1CSWitness<E>,
   ) -> Result<(), NovaError> {
-    assert_eq!(W.W.len(), self.num_vars);
-    assert_eq!(U.X.len(), self.num_io);
+    // Same reasoning as `is_sat_relaxed`: attacker-supplied lengths, not
+    // internal invariants.
+    if W.W.len() != self.num_vars {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+    if U.X.len() != self.num_io {
+      return Err(NovaError::InvalidInputLength);
+    }
 
     // verify if Az * Bz = u*Cz
     let res_eq = {
