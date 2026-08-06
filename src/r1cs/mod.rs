@@ -789,13 +789,22 @@ impl<E: Engine> R1CSShape<E> {
 impl<E: Engine> R1CSWitness<E> {
   /// A method to create a witness object using a vector of scalars
   pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    Self::new_with_blind(S, W, E::Scalar::random(&mut OsRng))
+  }
+
+  /// Creates a witness using a caller-supplied commitment blinding factor.
+  ///
+  /// The blind must be uniformly random, secret, and unique to this witness
+  /// commitment. Reusing or exposing it can weaken zero knowledge.
+  pub fn new_with_blind(
+    S: &R1CSShape<E>,
+    W: &[E::Scalar],
+    r_W: E::Scalar,
+  ) -> Result<R1CSWitness<E>, NovaError> {
     let mut W = W.to_vec();
     W.resize(S.num_vars, E::Scalar::ZERO);
 
-    Ok(R1CSWitness {
-      W,
-      r_W: E::Scalar::random(&mut OsRng),
-    })
+    Ok(R1CSWitness { W, r_W })
   }
 
   /// Returns a reference to the witness vector W.
@@ -1416,6 +1425,27 @@ mod tests {
     test_random_sample_with::<PallasEngine>();
     test_random_sample_with::<Bn256EngineKZG>();
     test_random_sample_with::<Secp256k1Engine>();
+  }
+
+  #[test]
+  fn test_witness_with_blind_is_deterministic() {
+    let shape = tiny_r1cs::<Bn256EngineKZG>(4);
+    let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
+    let values = vec![<Bn256EngineKZG as Engine>::Scalar::ONE; 3];
+    let blind = <Bn256EngineKZG as Engine>::Scalar::from(42_u64);
+
+    let witness_1 = R1CSWitness::new_with_blind(&shape, &values, blind).unwrap();
+    let witness_2 = R1CSWitness::new_with_blind(&shape, &values, blind).unwrap();
+    let witness_3 = R1CSWitness::new_with_blind(
+      &shape,
+      &values,
+      <Bn256EngineKZG as Engine>::Scalar::from(43_u64),
+    )
+    .unwrap();
+
+    assert_eq!(witness_1, witness_2);
+    assert_eq!(witness_1.commit(&ck), witness_2.commit(&ck));
+    assert_ne!(witness_1.commit(&ck), witness_3.commit(&ck));
   }
 
   fn test_multiply_vec_pair_with<E: Engine>() {
