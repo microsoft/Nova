@@ -19,6 +19,23 @@ pub trait NovaWitness<E: Engine> {
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
 }
 
+/// Extension methods for constructing witnesses with explicit randomness.
+///
+/// # Security
+///
+/// Callers must supply a uniformly random, secret blind that is not reused for
+/// another witness commitment. Deterministic replay may derive it from a
+/// uniformly random secret root using a unique, domain-separated coordinate.
+pub trait NovaWitnessWithBlind<E: Engine> {
+  /// Return an instance and witness with a caller-supplied witness blind.
+  fn r1cs_instance_and_witness_with_blind(
+    &self,
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+    r_W: E::Scalar,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
+}
+
 /// `NovaShape` provides methods for acquiring `R1CSShape` from implementers.
 pub trait NovaShape<E: Engine> {
   /// Return an appropriate `R1CSShape` struct.
@@ -33,11 +50,23 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
     let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
     let X = &self.input_assignment()[1..];
-
     let comm_W = W.commit(ck);
-
     let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
+    Ok((instance, W))
+  }
+}
 
+impl<E: Engine> NovaWitnessWithBlind<E> for SatisfyingAssignment<E> {
+  fn r1cs_instance_and_witness_with_blind(
+    &self,
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+    r_W: E::Scalar,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
+    let W = R1CSWitness::<E>::new_with_blind(shape, self.aux_assignment(), r_W)?;
+    let X = &self.input_assignment()[1..];
+    let comm_W = W.commit(ck);
+    let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
     Ok((instance, W))
   }
 }
