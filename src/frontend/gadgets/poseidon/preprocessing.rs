@@ -74,7 +74,7 @@ pub(crate) fn compress_round_constants<F: PrimeField>(
   // Everything in here is dev-driven testing.
   // Dev test case only checks one deep.
   if partial_preprocessed == 1 {
-    // Check assumptions about how the fold calculating round_acc  manifested.
+    // Check assumptions about how the fold calculating round_acc manifested.
 
     // The last round containing unpreprocessed constants which should be compressed.
     let terminal_constants_round = half_full_rounds + partial_rounds;

@@ -82,7 +82,7 @@ impl<E: Engine> AllocatedRelaxedR1CSInstance<E> {
     )?;
 
     // u << |E::Base| despite the fact that u is a scalar.
-    // So we parse all of its bytes as a E::Base element
+    // So we parse all of its bytes as an E::Base element
     let u = alloc_scalar_as_base::<E, _>(cs.namespace(|| "allocate u"), inst.map(|inst| inst.u))?;
 
     // Allocate X0 and X1. If the input instance is None, then allocate default values 0.

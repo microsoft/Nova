@@ -65,7 +65,7 @@ impl<Scalar: PrimeField> Elt<Scalar> {
     }
   }
 
-  /// Get the [`LinearCombination`]  of the Elt.
+  /// Get the [`LinearCombination`] of the Elt.
   pub fn lc(&self) -> LinearCombination<Scalar> {
     match self {
       Self::Num(num) => num.lc(Scalar::ONE),

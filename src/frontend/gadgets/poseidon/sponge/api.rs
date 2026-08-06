@@ -1,4 +1,4 @@
-/// This module implements a variant of the 'Secure Sponge API for Field Elements':  https://hackmd.io/bHgsH6mMStCVibM_wYvb2w
+/// This module implements a variant of the 'Secure Sponge API for Field Elements': https://hackmd.io/bHgsH6mMStCVibM_wYvb2w
 ///
 /// The API is defined by the `SpongeAPI` trait, which is implemented in terms of the `InnerSpongeAPI` trait.
 /// `Neptune` provides implementations of `InnerSpongeAPI` for both `sponge::Sponge` and `sponge_circuit::SpongeCircuit`.
