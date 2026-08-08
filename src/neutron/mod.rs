@@ -388,6 +388,9 @@ where
     if is_num_steps_zero
       || is_num_steps_not_match
       || is_inputs_not_match
+      || z0.len() != pp.F_arity
+      || self.z0.len() != pp.F_arity
+      || self.zi.len() != pp.F_arity
       || is_instance_has_two_outputs
     {
       return Err(NovaError::ProofVerifyError {
@@ -586,6 +589,13 @@ mod tests {
     // verify the recursive SNARK
     let res = recursive_snark.verify(&pp, num_steps, &[<E1 as Engine>::Scalar::ZERO]);
     assert!(res.is_ok(), "verify failed: {:?}", res.err());
+
+    let mut invalid_z0 = recursive_snark.z0.clone();
+    invalid_z0.extend_from_slice(&recursive_snark.zi);
+    let mut invalid_snark = recursive_snark.clone();
+    invalid_snark.z0 = invalid_z0.clone();
+    invalid_snark.zi.clear();
+    assert!(invalid_snark.verify(&pp, num_steps, &invalid_z0).is_err());
   }
 
   #[test]

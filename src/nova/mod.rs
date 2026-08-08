@@ -587,6 +587,9 @@ where
     if is_num_steps_zero
       || is_num_steps_not_match
       || is_inputs_not_match
+      || z0.len() != pp.F_arity
+      || self.z0.len() != pp.F_arity
+      || self.zi.len() != pp.F_arity
       || is_instance_has_two_outputs
     {
       return Err(NovaError::ProofVerifyError {
@@ -919,6 +922,12 @@ where
       });
     }
 
+    if z0.len() != vk.F_arity || self.zn.len() != vk.F_arity {
+      return Err(NovaError::ProofVerifyError {
+        reason: "Invalid input or output arity".to_string(),
+      });
+    }
+
     // check if the (relaxed) R1CS instances have two public outputs
     if self.l_u_secondary.X.len() != 2
       || self.r_U_primary.X.len() != 2
@@ -1167,6 +1176,13 @@ mod tests {
     // verify the recursive SNARK
     let res = recursive_snark.verify(&pp, num_steps, &[<E1 as Engine>::Scalar::ZERO]);
     assert!(res.is_ok());
+
+    let mut invalid_z0 = recursive_snark.z0.clone();
+    invalid_z0.extend_from_slice(&recursive_snark.zi);
+    let mut invalid_snark = recursive_snark.clone();
+    invalid_snark.z0 = invalid_z0.clone();
+    invalid_snark.zi.clear();
+    assert!(invalid_snark.verify(&pp, num_steps, &invalid_z0).is_err());
   }
 
   #[test]
@@ -1344,11 +1360,18 @@ mod tests {
     // produce a compressed SNARK
     let res = CompressedSNARK::<_, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
     assert!(res.is_ok());
-    let compressed_snark = res.unwrap();
+    let mut compressed_snark = res.unwrap();
 
     // verify the compressed SNARK
     let res = compressed_snark.verify(&vk, num_steps, &[<E1 as Engine>::Scalar::ZERO]);
     assert!(res.is_ok());
+
+    let mut invalid_z0 = vec![<E1 as Engine>::Scalar::ZERO];
+    invalid_z0.extend_from_slice(&compressed_snark.zn);
+    compressed_snark.zn.clear();
+    assert!(compressed_snark
+      .verify(&vk, num_steps, &invalid_z0)
+      .is_err());
   }
 
   #[test]
