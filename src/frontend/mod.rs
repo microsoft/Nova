@@ -39,7 +39,7 @@ mod tests {
     r1cs::R1CSShape,
     traits::{snark::default_ck_hint, Engine},
   };
-  use ff::PrimeField;
+  use ff::{Field, PrimeField};
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(cs: &mut CS) {
     // get two bits as input and check that they are indeed bits
