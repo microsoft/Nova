@@ -22,6 +22,7 @@ use crate::{
 };
 use core::marker::PhantomData;
 use ff::Field;
+use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
@@ -150,7 +151,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
 
     let _ = circuit.synthesize(&mut cs);
     let (u, w) = cs
-      .r1cs_instance_and_witness(&pk.S, &pk.ck)
+      .r1cs_instance_and_witness(&pk.S, &pk.ck, E::Scalar::random(&mut OsRng))
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness".to_string(),
       })?;

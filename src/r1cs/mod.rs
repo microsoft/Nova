@@ -805,16 +805,11 @@ impl<E: Engine> R1CSShape<E> {
 }
 
 impl<E: Engine> R1CSWitness<E> {
-  /// A method to create a witness object using a vector of scalars
-  pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
-    Self::new_with_blind(S, W, E::Scalar::random(&mut OsRng))
-  }
-
   /// Creates a witness using a caller-supplied commitment blinding factor.
   ///
   /// The blind must be uniformly random, secret, and unique to this witness
   /// commitment. Reusing or exposing it can weaken zero knowledge.
-  pub fn new_with_blind(
+  pub fn new(
     S: &R1CSShape<E>,
     W: &[E::Scalar],
     r_W: E::Scalar,
@@ -1452,9 +1447,9 @@ mod tests {
     let values = vec![<Bn256EngineKZG as Engine>::Scalar::ONE; 3];
     let blind = <Bn256EngineKZG as Engine>::Scalar::from(42_u64);
 
-    let witness_1 = R1CSWitness::new_with_blind(&shape, &values, blind).unwrap();
-    let witness_2 = R1CSWitness::new_with_blind(&shape, &values, blind).unwrap();
-    let witness_3 = R1CSWitness::new_with_blind(
+    let witness_1 = R1CSWitness::new(&shape, &values, blind).unwrap();
+    let witness_2 = R1CSWitness::new(&shape, &values, blind).unwrap();
+    let witness_3 = R1CSWitness::new(
       &shape,
       &values,
       <Bn256EngineKZG as Engine>::Scalar::from(43_u64),
