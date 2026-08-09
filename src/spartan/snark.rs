@@ -214,6 +214,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // to the batched polynomial.
     let eval_W = MultilinearPolynomial::evaluate_with(&W.W, &r_y[1..]);
 
+    transcript.absorb(b"w", &[eval_W].as_slice());
+
     let w_vec = vec![PolyEvalWitness { p: W.W }, PolyEvalWitness { p: W.E }];
     let u_vec = vec![
       PolyEvalInstance {
@@ -354,6 +356,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     if claim_inner_final != claim_inner_final_expected {
       return Err(NovaError::InvalidSumcheckProof);
     }
+
+    transcript.absorb(b"w", &[self.eval_W].as_slice());
 
     // add claims about W and E polynomials
     let u_vec: Vec<PolyEvalInstance<E>> = vec![

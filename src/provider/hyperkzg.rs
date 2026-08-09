@@ -842,7 +842,11 @@ where
   }
 }
 
-/// Provides an implementation of a polynomial evaluation engine using KZG
+/// Provides an implementation of a polynomial evaluation engine using KZG.
+///
+/// This implementation relies on the [`EvaluationEngineTrait`] transcript
+/// contract: callers must bind the commitment, evaluation point, and claimed
+/// evaluation to the transcript before proving or verifying.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EvaluationEngine<E: Engine> {
   _p: PhantomData<E>,

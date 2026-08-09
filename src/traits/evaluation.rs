@@ -7,7 +7,17 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
-/// A trait that ties different pieces of the commitment evaluation together
+/// A trait that ties different pieces of the commitment evaluation together.
+///
+/// This trait is designed for use within a higher-level protocol transcript.
+/// Before calling [`Self::prove`] or [`Self::verify`], the caller must bind the
+/// complete evaluation instance (the commitment, evaluation point, and claimed
+/// evaluation) to the transcript. Prover and verifier callers must use the same
+/// domain separation and absorption order.
+///
+/// Standalone users are responsible for establishing this transcript context
+/// before invoking either method. Implementations may rely on this context
+/// rather than absorbing the evaluation instance again.
 pub trait EvaluationEngineTrait<E: Engine>: Clone + Send + Sync {
   /// A type that holds the prover key
   type ProverKey: Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
