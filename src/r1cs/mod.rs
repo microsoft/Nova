@@ -807,8 +807,9 @@ impl<E: Engine> R1CSShape<E> {
 impl<E: Engine> R1CSWitness<E> {
   /// Creates a witness using a caller-supplied commitment blinding factor.
   ///
-  /// The blind must be uniformly random, secret, and unique to this witness
-  /// commitment. Reusing or exposing it can weaken zero knowledge.
+  /// Hiding commitments require a uniformly random, secret, single-use blind.
+  /// Protocols that explicitly derandomize a commitment may instead reveal
+  /// the blind as part of the proof.
   pub fn new(
     S: &R1CSShape<E>,
     W: &[E::Scalar],

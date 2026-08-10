@@ -13,8 +13,9 @@ use ff::PrimeField;
 pub trait NovaWitness<E: Engine> {
   /// Return an instance and witness, given a shape, commitment key, and blind.
   ///
-  /// The blind must be uniformly random, secret, and unique to this witness
-  /// commitment. Reusing or exposing it can weaken zero knowledge.
+  /// Hiding commitments require a uniformly random, secret, single-use blind.
+  /// Protocols that explicitly derandomize a commitment may instead reveal
+  /// the blind as part of the proof.
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<E>,
