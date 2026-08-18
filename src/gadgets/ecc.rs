@@ -1287,9 +1287,7 @@ mod tests {
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
     let (a, e, s) = synthesize_smul::<E1, _>(cs.namespace(|| "synthesize"));
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E2::Scalar::random(&mut OsRng))
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     let a_p: Point<E1> = Point::new(
       a.x.get_value().unwrap(),
@@ -1346,9 +1344,7 @@ mod tests {
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
     let (a, e) = synthesize_add_equal::<E1, _>(cs.namespace(|| "synthesize add equal"));
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E2::Scalar::random(&mut OsRng))
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let a_p: Point<E1> = Point::new(
       a.x.get_value().unwrap(),
       a.y.get_value().unwrap(),
@@ -1409,9 +1405,7 @@ mod tests {
     // Then the satisfying assignment
     let mut cs = SatisfyingAssignment::<E2>::new();
     let e = synthesize_add_negation::<E1, _>(cs.namespace(|| "synthesize add negation"));
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E2::Scalar::random(&mut OsRng))
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     let e_p: Point<E1> = Point::new(
       e.x.get_value().unwrap(),
       e.y.get_value().unwrap(),
@@ -1463,9 +1457,7 @@ mod tests {
     // Build the satisfying assignment.
     let mut cs = SatisfyingAssignment::<E2>::new();
     let (sum, p) = synthesize_add_identity_matching_x::<E1, _>(cs.namespace(|| "assignment"));
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E2::Scalar::ZERO)
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // O + P must equal P (and must NOT be the point at infinity).
     assert!(

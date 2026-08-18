@@ -429,9 +429,7 @@ mod tests {
     let circuit: NeutronAugmentedCircuit<'_, E1, TrivialCircuit<E1::Scalar>> =
       NeutronAugmentedCircuit::new(Some(inputs), &tc, ro_consts);
     let _ = circuit.synthesize(&mut cs);
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E1::Scalar::ZERO)
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
     // Make sure that this is satisfiable
     assert!(shape.is_sat(&ck, &inst, &witness).is_ok());
   }

@@ -68,6 +68,33 @@ pub struct R1CSWitness<E: Engine> {
   pub(crate) r_W: E::Scalar,
 }
 
+/// A blinding factor for an R1CS witness commitment.
+///
+/// Use [`Self::random`] for ordinary proving. Protocols that support exact
+/// replay may reconstruct a previously derived value with
+/// [`Self::from_protocol_scalar`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct R1CSWitnessBlind<E: Engine>(E::Scalar);
+
+impl<E: Engine> R1CSWitnessBlind<E> {
+  /// Samples a fresh witness commitment blinding factor.
+  pub fn random() -> Self {
+    Self(E::Scalar::random(&mut OsRng))
+  }
+
+  /// Wraps a protocol-derived blinding factor.
+  ///
+  /// The caller must ensure the scalar was derived from secret randomness with
+  /// a unique domain and coordinates. Reuse it only to replay the same proof.
+  pub fn from_protocol_scalar(blind: E::Scalar) -> Self {
+    Self(blind)
+  }
+
+  fn into_scalar(self) -> E::Scalar {
+    self.0
+  }
+}
+
 /// A type that holds an R1CS instance
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -805,18 +832,25 @@ impl<E: Engine> R1CSShape<E> {
 }
 
 impl<E: Engine> R1CSWitness<E> {
-  /// Creates a witness using a caller-supplied commitment blinding factor.
-  ///
-  /// Hiding commitments require a uniformly random, secret, single-use blind.
-  pub fn new(
+  /// Creates a witness with a fresh random commitment blinding factor.
+  /// The sampled blind is available through [`Self::r_W`].
+  pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
+    Self::new_with_blind(S, W, R1CSWitnessBlind::random())
+  }
+
+  /// Creates a witness using an explicit typed commitment blinding factor.
+  pub fn new_with_blind(
     S: &R1CSShape<E>,
     W: &[E::Scalar],
-    r_W: E::Scalar,
+    blind: R1CSWitnessBlind<E>,
   ) -> Result<R1CSWitness<E>, NovaError> {
     let mut W = W.to_vec();
     W.resize(S.num_vars, E::Scalar::ZERO);
 
-    Ok(R1CSWitness { W, r_W })
+    Ok(R1CSWitness {
+      W,
+      r_W: blind.into_scalar(),
+    })
   }
 
   /// Returns a reference to the witness vector W.
@@ -1446,12 +1480,22 @@ mod tests {
     let values = vec![<Bn256EngineKZG as Engine>::Scalar::ONE; 3];
     let blind = <Bn256EngineKZG as Engine>::Scalar::from(42_u64);
 
-    let witness_1 = R1CSWitness::new(&shape, &values, blind).unwrap();
-    let witness_2 = R1CSWitness::new(&shape, &values, blind).unwrap();
-    let witness_3 = R1CSWitness::new(
+    let witness_1 = R1CSWitness::new_with_blind(
       &shape,
       &values,
-      <Bn256EngineKZG as Engine>::Scalar::from(43_u64),
+      R1CSWitnessBlind::from_protocol_scalar(blind),
+    )
+    .unwrap();
+    let witness_2 = R1CSWitness::new_with_blind(
+      &shape,
+      &values,
+      R1CSWitnessBlind::from_protocol_scalar(blind),
+    )
+    .unwrap();
+    let witness_3 = R1CSWitness::new_with_blind(
+      &shape,
+      &values,
+      R1CSWitnessBlind::from_protocol_scalar(<Bn256EngineKZG as Engine>::Scalar::from(43_u64)),
     )
     .unwrap();
 

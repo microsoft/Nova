@@ -263,9 +263,7 @@ mod tests {
     // Now get the instance and assignment for one instance
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(E::Scalar::from(5)));
-    let (U1, W1) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E::Scalar::ZERO)
-      .unwrap();
+    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the first instance is satisfiable
     assert!(shape.is_sat(&ck, &U1, &W1).is_ok());
@@ -273,9 +271,7 @@ mod tests {
     // Now get the instance and assignment for second instance
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(E::Scalar::from(135)));
-    let (U2, W2) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E::Scalar::ZERO)
-      .unwrap();
+    let (U2, W2) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that the second instance is satisfiable
     assert!(shape.is_sat(&ck, &U2, &W2).is_ok());
@@ -525,7 +521,7 @@ mod tests {
         };
 
         let W = {
-          let res = R1CSWitness::new(&S, &vars, E::Scalar::ZERO);
+          let res = R1CSWitness::new(&S, &vars);
           assert!(res.is_ok());
           res.unwrap()
         };
@@ -661,7 +657,7 @@ mod tests {
         };
 
         let W = {
-          let res = R1CSWitness::new(&S, &vars, E::Scalar::ZERO);
+          let res = R1CSWitness::new(&S, &vars);
           assert!(res.is_ok());
           res.unwrap()
         };

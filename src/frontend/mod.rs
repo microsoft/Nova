@@ -39,8 +39,7 @@ mod tests {
     r1cs::R1CSShape,
     traits::{snark::default_ck_hint, Engine},
   };
-  use ff::{Field, PrimeField};
-  use rand_core::OsRng;
+  use ff::PrimeField;
 
   fn synthesize_alloc_bit<Fr: PrimeField, CS: ConstraintSystem<Fr>>(cs: &mut CS) {
     // get two bits as input and check that they are indeed bits
@@ -72,9 +71,7 @@ mod tests {
     // Now get the assignment
     let mut cs = SatisfyingAssignment::<E>::new();
     synthesize_alloc_bit(&mut cs);
-    let (inst, witness) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E::Scalar::random(&mut OsRng))
-      .unwrap();
+    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
 
     // Make sure that this is satisfiable
     assert!(shape.is_sat(&ck, &inst, &witness).is_ok());

@@ -256,7 +256,7 @@ mod tests {
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
     let (u, w) = cs
-      .r1cs_instance_and_witness(&shape, &ck, E::Scalar::random(&mut OsRng))
+      .r1cs_instance_and_witness(&shape, &ck)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness".to_string(),
       })?;

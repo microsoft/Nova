@@ -380,11 +380,8 @@ where
       pp.ro_consts_circuit_primary.clone(),
     );
     let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
-    let (u_primary, w_primary) = cs_primary.r1cs_instance_and_witness(
-      &pp.r1cs_shape_primary,
-      &pp.ck_primary,
-      E1::Scalar::random(&mut OsRng),
-    )?;
+    let (u_primary, w_primary) =
+      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
 
     // base case for the secondary
     let mut cs_secondary = SatisfyingAssignment::<E2>::new();
@@ -407,11 +404,8 @@ where
       pp.ro_consts_circuit_secondary.clone(),
     );
     let _ = circuit_secondary.synthesize(&mut cs_secondary)?;
-    let (u_secondary, w_secondary) = cs_secondary.r1cs_instance_and_witness(
-      &pp.r1cs_shape_secondary,
-      &pp.ck_secondary,
-      E2::Scalar::random(&mut OsRng),
-    )?;
+    let (u_secondary, w_secondary) =
+      cs_secondary.r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)?;
 
     // IVC proof for the primary circuit
     let l_w_primary = w_primary;
@@ -501,11 +495,8 @@ where
     );
     let zi_primary = circuit_primary.synthesize(&mut cs_primary)?;
 
-    let (l_u_primary, l_w_primary) = cs_primary.r1cs_instance_and_witness(
-      &pp.r1cs_shape_primary,
-      &pp.ck_primary,
-      E1::Scalar::random(&mut OsRng),
-    )?;
+    let (l_u_primary, l_w_primary) =
+      cs_primary.r1cs_instance_and_witness(&pp.r1cs_shape_primary, &pp.ck_primary)?;
 
     // fold the primary circuit's instance
     let (nifs_primary, (r_U_primary, r_W_primary)) = NIFS::prove(
@@ -544,11 +535,7 @@ where
     let _ = circuit_secondary.synthesize(&mut cs_secondary)?;
 
     let (l_u_secondary, l_w_secondary) = cs_secondary
-      .r1cs_instance_and_witness(
-        &pp.r1cs_shape_secondary,
-        &pp.ck_secondary,
-        E2::Scalar::random(&mut OsRng),
-      )
+      .r1cs_instance_and_witness(&pp.r1cs_shape_secondary, &pp.ck_secondary)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness on the secondary curve".to_string(),
       })?;
