@@ -72,7 +72,7 @@ pub struct R1CSWitness<E: Engine> {
 ///
 /// Use [`Self::random`] for ordinary proving. Protocols that support exact
 /// replay may reconstruct a previously derived value with
-/// [`Self::from_protocol_scalar`].
+/// [`Self::from_scalar`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct R1CSWitnessBlind<E: Engine>(E::Scalar);
 
@@ -86,7 +86,7 @@ impl<E: Engine> R1CSWitnessBlind<E> {
   ///
   /// The caller must ensure the scalar was derived from secret randomness with
   /// a unique domain and coordinates. Reuse it only to replay the same proof.
-  pub fn from_protocol_scalar(blind: E::Scalar) -> Self {
+  pub fn from_scalar(blind: E::Scalar) -> Self {
     Self(blind)
   }
 
@@ -1480,22 +1480,14 @@ mod tests {
     let values = vec![<Bn256EngineKZG as Engine>::Scalar::ONE; 3];
     let blind = <Bn256EngineKZG as Engine>::Scalar::from(42_u64);
 
-    let witness_1 = R1CSWitness::new_with_blind(
-      &shape,
-      &values,
-      R1CSWitnessBlind::from_protocol_scalar(blind),
-    )
-    .unwrap();
-    let witness_2 = R1CSWitness::new_with_blind(
-      &shape,
-      &values,
-      R1CSWitnessBlind::from_protocol_scalar(blind),
-    )
-    .unwrap();
+    let witness_1 =
+      R1CSWitness::new_with_blind(&shape, &values, R1CSWitnessBlind::from_scalar(blind)).unwrap();
+    let witness_2 =
+      R1CSWitness::new_with_blind(&shape, &values, R1CSWitnessBlind::from_scalar(blind)).unwrap();
     let witness_3 = R1CSWitness::new_with_blind(
       &shape,
       &values,
-      R1CSWitnessBlind::from_protocol_scalar(<Bn256EngineKZG as Engine>::Scalar::from(43_u64)),
+      R1CSWitnessBlind::from_scalar(<Bn256EngineKZG as Engine>::Scalar::from(43_u64)),
     )
     .unwrap();
 
