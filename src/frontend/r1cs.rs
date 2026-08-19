@@ -3,7 +3,7 @@ use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::Test
 use crate::{
   errors::NovaError,
   frontend::{Index, LinearCombination},
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, SparseMatrix},
+  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, R1CSWitnessBlind, SparseMatrix},
   traits::Engine,
   CommitmentKey,
 };
@@ -11,11 +11,22 @@ use ff::PrimeField;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<E: Engine> {
-  /// Return an instance and witness, given a shape and ck.
+  /// Returns an instance and witness using a fresh random witness blind.
+  /// The sampled blind is available through [`R1CSWitness::r_W`].
   fn r1cs_instance_and_witness(
     &self,
     shape: &R1CSShape<E>,
     ck: &CommitmentKey<E>,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
+
+  /// Returns an instance and witness using an explicit typed witness blind.
+  ///
+  /// This variant is intended for deterministic protocols and exact replay.
+  fn r1cs_instance_and_witness_with_blind(
+    &self,
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+    blind: R1CSWitnessBlind<E>,
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError>;
 }
 
@@ -33,11 +44,21 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
   ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
     let W = R1CSWitness::<E>::new(shape, self.aux_assignment())?;
     let X = &self.input_assignment()[1..];
-
     let comm_W = W.commit(ck);
-
     let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
+    Ok((instance, W))
+  }
 
+  fn r1cs_instance_and_witness_with_blind(
+    &self,
+    shape: &R1CSShape<E>,
+    ck: &CommitmentKey<E>,
+    blind: R1CSWitnessBlind<E>,
+  ) -> Result<(R1CSInstance<E>, R1CSWitness<E>), NovaError> {
+    let W = R1CSWitness::<E>::new_with_blind(shape, self.aux_assignment(), blind)?;
+    let X = &self.input_assignment()[1..];
+    let comm_W = W.commit(ck);
+    let instance = R1CSInstance::<E>::new(shape, &comm_W, X)?;
     Ok((instance, W))
   }
 }
