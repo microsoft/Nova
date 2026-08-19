@@ -157,11 +157,14 @@ impl Engine for VestaEngine {
 
 #[cfg(test)]
 mod tests {
+  use super::PallasEngine;
   use crate::provider::{
     bn256_grumpkin::bn256, pasta::pallas, secp_secq::secp256k1, traits::DlogGroup,
   };
+  use crate::traits::Engine;
   use digest::{ExtendableOutput, Update};
   use halo2curves::{group::Curve, CurveExt};
+  use rand_core::{RngCore, SeedableRng};
   use sha3::Shake256;
   use std::io::Read;
 
@@ -207,5 +210,22 @@ mod tests {
   #[test]
   fn test_secp256k1_from_label() {
     impl_cycle_pair_test!(secp256k1);
+  }
+
+  #[test]
+  fn test_engine_randomness_is_seed_reproducible() {
+    let mut rng_1 = <PallasEngine as Engine>::RE::from_seed([7_u8; 32]);
+    let mut rng_2 = <PallasEngine as Engine>::RE::from_seed([7_u8; 32]);
+    let mut rng_3 = <PallasEngine as Engine>::RE::from_seed([8_u8; 32]);
+    let mut bytes_1 = [0_u8; 64];
+    let mut bytes_2 = [0_u8; 64];
+    let mut bytes_3 = [0_u8; 64];
+
+    rng_1.fill_bytes(&mut bytes_1);
+    rng_2.fill_bytes(&mut bytes_2);
+    rng_3.fill_bytes(&mut bytes_3);
+
+    assert_eq!(bytes_1, bytes_2);
+    assert_ne!(bytes_1, bytes_3);
   }
 }

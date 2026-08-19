@@ -79,6 +79,8 @@ pub struct R1CSWitnessBlind<E: Engine>(E::Scalar);
 impl<E: Engine> R1CSWitnessBlind<E> {
   /// Samples a fresh witness commitment blinding factor.
   pub fn random() -> Self {
+    // Seed the configured engine from system entropy so all Nova randomness
+    // follows the same engine policy, including caller-seeded protocols.
     Self(E::Scalar::random(&mut E::RE::from_entropy()))
   }
 
