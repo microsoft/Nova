@@ -17,7 +17,7 @@ use crate::{
 use core::cmp::max;
 use ff::Field;
 use once_cell::sync::OnceCell;
-use rand_core::OsRng;
+use rand_core::{OsRng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -79,7 +79,7 @@ pub struct R1CSWitnessBlind<E: Engine>(E::Scalar);
 impl<E: Engine> R1CSWitnessBlind<E> {
   /// Samples a fresh witness commitment blinding factor.
   pub fn random() -> Self {
-    Self(E::Scalar::random(&mut OsRng))
+    Self(E::Scalar::random(&mut E::RE::from_entropy()))
   }
 
   /// Wraps a protocol-derived blinding factor.

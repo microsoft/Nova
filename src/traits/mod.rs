@@ -6,6 +6,7 @@ use crate::{
 use core::fmt::Debug;
 use ff::{PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
+use rand_core::{CryptoRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 
 /// Selects the internal width of the random oracle.
@@ -47,6 +48,12 @@ pub trait Group: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
 
 /// A collection of engines that are required by the library
 pub trait Engine: Clone + Copy + Debug + Send + Sync + Sized + Eq + PartialEq {
+  /// A cryptographically secure, deterministic randomness engine.
+  ///
+  /// Protocol callers seed this engine from fresh entropy for new proofs or
+  /// from recorded, domain-separated entropy for deterministic replay.
+  type RE: RngCore + CryptoRng + SeedableRng<Seed = [u8; 32]> + Send;
+
   /// A type representing an element of the base field of the group
   type Base: PrimeFieldBits
     + TranscriptReprTrait<Self::GE>

@@ -33,6 +33,7 @@ use crate::{
 };
 #[cfg(feature = "io")]
 pub use ptau::{check_sanity_of_ptau_file, read_ptau, write_ptau};
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 
 /// An implementation of Nova traits with HyperKZG over the BN256 curve
@@ -48,6 +49,7 @@ pub struct GrumpkinEngine;
 pub struct Bn256EngineIPA;
 
 impl Engine for Bn256EngineKZG {
+  type RE = ChaCha20Rng;
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
   type GE = bn256::Point;
@@ -60,6 +62,7 @@ impl Engine for Bn256EngineKZG {
 }
 
 impl Engine for Bn256EngineIPA {
+  type RE = ChaCha20Rng;
   type Base = bn256::Base;
   type Scalar = bn256::Scalar;
   type GE = bn256::Point;
@@ -72,6 +75,7 @@ impl Engine for Bn256EngineIPA {
 }
 
 impl Engine for GrumpkinEngine {
+  type RE = ChaCha20Rng;
   type Base = grumpkin::Base;
   type Scalar = grumpkin::Scalar;
   type GE = grumpkin::Point;
@@ -92,6 +96,7 @@ pub struct Secp256k1Engine;
 pub struct Secq256k1Engine;
 
 impl Engine for Secp256k1Engine {
+  type RE = ChaCha20Rng;
   type Base = secp256k1::Base;
   type Scalar = secp256k1::Scalar;
   type GE = secp256k1::Point;
@@ -104,6 +109,7 @@ impl Engine for Secp256k1Engine {
 }
 
 impl Engine for Secq256k1Engine {
+  type RE = ChaCha20Rng;
   type Base = secq256k1::Base;
   type Scalar = secq256k1::Scalar;
   type GE = secq256k1::Point;
@@ -124,6 +130,7 @@ pub struct PallasEngine;
 pub struct VestaEngine;
 
 impl Engine for PallasEngine {
+  type RE = ChaCha20Rng;
   type Base = pallas::Base;
   type Scalar = pallas::Scalar;
   type GE = pallas::Point;
@@ -136,6 +143,7 @@ impl Engine for PallasEngine {
 }
 
 impl Engine for VestaEngine {
+  type RE = ChaCha20Rng;
   type Base = vesta::Base;
   type Scalar = vesta::Scalar;
   type GE = vesta::Point;
