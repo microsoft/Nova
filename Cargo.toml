@@ -1,6 +1,6 @@
 [package]
 name = "nova-snark"
-version = "0.74.0"
+version = "0.75.0"
 authors = ["Srinath Setty <srinath@microsoft.com>"]
 edition = "2021"
 description = "High-speed recursive arguments from folding schemes"
@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/Microsoft/Nova"
 license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
-rust-version = "1.79.0"
+rust-version = "1.88.0"
 
 [dependencies]
 ff = { version = "0.13.0", features = ["derive"] }
@@ -24,7 +24,7 @@ num-bigint = { version = "0.4.6", features = ["serde", "rand"] }
 num-traits = "0.2.19"
 num-integer = "0.1.46"
 serde = { version = "1.0.217", features = ["derive"] }
-serde_with = "3.8.3"
+serde_with = "=3.21.0"
 bincode = { version = "2", features = ["serde", "std"] }
 bitvec = "1.0"
 blitzar = { version = "5.0.0", optional = true }

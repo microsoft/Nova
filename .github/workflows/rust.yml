@@ -26,6 +26,20 @@ jobs:
           command: build
           args: --examples --benches --verbose
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check MSRV for non-GPU features
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: 1.88.0
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --lib --features "io,evm,experimental,test-utils"
+
   build-wasm:
     runs-on: ubuntu-latest
     steps:

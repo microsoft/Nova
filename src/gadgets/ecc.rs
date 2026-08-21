@@ -46,7 +46,7 @@ where
       Ok(coords.map_or(E::Base::ZERO, |c| c.1))
     })?;
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
-      Ok(if coords.map_or(true, |c| c.2) {
+      Ok(if coords.is_none_or(|c| c.2) {
         E::Base::ONE
       } else {
         E::Base::ZERO
@@ -942,7 +942,7 @@ impl<E: Engine> AllocatedNonnativePoint<E> {
     )?;
 
     let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
-      Ok(if coords.map_or(true, |c| c.2) {
+      Ok(if coords.is_none_or(|c| c.2) {
         E::Scalar::ONE
       } else {
         E::Scalar::ZERO
