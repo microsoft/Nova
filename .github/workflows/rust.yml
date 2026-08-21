@@ -30,14 +30,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Check minimum supported Rust version
+      - name: Check MSRV for non-GPU features
         uses: actions-rs/toolchain@v1
         with:
           toolchain: 1.88.0
+          override: true
       - uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --lib
+          args: --lib --features "io,evm,experimental,test-utils"
 
   build-wasm:
     runs-on: ubuntu-latest

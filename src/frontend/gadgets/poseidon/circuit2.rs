@@ -414,8 +414,7 @@ where
   }
 
   fn initial_elements<CS: ConstraintSystem<Scalar>>() -> Vec<Elt<Scalar>> {
-    std::iter::repeat_n(Elt::num_from_fr::<CS>(Scalar::ZERO), A::to_usize() + 1)
-      .collect()
+    std::iter::repeat_n(Elt::num_from_fr::<CS>(Scalar::ZERO), A::to_usize() + 1).collect()
   }
 
   pub fn reset_offsets(&mut self) {
