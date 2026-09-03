@@ -27,6 +27,8 @@ pub use util_cs::test_cs;
 
 #[cfg(test)]
 mod tests {
+  use rand_core::OsRng;
+
   use crate::{
     frontend::{
       num::AllocatedNum,
@@ -71,7 +73,9 @@ mod tests {
     // Now get the assignment
     let mut cs = SatisfyingAssignment::<E>::new();
     synthesize_alloc_bit(&mut cs);
-    let (inst, witness) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
+    let (inst, witness) = cs
+      .r1cs_instance_and_witness(&shape, &ck, &mut OsRng)
+      .unwrap();
 
     // Make sure that this is satisfiable
     assert!(shape.is_sat(&ck, &inst, &witness).is_ok());

@@ -457,7 +457,7 @@ mod tests {
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
     let (U1, W1) = cs
-      .r1cs_instance_and_witness(&shape, &ck)
+      .r1cs_instance_and_witness(&shape, &ck, &mut OsRng)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness".to_string(),
       })
@@ -471,7 +471,7 @@ mod tests {
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
     let (U2, W2) = cs
-      .r1cs_instance_and_witness(&shape, &ck)
+      .r1cs_instance_and_witness(&shape, &ck, &mut OsRng)
       .map_err(|_e| NovaError::UnSat {
         reason: "Unable to generate a satisfying witness".to_string(),
       })
@@ -577,7 +577,7 @@ mod benchmarks {
         .into_par_iter()
         .map(|i| <E as Engine>::Scalar::from(w[i] as u64))
         .collect::<Vec<_>>();
-      R1CSWitness::new(&S, &W).unwrap()
+      R1CSWitness::new(&S, &W, &mut OsRng).unwrap()
     };
 
     let x = vec![E::Scalar::from(0)];
@@ -641,7 +641,7 @@ mod benchmarks {
 
     let mut cs = SatisfyingAssignment::<E>::new();
     let _ = circuit.synthesize(&mut cs);
-    let (U, W) = cs.r1cs_instance_and_witness(&S, &ck).unwrap();
+    let (U, W) = cs.r1cs_instance_and_witness(&S, &ck, &mut OsRng).unwrap();
 
     let S = S.pad();
     let W = W.pad(&S);

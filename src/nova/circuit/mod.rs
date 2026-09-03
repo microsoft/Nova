@@ -359,6 +359,8 @@ impl<E: Engine, SC: StepCircuit<E::Base>> NovaAugmentedCircuit<'_, E, SC> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use rand_core::OsRng;
+
   use crate::{
     frontend::{
       r1cs::{NovaShape, NovaWitness},
@@ -422,7 +424,9 @@ mod tests {
     let circuit1: NovaAugmentedCircuit<'_, E2, TrivialCircuit<<E2 as Engine>::Base>> =
       NovaAugmentedCircuit::new(true, Some(inputs1), &tc1, ro_consts1);
     let _ = circuit1.synthesize(&mut cs1);
-    let (inst1, witness1) = cs1.r1cs_instance_and_witness(&shape1, &ck1).unwrap();
+    let (inst1, witness1) = cs1
+      .r1cs_instance_and_witness(&shape1, &ck1, &mut OsRng)
+      .unwrap();
     // Make sure that this is satisfiable
     assert!(shape1.is_sat(&ck1, &inst1, &witness1).is_ok());
 
@@ -444,7 +448,9 @@ mod tests {
     let circuit2: NovaAugmentedCircuit<'_, E1, TrivialCircuit<<E1 as Engine>::Base>> =
       NovaAugmentedCircuit::new(false, Some(inputs2), &tc2, ro_consts2);
     let _ = circuit2.synthesize(&mut cs2);
-    let (inst2, witness2) = cs2.r1cs_instance_and_witness(&shape2, &ck2).unwrap();
+    let (inst2, witness2) = cs2
+      .r1cs_instance_and_witness(&shape2, &ck2, &mut OsRng)
+      .unwrap();
     // Make sure that it is satisfiable
     assert!(shape2.is_sat(&ck2, &inst2, &witness2).is_ok());
   }

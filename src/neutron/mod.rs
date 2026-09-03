@@ -282,7 +282,7 @@ where
     let circuit: NeutronAugmentedCircuit<'_, E1, C> =
       NeutronAugmentedCircuit::new(Some(inputs), c, pp.ro_consts_circuit.clone());
     let zi = circuit.synthesize(&mut cs)?;
-    let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck)?;
+    let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck, &mut OsRng)?;
 
     assert!((zi.len() == pp.F_arity), "Invalid step length");
 
@@ -345,7 +345,7 @@ where
       NeutronAugmentedCircuit::new(Some(inputs), c, pp.ro_consts_circuit.clone());
     let zi = circuit.synthesize(&mut cs)?;
 
-    let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck)?;
+    let (l_u, l_w) = cs.r1cs_instance_and_witness(&pp.structure.S, &pp.ck, &mut OsRng)?;
 
     // update the running instances and witnesses
     self.zi = zi
