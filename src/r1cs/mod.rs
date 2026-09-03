@@ -17,7 +17,7 @@ use crate::{
 use core::cmp::max;
 use ff::Field;
 use once_cell::sync::OnceCell;
-use rand_core::OsRng;
+use rand_core::{CryptoRng, OsRng, RngCore};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -66,33 +66,6 @@ impl<E: Engine> Eq for R1CSShape<E> {}
 pub struct R1CSWitness<E: Engine> {
   pub(crate) W: Vec<E::Scalar>,
   pub(crate) r_W: E::Scalar,
-}
-
-/// A blinding factor for an R1CS witness commitment.
-///
-/// Use [`Self::random`] for ordinary proving. Protocols that support exact
-/// replay may reconstruct a previously derived value with
-/// [`Self::from_scalar`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct R1CSWitnessBlind<E: Engine>(E::Scalar);
-
-impl<E: Engine> R1CSWitnessBlind<E> {
-  /// Samples a fresh witness commitment blinding factor.
-  pub fn random() -> Self {
-    Self(E::Scalar::random(&mut OsRng))
-  }
-
-  /// Wraps a protocol-derived blinding factor.
-  ///
-  /// The caller must ensure the scalar was derived from secret randomness with
-  /// a unique domain and coordinates. Reuse it only to replay the same proof.
-  pub fn from_scalar(blind: E::Scalar) -> Self {
-    Self(blind)
-  }
-
-  fn into_scalar(self) -> E::Scalar {
-    self.0
-  }
 }
 
 /// A type that holds an R1CS instance
@@ -832,24 +805,19 @@ impl<E: Engine> R1CSShape<E> {
 }
 
 impl<E: Engine> R1CSWitness<E> {
-  /// Creates a witness with a fresh random commitment blinding factor.
+  /// Creates a witness with a fresh commitment blinding factor sampled from `rng`.
   /// The sampled blind is available through [`Self::r_W`].
-  pub fn new(S: &R1CSShape<E>, W: &[E::Scalar]) -> Result<R1CSWitness<E>, NovaError> {
-    Self::new_with_blind(S, W, R1CSWitnessBlind::random())
-  }
-
-  /// Creates a witness using an explicit typed commitment blinding factor.
-  pub fn new_with_blind(
+  pub fn new<R: CryptoRng + RngCore>(
     S: &R1CSShape<E>,
     W: &[E::Scalar],
-    blind: R1CSWitnessBlind<E>,
+    rng: &mut R,
   ) -> Result<R1CSWitness<E>, NovaError> {
     let mut W = W.to_vec();
     W.resize(S.num_vars, E::Scalar::ZERO);
 
     Ok(R1CSWitness {
       W,
-      r_W: blind.into_scalar(),
+      r_W: E::Scalar::random(rng),
     })
   }
 
@@ -1474,22 +1442,20 @@ mod tests {
   }
 
   #[test]
-  fn test_witness_with_blind_is_deterministic() {
+  fn test_witness_rng_is_deterministic() {
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
     let shape = tiny_r1cs::<Bn256EngineKZG>(4);
     let ck = R1CSShape::commitment_key(&[&shape], &[&*default_ck_hint()]).unwrap();
     let values = vec![<Bn256EngineKZG as Engine>::Scalar::ONE; 3];
-    let blind = <Bn256EngineKZG as Engine>::Scalar::from(42_u64);
+    let mut rng_1 = ChaCha20Rng::from_seed([1; 32]);
+    let mut rng_2 = ChaCha20Rng::from_seed([1; 32]);
+    let mut rng_3 = ChaCha20Rng::from_seed([2; 32]);
 
-    let witness_1 =
-      R1CSWitness::new_with_blind(&shape, &values, R1CSWitnessBlind::from_scalar(blind)).unwrap();
-    let witness_2 =
-      R1CSWitness::new_with_blind(&shape, &values, R1CSWitnessBlind::from_scalar(blind)).unwrap();
-    let witness_3 = R1CSWitness::new_with_blind(
-      &shape,
-      &values,
-      R1CSWitnessBlind::from_scalar(<Bn256EngineKZG as Engine>::Scalar::from(43_u64)),
-    )
-    .unwrap();
+    let witness_1 = R1CSWitness::new(&shape, &values, &mut rng_1).unwrap();
+    let witness_2 = R1CSWitness::new(&shape, &values, &mut rng_2).unwrap();
+    let witness_3 = R1CSWitness::new(&shape, &values, &mut rng_3).unwrap();
 
     assert_eq!(witness_1, witness_2);
     assert_eq!(witness_1.commit(&ck), witness_2.commit(&ck));
