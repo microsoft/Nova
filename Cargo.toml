@@ -94,5 +94,8 @@ flamegraph = ["pprof2/flamegraph", "pprof2/criterion"]
 experimental = []
 evm = []
 io = []
+# Use the original inverse-logup memory-check in ppSNARK instead of Logup-GKR.
+# Default (feature off) uses the Logup-GKR memory-check.
+logup-no-gkr = []
 # Enables insecure setup methods that generate random tau. Only for testing!
 test-utils = []
