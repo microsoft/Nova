@@ -3,12 +3,27 @@
 
 use ff::PrimeField;
 
-use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError};
+use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
 
 use super::{
   boolean::{AllocatedBit, Boolean},
   multieq::MultiEq,
 };
+
+/// Add `coeff * b` to `lc` without constructing an intermediate [`LinearCombination`].
+fn push_bool<Scalar: PrimeField>(
+  lc: LinearCombination<Scalar>,
+  one: Variable,
+  coeff: Scalar,
+  b: &Boolean,
+) -> LinearCombination<Scalar> {
+  match b {
+    Boolean::Constant(false) => lc,
+    Boolean::Constant(true) => lc + (coeff, one),
+    Boolean::Is(v) => lc + (coeff, v.get_variable()),
+    Boolean::Not(v) => lc + (coeff, one) - (coeff, v.get_variable()),
+  }
+}
 
 /// Represents an interpretation of 32 `Boolean` objects as an
 /// unsigned integer.
@@ -220,6 +235,10 @@ impl UInt32 {
     assert!(operands.len() >= 2); // Weird trivial cases that should never happen
     assert!(operands.len() <= 10);
 
+    // The wrapped witness generator discards constraints, so avoid constructing
+    // linear combinations that will not be used.
+    let witness_only = cs.get_root().witness_only();
+
     // Compute the maximum value of the sum so we allocate enough bits for
     // the result
     let mut max_value = (operands.len() as u64) * (u64::from(u32::MAX));
@@ -253,7 +272,9 @@ impl UInt32 {
       // the linear combination
       let mut coeff = Scalar::ONE;
       for bit in &op.bits {
-        lc = lc + &bit.lc(CS::one(), coeff);
+        if !witness_only {
+          lc = push_bool(lc, CS::one(), coeff, bit);
+        }
 
         all_constants &= bit.is_constant();
 
@@ -289,7 +310,9 @@ impl UInt32 {
       )?;
 
       // Add this bit to the result combination
-      result_lc = result_lc + (coeff, b.get_variable());
+      if !witness_only {
+        result_lc = result_lc + (coeff, b.get_variable());
+      }
 
       result_bits.push(b.into());
 
