@@ -8,6 +8,7 @@ use crate::frontend::{ConstraintSystem, LinearCombination, SynthesisError, Varia
 #[derive(Debug)]
 pub struct MultiEq<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> {
   cs: CS,
+  witness_only: bool,
   ops: usize,
   bits_used: usize,
   lhs: LinearCombination<Scalar>,
@@ -17,8 +18,11 @@ pub struct MultiEq<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> {
 impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
   /// Creates a new `MultiEq` gadget with the given constraint system.
   pub fn new(cs: CS) -> Self {
+    let witness_only = cs.is_witness_generator();
+
     MultiEq {
       cs,
+      witness_only,
       ops: 0,
       bits_used: 0,
       lhs: LinearCombination::zero(),
@@ -26,10 +30,14 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     }
   }
 
+  pub(super) fn witness_only(&self) -> bool {
+    self.witness_only
+  }
+
   fn accumulate(&mut self) {
     let ops = self.ops;
-    let lhs = self.lhs.clone();
-    let rhs = self.rhs.clone();
+    let lhs = std::mem::take(&mut self.lhs);
+    let rhs = std::mem::take(&mut self.rhs);
     self.cs.enforce(
       || format!("multieq {ops}"),
       |_| lhs,
@@ -50,6 +58,11 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     lhs: &LinearCombination<Scalar>,
     rhs: &LinearCombination<Scalar>,
   ) {
+    // The wrapped witness generator discards constraints, so there is nothing to pack.
+    if self.witness_only {
+      return;
+    }
+
     // Check if we will exceed the capacity
     if (Scalar::CAPACITY as usize) <= (self.bits_used + num_bits) {
       self.accumulate();
@@ -58,8 +71,11 @@ impl<Scalar: PrimeField, CS: ConstraintSystem<Scalar>> MultiEq<Scalar, CS> {
     assert!((Scalar::CAPACITY as usize) > (self.bits_used + num_bits));
 
     let coeff = Scalar::from(2u64).pow_vartime([self.bits_used as u64]);
-    self.lhs = self.lhs.clone() + (coeff, lhs);
-    self.rhs = self.rhs.clone() + (coeff, rhs);
+    // Move the accumulators to avoid cloning them before adding each equality.
+    let lhs_acc = std::mem::take(&mut self.lhs);
+    let rhs_acc = std::mem::take(&mut self.rhs);
+    self.lhs = lhs_acc + (coeff, lhs);
+    self.rhs = rhs_acc + (coeff, rhs);
     self.bits_used += num_bits;
   }
 }
