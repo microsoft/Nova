@@ -83,6 +83,39 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.num_vars -= 1;
   }
 
+  /// Binds the top variable after the high half has been replaced by
+  /// `high - low`.
+  ///
+  /// This is the second half of an explicit evaluate-then-bind optimization:
+  /// the round-polynomial evaluation stores each top-variable slope in the
+  /// corresponding high-half slot, then this method reuses it once the
+  /// verifier challenge is known.
+  ///
+  /// # Preconditions
+  ///
+  /// The high half must contain `high - low` from the matching cached-delta
+  /// evaluation in the current round. Calling this after a non-caching
+  /// evaluation silently produces the wrong polynomial.
+  pub(crate) fn bind_poly_var_top_with_cached_delta(&mut self, r: &Scalar) {
+    assert!(self.num_vars > 0);
+
+    let n = self.len() / 2;
+    let (left, deltas) = self.Z.split_at_mut(n);
+
+    if n < PARALLEL_THRESHOLD {
+      left.iter_mut().zip(deltas.iter()).for_each(|(low, delta)| {
+        *low += *r * delta;
+      });
+    } else {
+      zip_with_for_each!((left.par_iter_mut(), deltas.par_iter()), |low, delta| {
+        *low += *r * delta;
+      });
+    }
+
+    self.Z.resize(n, Scalar::ZERO);
+    self.num_vars -= 1;
+  }
+
   /// Evaluates the polynomial at the given point.
   /// Returns Z(r) in O(n) time using O(sqrt(n)) memory for eq tables.
   ///
@@ -409,6 +442,35 @@ mod tests {
     bind_and_evaluate_with::<pallas::Scalar>();
     bind_and_evaluate_with::<bn256::Scalar>();
     bind_and_evaluate_with::<secp256k1::Scalar>();
+  }
+
+  fn cached_delta_bind_matches_with<F: PrimeField>() {
+    for num_vars in [7, 13] {
+      let mut rng = ChaCha20Rng::from_seed([num_vars as u8; 32]);
+      let poly = random(num_vars, &mut rng);
+      let r = F::random(&mut rng);
+
+      let mut expected = poly.clone();
+      expected.bind_poly_var_top(&r);
+
+      let mut actual = poly;
+      let half = actual.len() / 2;
+      let (low, high) = actual.Z.split_at_mut(half);
+      high
+        .iter_mut()
+        .zip(low.iter())
+        .for_each(|(high, low)| *high -= low);
+      actual.bind_poly_var_top_with_cached_delta(&r);
+
+      assert_eq!(actual, expected);
+    }
+  }
+
+  #[test]
+  fn test_cached_delta_bind_matches() {
+    cached_delta_bind_matches_with::<pallas::Scalar>();
+    cached_delta_bind_matches_with::<bn256::Scalar>();
+    cached_delta_bind_matches_with::<secp256k1::Scalar>();
   }
 
   fn test_multi_evaluate_with_matches_single<F: PrimeField>() {
