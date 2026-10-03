@@ -37,12 +37,25 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> DirectCircuit<E, SC> {
   pub fn new(z_i: Option<Vec<E::Scalar>>, sc: SC) -> Self {
     Self { z_i, sc }
   }
-}
 
-impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit<E, SC> {
-  fn synthesize<CS: ConstraintSystem<E::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+  /// Synthesize the direct circuit into `cs`.
+  ///
+  /// In addition to synthesizing the step circuit, this enforces the contract declared by
+  /// [`StepCircuit::arity`]: the supplied inputs (when present) and the outputs returned by
+  /// the step circuit must both have exactly `arity()` elements.
+  fn synthesize_inner<CS: ConstraintSystem<E::Scalar>>(
+    &self,
+    cs: &mut CS,
+  ) -> Result<(), NovaError> {
     // obtain the arity information
     let arity = self.sc.arity();
+
+    // the supplied inputs, when present, must match the declared arity
+    if let Some(z_i) = &self.z_i {
+      if z_i.len() != arity {
+        return Err(NovaError::InvalidInputLength);
+      }
+    }
 
     // Allocate zi. If inputs.zi is not provided, allocate default value 0
     let zero = vec![E::Scalar::ZERO; arity];
@@ -56,15 +69,28 @@ impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit
 
     let z_i_plus_one = self.sc.synthesize(&mut cs.namespace(|| "F"), &z_i)?;
 
+    // the outputs must match the declared arity
+    if z_i_plus_one.len() != arity {
+      return Err(NovaError::InvalidStepOutputLength);
+    }
+
     // inputize both z_i and z_i_plus_one
     for (j, input) in z_i.iter().enumerate().take(arity) {
-      let _ = input.inputize(cs.namespace(|| format!("input {j}")));
+      input.inputize(cs.namespace(|| format!("input {j}")))?;
     }
     for (j, output) in z_i_plus_one.iter().enumerate().take(arity) {
-      let _ = output.inputize(cs.namespace(|| format!("output {j}")));
+      output.inputize(cs.namespace(|| format!("output {j}")))?;
     }
 
     Ok(())
+  }
+}
+
+impl<E: Engine, SC: StepCircuit<E::Scalar>> Circuit<E::Scalar> for DirectCircuit<E, SC> {
+  fn synthesize<CS: ConstraintSystem<E::Scalar>>(self, cs: &mut CS) -> Result<(), SynthesisError> {
+    self
+      .synthesize_inner(cs)
+      .map_err(|e| SynthesisError::Unsatisfiable(e.to_string()))
   }
 }
 
@@ -124,7 +150,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
     let circuit: DirectCircuit<E, C> = DirectCircuit { z_i: None, sc };
 
     let mut cs: ShapeCS<E> = ShapeCS::new();
-    let _ = circuit.synthesize(&mut cs);
+    circuit.synthesize_inner(&mut cs)?;
 
     let shape = cs.r1cs_shape()?;
     let ck = R1CSShape::commitment_key(&[&shape], &[&*S::ck_floor()])?;
@@ -149,7 +175,7 @@ impl<E: Engine, S: RelaxedR1CSSNARKTrait<E>, C: StepCircuit<E::Scalar>> DirectSN
       sc,
     };
 
-    let _ = circuit.synthesize(&mut cs);
+    circuit.synthesize_inner(&mut cs)?;
     let (u, w) = cs
       .r1cs_instance_and_witness(&pk.S, &pk.ck, &mut OsRng)
       .map_err(|_e| NovaError::UnSat {
@@ -254,6 +280,104 @@ mod tests {
     fn output(&self, z: &[F]) -> Vec<F> {
       vec![z[0] * z[0] * z[0] + z[0] + F::from(5u64)]
     }
+  }
+
+  /// A step circuit whose synthesis always fails
+  #[derive(Clone, Debug, Default)]
+  struct FailingCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F: PrimeField> StepCircuit<F> for FailingCircuit<F> {
+    fn arity(&self) -> usize {
+      1
+    }
+
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      _cs: &mut CS,
+      _z: &[AllocatedNum<F>],
+    ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      Err(SynthesisError::Unsatisfiable(
+        "step circuit synthesis failed".to_string(),
+      ))
+    }
+  }
+
+  /// A step circuit that declares an arity of 2 but returns a single output
+  #[derive(Clone, Debug, Default)]
+  struct WrongOutputArityCircuit<F: PrimeField> {
+    _p: PhantomData<F>,
+  }
+
+  impl<F: PrimeField> StepCircuit<F> for WrongOutputArityCircuit<F> {
+    fn arity(&self) -> usize {
+      2
+    }
+
+    fn synthesize<CS: ConstraintSystem<F>>(
+      &self,
+      _cs: &mut CS,
+      z: &[AllocatedNum<F>],
+    ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+      Ok(vec![z[0].clone()])
+    }
+  }
+
+  fn test_direct_snark_synthesis_error_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
+    // setup must surface the error returned by the step circuit
+    let res = DirectSNARK::<E, S, FailingCircuit<E::Scalar>>::setup(FailingCircuit::default());
+    assert!(matches!(res, Err(NovaError::SynthesisError { .. })));
+
+    // prove must surface the error returned by the step circuit
+    let (pk, _vk) = DirectSNARK::<E, S, CubicCircuit<E::Scalar>>::setup(CubicCircuit::default())
+      .expect("setup of the cubic circuit should succeed");
+    let res = DirectSNARK::<E, S, FailingCircuit<E::Scalar>>::prove(
+      &pk,
+      FailingCircuit::default(),
+      &[E::Scalar::ZERO],
+    );
+    assert!(matches!(res, Err(NovaError::SynthesisError { .. })));
+  }
+
+  fn test_direct_snark_arity_checks_with<E: Engine, S: RelaxedR1CSSNARKTrait<E>>() {
+    // a step circuit that returns fewer outputs than its declared arity is rejected
+    let res = DirectSNARK::<E, S, WrongOutputArityCircuit<E::Scalar>>::setup(
+      WrongOutputArityCircuit::default(),
+    );
+    assert_eq!(res.err(), Some(NovaError::InvalidStepOutputLength));
+
+    let (pk, _vk) = DirectSNARK::<E, S, CubicCircuit<E::Scalar>>::setup(CubicCircuit::default())
+      .expect("setup of the cubic circuit should succeed");
+
+    // inputs that are longer than the declared arity are rejected ...
+    let res = DirectSNARK::<E, S, CubicCircuit<E::Scalar>>::prove(
+      &pk,
+      CubicCircuit::default(),
+      &[E::Scalar::ZERO, E::Scalar::ONE],
+    );
+    assert_eq!(res.err(), Some(NovaError::InvalidInputLength));
+
+    // ... and so are inputs that are shorter (which previously panicked)
+    let res =
+      DirectSNARK::<E, S, CubicCircuit<E::Scalar>>::prove(&pk, CubicCircuit::default(), &[]);
+    assert_eq!(res.err(), Some(NovaError::InvalidInputLength));
+  }
+
+  #[test]
+  fn test_direct_snark_error_propagation() {
+    type E = PallasEngine;
+    type EE = crate::provider::ipa_pc::EvaluationEngine<E>;
+    type S = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
+    test_direct_snark_synthesis_error_with::<E, S>();
+  }
+
+  #[test]
+  fn test_direct_snark_arity_checks() {
+    type E = PallasEngine;
+    type EE = crate::provider::ipa_pc::EvaluationEngine<E>;
+    type S = crate::spartan::snark::RelaxedR1CSSNARK<E, EE>;
+    test_direct_snark_arity_checks_with::<E, S>();
   }
 
   #[test]
