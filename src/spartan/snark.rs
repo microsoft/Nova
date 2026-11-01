@@ -9,7 +9,7 @@ use crate::{
   errors::NovaError,
   r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness, SparseMatrix},
   spartan::{
-    compute_eval_table_sparse,
+    compute_eval_table_sparse_joint,
     math::Math,
     polys::{eq::EqPolynomial, multilinear::MultilinearPolynomial, multilinear::SparsePolynomial},
     sumcheck::SumcheckProof,
@@ -228,11 +228,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // claims from the end of sum-check
     let (claim_Az, claim_Bz): (E::Scalar, E::Scalar) = (claims_outer[0], claims_outer[1]);
     let claim_Cz = poly_Cz.evaluate(&r_x);
-    let eval_E = MultilinearPolynomial::new(W.E.clone()).evaluate(&r_x);
+    let eval_E = MultilinearPolynomial::evaluate_with(&W.E, &r_x);
     transcript.absorb(
       b"claims_outer",
       &[claim_Az, claim_Bz, claim_Cz, eval_E].as_slice(),
     );
+    drop((poly_Az, poly_Bz, poly_Cz, poly_uCz_E));
 
     // inner sum-check
     let r = transcript.squeeze(b"r")?;
@@ -240,16 +241,8 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
 
     let poly_ABC = {
       // compute the initial evaluation table for R(\tau, x)
-      let evals_rx = EqPolynomial::evals_from_points(&r_x.clone());
-
-      let (evals_A, evals_B, evals_C) = compute_eval_table_sparse(S, &evals_rx);
-
-      assert_eq!(evals_A.len(), evals_B.len());
-      assert_eq!(evals_A.len(), evals_C.len());
-      (0..evals_A.len())
-        .into_par_iter()
-        .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
-        .collect::<Vec<E::Scalar>>()
+      let evals_rx = EqPolynomial::evals_from_points(&r_x);
+      compute_eval_table_sparse_joint(S, &evals_rx, &r)
     };
 
     let poly_z = {
