@@ -43,6 +43,50 @@ impl<E: Engine> NovaWitness<E> for SatisfyingAssignment<E> {
   }
 }
 
+impl<E: Engine> ShapeCS<E>
+where
+  E::Scalar: PrimeField,
+{
+  /// Consume this constraint system and return its `R1CSShape`.
+  ///
+  /// This conversion reserves each sparse matrix exactly and releases each
+  /// source constraint after lowering it. Use [`NovaShape::r1cs_shape`] when
+  /// the source constraint system must remain available.
+  pub fn into_r1cs_shape(self) -> Result<R1CSShape<E>, NovaError> {
+    let num_inputs = self.num_inputs();
+    let num_constraints = self.num_constraints();
+    let num_vars = self.num_aux();
+    let (a_capacity, b_capacity, c_capacity) = self.constraints.iter().fold(
+      (0, 0, 0),
+      |(a_capacity, b_capacity, c_capacity), (a, b, c)| {
+        (
+          a_capacity + nonzero_terms(a),
+          b_capacity + nonzero_terms(b),
+          c_capacity + nonzero_terms(c),
+        )
+      },
+    );
+
+    let mut A = sparse_matrix_with_capacity(num_constraints, a_capacity);
+    let mut B = sparse_matrix_with_capacity(num_constraints, b_capacity);
+    let mut C = sparse_matrix_with_capacity(num_constraints, c_capacity);
+    let mut num_cons_added = 0;
+    let mut X = (&mut A, &mut B, &mut C, &mut num_cons_added);
+
+    for (a, b, c) in self.constraints {
+      add_constraint(&mut X, num_vars, &a, &b, &c);
+    }
+    assert_eq!(num_cons_added, num_constraints);
+
+    A.cols = num_vars + num_inputs;
+    B.cols = num_vars + num_inputs;
+    C.cols = num_vars + num_inputs;
+
+    // Don't count One as an input for shape's purposes.
+    R1CSShape::new(num_constraints, num_vars, num_inputs - 1, A, B, C)
+  }
+}
+
 macro_rules! impl_nova_shape {
   ( $name:ident) => {
     impl<E: Engine> NovaShape<E> for $name<E>
@@ -84,6 +128,24 @@ macro_rules! impl_nova_shape {
 
 impl_nova_shape!(ShapeCS);
 impl_nova_shape!(TestShapeCS);
+
+fn nonzero_terms<S: PrimeField>(lc: &LinearCombination<S>) -> usize {
+  lc.iter()
+    .filter(|(_, coefficient)| **coefficient != S::ZERO)
+    .count()
+}
+
+fn sparse_matrix_with_capacity<S: PrimeField>(rows: usize, terms: usize) -> SparseMatrix<S> {
+  let mut indptr = Vec::with_capacity(rows + 1);
+  indptr.push(0);
+
+  SparseMatrix {
+    data: Vec::with_capacity(terms),
+    indices: Vec::with_capacity(terms),
+    indptr,
+    cols: 0,
+  }
+}
 
 fn add_constraint<S: PrimeField>(
   X: &mut (
@@ -138,4 +200,55 @@ fn add_constraint<S: PrimeField>(
   C.indptr.push(C.indices.len());
 
   **nn += 1;
+}
+
+#[cfg(test)]
+mod tests {
+  use super::NovaShape;
+  use crate::{
+    frontend::{shape_cs::ShapeCS, ConstraintSystem},
+    provider::PallasEngine,
+    traits::Engine,
+  };
+  use ff::Field;
+
+  type Scalar = <PallasEngine as Engine>::Scalar;
+
+  fn test_shape_cs() -> ShapeCS<PallasEngine> {
+    let mut cs = ShapeCS::new();
+    let input = cs.alloc_input(|| "input", || Ok(Scalar::from(2))).unwrap();
+    let left = cs.alloc(|| "left", || Ok(Scalar::from(3))).unwrap();
+    let right = cs.alloc(|| "right", || Ok(Scalar::from(5))).unwrap();
+
+    cs.enforce(
+      || "multiply",
+      |lc| lc + left + (Scalar::ZERO, input),
+      |lc| lc + right,
+      |lc| lc + input,
+    );
+    cs.enforce(
+      || "linear",
+      |lc| lc + input + (Scalar::from(7), left),
+      |lc| lc + ShapeCS::<PallasEngine>::one(),
+      |lc| lc + right,
+    );
+    cs
+  }
+
+  #[test]
+  fn consumed_shape_matches_borrowed_shape() {
+    let borrowed_cs = test_shape_cs();
+    let borrowed_shape = borrowed_cs.r1cs_shape().unwrap();
+    let consumed_shape = test_shape_cs().into_r1cs_shape().unwrap();
+
+    assert_eq!(consumed_shape, borrowed_shape);
+  }
+
+  #[test]
+  fn consumed_shape_preserves_digest() {
+    let borrowed_shape = test_shape_cs().r1cs_shape().unwrap();
+    let consumed_shape = test_shape_cs().into_r1cs_shape().unwrap();
+
+    assert_eq!(consumed_shape.digest(), borrowed_shape.digest());
+  }
 }

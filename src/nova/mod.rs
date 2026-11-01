@@ -5,10 +5,8 @@ use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   frontend::{
-    r1cs::{NovaShape, NovaWitness},
-    shape_cs::ShapeCS,
-    solver::SatisfyingAssignment,
-    ConstraintSystem, SynthesisError,
+    r1cs::NovaWitness, shape_cs::ShapeCS, solver::SatisfyingAssignment, ConstraintSystem,
+    SynthesisError,
   },
   gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
@@ -143,7 +141,7 @@ where
         NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
       let mut cs: ShapeCS<E1> = ShapeCS::new();
       let _ = circuit_primary.synthesize(&mut cs)?;
-      cs.r1cs_shape()?
+      cs.into_r1cs_shape()?
     };
     let ck_primary = R1CSShape::commitment_key(&[&r1cs_shape_primary], &[ck_hint1])?;
 
@@ -155,7 +153,7 @@ where
         NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
       let mut cs: ShapeCS<E2> = ShapeCS::new();
       let _ = circuit_secondary.synthesize(&mut cs)?;
-      cs.r1cs_shape()?
+      cs.into_r1cs_shape()?
     };
     let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
 
@@ -249,7 +247,7 @@ where
         NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
       let mut cs: ShapeCS<E1> = ShapeCS::new();
       let _ = circuit_primary.synthesize(&mut cs)?;
-      cs.r1cs_shape()?
+      cs.into_r1cs_shape()?
     };
 
     // Load ck for the primary from ptau directory (auto-selects appropriate file)
@@ -264,7 +262,7 @@ where
         NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
       let mut cs: ShapeCS<E2> = ShapeCS::new();
       let _ = circuit_secondary.synthesize(&mut cs)?;
-      cs.r1cs_shape()?
+      cs.into_r1cs_shape()?
     };
 
     // Generate ck for the secondary using standard method (non-pairing curve)
