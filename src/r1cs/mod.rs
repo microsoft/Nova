@@ -396,8 +396,13 @@ impl<E: Engine> R1CSShape<E> {
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
     let (Az, (Bz, Cz)) = rayon::join(
-      || pa.multiply_vec(z),
-      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
+      || pa.multiply_vec(&self.A, z),
+      || {
+        rayon::join(
+          || pb.multiply_vec(&self.B, z),
+          || pc.multiply_vec(&self.C, z),
+        )
+      },
     );
 
     Ok((Az, Bz, Cz))
@@ -431,11 +436,11 @@ impl<E: Engine> R1CSShape<E> {
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
     let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
-      || pa.multiply_vec_pair(z1, z2),
+      || pa.multiply_vec_pair(&self.A, z1, z2),
       || {
         rayon::join(
-          || pb.multiply_vec_pair(z1, z2),
-          || pc.multiply_vec_pair(z1, z2),
+          || pb.multiply_vec_pair(&self.B, z1, z2),
+          || pc.multiply_vec_pair(&self.C, z1, z2),
         )
       },
     );
