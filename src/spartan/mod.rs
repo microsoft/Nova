@@ -533,6 +533,121 @@ pub fn compute_eval_table_sparse<E: Engine>(
   (A_evals, B_evals, C_evals)
 }
 
+/// Bounds the row variables of A, B, and C and combines their column
+/// evaluations as `A + r * B + r^2 * C`.
+///
+/// At most two column-sized tables are live: A and B are accumulated in
+/// parallel, B is folded into A, and B's allocation is reused for C. Matrix
+/// entries retain the same accumulation order as
+/// [`compute_eval_table_sparse`].
+pub(crate) fn compute_eval_table_sparse_joint<E: Engine>(
+  S: &R1CSShape<E>,
+  rx: &[E::Scalar],
+  r: &E::Scalar,
+) -> Vec<E::Scalar> {
+  assert_eq!(rx.len(), S.num_cons());
+
+  let accumulate = |M: &SparseMatrix<E::Scalar>, evals: &mut [E::Scalar]| {
+    for (row_idx, ptrs) in M.indptr.windows(2).enumerate() {
+      for (val, col_idx) in M.get_row_unchecked(ptrs.try_into().unwrap()) {
+        evals[*col_idx] += rx[row_idx] * val;
+      }
+    }
+  };
+  let allocate = || vec![E::Scalar::ZERO; 2 * S.num_vars()];
+
+  let (mut joint, mut scratch) = rayon::join(
+    || {
+      let mut evals = allocate();
+      accumulate(S.A(), &mut evals);
+      evals
+    },
+    || {
+      let mut evals = allocate();
+      accumulate(S.B(), &mut evals);
+      evals
+    },
+  );
+
+  joint
+    .par_iter_mut()
+    .zip(scratch.par_iter())
+    .for_each(|(a, b)| *a += *r * *b);
+
+  scratch.fill(E::Scalar::ZERO);
+  accumulate(S.C(), &mut scratch);
+  let r_squared = *r * *r;
+  joint
+    .par_iter_mut()
+    .zip(scratch.par_iter())
+    .for_each(|(ab, c)| *ab += r_squared * *c);
+
+  joint
+}
+
+#[cfg(test)]
+mod eval_table_tests {
+  use super::{compute_eval_table_sparse, compute_eval_table_sparse_joint};
+  use crate::{
+    provider::PallasEngine,
+    r1cs::{R1CSShape, SparseMatrix},
+    traits::Engine,
+  };
+
+  type E = PallasEngine;
+
+  fn shape() -> R1CSShape<E> {
+    type F = <E as Engine>::Scalar;
+    let a = SparseMatrix::new(
+      &[
+        (0, 0, F::from(2)),
+        (0, 3, F::from(3)),
+        (1, 1, F::from(5)),
+        (3, 4, F::from(7)),
+      ],
+      4,
+      6,
+    );
+    let b = SparseMatrix::new(
+      &[
+        (0, 1, F::from(11)),
+        (2, 0, F::from(13)),
+        (2, 5, F::from(17)),
+      ],
+      4,
+      6,
+    );
+    let c = SparseMatrix::new(
+      &[
+        (1, 2, F::from(19)),
+        (2, 3, F::from(23)),
+        (3, 5, F::from(29)),
+      ],
+      4,
+      6,
+    );
+
+    R1CSShape::new(4, 4, 1, a, b, c).expect("valid shape")
+  }
+
+  #[test]
+  fn joint_sparse_table_matches_independent_tables() {
+    type F = <E as Engine>::Scalar;
+    let shape = shape();
+    let rx = [F::from(31), F::from(37), F::from(41), F::from(43)];
+    let r = F::from(47);
+    let (a, b, c) = compute_eval_table_sparse(&shape, &rx);
+    let expected = a
+      .into_iter()
+      .zip(b)
+      .zip(c)
+      .map(|((a, b), c)| a + r * b + r * r * c)
+      .collect::<Vec<_>>();
+
+    assert_eq!(compute_eval_table_sparse_joint(&shape, &rx, &r), expected);
+  }
+}
+
 #[cfg(test)]
 mod batch_invert_tests {
   use super::{batch_invert, batch_invert_serial};
