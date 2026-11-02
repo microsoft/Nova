@@ -579,14 +579,14 @@ where
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
   fn fold(&self, w1: &E::Scalar, w2: &E::Scalar) -> CommitmentKey<E> {
-    let w = vec![*w1, *w2];
+    let weights = [*w1, *w2];
     let (L, R) = self.split_at(self.ck.len() / 2);
 
     let ck: Vec<_> = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
-        let bases = [L.ck[i], R.ck[i]].to_vec();
-        E::GE::vartime_multiscalar_mul(&w, &bases).affine()
+        let bases = [L.ck[i], R.ck[i]];
+        E::GE::vartime_multiscalar_mul(&weights, &bases).affine()
       })
       .collect();
 
