@@ -70,10 +70,10 @@ where
     point: &[E::Scalar],
     eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
-    let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
+    let u = InnerProductInstance::new(comm, EqPolynomial::new(point.to_vec()).evals(), eval);
     let w = InnerProductWitness::new(poly);
 
-    InnerProductArgument::prove(ck, &pk.ck_s, &u, &w, transcript)
+    InnerProductArgument::prove(ck, &pk.ck_s, u, w, transcript)
   }
 
   /// A method to verify purported evaluations of a batch of polynomials
@@ -85,7 +85,7 @@ where
     eval: &E::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError> {
-    let u = InnerProductInstance::new(comm, &EqPolynomial::new(point.to_vec()).evals(), eval);
+    let u = InnerProductInstance::new(comm, EqPolynomial::new(point.to_vec()).evals(), eval);
 
     arg.verify(
       &vk.ck_v,
@@ -120,10 +120,10 @@ where
   E: Engine,
   E::GE: DlogGroup,
 {
-  fn new(comm_a_vec: &Commitment<E>, b_vec: &[E::Scalar], c: &E::Scalar) -> Self {
+  fn new(comm_a_vec: &Commitment<E>, b_vec: Vec<E::Scalar>, c: &E::Scalar) -> Self {
     InnerProductInstance {
       comm_a_vec: *comm_a_vec,
-      b_vec: b_vec.to_vec(),
+      b_vec,
       c: *c,
     }
   }
@@ -174,8 +174,8 @@ where
   fn prove(
     ck: &CommitmentKey<E>,
     ck_c: &CommitmentKey<E>,
-    U: &InnerProductInstance<E>,
-    W: &InnerProductWitness<E>,
+    U: InnerProductInstance<E>,
+    W: InnerProductWitness<E>,
     transcript: &mut E::TE,
   ) -> Result<Self, NovaError> {
     transcript.dom_sep(Self::protocol_name());
@@ -187,7 +187,7 @@ where
     }
 
     // absorb the instance in the transcript
-    transcript.absorb(b"U", U);
+    transcript.absorb(b"U", &U);
 
     // sample a random base for committing to the inner product
     let r = transcript.squeeze(b"r")?;
@@ -261,11 +261,11 @@ where
     let mut L_vec: Vec<Commitment<E>> = Vec::new();
     let mut R_vec: Vec<Commitment<E>> = Vec::new();
 
-    // we create mutable copies of vectors and generators
-    let mut a_vec = W.a_vec.to_vec();
-    let mut b_vec = U.b_vec.to_vec();
+    // Consume the prover-only vectors after their instance is absorbed.
+    let mut a_vec = W.a_vec;
+    let mut b_vec = U.b_vec;
     let mut ck = ck;
-    for _i in 0..usize::try_from(U.b_vec.len().ilog2()).unwrap() {
+    for _i in 0..usize::try_from(b_vec.len().ilog2()).unwrap() {
       let (L, R, a_vec_folded, b_vec_folded, ck_folded) =
         prove_inner(&a_vec, &b_vec, &ck, transcript)?;
       L_vec.push(L);
@@ -386,5 +386,74 @@ where
     } else {
       Err(NovaError::InvalidPCS)
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{
+    provider::{keccak::Keccak256Transcript, PallasEngine},
+    spartan::polys::multilinear::MultilinearPolynomial,
+    traits::TranscriptEngineTrait,
+  };
+  use sha2::{Digest, Sha256};
+
+  type TestEngine = PallasEngine;
+  type TestScalar = <TestEngine as Engine>::Scalar;
+
+  #[test]
+  fn owned_prover_vectors_preserve_proof_bytes() {
+    let ck = <TestEngine as Engine>::CE::setup(b"ipa_owned_vectors", 8).unwrap();
+    let (pk, vk) = EvaluationEngine::<TestEngine>::setup(&ck).unwrap();
+    let poly = (1u64..=8).map(TestScalar::from).collect::<Vec<_>>();
+    let point = vec![
+      TestScalar::from(2),
+      TestScalar::from(3),
+      TestScalar::from(5),
+    ];
+    let eval = MultilinearPolynomial::evaluate_with(&poly, &point);
+    let comm = <TestEngine as Engine>::CE::commit(&ck, &poly, &TestScalar::from(0));
+
+    let mut prover_transcript = Keccak256Transcript::new(b"IpaOwnedVectors");
+    let proof = EvaluationEngine::<TestEngine>::prove(
+      &ck,
+      &pk,
+      &mut prover_transcript,
+      &comm,
+      &poly,
+      &point,
+      &eval,
+    )
+    .unwrap();
+    let mut verifier_transcript = Keccak256Transcript::new(b"IpaOwnedVectors");
+    EvaluationEngine::<TestEngine>::verify(
+      &vk,
+      &mut verifier_transcript,
+      &comm,
+      &point,
+      &eval,
+      &proof,
+    )
+    .unwrap();
+
+    let encoded = bincode::serde::encode_to_vec(
+      proof,
+      bincode::config::legacy()
+        .with_little_endian()
+        .with_fixed_int_encoding(),
+    )
+    .unwrap();
+    assert_eq!(encoded.len(), 240);
+    // Frozen before prover vectors were made move-only at this boundary.
+    let digest: [u8; 32] = Sha256::digest(&encoded).into();
+    assert_eq!(
+      digest,
+      [
+        0x8a, 0xd2, 0x8a, 0x26, 0x2b, 0xbd, 0x8e, 0xd2, 0xec, 0x58, 0x82, 0x71, 0xb6, 0x05, 0x96,
+        0x44, 0x0a, 0x3d, 0x4e, 0x4c, 0xab, 0x39, 0xba, 0x35, 0xf1, 0xc8, 0x5d, 0xa5, 0x75, 0x24,
+        0x94, 0xa8,
+      ]
+    );
   }
 }
