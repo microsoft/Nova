@@ -13,9 +13,9 @@ use crate::{
   },
 };
 use core::{
-  fmt::Debug,
+  fmt::{self, Debug},
   marker::PhantomData,
-  ops::{Add, Mul, MulAssign, Range},
+  ops::{Add, Deref, Mul, MulAssign, Range},
 };
 use ff::Field;
 use num_integer::Integer;
@@ -23,9 +23,105 @@ use num_traits::ToPrimitive;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
+use std::sync::Arc;
 
 #[cfg(feature = "io")]
 const KEY_FILE_HEAD: [u8; 12] = *b"PEDERSEN_KEY";
+
+// The active range is the commitment key. Serialization intentionally emits
+// that slice as a sequence so existing key bytes and digests remain stable.
+struct SharedGenerators<G> {
+  backing: Arc<Vec<G>>,
+  range: Range<usize>,
+}
+
+impl<G> SharedGenerators<G> {
+  fn split_at(&self, n: usize) -> (Self, Self) {
+    assert!(n <= self.len());
+    let middle = self.range.start + n;
+    (
+      Self {
+        backing: Arc::clone(&self.backing),
+        range: self.range.start..middle,
+      },
+      Self {
+        backing: Arc::clone(&self.backing),
+        range: middle..self.range.end,
+      },
+    )
+  }
+}
+
+impl<G> Clone for SharedGenerators<G> {
+  fn clone(&self) -> Self {
+    Self {
+      backing: Arc::clone(&self.backing),
+      range: self.range.clone(),
+    }
+  }
+}
+
+impl<G> Debug for SharedGenerators<G>
+where
+  G: Debug,
+{
+  fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.deref().fmt(formatter)
+  }
+}
+
+impl<G> PartialEq for SharedGenerators<G>
+where
+  G: PartialEq,
+{
+  fn eq(&self, other: &Self) -> bool {
+    self.deref() == other.deref()
+  }
+}
+
+impl<G> Eq for SharedGenerators<G> where G: Eq {}
+
+impl<G> From<Vec<G>> for SharedGenerators<G> {
+  fn from(generators: Vec<G>) -> Self {
+    let len = generators.len();
+    Self {
+      backing: generators.into(),
+      range: 0..len,
+    }
+  }
+}
+
+impl<G> Deref for SharedGenerators<G> {
+  type Target = [G];
+
+  fn deref(&self) -> &Self::Target {
+    &self.backing[self.range.clone()]
+  }
+}
+
+impl<G> Serialize for SharedGenerators<G>
+where
+  G: Serialize,
+{
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    self.deref().serialize(serializer)
+  }
+}
+
+impl<'de, G> Deserialize<'de> for SharedGenerators<G>
+where
+  G: Deserialize<'de>,
+{
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    Vec::<G>::deserialize(deserializer).map(Self::from)
+  }
+}
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,7 +129,7 @@ pub struct CommitmentKey<E: Engine>
 where
   E::GE: DlogGroup,
 {
-  ck: Vec<<E::GE as DlogGroup>::AffineGroupElement>,
+  ck: SharedGenerators<<E::GE as DlogGroup>::AffineGroupElement>,
   h: <E::GE as DlogGroup>::AffineGroupElement,
 }
 
@@ -246,14 +342,10 @@ where
   type DerandKey = DerandKey<E>;
 
   fn setup(label: &'static [u8], n: usize) -> Result<Self::CommitmentKey, NovaError> {
-    let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
+    let mut ck = E::GE::from_label(label, n.next_power_of_two() + 1);
+    let h = ck.remove(0);
 
-    let (h, ck) = gens.split_first().unwrap();
-
-    Ok(Self::CommitmentKey {
-      ck: ck.to_vec(),
-      h: *h,
-    })
+    Ok(Self::CommitmentKey { ck: ck.into(), h })
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {
@@ -334,7 +426,7 @@ where
     let (first, second) = points.split_at(1);
 
     Ok(Self::CommitmentKey {
-      ck: second.to_vec(),
+      ck: second.to_vec().into(),
       h: first[0],
     })
   }
@@ -373,9 +465,9 @@ where
     for (i, &j) in addresses.iter().enumerate() {
       acc[j] += bases[i];
     }
-    let ck_affine = acc.par_iter().map(|g| g.affine()).collect();
+    let ck_affine: Vec<_> = acc.par_iter().map(|g| g.affine()).collect();
     Ok(CommitmentKey {
-      ck: ck_affine,
+      ck: ck_affine.into(),
       h: ck.h,
     })
   }
@@ -459,13 +551,14 @@ where
   E::GE: DlogGroupExt,
 {
   fn split_at(&self, n: usize) -> (CommitmentKey<E>, CommitmentKey<E>) {
+    let (left, right) = self.ck.split_at(n);
     (
       CommitmentKey {
-        ck: self.ck[0..n].to_vec(),
+        ck: left,
         h: self.h,
       },
       CommitmentKey {
-        ck: self.ck[n..].to_vec(),
+        ck: right,
         h: self.h,
       },
     )
@@ -473,58 +566,123 @@ where
 
   fn combine(&self, other: &CommitmentKey<E>) -> CommitmentKey<E> {
     let ck = {
-      let mut c = self.ck.clone();
-      c.extend(other.ck.clone());
+      let mut c = Vec::with_capacity(self.ck.len() + other.ck.len());
+      c.extend_from_slice(&self.ck);
+      c.extend_from_slice(&other.ck);
       c
     };
-    CommitmentKey { ck, h: self.h }
+    CommitmentKey {
+      ck: ck.into(),
+      h: self.h,
+    }
   }
 
   // combines the left and right halves of `self` using `w1` and `w2` as the weights
   fn fold(&self, w1: &E::Scalar, w2: &E::Scalar) -> CommitmentKey<E> {
-    let w = vec![*w1, *w2];
+    let weights = [*w1, *w2];
     let (L, R) = self.split_at(self.ck.len() / 2);
 
-    let ck = (0..self.ck.len() / 2)
+    let ck: Vec<_> = (0..self.ck.len() / 2)
       .into_par_iter()
       .map(|i| {
-        let bases = [L.ck[i], R.ck[i]].to_vec();
-        E::GE::vartime_multiscalar_mul(&w, &bases).affine()
+        let bases = [L.ck[i], R.ck[i]];
+        E::GE::vartime_multiscalar_mul(&weights, &bases).affine()
       })
       .collect();
 
-    CommitmentKey { ck, h: self.h }
+    CommitmentKey {
+      ck: ck.into(),
+      h: self.h,
+    }
   }
 
   /// Scales each element in `self` by `r`
   fn scale(&self, r: &E::Scalar) -> Self {
-    let ck_scaled = self
+    let ck_scaled: Vec<_> = self
       .ck
-      .clone()
-      .into_par_iter()
-      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[g]).affine())
+      .par_iter()
+      .map(|g| E::GE::vartime_multiscalar_mul(&[*r], &[*g]).affine())
       .collect();
 
     CommitmentKey {
-      ck: ck_scaled,
+      ck: ck_scaled.into(),
       h: self.h,
     }
   }
 
   /// reinterprets a vector of commitments as a set of generators
   fn reinterpret_commitments_as_ck(c: &[Commitment<E>]) -> Result<Self, NovaError> {
-    let ck = (0..c.len())
+    let ck: Vec<_> = (0..c.len())
       .into_par_iter()
       .map(|i| c[i].comm.affine())
       .collect();
 
     // cmt is derandomized by the point that this is called
     Ok(CommitmentKey {
-      ck,
+      ck: ck.into(),
       h: E::GE::zero().affine(), // this is okay, since this method is used in IPA only,
                                  // and we only use non-blinding commits afterwards
                                  // bc we don't use ZK IPA
     })
+  }
+}
+
+#[cfg(test)]
+mod shared_key_tests {
+  use super::*;
+  use crate::{provider::PallasEngine, traits::Engine};
+
+  type E = PallasEngine;
+  type Affine = <<E as Engine>::GE as DlogGroup>::AffineGroupElement;
+
+  #[derive(Serialize)]
+  struct LegacyCommitmentKey {
+    ck: Vec<Affine>,
+    h: Affine,
+  }
+
+  fn encode<T: Serialize>(value: &T) -> Vec<u8> {
+    bincode::serde::encode_to_vec(
+      value,
+      bincode::config::legacy()
+        .with_little_endian()
+        .with_fixed_int_encoding(),
+    )
+    .expect("commitment-key encoding")
+  }
+
+  #[test]
+  fn clone_and_split_share_generators_and_preserve_encoding() {
+    let ck = CommitmentEngine::<E>::setup(b"shared_commitment_key", 7).expect("setup");
+    let legacy = LegacyCommitmentKey {
+      ck: ck.generators().to_vec(),
+      h: ck.h,
+    };
+    assert_eq!(encode(&ck), encode(&legacy));
+
+    let cloned = ck.clone();
+    assert!(Arc::ptr_eq(&ck.ck.backing, &cloned.ck.backing));
+
+    let (left, right) = ck.split_at(3);
+    assert!(Arc::ptr_eq(&ck.ck.backing, &left.ck.backing));
+    assert!(Arc::ptr_eq(&ck.ck.backing, &right.ck.backing));
+    assert_eq!(left.generators(), &ck.generators()[..3]);
+    assert_eq!(right.generators(), &ck.generators()[3..]);
+
+    let legacy_left = LegacyCommitmentKey {
+      ck: ck.generators()[..3].to_vec(),
+      h: ck.h,
+    };
+    assert_eq!(encode(&left), encode(&legacy_left));
+
+    let config = bincode::config::legacy()
+      .with_little_endian()
+      .with_fixed_int_encoding();
+    let encoded = encode(&right);
+    let (decoded, used): (CommitmentKey<E>, usize) =
+      bincode::serde::decode_from_slice(&encoded, config).expect("commitment-key decoding");
+    assert_eq!(used, encoded.len());
+    assert_eq!(decoded, right);
   }
 }
 

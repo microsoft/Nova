@@ -83,6 +83,31 @@ impl<Scalar: PrimeField> MultilinearPolynomial<Scalar> {
     self.num_vars -= 1;
   }
 
+  /// Binds the top variable while copying into a half-sized table.
+  ///
+  /// This is useful when the source evaluations must remain available after
+  /// sumcheck. It avoids first cloning the complete source table merely to
+  /// perform the same in-place bind.
+  pub(crate) fn bound_poly_var_top(Z: &[Scalar], r: &Scalar) -> Self {
+    assert!(Z.len() > 1 && Z.len().is_power_of_two());
+    let n = Z.len() / 2;
+    let (left, right) = Z.split_at(n);
+    let bound = if n < PARALLEL_THRESHOLD {
+      left
+        .iter()
+        .zip(right)
+        .map(|(a, b)| *a + *r * (*b - *a))
+        .collect()
+    } else {
+      left
+        .par_iter()
+        .zip(right)
+        .map(|(a, b)| *a + *r * (*b - *a))
+        .collect()
+    };
+    Self::new(bound)
+  }
+
   /// Evaluates the polynomial at the given point.
   /// Returns Z(r) in O(n) time using O(sqrt(n)) memory for eq tables.
   ///

@@ -1333,12 +1333,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let u: PolyEvalInstance<E> =
       PolyEvalInstance::batch(&comm_vec, &r_inner_batched, &eval_vec, &c);
 
-    let eval_arg = EE::prove(
+    let eval_arg = EE::prove_owned(
       ck,
       &pk.pk_ee,
       &mut transcript,
       &u.c,
-      &w.p,
+      w.p,
       &r_inner_batched,
       &u.e,
     )?;

@@ -6,7 +6,67 @@
 use crate::constants::PARALLEL_THRESHOLD;
 use ff::PrimeField;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use std::{
+  marker::PhantomData,
+  ops::{Deref, DerefMut},
+  sync::Arc,
+};
+
+/// Immutable sparse-matrix coefficients with copy-on-write construction.
+///
+/// Padding changes matrix dimensions, column indices, and row pointers, but
+/// never coefficient order or values. Sharing this storage keeps the original
+/// Nova shape and its padded Spartan view from retaining duplicate field
+/// elements. Mutation remains available to shape builders and detaches a
+/// shared allocation before changing it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SparseCoefficients<F>(Arc<Vec<F>>);
+
+impl<F> SparseCoefficients<F> {
+  pub(crate) fn with_capacity(capacity: usize) -> Self {
+    Self(Arc::new(Vec::with_capacity(capacity)))
+  }
+
+  #[cfg(test)]
+  pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+    Arc::ptr_eq(&self.0, &other.0)
+  }
+}
+
+impl<F> From<Vec<F>> for SparseCoefficients<F> {
+  fn from(coefficients: Vec<F>) -> Self {
+    Self(Arc::new(coefficients))
+  }
+}
+
+impl<F> Deref for SparseCoefficients<F> {
+  type Target = Vec<F>;
+
+  fn deref(&self) -> &Self::Target {
+    self.0.as_ref()
+  }
+}
+
+impl<F: Clone> DerefMut for SparseCoefficients<F> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    Arc::make_mut(&mut self.0)
+  }
+}
+
+// Serialize exactly as the historical Vec<F> field. The Arc and sharing
+// topology are process-local implementation details, not wire data.
+impl<F: Serialize> Serialize for SparseCoefficients<F> {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    self.0.as_ref().serialize(serializer)
+  }
+}
+
+impl<'de, F: Deserialize<'de>> Deserialize<'de> for SparseCoefficients<F> {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    Vec::<F>::deserialize(deserializer).map(Self::from)
+  }
+}
 
 /// Precomputed SpMV accelerator for a fixed sparse matrix.
 ///
@@ -16,30 +76,19 @@ use serde::{Deserialize, Serialize};
 /// - small +/-k (|k| <= 7): repeated addition (cheaper than field mul)
 /// - general: full field multiplication
 #[derive(Clone, Debug)]
-pub struct PrecomputedSparseMatrix<F: PrimeField> {
-  num_rows: usize,
-  num_cols: usize,
-  /// Per-row spans into each category's column array: (start, count)
-  row_unit_pos: Vec<(usize, usize)>,
-  row_unit_neg: Vec<(usize, usize)>,
-  row_small: Vec<(usize, usize)>,
-  row_general: Vec<(usize, usize)>,
-  /// Column indices for val=+1 entries
-  unit_pos_cols: Vec<usize>,
-  /// Column indices for val=-1 entries
-  unit_neg_cols: Vec<usize>,
-  /// (column_index, signed_coeff) for small integer entries (|coeff| in 2..=7)
-  small_cols: Vec<usize>,
-  small_coeffs: Vec<i8>,
-  /// (column_index, coefficient) for general entries
-  general_cols: Vec<usize>,
-  general_vals: Vec<F>,
+pub(super) struct PrecomputedSparseMatrix<F: PrimeField> {
+  /// One compact class per entry in the source matrix's canonical CSR order.
+  /// Values in `-7..=-1` and `1..=7` encode small signed coefficients;
+  /// zero means that the source coefficient requires a general field
+  /// multiplication. The source remains the sole owner of rows, columns, and
+  /// coefficient values.
+  coefficient_classes: Vec<i8>,
+  _p: PhantomData<F>,
 }
 
 impl<F: PrimeField> PrecomputedSparseMatrix<F> {
   /// Build from a CSR SparseMatrix by classifying entries.
-  pub fn from_sparse(m: &SparseMatrix<F>) -> Self {
-    let num_rows = m.indptr.len() - 1;
+  pub(super) fn from_sparse(m: &SparseMatrix<F>) -> Self {
     let one = F::ONE;
     let neg_one = -F::ONE;
 
@@ -47,62 +96,27 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
     let small_pos: Vec<F> = (2u64..=7).map(F::from).collect();
     let small_neg: Vec<F> = (2u64..=7).map(|k| -F::from(k)).collect();
 
-    let mut row_unit_pos = Vec::with_capacity(num_rows);
-    let mut row_unit_neg = Vec::with_capacity(num_rows);
-    let mut row_small = Vec::with_capacity(num_rows);
-    let mut row_general = Vec::with_capacity(num_rows);
-    let mut unit_pos_cols = Vec::new();
-    let mut unit_neg_cols = Vec::new();
-    let mut small_cols = Vec::new();
-    let mut small_coeffs: Vec<i8> = Vec::new();
-    let mut general_cols = Vec::new();
-    let mut general_vals = Vec::new();
-
-    for ptrs in m.indptr.windows(2) {
-      let up_start = unit_pos_cols.len();
-      let un_start = unit_neg_cols.len();
-      let sm_start = small_cols.len();
-      let g_start = general_cols.len();
-
-      for (&val, &col) in m.data[ptrs[0]..ptrs[1]]
-        .iter()
-        .zip(&m.indices[ptrs[0]..ptrs[1]])
-      {
+    let coefficient_classes = m
+      .data
+      .iter()
+      .map(|&val| {
         if val == one {
-          unit_pos_cols.push(col);
+          1
         } else if val == neg_one {
-          unit_neg_cols.push(col);
+          -1
         } else if let Some(k) = small_pos.iter().position(|&v| v == val) {
-          small_cols.push(col);
-          small_coeffs.push((k as i8) + 2);
+          (k as i8) + 2
         } else if let Some(k) = small_neg.iter().position(|&v| v == val) {
-          small_cols.push(col);
-          small_coeffs.push(-((k as i8) + 2));
+          -((k as i8) + 2)
         } else {
-          general_cols.push(col);
-          general_vals.push(val);
+          0
         }
-      }
-
-      row_unit_pos.push((up_start, unit_pos_cols.len() - up_start));
-      row_unit_neg.push((un_start, unit_neg_cols.len() - un_start));
-      row_small.push((sm_start, small_cols.len() - sm_start));
-      row_general.push((g_start, general_cols.len() - g_start));
-    }
+      })
+      .collect();
 
     Self {
-      num_rows,
-      num_cols: m.cols,
-      row_unit_pos,
-      row_unit_neg,
-      row_small,
-      row_general,
-      unit_pos_cols,
-      unit_neg_cols,
-      small_cols,
-      small_coeffs,
-      general_cols,
-      general_vals,
+      coefficient_classes,
+      _p: PhantomData,
     }
   }
 
@@ -133,99 +147,96 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
   }
 
   #[inline(always)]
-  fn compute_row_single(&self, row: usize, v: &[F]) -> F {
+  fn product(class: i8, coefficient: F, value: F) -> F {
+    match class {
+      1 => value,
+      -1 => -value,
+      -7..=-2 | 2..=7 => Self::small_mul(class, value),
+      0 => coefficient * value,
+      _ => unreachable!("invalid compact coefficient class"),
+    }
+  }
+
+  #[inline(always)]
+  pub(super) fn compute_row_single(&self, matrix: &SparseMatrix<F>, row: usize, v: &[F]) -> F {
     let mut sum = F::ZERO;
-
-    let (start, count) = self.row_unit_pos[row];
-    for i in start..(start + count) {
-      sum += v[self.unit_pos_cols[i]];
+    for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+      sum += Self::product(
+        self.coefficient_classes[entry],
+        matrix.data[entry],
+        v[matrix.indices[entry]],
+      );
     }
-
-    let (start, count) = self.row_unit_neg[row];
-    for i in start..(start + count) {
-      sum -= v[self.unit_neg_cols[i]];
-    }
-
-    let (start, count) = self.row_small[row];
-    for i in start..(start + count) {
-      sum += Self::small_mul(self.small_coeffs[i], v[self.small_cols[i]]);
-    }
-
-    let (start, count) = self.row_general[row];
-    for i in start..(start + count) {
-      sum += self.general_vals[i] * v[self.general_cols[i]];
-    }
-
     sum
   }
 
   #[inline(always)]
-  fn compute_row_pair(&self, row: usize, v1: &[F], v2: &[F]) -> (F, F) {
+  fn compute_row_pair(&self, matrix: &SparseMatrix<F>, row: usize, v1: &[F], v2: &[F]) -> (F, F) {
     let mut s1 = F::ZERO;
     let mut s2 = F::ZERO;
-
-    let (start, count) = self.row_unit_pos[row];
-    for i in start..(start + count) {
-      let col = self.unit_pos_cols[i];
-      s1 += v1[col];
-      s2 += v2[col];
+    for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
+      let class = self.coefficient_classes[entry];
+      let coefficient = matrix.data[entry];
+      let column = matrix.indices[entry];
+      s1 += Self::product(class, coefficient, v1[column]);
+      s2 += Self::product(class, coefficient, v2[column]);
     }
-
-    let (start, count) = self.row_unit_neg[row];
-    for i in start..(start + count) {
-      let col = self.unit_neg_cols[i];
-      s1 -= v1[col];
-      s2 -= v2[col];
-    }
-
-    let (start, count) = self.row_small[row];
-    for i in start..(start + count) {
-      let col = self.small_cols[i];
-      let c = self.small_coeffs[i];
-      s1 += Self::small_mul(c, v1[col]);
-      s2 += Self::small_mul(c, v2[col]);
-    }
-
-    let (start, count) = self.row_general[row];
-    for i in start..(start + count) {
-      let col = self.general_cols[i];
-      let val = self.general_vals[i];
-      s1 += val * v1[col];
-      s2 += val * v2[col];
-    }
-
     (s1, s2)
   }
 
   /// Fast SpMV using precomputed coefficient classification.
-  pub fn multiply_vec(&self, vector: &[F]) -> Vec<F> {
-    assert_eq!(self.num_cols, vector.len(), "invalid shape");
-    if self.num_rows <= PARALLEL_THRESHOLD {
-      (0..self.num_rows)
-        .map(|r| self.compute_row_single(r, vector))
+  ///
+  /// `matrix` must be the owning `R1CSShape` field from which this private
+  /// cache was built. Keeping this API within the parent R1CS module makes
+  /// that association explicit at each of its few call sites.
+  pub(super) fn multiply_vec(&self, matrix: &SparseMatrix<F>, vector: &[F]) -> Vec<F> {
+    self.validate_source(matrix);
+    assert_eq!(matrix.cols, vector.len(), "invalid shape");
+    let rows = matrix.indptr.len() - 1;
+    if rows <= PARALLEL_THRESHOLD {
+      (0..rows)
+        .map(|r| self.compute_row_single(matrix, r, vector))
         .collect()
     } else {
-      (0..self.num_rows)
+      (0..rows)
         .into_par_iter()
-        .map(|r| self.compute_row_single(r, vector))
+        .map(|r| self.compute_row_single(matrix, r, vector))
         .collect()
     }
   }
 
   /// Fast dual-vector SpMV: compute (M*v1, M*v2) in a single pass.
-  pub fn multiply_vec_pair(&self, v1: &[F], v2: &[F]) -> (Vec<F>, Vec<F>) {
-    assert_eq!(self.num_cols, v1.len(), "invalid shape for v1");
-    assert_eq!(self.num_cols, v2.len(), "invalid shape for v2");
-    if self.num_rows <= PARALLEL_THRESHOLD {
-      (0..self.num_rows)
-        .map(|r| self.compute_row_pair(r, v1, v2))
+  ///
+  /// `matrix` must be the owning `R1CSShape` field from which this private
+  /// cache was built.
+  pub(super) fn multiply_vec_pair(
+    &self,
+    matrix: &SparseMatrix<F>,
+    v1: &[F],
+    v2: &[F],
+  ) -> (Vec<F>, Vec<F>) {
+    self.validate_source(matrix);
+    assert_eq!(matrix.cols, v1.len(), "invalid shape for v1");
+    assert_eq!(matrix.cols, v2.len(), "invalid shape for v2");
+    let rows = matrix.indptr.len() - 1;
+    if rows <= PARALLEL_THRESHOLD {
+      (0..rows)
+        .map(|r| self.compute_row_pair(matrix, r, v1, v2))
         .unzip()
     } else {
-      (0..self.num_rows)
+      (0..rows)
         .into_par_iter()
-        .map(|r| self.compute_row_pair(r, v1, v2))
+        .map(|r| self.compute_row_pair(matrix, r, v1, v2))
         .unzip()
     }
+  }
+
+  fn validate_source(&self, matrix: &SparseMatrix<F>) {
+    assert_eq!(
+      self.coefficient_classes.len(),
+      matrix.data.len(),
+      "stale compact coefficient classification"
+    );
   }
 }
 
@@ -234,7 +245,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseMatrix<F: PrimeField> {
   /// all non-zero values in the matrix
-  pub data: Vec<F>,
+  pub data: SparseCoefficients<F>,
   /// column indices
   pub indices: Vec<usize>,
   /// row information
@@ -247,7 +258,7 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// 0x0 empty matrix
   pub fn empty() -> Self {
     SparseMatrix {
-      data: vec![],
+      data: Vec::new().into(),
       indices: vec![],
       indptr: vec![0],
       cols: 0,
@@ -280,7 +291,7 @@ impl<F: PrimeField> SparseMatrix<F> {
     }
 
     SparseMatrix {
-      data,
+      data: data.into(),
       indices,
       indptr,
       cols,
@@ -441,11 +452,54 @@ mod tests {
     let sparse_matrix = SparseMatrix::<Fr>::new(&matrix_data, 3, 3);
 
     assert_eq!(
-      sparse_matrix.data,
-      vec![Fr::from(2), Fr::from(3), Fr::from(4)]
+      sparse_matrix.data.as_slice(),
+      [Fr::from(2), Fr::from(3), Fr::from(4)]
     );
     assert_eq!(sparse_matrix.indices, vec![1, 2, 0]);
     assert_eq!(sparse_matrix.indptr, vec![0, 1, 2, 3]);
+  }
+
+  #[test]
+  fn shared_coefficients_detach_before_mutation() {
+    let matrix = SparseMatrix::<Fr>::new(&[(0, 0, Fr::from(2))], 1, 1);
+    let mut changed = matrix.clone();
+    assert!(matrix.data.shares_storage_with(&changed.data));
+
+    changed.data[0] = Fr::from(3);
+
+    assert!(!matrix.data.shares_storage_with(&changed.data));
+    assert_eq!(matrix.data[0], Fr::from(2));
+    assert_eq!(changed.data[0], Fr::from(3));
+  }
+
+  #[test]
+  fn shared_coefficients_preserve_vec_wire_encoding() {
+    #[derive(Serialize)]
+    struct LegacySparseMatrix<F> {
+      data: Vec<F>,
+      indices: Vec<usize>,
+      indptr: Vec<usize>,
+      cols: usize,
+    }
+
+    let matrix = SparseMatrix::<Fr>::new(&[(0, 0, Fr::from(2)), (1, 1, Fr::from(3))], 2, 2);
+    let legacy = LegacySparseMatrix {
+      data: matrix.data.as_slice().to_vec(),
+      indices: matrix.indices.clone(),
+      indptr: matrix.indptr.clone(),
+      cols: matrix.cols,
+    };
+    let config = bincode::config::legacy()
+      .with_little_endian()
+      .with_fixed_int_encoding();
+    let encoded = bincode::serde::encode_to_vec(&matrix, config).unwrap();
+    let legacy_encoded = bincode::serde::encode_to_vec(&legacy, config).unwrap();
+    assert_eq!(encoded, legacy_encoded);
+
+    let (decoded, consumed): (SparseMatrix<Fr>, usize) =
+      bincode::serde::decode_from_slice(&encoded, config).unwrap();
+    assert_eq!(consumed, encoded.len());
+    assert_eq!(decoded, matrix);
   }
 
   #[test]
@@ -500,10 +554,13 @@ mod tests {
       (1, 3, Fr::from(5)),
       (1, 4, Fr::from(6)),
       (1, 5, Fr::from(7)),
-      // Row 2: small negative
+      // Row 2: small negative -2..=-7
       (2, 0, -Fr::from(2)),
       (2, 1, -Fr::from(3)),
-      (2, 2, -Fr::from(7)),
+      (2, 2, -Fr::from(4)),
+      (2, 3, -Fr::from(5)),
+      (2, 4, -Fr::from(6)),
+      (2, 5, -Fr::from(7)),
       // Row 3: empty row (no entries)
       // Row 4: mixed
       (4, 0, one),
@@ -524,8 +581,9 @@ mod tests {
     let (matrix, vector) = mixed_coefficient_matrix();
     let expected = matrix.multiply_vec(&vector);
     let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
-    let result = precomputed.multiply_vec(&vector);
+    let result = precomputed.multiply_vec(&matrix, &vector);
     assert_eq!(expected, result);
+    assert_eq!(precomputed.coefficient_classes.len(), matrix.data.len());
   }
 
   #[test]
@@ -537,10 +595,56 @@ mod tests {
     let expected2 = matrix.multiply_vec(&v2);
 
     let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
-    let (result1, result2) = precomputed.multiply_vec_pair(&v1, &v2);
+    let (result1, result2) = precomputed.multiply_vec_pair(&matrix, &v1, &v2);
 
     assert_eq!(expected1, result1);
     assert_eq!(expected2, result2);
+  }
+
+  #[test]
+  fn test_precomputed_handles_leading_and_trailing_empty_rows() {
+    let entries = vec![(2, 0, Fr::ONE), (4, 1, -Fr::from(7))];
+    let matrix = SparseMatrix::new(&entries, 7, 2);
+    let vector = vec![Fr::from(9), Fr::from(3)];
+    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
+
+    assert_eq!(
+      precomputed.multiply_vec(&matrix, &vector),
+      matrix.multiply_vec(&vector)
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "stale compact coefficient classification")]
+  fn test_precomputed_rejects_stale_source_length() {
+    let original = SparseMatrix::new(&[(0, 0, Fr::ONE)], 1, 2);
+    let stale = SparseMatrix::new(&[(0, 0, Fr::ONE), (0, 1, Fr::ONE)], 1, 2);
+    let precomputed = PrecomputedSparseMatrix::from_sparse(&original);
+
+    let _ = precomputed.multiply_vec(&stale, &[Fr::ONE, Fr::ONE]);
+  }
+
+  #[test]
+  fn test_precomputed_parallel_row_path_matches_sparse() {
+    let rows = PARALLEL_THRESHOLD + 1;
+    let entries = vec![
+      (0, 0, Fr::ONE),
+      (PARALLEL_THRESHOLD / 2, 1, -Fr::from(4)),
+      (PARALLEL_THRESHOLD, 2, Fr::from(29)),
+    ];
+    let matrix = SparseMatrix::new(&entries, rows, 3);
+    let v1 = vec![Fr::from(2), Fr::from(3), Fr::from(5)];
+    let v2 = vec![Fr::from(7), Fr::from(11), Fr::from(13)];
+    let precomputed = PrecomputedSparseMatrix::from_sparse(&matrix);
+
+    assert_eq!(
+      precomputed.multiply_vec(&matrix, &v1),
+      matrix.multiply_vec(&v1)
+    );
+    assert_eq!(
+      precomputed.multiply_vec_pair(&matrix, &v1, &v2),
+      (matrix.multiply_vec(&v1), matrix.multiply_vec(&v2))
+    );
   }
 
   proptest! {
@@ -558,13 +662,13 @@ mod tests {
 
       // Single-vector: precomputed must match SparseMatrix
       let expected = matrix.multiply_vec(&v1);
-      let result = precomputed.multiply_vec(&v1);
+      let result = precomputed.multiply_vec(&matrix, &v1);
       prop_assert_eq!(&expected, &result);
 
       // Dual-vector: both outputs must match
       let expected1 = matrix.multiply_vec(&v1);
       let expected2 = matrix.multiply_vec(&v2);
-      let (result1, result2) = precomputed.multiply_vec_pair(&v1, &v2);
+      let (result1, result2) = precomputed.multiply_vec_pair(&matrix, &v1, &v2);
       prop_assert_eq!(&expected1, &result1);
       prop_assert_eq!(&expected2, &result2);
     }

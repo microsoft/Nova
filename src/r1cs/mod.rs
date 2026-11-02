@@ -24,7 +24,7 @@ use serde_with::serde_as;
 
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
-pub use sparse::SparseMatrix;
+pub use sparse::{SparseCoefficients, SparseMatrix};
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -396,11 +396,63 @@ impl<E: Engine> R1CSShape<E> {
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
     let (Az, (Bz, Cz)) = rayon::join(
-      || pa.multiply_vec(z),
-      || rayon::join(|| pb.multiply_vec(z), || pc.multiply_vec(z)),
+      || pa.multiply_vec(&self.A, z),
+      || {
+        rayon::join(
+          || pb.multiply_vec(&self.B, z),
+          || pc.multiply_vec(&self.C, z),
+        )
+      },
     );
 
     Ok((Az, Bz, Cz))
+  }
+
+  /// Computes one folding residual without retaining the three matrix
+  /// products. Each row preserves the matrix-entry and residual operation
+  /// order used by the materialized path.
+  fn cross_term(
+    &self,
+    z: &[E::Scalar],
+    u: E::Scalar,
+    E1: &[E::Scalar],
+    E2: Option<&[E::Scalar]>,
+  ) -> Result<Vec<E::Scalar>, NovaError> {
+    if z.len() != self.num_io + self.num_vars + 1
+      || E1.len() != self.num_cons
+      || E2.is_some_and(|e| e.len() != self.num_cons)
+    {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
+    let pa = self
+      .precomputed_A
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.A));
+    let pb = self
+      .precomputed_B
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.B));
+    let pc = self
+      .precomputed_C
+      .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
+    let compute_row = |row| {
+      let az = pa.compute_row_single(&self.A, row, z);
+      let bz = pb.compute_row_single(&self.B, row, z);
+      let cz = pc.compute_row_single(&self.C, row, z);
+      let mut residual = az * bz - u * cz - E1[row];
+      if let Some(E2) = E2 {
+        residual -= E2[row];
+      }
+      residual
+    };
+
+    Ok(if self.num_cons <= PARALLEL_THRESHOLD {
+      (0..self.num_cons).map(compute_row).collect()
+    } else {
+      (0..self.num_cons)
+        .into_par_iter()
+        .map(compute_row)
+        .collect()
+    })
   }
 
   /// Multiplies A, B, C by two vectors simultaneously in a single pass per matrix.
@@ -431,11 +483,11 @@ impl<E: Engine> R1CSShape<E> {
       .get_or_init(|| PrecomputedSparseMatrix::from_sparse(&self.C));
 
     let ((Az1, Az2), ((Bz1, Bz2), (Cz1, Cz2))) = rayon::join(
-      || pa.multiply_vec_pair(z1, z2),
+      || pa.multiply_vec_pair(&self.A, z1, z2),
       || {
         rayon::join(
-          || pb.multiply_vec_pair(z1, z2),
-          || pc.multiply_vec_pair(z1, z2),
+          || pb.multiply_vec_pair(&self.B, z1, z2),
+          || pc.multiply_vec_pair(&self.C, z1, z2),
         )
       },
     );
@@ -557,40 +609,33 @@ impl<E: Engine> R1CSShape<E> {
     W2: &R1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
+    if W1.W.len() != self.num_vars
+      || W2.W.len() != self.num_vars
+      || U1.X.len() != self.num_io
+      || U2.X.len() != self.num_io
+      || W1.E.len() != self.num_cons
+    {
+      return Err(NovaError::InvalidWitnessLength);
+    }
+
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
     let z_len = W1.W.len() + 1 + U1.X.len();
-    let Z = if z_len <= PARALLEL_THRESHOLD {
-      let mut z = Vec::with_capacity(z_len);
-      W1.W
-        .iter()
-        .zip(W2.W.iter())
-        .for_each(|(w1, w2)| z.push(*w1 + *w2));
-      z.push(U1.u + E::Scalar::ONE);
-      U1.X
-        .iter()
-        .zip(U2.X.iter())
-        .for_each(|(x1, x2)| z.push(*x1 + *x2));
-      z
+    let mut Z = Vec::with_capacity(z_len);
+    Z.extend_from_slice(&W1.W);
+    if z_len <= PARALLEL_THRESHOLD {
+      Z.iter_mut().zip(W2.W.iter()).for_each(|(z, w2)| *z += *w2);
     } else {
-      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-      let Z2 = [W2.W.clone(), vec![E::Scalar::ONE], U2.X.clone()].concat();
-      Z1.into_par_iter()
-        .zip(Z2.into_par_iter())
-        .map(|(z1, z2)| z1 + z2)
-        .collect::<Vec<E::Scalar>>()
-    };
+      Z.par_iter_mut()
+        .zip(W2.W.par_iter())
+        .for_each(|(z, w2)| *z += *w2);
+    }
+    Z.push(U1.u + E::Scalar::ONE);
+    Z.extend(U1.X.iter().zip(U2.X.iter()).map(|(x1, x2)| *x1 + *x2));
     let u = U1.u + E::Scalar::ONE; // U2.u = 1
 
-    let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
-
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .map(|(((az, bz), cz), e)| *az * *bz - u * *cz - *e)
-      .collect::<Vec<E::Scalar>>();
+    let T = self.cross_term(&Z, u, &W1.E, None)?;
+    drop(Z);
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 
@@ -608,28 +653,34 @@ impl<E: Engine> R1CSShape<E> {
     W2: &RelaxedR1CSWitness<E>,
     r_T: &E::Scalar,
   ) -> Result<(Vec<E::Scalar>, Commitment<E>), NovaError> {
-    let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-    let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
+    if W1.W.len() != self.num_vars
+      || W2.W.len() != self.num_vars
+      || U1.X.len() != self.num_io
+      || U2.X.len() != self.num_io
+      || W1.E.len() != self.num_cons
+      || W2.E.len() != self.num_cons
+    {
+      return Err(NovaError::InvalidWitnessLength);
+    }
 
     // The following code uses the optimization suggested in
     // Section 5.2 of [Mova](https://eprint.iacr.org/2024/1220.pdf)
-    let Z = Z1
-      .into_par_iter()
-      .zip(Z2.into_par_iter())
-      .map(|(z1, z2)| z1 + z2)
-      .collect::<Vec<E::Scalar>>();
+    let z_len = W1.W.len() + 1 + U1.X.len();
+    let mut Z = Vec::with_capacity(z_len);
+    Z.extend_from_slice(&W1.W);
+    if z_len <= PARALLEL_THRESHOLD {
+      Z.iter_mut().zip(W2.W.iter()).for_each(|(z, w2)| *z += *w2);
+    } else {
+      Z.par_iter_mut()
+        .zip(W2.W.par_iter())
+        .for_each(|(z, w2)| *z += *w2);
+    }
+    Z.push(U1.u + U2.u);
+    Z.extend(U1.X.iter().zip(U2.X.iter()).map(|(x1, x2)| *x1 + *x2));
     let u = U1.u + U2.u;
 
-    let (AZ, BZ, CZ) = self.multiply_vec(&Z)?;
-
-    let T = AZ
-      .par_iter()
-      .zip(BZ.par_iter())
-      .zip(CZ.par_iter())
-      .zip(W1.E.par_iter())
-      .zip(W2.E.par_iter())
-      .map(|((((az, bz), cz), e1), e2)| *az * *bz - u * *cz - *e1 - *e2)
-      .collect::<Vec<E::Scalar>>();
+    let T = self.cross_term(&Z, u, &W1.E, Some(&W2.E))?;
+    drop(Z);
 
     let comm_T = CE::<E>::commit(ck, &T, r_T);
 
@@ -1008,18 +1059,21 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     )
   }
 
-  /// Folds an incoming `R1CSWitness` into the current one
+  /// Folds an incoming `R1CSWitness` into the current one.
+  ///
+  /// The cross-term allocation is consumed and becomes the folded error
+  /// vector.
   pub fn fold(
     &self,
     W2: &R1CSWitness<E>,
-    T: &[E::Scalar],
+    mut T: Vec<E::Scalar>,
     r_T: &E::Scalar,
     r: &E::Scalar,
   ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
     let (W1, r_W1, E1, r_E1) = (&self.W, &self.r_W, &self.E, &self.r_E);
     let (W2, r_W2) = (&W2.W, &W2.r_W);
 
-    if W1.len() != W2.len() {
+    if W1.len() != W2.len() || E1.len() != T.len() {
       return Err(NovaError::InvalidWitnessLength);
     }
 
@@ -1028,31 +1082,32 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
-    let E = E1
-      .par_iter()
-      .zip(T)
-      .map(|(a, b)| *a + *r * *b)
-      .collect::<Vec<E::Scalar>>();
+    T.par_iter_mut()
+      .zip(E1)
+      .for_each(|(t, e1)| *t = *e1 + *r * *t);
 
     let r_W = *r_W1 + *r * r_W2;
     let r_E = *r_E1 + *r * r_T;
 
-    Ok(RelaxedR1CSWitness { W, r_W, E, r_E })
+    Ok(RelaxedR1CSWitness { W, r_W, E: T, r_E })
   }
 
-  /// Folds an incoming `RelaxedR1CSWitness` into the current one
-  /// E2 is not necessarily zero vec  
+  /// Folds an incoming `RelaxedR1CSWitness` into the current one.
+  /// E2 is not necessarily zero vec.
+  ///
+  /// The cross-term allocation is consumed and becomes the folded error
+  /// vector.
   pub fn fold_relaxed(
     &self,
     W2: &RelaxedR1CSWitness<E>,
-    T: &[E::Scalar],
+    mut T: Vec<E::Scalar>,
     r_T: &E::Scalar,
     r: &E::Scalar,
   ) -> Result<RelaxedR1CSWitness<E>, NovaError> {
     let (W1, r_W1, E1, r_E1) = (&self.W, &self.r_W, &self.E, &self.r_E);
     let (W2, r_W2, E2, r_E2) = (&W2.W, &W2.r_W, &W2.E, &W2.r_E);
 
-    if W1.len() != W2.len() {
+    if W1.len() != W2.len() || E1.len() != T.len() || E2.len() != T.len() {
       return Err(NovaError::InvalidWitnessLength);
     }
 
@@ -1061,17 +1116,15 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       .zip(W2)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<E::Scalar>>();
-    let E = E1
-      .par_iter()
-      .zip(T)
-      .zip(E2.par_iter())
-      .map(|((a, b), c)| *a + *r * *b + *r * *r * *c)
-      .collect::<Vec<E::Scalar>>();
+    T.par_iter_mut()
+      .zip(E1)
+      .zip(E2)
+      .for_each(|((t, e1), e2)| *t = *e1 + *r * *t + *r * *r * *e2);
 
     let r_W = *r_W1 + *r * r_W2;
     let r_E = *r_E1 + *r * r_T + *r * *r * *r_E2;
 
-    Ok(RelaxedR1CSWitness { W, r_W, E, r_E })
+    Ok(RelaxedR1CSWitness { W, r_W, E: T, r_E })
   }
 
   /// Pads the provided witness to the correct length
@@ -1088,6 +1141,15 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       E,
       r_E: self.r_E,
     }
+  }
+
+  /// Consumes and pads this witness without retaining an unpadded copy.
+  pub fn into_padded(mut self, S: &R1CSShape<E>) -> RelaxedR1CSWitness<E> {
+    assert!(self.W.len() <= S.num_vars, "witness exceeds padded shape");
+    assert!(self.E.len() <= S.num_cons, "error exceeds padded shape");
+    self.W.resize(S.num_vars, E::Scalar::ZERO);
+    self.E.resize(S.num_cons, E::Scalar::ZERO);
+    self
   }
 
   /// Consumes self and returns owned W and E vectors (avoids re-cloning).
@@ -1107,6 +1169,15 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       self.r_W,
       self.r_E,
     )
+  }
+
+  /// Consumes and derandomizes this witness without cloning its vectors.
+  pub fn into_derandomized(mut self) -> (Self, E::Scalar, E::Scalar) {
+    let r_W = self.r_W;
+    let r_E = self.r_E;
+    self.r_W = E::Scalar::ZERO;
+    self.r_E = E::Scalar::ZERO;
+    (self, r_W, r_E)
   }
 }
 
@@ -1305,7 +1376,7 @@ impl<E: Engine> AbsorbInROTrait<E> for RelaxedR1CSInstance<E> {
 
 #[cfg(test)]
 mod tests {
-  use ff::Field;
+  use ff::{Field, PrimeField};
 
   use super::*;
   use crate::{
@@ -1381,8 +1452,12 @@ mod tests {
   }
 
   fn test_pad_tiny_r1cs_with<E: Engine>() {
-    let padded_r1cs = tiny_r1cs::<E>(3).pad();
+    let source = tiny_r1cs::<E>(3);
+    let padded_r1cs = source.pad();
     assert!(padded_r1cs.is_regular_shape());
+    assert!(source.A.data.shares_storage_with(&padded_r1cs.A.data));
+    assert!(source.B.data.shares_storage_with(&padded_r1cs.B.data));
+    assert!(source.C.data.shares_storage_with(&padded_r1cs.C.data));
 
     let expected_r1cs = tiny_r1cs::<E>(4);
 
@@ -1396,6 +1471,52 @@ mod tests {
     test_pad_tiny_r1cs_with::<Secp256k1Engine>();
   }
 
+  #[test]
+  fn shared_coefficients_preserve_shape_digest() {
+    #[derive(Serialize)]
+    struct LegacySparseMatrix<F> {
+      data: Vec<F>,
+      indices: Vec<usize>,
+      indptr: Vec<usize>,
+      cols: usize,
+    }
+
+    #[derive(Serialize)]
+    struct LegacyR1CSShape<F> {
+      num_cons: usize,
+      num_vars: usize,
+      num_io: usize,
+      a: LegacySparseMatrix<F>,
+      b: LegacySparseMatrix<F>,
+      c: LegacySparseMatrix<F>,
+    }
+
+    impl<F: Serialize> SimpleDigestible for LegacyR1CSShape<F> {}
+
+    fn legacy_matrix<F: PrimeField>(matrix: &SparseMatrix<F>) -> LegacySparseMatrix<F> {
+      LegacySparseMatrix {
+        data: matrix.data.as_slice().to_vec(),
+        indices: matrix.indices.clone(),
+        indptr: matrix.indptr.clone(),
+        cols: matrix.cols,
+      }
+    }
+
+    let shape = tiny_r1cs::<PallasEngine>(3);
+    let legacy = LegacyR1CSShape {
+      num_cons: shape.num_cons,
+      num_vars: shape.num_vars,
+      num_io: shape.num_io,
+      a: legacy_matrix(&shape.A),
+      b: legacy_matrix(&shape.B),
+      c: legacy_matrix(&shape.C),
+    };
+    let legacy_digest = DigestComputer::<<PallasEngine as Engine>::Scalar, _>::new(&legacy)
+      .digest()
+      .unwrap();
+    assert_eq!(shape.digest(), legacy_digest);
+  }
+
   fn test_pad_nonsquare_with<E: Engine>() {
     // tiny_r1cs(8) has num_cons=4, num_vars=8, num_io=2
     // pad_nonsquare should keep num_cons=4 (already power of two)
@@ -1405,6 +1526,9 @@ mod tests {
     assert!(padded.is_regular_shape());
     assert_eq!(padded.num_cons, 4);
     assert_eq!(padded.num_vars, 8);
+    assert!(S.A.data.shares_storage_with(&padded.A.data));
+    assert!(S.B.data.shares_storage_with(&padded.B.data));
+    assert!(S.C.data.shares_storage_with(&padded.C.data));
 
     // tiny_r1cs(3) has num_cons=4, num_vars=3, num_io=2
     // pad_nonsquare should keep num_cons=4 and round num_vars up to 4
@@ -1413,6 +1537,9 @@ mod tests {
     assert!(padded2.is_regular_shape());
     assert_eq!(padded2.num_cons, 4);
     assert_eq!(padded2.num_vars, 4);
+    assert!(S2.A.data.shares_storage_with(&padded2.A.data));
+    assert!(S2.B.data.shares_storage_with(&padded2.B.data));
+    assert!(S2.C.data.shares_storage_with(&padded2.C.data));
 
     // Verify satisfiability is preserved through pad_nonsquare
     let ck = R1CSShape::commitment_key(&[&padded], &[&*default_ck_hint()]).unwrap();
@@ -1489,5 +1616,116 @@ mod tests {
     test_multiply_vec_pair_with::<PallasEngine>();
     test_multiply_vec_pair_with::<Bn256EngineKZG>();
     test_multiply_vec_pair_with::<Secp256k1Engine>();
+  }
+
+  fn test_cross_term_with<E: Engine>() {
+    let S = tiny_r1cs::<E>(4);
+    let z_len = S.num_vars + 1 + S.num_io;
+    let z = (1..=z_len as u64).map(E::Scalar::from).collect::<Vec<_>>();
+    let u = E::Scalar::from(31);
+    let E1 = (41..41 + S.num_cons as u64)
+      .map(E::Scalar::from)
+      .collect::<Vec<_>>();
+    let E2 = (51..51 + S.num_cons as u64)
+      .map(E::Scalar::from)
+      .collect::<Vec<_>>();
+    let (Az, Bz, Cz) = S.multiply_vec(&z).unwrap();
+    let expected = Az
+      .iter()
+      .zip(&Bz)
+      .zip(&Cz)
+      .zip(&E1)
+      .map(|(((az, bz), cz), e1)| *az * *bz - u * *cz - *e1)
+      .collect::<Vec<_>>();
+    let expected_relaxed = expected
+      .iter()
+      .zip(&E2)
+      .map(|(residual, e2)| *residual - *e2)
+      .collect::<Vec<_>>();
+
+    assert_eq!(S.cross_term(&z, u, &E1, None).unwrap(), expected);
+    assert_eq!(
+      S.cross_term(&z, u, &E1, Some(&E2)).unwrap(),
+      expected_relaxed
+    );
+  }
+
+  #[test]
+  fn test_cross_term() {
+    test_cross_term_with::<PallasEngine>();
+    test_cross_term_with::<Bn256EngineKZG>();
+    test_cross_term_with::<Secp256k1Engine>();
+  }
+
+  #[test]
+  fn folding_reuses_cross_term_storage() {
+    type E = PallasEngine;
+    type F = <E as Engine>::Scalar;
+
+    let S = tiny_r1cs::<E>(4);
+    let running: RelaxedR1CSWitness<E> = RelaxedR1CSWitness {
+      W: vec![F::from(2); S.num_vars],
+      r_W: F::from(3),
+      E: vec![F::from(5); S.num_cons],
+      r_E: F::from(7),
+    };
+    let incoming = R1CSWitness {
+      W: vec![F::from(11); S.num_vars],
+      r_W: F::from(13),
+    };
+    let r = F::from(17);
+    let r_T = F::from(19);
+    let cross_term = vec![F::from(23); S.num_cons];
+    let cross_term_storage = cross_term.as_ptr();
+    let folded = running.fold(&incoming, cross_term, &r_T, &r).unwrap();
+    assert_eq!(folded.E.as_ptr(), cross_term_storage);
+    assert!(folded.E.iter().all(|e| *e == F::from(5) + r * F::from(23)));
+
+    let incoming_relaxed = RelaxedR1CSWitness {
+      W: vec![F::from(11); S.num_vars],
+      r_W: F::from(13),
+      E: vec![F::from(29); S.num_cons],
+      r_E: F::from(31),
+    };
+    let cross_term = vec![F::from(23); S.num_cons];
+    let cross_term_storage = cross_term.as_ptr();
+    let folded = running
+      .fold_relaxed(&incoming_relaxed, cross_term, &r_T, &r)
+      .unwrap();
+    assert_eq!(folded.E.as_ptr(), cross_term_storage);
+    assert!(folded
+      .E
+      .iter()
+      .all(|e| *e == F::from(5) + r * F::from(23) + r * r * F::from(29)));
+  }
+
+  #[test]
+  fn owned_witness_transforms_reuse_vector_storage() {
+    type E = PallasEngine;
+    type F = <E as Engine>::Scalar;
+
+    let S = tiny_r1cs::<E>(4);
+    let mut W = Vec::with_capacity(S.num_vars);
+    W.extend([F::from(2), F::from(3)]);
+    let mut E_values = Vec::with_capacity(S.num_cons);
+    E_values.extend([F::from(5), F::from(7), F::from(11)]);
+    let witness = RelaxedR1CSWitness {
+      W,
+      r_W: F::from(13),
+      E: E_values,
+      r_E: F::from(17),
+    };
+    let expected = witness.derandomize().0.pad(&S);
+    let W_storage = witness.W.as_ptr();
+    let E_storage = witness.E.as_ptr();
+
+    let (owned, r_W, r_E) = witness.into_derandomized();
+    let owned = owned.into_padded(&S);
+
+    assert_eq!(r_W, F::from(13));
+    assert_eq!(r_E, F::from(17));
+    assert_eq!(owned, expected);
+    assert_eq!(owned.W.as_ptr(), W_storage);
+    assert_eq!(owned.E.as_ptr(), E_storage);
   }
 }

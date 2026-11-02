@@ -66,7 +66,7 @@ impl<E: Engine> NIFS<E> {
     let U = U1.fold(U2, &comm_T, &r);
 
     // fold the witness using `r` and `T`
-    let W = W1.fold(W2, &T, &r_T, &r)?;
+    let W = W1.fold(W2, T, &r_T, &r)?;
 
     // return the folded instance and witness
     Ok((Self { comm_T }, (U, W)))
@@ -160,7 +160,7 @@ impl<E: Engine> NIFSRelaxed<E> {
     let U = U1.fold_relaxed(U2, &comm_T, &base_as_scalar::<E>(r));
 
     // fold the witness using `r` and `T`
-    let W = W1.fold_relaxed(W2, &T, &r_T, &base_as_scalar::<E>(r))?;
+    let W = W1.fold_relaxed(W2, T, &r_T, &base_as_scalar::<E>(r))?;
 
     // return the folded instance and witness
     Ok((Self { comm_T }, (U, W)))

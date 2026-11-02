@@ -44,6 +44,20 @@ pub trait EvaluationEngineTrait<E: Engine>: Clone + Send + Sync {
     eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError>;
 
+  /// Proves an evaluation while allowing implementations to reuse the
+  /// polynomial allocation. The default preserves the borrowed API.
+  fn prove_owned(
+    ck: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::CommitmentKey,
+    pk: &Self::ProverKey,
+    transcript: &mut E::TE,
+    comm: &<<E as Engine>::CE as CommitmentEngineTrait<E>>::Commitment,
+    poly: Vec<E::Scalar>,
+    point: &[E::Scalar],
+    eval: &E::Scalar,
+  ) -> Result<Self::EvaluationArgument, NovaError> {
+    Self::prove(ck, pk, transcript, comm, &poly, point, eval)
+  }
+
   /// A method to verify the purported evaluation of a multilinear polynomials
   fn verify(
     vk: &Self::VerifierKey,

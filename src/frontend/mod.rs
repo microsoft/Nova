@@ -20,6 +20,7 @@ pub use lc::{Index, LinearCombination, Variable};
 pub mod r1cs;
 pub mod shape_cs;
 pub mod solver;
+pub(crate) mod streaming_shape_cs;
 pub mod test_shape_cs;
 pub mod util_cs;
 

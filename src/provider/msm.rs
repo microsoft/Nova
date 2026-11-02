@@ -210,6 +210,18 @@ fn repr_low_u64<F: PrimeField>(s: &F) -> u64 {
   u64::from_le_bytes(buf)
 }
 
+fn all_active_scalars_are_large<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> bool {
+  coeffs
+    .par_iter()
+    .zip(bases.par_iter())
+    .all(|(scalar, base)| {
+      bool::from(scalar.is_zero()) || bool::from(base.is_identity()) || {
+        let negative = -*scalar;
+        scalar_num_bits(scalar) > 64 && scalar_num_bits(&negative) > 64
+      }
+    })
+}
+
 // ==================================================================================
 // Main MSM with signed decomposition + bit-width partitioning
 // ==================================================================================
@@ -232,6 +244,13 @@ pub fn msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
   // For very small inputs, use the simple fallback
   if n <= 16 {
     return msm_simple(coeffs, bases);
+  }
+
+  // IPA scalars are transcript challenges and overwhelmingly occupy the full
+  // field width. Avoid classifying and then copying an all-large MSM only to
+  // delegate that complete group to halo2curves.
+  if all_active_scalars_are_large(coeffs, bases) {
+    return halo2curves::msm::msm_best(coeffs, bases);
   }
 
   // Group indices: 0=unit_pos, 1=unit_neg, 2=pos≤8, 3=neg≤8,
@@ -746,6 +765,40 @@ mod tests {
     test_general_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
     test_general_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
     test_general_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
+  }
+
+  fn test_all_large_msm_with<F: PrimeField, A: CurveAffine<ScalarExt = F>>() {
+    let n = 32;
+    let mut coeffs = (0..n)
+      .map(|_| loop {
+        let scalar = F::random(OsRng);
+        if scalar_num_bits(&scalar) > 64 && scalar_num_bits(&-scalar) > 64 {
+          break scalar;
+        }
+      })
+      .collect::<Vec<_>>();
+    let mut bases = (0..n)
+      .map(|_| A::from(A::generator() * F::random(OsRng)))
+      .collect::<Vec<_>>();
+    coeffs[0] = F::ZERO;
+    bases[1] = A::identity();
+    coeffs[1] = F::ONE;
+
+    assert!(all_active_scalars_are_large(&coeffs, &bases));
+    assert_eq!(
+      msm(&coeffs, &bases),
+      halo2curves::msm::msm_best(&coeffs, &bases)
+    );
+  }
+
+  #[test]
+  fn test_all_large_msm() {
+    test_all_large_msm_with::<pallas::Scalar, pallas::Affine>();
+    test_all_large_msm_with::<vesta::Scalar, vesta::Affine>();
+    test_all_large_msm_with::<bn256::Scalar, bn256::Affine>();
+    test_all_large_msm_with::<grumpkin::Scalar, grumpkin::Affine>();
+    test_all_large_msm_with::<secp256k1::Scalar, secp256k1::Affine>();
+    test_all_large_msm_with::<secq256k1::Scalar, secq256k1::Affine>();
   }
 
   fn test_msm_ux_with<F: PrimeField, A: CurveAffine<ScalarExt = F>>() {

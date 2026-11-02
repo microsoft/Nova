@@ -163,61 +163,25 @@ impl<E: Engine> PolyEvalWitness<E> {
   /// We allow the input polynomials to have different sizes, and interpret smaller ones as
   /// being padded with 0 to the maximum size of all polynomials.
   fn batch_diff_size(W: Vec<PolyEvalWitness<E>>, s: E::Scalar) -> PolyEvalWitness<E> {
-    let powers = powers::<E>(&s, W.len());
+    assert!(!W.is_empty());
+    let mut powers = powers::<E>(&s, W.len());
+    let mut W = W;
+    let size_max = W.iter().map(|witness| witness.p.len()).max().unwrap();
+    let largest = W
+      .iter()
+      .position(|witness| witness.p.len() == size_max)
+      .unwrap();
+    let mut p = W.remove(largest).p;
+    let base_power = powers.remove(largest);
+    if base_power != E::Scalar::ONE {
+      p.par_iter_mut().for_each(|value| *value *= base_power);
+    }
 
-    let size_max = W.iter().map(|w| w.p.len()).max().unwrap();
-    // Scale the input polynomials by the power of s
-    let num_chunks = rayon::current_num_threads().next_power_of_two();
-    let chunk_size = size_max / num_chunks;
-
-    let p = if chunk_size > 0 {
-      (0..num_chunks)
-        .into_par_iter()
-        .flat_map_iter(|chunk_index| {
-          let mut chunk = vec![E::Scalar::ZERO; chunk_size];
-          for (coeff, poly) in powers.iter().zip(W.iter()) {
-            for (rlc, poly_eval) in chunk
-              .iter_mut()
-              .zip(poly.p[chunk_index * chunk_size..].iter())
-            {
-              if *coeff == E::Scalar::ONE {
-                *rlc += *poly_eval;
-              } else {
-                *rlc += *coeff * poly_eval;
-              };
-            }
-          }
-          chunk
-        })
-        .collect::<Vec<_>>()
-    } else {
-      W.into_par_iter()
-        .zip_eq(powers.par_iter())
-        .map(|(mut w, s)| {
-          if *s != E::Scalar::ONE {
-            w.p.par_iter_mut().for_each(|e| *e *= s);
-          }
-          w.p
-        })
-        .reduce(
-          || vec![E::Scalar::ZERO; size_max],
-          |left, right| {
-            // Sum into the largest polynomial
-            let (mut big, small) = if left.len() > right.len() {
-              (left, right)
-            } else {
-              (right, left)
-            };
-
-            big
-              .par_iter_mut()
-              .zip(small.par_iter())
-              .for_each(|(b, s)| *b += s);
-
-            big
-          },
-        )
-    };
+    for (witness, power) in W.into_iter().zip(powers) {
+      p.par_iter_mut()
+        .zip(witness.p.par_iter())
+        .for_each(|(sum, value)| *sum += power * value);
+    }
 
     PolyEvalWitness { p }
   }
@@ -388,8 +352,6 @@ pub fn batch_eval_reduce<E: Engine>(
   ),
   NovaError,
 > {
-  use polys::multilinear::MultilinearPolynomial;
-
   let num_claims = u_vec.len();
   assert_eq!(w_vec.len(), num_claims);
 
@@ -406,12 +368,9 @@ pub fn batch_eval_reduce<E: Engine>(
   let (claims, u_xs, comms): (Vec<_>, Vec<_>, Vec<_>) =
     u_vec.into_iter().map(|u| (u.e, u.x, u.c)).multiunzip();
 
-  let polys_P: Vec<MultilinearPolynomial<E::Scalar>> = w_vec
-    .iter()
-    .map(|w| MultilinearPolynomial::new(w.p.clone()))
-    .collect();
+  let polys_P: Vec<&[E::Scalar]> = w_vec.iter().map(|w| w.p.as_slice()).collect();
 
-  let (sc_proof_batch, r, claims_batch_left) = sumcheck::SumcheckProof::prove_batch_eval(
+  let (sc_proof_batch, r, claims_batch_left) = sumcheck::SumcheckProof::prove_batch_eval_borrowed(
     &claims,
     &num_rounds,
     polys_P,
@@ -483,6 +442,36 @@ pub fn batch_eval_verify<E: Engine>(
   Ok((u_joint, c))
 }
 
+#[cfg(test)]
+mod batch_witness_tests {
+  use super::*;
+  use crate::provider::PallasEngine;
+
+  type E = PallasEngine;
+  type F = <E as Engine>::Scalar;
+
+  #[test]
+  fn differently_sized_batch_reuses_the_largest_witness() {
+    let first = (1u64..=8).map(F::from).collect::<Vec<_>>();
+    let second = (11u64..=14).map(F::from).collect::<Vec<_>>();
+    let first_storage = first.as_ptr();
+    let challenge = F::from(7);
+    let expected = first
+      .iter()
+      .enumerate()
+      .map(|(index, value)| *value + second.get(index).copied().unwrap_or(F::ZERO) * challenge)
+      .collect::<Vec<_>>();
+
+    let batched = PolyEvalWitness::<E>::batch_diff_size(
+      vec![PolyEvalWitness { p: first }, PolyEvalWitness { p: second }],
+      challenge,
+    );
+
+    assert_eq!(batched.p, expected);
+    assert_eq!(batched.p.as_ptr(), first_storage);
+  }
+}
+
 /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials.
 ///
 /// Given an R1CS shape and evaluation point `rx`, computes the evaluations of the
@@ -531,6 +520,121 @@ pub fn compute_eval_table_sparse<E: Engine>(
   );
 
   (A_evals, B_evals, C_evals)
+}
+
+/// Bounds the row variables of A, B, and C and combines their column
+/// evaluations as `A + r * B + r^2 * C`.
+///
+/// At most two column-sized tables are live: A and B are accumulated in
+/// parallel, B is folded into A, and B's allocation is reused for C. Matrix
+/// entries retain the same accumulation order as
+/// [`compute_eval_table_sparse`].
+pub(crate) fn compute_eval_table_sparse_joint<E: Engine>(
+  S: &R1CSShape<E>,
+  rx: &[E::Scalar],
+  r: &E::Scalar,
+) -> Vec<E::Scalar> {
+  assert_eq!(rx.len(), S.num_cons());
+
+  let accumulate = |M: &SparseMatrix<E::Scalar>, evals: &mut [E::Scalar]| {
+    for (row_idx, ptrs) in M.indptr.windows(2).enumerate() {
+      for (val, col_idx) in M.get_row_unchecked(ptrs.try_into().unwrap()) {
+        evals[*col_idx] += rx[row_idx] * val;
+      }
+    }
+  };
+  let allocate = || vec![E::Scalar::ZERO; 2 * S.num_vars()];
+
+  let (mut joint, mut scratch) = rayon::join(
+    || {
+      let mut evals = allocate();
+      accumulate(S.A(), &mut evals);
+      evals
+    },
+    || {
+      let mut evals = allocate();
+      accumulate(S.B(), &mut evals);
+      evals
+    },
+  );
+
+  joint
+    .par_iter_mut()
+    .zip(scratch.par_iter())
+    .for_each(|(a, b)| *a += *r * *b);
+
+  scratch.fill(E::Scalar::ZERO);
+  accumulate(S.C(), &mut scratch);
+  let r_squared = *r * *r;
+  joint
+    .par_iter_mut()
+    .zip(scratch.par_iter())
+    .for_each(|(ab, c)| *ab += r_squared * *c);
+
+  joint
+}
+
+#[cfg(test)]
+mod eval_table_tests {
+  use super::{compute_eval_table_sparse, compute_eval_table_sparse_joint};
+  use crate::{
+    provider::PallasEngine,
+    r1cs::{R1CSShape, SparseMatrix},
+    traits::Engine,
+  };
+
+  type E = PallasEngine;
+
+  fn shape() -> R1CSShape<E> {
+    type F = <E as Engine>::Scalar;
+    let a = SparseMatrix::new(
+      &[
+        (0, 0, F::from(2)),
+        (0, 3, F::from(3)),
+        (1, 1, F::from(5)),
+        (3, 4, F::from(7)),
+      ],
+      4,
+      6,
+    );
+    let b = SparseMatrix::new(
+      &[
+        (0, 1, F::from(11)),
+        (2, 0, F::from(13)),
+        (2, 5, F::from(17)),
+      ],
+      4,
+      6,
+    );
+    let c = SparseMatrix::new(
+      &[
+        (1, 2, F::from(19)),
+        (2, 3, F::from(23)),
+        (3, 5, F::from(29)),
+      ],
+      4,
+      6,
+    );
+
+    R1CSShape::new(4, 4, 1, a, b, c).expect("valid shape")
+  }
+
+  #[test]
+  fn joint_sparse_table_matches_independent_tables() {
+    type F = <E as Engine>::Scalar;
+    let shape = shape();
+    let rx = [F::from(31), F::from(37), F::from(41), F::from(43)];
+    let r = F::from(47);
+    let (a, b, c) = compute_eval_table_sparse(&shape, &rx);
+    let expected = a
+      .into_iter()
+      .zip(b)
+      .zip(c)
+      .map(|((a, b), c)| a + r * b + r * r * c)
+      .collect::<Vec<_>>();
+
+    assert_eq!(compute_eval_table_sparse_joint(&shape, &rx, &r), expected);
+  }
 }
 
 #[cfg(test)]

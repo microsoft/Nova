@@ -44,6 +44,39 @@ pub struct SumcheckProof<E: Engine> {
   compressed_polys: Vec<CompressedUniPoly<E::Scalar>>,
 }
 
+enum BatchEvalPolynomial<'a, Scalar: PrimeField> {
+  Borrowed(&'a [Scalar]),
+  Owned(MultilinearPolynomial<Scalar>),
+}
+
+impl<Scalar: PrimeField> BatchEvalPolynomial<'_, Scalar> {
+  fn evals(&self) -> &[Scalar] {
+    match self {
+      Self::Borrowed(evals) => evals,
+      Self::Owned(poly) => &poly.Z,
+    }
+  }
+
+  fn bind_poly_var_top(&mut self, r: &Scalar) {
+    match self {
+      Self::Borrowed(evals) => {
+        let bound = MultilinearPolynomial::bound_poly_var_top(evals, r);
+        *self = Self::Owned(bound);
+      }
+      Self::Owned(poly) => poly.bind_poly_var_top(r),
+    }
+  }
+
+  fn final_eval(self) -> Scalar {
+    let evals = match self {
+      Self::Borrowed(evals) => evals,
+      Self::Owned(ref poly) => &poly.Z,
+    };
+    assert_eq!(evals.len(), 1);
+    evals[0]
+  }
+}
+
 impl<E: Engine> SumcheckProof<E> {
   /// Creates a new `SumcheckProof` from compressed univariate polynomials.
   pub fn new(compressed_polys: Vec<CompressedUniPoly<E::Scalar>>) -> Self {
@@ -251,7 +284,34 @@ impl<E: Engine> SumcheckProof<E> {
   pub fn prove_batch_eval(
     claims: &[E::Scalar],
     num_rounds: &[usize],
-    mut polys: Vec<MultilinearPolynomial<E::Scalar>>,
+    polys: Vec<MultilinearPolynomial<E::Scalar>>,
+    eq_points: Vec<Vec<E::Scalar>>,
+    coeffs: &[E::Scalar],
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
+    let polys = polys.into_iter().map(BatchEvalPolynomial::Owned).collect();
+    Self::prove_batch_eval_inner(claims, num_rounds, polys, eq_points, coeffs, transcript)
+  }
+
+  pub(crate) fn prove_batch_eval_borrowed(
+    claims: &[E::Scalar],
+    num_rounds: &[usize],
+    polys: Vec<&[E::Scalar]>,
+    eq_points: Vec<Vec<E::Scalar>>,
+    coeffs: &[E::Scalar],
+    transcript: &mut E::TE,
+  ) -> Result<(Self, Vec<E::Scalar>, Vec<E::Scalar>), NovaError> {
+    let polys = polys
+      .into_iter()
+      .map(BatchEvalPolynomial::Borrowed)
+      .collect();
+    Self::prove_batch_eval_inner(claims, num_rounds, polys, eq_points, coeffs, transcript)
+  }
+
+  fn prove_batch_eval_inner(
+    claims: &[E::Scalar],
+    num_rounds: &[usize],
+    mut polys: Vec<BatchEvalPolynomial<'_, E::Scalar>>,
     eq_points: Vec<Vec<E::Scalar>>,
     coeffs: &[E::Scalar],
     transcript: &mut E::TE,
@@ -264,7 +324,11 @@ impl<E: Engine> SumcheckProof<E> {
     assert_eq!(coeffs.len(), num_claims);
 
     for (i, &nr) in num_rounds.iter().enumerate() {
-      assert_eq!(polys[i].len(), 1 << nr, "poly size mismatch at index {i}");
+      assert_eq!(
+        polys[i].evals().len(),
+        1 << nr,
+        "poly size mismatch at index {i}"
+      );
       assert_eq!(
         eq_points[i].len(),
         nr,
@@ -301,7 +365,10 @@ impl<E: Engine> SumcheckProof<E> {
         .map(|i| {
           if remaining_rounds <= num_rounds[i] {
             let (eval_0, _cubic_coeff, eval_m1) = eq_instances[i]
-              .evaluation_points_quadratic_with_one_input(&polys[i], running_claims[i]);
+              .evaluation_points_quadratic_with_one_input_evals(
+                polys[i].evals(),
+                running_claims[i],
+              );
             [eval_0, E::Scalar::ZERO, eval_m1]
           } else {
             // not yet started: constant (replicated)
@@ -343,9 +410,10 @@ impl<E: Engine> SumcheckProof<E> {
       quad_polys.push(poly.compress());
     }
 
-    polys.iter().for_each(|p| assert_eq!(p.len(), 1));
-
-    let poly_finals: Vec<E::Scalar> = polys.into_iter().map(|poly| poly[0]).collect();
+    let poly_finals = polys
+      .into_iter()
+      .map(BatchEvalPolynomial::final_eval)
+      .collect();
 
     Ok((SumcheckProof::new(quad_polys), r, poly_finals))
   }
@@ -1041,11 +1109,20 @@ pub mod eq_sumcheck {
       poly_A: &MultilinearPolynomial<E::Scalar>,
       claim: E::Scalar,
     ) -> (E::Scalar, E::Scalar, E::Scalar) {
+      self.evaluation_points_quadratic_with_one_input_evals(&poly_A.Z, claim)
+    }
+
+    /// Evaluate a borrowed input table without materializing a polynomial.
+    pub(super) fn evaluation_points_quadratic_with_one_input_evals(
+      &self,
+      poly_A: &[E::Scalar],
+      claim: E::Scalar,
+    ) -> (E::Scalar, E::Scalar, E::Scalar) {
       debug_assert_eq!(poly_A.len() % 2, 0);
 
       let in_first_half = self.round < self.first_half;
-      let half_p = poly_A.Z.len() / 2;
-      let [zip_A] = split_and_zip([&poly_A.Z], half_p);
+      let half_p = poly_A.len() / 2;
+      let [zip_A] = split_and_zip([poly_A], half_p);
 
       let t_0 = if in_first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
@@ -1185,7 +1262,7 @@ pub mod eq_sumcheck {
     fn fallback_eval_inf_one_input(
       &self,
       t_0: E::Scalar,
-      poly_A: &MultilinearPolynomial<E::Scalar>,
+      poly_A: &[E::Scalar],
     ) -> (E::Scalar, E::Scalar, E::Scalar) {
       let p = self.eval_eq_left;
       let (eq_0, _eq_slope, eq_m1) = self.eq_tau_0_a_inf[self.round - 1];
@@ -1193,8 +1270,8 @@ pub mod eq_sumcheck {
       let s_0 = eq_0 * p * t_0;
       let s_leading = E::Scalar::ZERO;
 
-      let half_p = poly_A.Z.len() / 2;
-      let [zip_A] = split_and_zip([&poly_A.Z], half_p);
+      let half_p = poly_A.len() / 2;
+      let [zip_A] = split_and_zip([poly_A], half_p);
 
       let t_m1 = if self.round < self.first_half {
         let (poly_eq_left, poly_eq_right, second_half, low_mask) = self.poly_eqs_first_half();
@@ -1260,5 +1337,78 @@ pub mod eq_sumcheck {
       let (left, right) = vec[i].split_at(half_size);
       left.par_iter().zip_eq(right.par_iter())
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::{
+    provider::{keccak::Keccak256Transcript, PallasEngine},
+    traits::TranscriptEngineTrait,
+  };
+
+  type TestEngine = PallasEngine;
+  type TestScalar = <TestEngine as Engine>::Scalar;
+
+  #[test]
+  fn borrowed_batch_tables_preserve_sumcheck_bytes() {
+    let first = (1u64..=8).map(TestScalar::from).collect::<Vec<_>>();
+    let second = (11u64..=14).map(TestScalar::from).collect::<Vec<_>>();
+    let points = vec![
+      vec![
+        TestScalar::from(2),
+        TestScalar::from(3),
+        TestScalar::from(5),
+      ],
+      vec![TestScalar::from(7), TestScalar::from(11)],
+    ];
+    let claims = vec![
+      MultilinearPolynomial::evaluate_with(&first, &points[0]),
+      MultilinearPolynomial::evaluate_with(&second, &points[1]),
+    ];
+    let rounds = vec![3, 2];
+    let coefficients = vec![TestScalar::ONE, TestScalar::from(13)];
+
+    let mut owned_transcript = Keccak256Transcript::new(b"BorrowedBatchEval");
+    let (owned, owned_r, owned_finals) = SumcheckProof::<TestEngine>::prove_batch_eval(
+      &claims,
+      &rounds,
+      vec![
+        MultilinearPolynomial::new(first.clone()),
+        MultilinearPolynomial::new(second.clone()),
+      ],
+      points.clone(),
+      &coefficients,
+      &mut owned_transcript,
+    )
+    .unwrap();
+
+    let mut borrowed_transcript = Keccak256Transcript::new(b"BorrowedBatchEval");
+    let (borrowed, borrowed_r, borrowed_finals) =
+      SumcheckProof::<TestEngine>::prove_batch_eval_borrowed(
+        &claims,
+        &rounds,
+        vec![first.as_slice(), second.as_slice()],
+        points,
+        &coefficients,
+        &mut borrowed_transcript,
+      )
+      .unwrap();
+
+    assert_eq!(borrowed_r, owned_r);
+    assert_eq!(borrowed_finals, owned_finals);
+    let config = bincode::config::legacy()
+      .with_little_endian()
+      .with_fixed_int_encoding();
+    assert_eq!(
+      bincode::serde::encode_to_vec(&borrowed, config).unwrap(),
+      bincode::serde::encode_to_vec(&owned, config).unwrap()
+    );
+
+    let mut verifier_transcript = Keccak256Transcript::new(b"BorrowedBatchEval");
+    borrowed
+      .verify_batch(&claims, &rounds, &coefficients, 2, &mut verifier_transcript)
+      .unwrap();
   }
 }
