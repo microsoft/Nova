@@ -5,8 +5,10 @@ use crate::{
   digest::{DigestComputer, SimpleDigestible},
   errors::NovaError,
   frontend::{
-    r1cs::NovaWitness, shape_cs::ShapeCS, solver::SatisfyingAssignment, ConstraintSystem,
-    SynthesisError,
+    r1cs::NovaWitness,
+    solver::SatisfyingAssignment,
+    streaming_shape_cs::{ShapePlanCS, StreamingShapeCS},
+    ConstraintSystem, SynthesisError,
   },
   gadgets::utils::{base_as_scalar, scalar_as_base},
   r1cs::{
@@ -32,6 +34,26 @@ pub mod nifs;
 
 use circuit::{NovaAugmentedCircuit, NovaAugmentedCircuitInputs};
 use nifs::{NIFSRelaxed, NIFS};
+
+fn synthesize_augmented_shape<E, EE, C>(
+  is_primary: bool,
+  circuit: &C,
+  ro_consts: ROConstantsCircuit<EE>,
+) -> Result<R1CSShape<E>, NovaError>
+where
+  E: Engine,
+  EE: Engine<Base = E::Scalar>,
+  C: StepCircuit<E::Scalar>,
+{
+  let augmented = NovaAugmentedCircuit::<EE, C>::new(is_primary, None, circuit, ro_consts.clone());
+  let mut counter = ShapePlanCS::<E>::new();
+  let _ = augmented.synthesize(&mut counter)?;
+
+  let mut streaming = StreamingShapeCS::<E>::new(counter.into_plan());
+  let augmented = NovaAugmentedCircuit::<EE, C>::new(is_primary, None, circuit, ro_consts);
+  let _ = augmented.synthesize(&mut streaming)?;
+  streaming.into_r1cs_shape()
+}
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize)]
@@ -85,6 +107,11 @@ where
   /// larger sizes for these parameters. These SNARKs provide a hint for these values by
   /// implementing `RelaxedR1CSSNARKTrait::ck_floor()`, which can be passed to this function.
   ///
+  /// Shape construction synthesizes the augmented circuit twice: once to
+  /// count exact CSR allocations and once to populate them. `StepCircuit`
+  /// implementations must therefore produce a deterministic shape without
+  /// synthesis side effects.
+  ///
   /// If you're not using such a SNARK, pass `nova_snark::traits::snark::default_ck_hint()` instead.
   ///
   /// # Arguments
@@ -134,27 +161,16 @@ where
     let ro_consts_circuit_primary: ROConstantsCircuit<E2> = ROConstantsCircuit::<E2>::default();
     let ro_consts_circuit_secondary: ROConstantsCircuit<E1> = ROConstantsCircuit::<E1>::default();
 
-    // Initialize ck for the primary. Keep ShapeCS in a narrow scope so its
-    // constraint representation is released before commitment-key setup.
-    let r1cs_shape_primary = {
-      let circuit_primary: NovaAugmentedCircuit<'_, E2, C> =
-        NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
-      let mut cs: ShapeCS<E1> = ShapeCS::new();
-      let _ = circuit_primary.synthesize(&mut cs)?;
-      cs.into_r1cs_shape()?
-    };
+    // Count first, then stream the repeated synthesis directly into exact CSR
+    // storage. The augmented circuit must have one deterministic shape.
+    let r1cs_shape_primary =
+      synthesize_augmented_shape::<E1, E2, C>(true, c, ro_consts_circuit_primary.clone())?;
     let ck_primary = R1CSShape::commitment_key(&[&r1cs_shape_primary], &[ck_hint1])?;
 
-    // Initialize ck for the secondary and likewise release ShapeCS before
-    // deriving the secondary commitment key.
-    let r1cs_shape_secondary = {
-      let tc = TrivialCircuit::<E2::Scalar>::default();
-      let circuit_secondary: NovaAugmentedCircuit<'_, E1, _> =
-        NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
-      let mut cs: ShapeCS<E2> = ShapeCS::new();
-      let _ = circuit_secondary.synthesize(&mut cs)?;
-      cs.into_r1cs_shape()?
-    };
+    // Apply the same exact two-pass synthesis to the secondary circuit.
+    let tc = TrivialCircuit::<E2::Scalar>::default();
+    let r1cs_shape_secondary =
+      synthesize_augmented_shape::<E2, E1, _>(false, &tc, ro_consts_circuit_secondary.clone())?;
     let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;
 
     // Nova's augmented circuits always have exactly 2 IO elements:
@@ -201,6 +217,8 @@ where
   ///
   /// The function automatically selects the appropriate ptau file from the directory based on
   /// the circuit size. Files should be named `ppot_pruned_{power}.ptau` (e.g., `ppot_pruned_20.ptau`).
+  /// Shape construction uses the same deterministic two-pass synthesis as
+  /// [`Self::setup`].
   ///
   /// # Arguments
   ///
@@ -240,30 +258,19 @@ where
     let ro_consts_circuit_primary: ROConstantsCircuit<E2> = ROConstantsCircuit::<E2>::default();
     let ro_consts_circuit_secondary: ROConstantsCircuit<E1> = ROConstantsCircuit::<E1>::default();
 
-    // Initialize shape for the primary and release ShapeCS before loading the
-    // commitment key.
-    let r1cs_shape_primary = {
-      let circuit_primary: NovaAugmentedCircuit<'_, E2, C> =
-        NovaAugmentedCircuit::new(true, None, c, ro_consts_circuit_primary.clone());
-      let mut cs: ShapeCS<E1> = ShapeCS::new();
-      let _ = circuit_primary.synthesize(&mut cs)?;
-      cs.into_r1cs_shape()?
-    };
+    // Count first, then stream the repeated synthesis directly into exact CSR
+    // storage before loading the commitment key.
+    let r1cs_shape_primary =
+      synthesize_augmented_shape::<E1, E2, C>(true, c, ro_consts_circuit_primary.clone())?;
 
     // Load ck for the primary from ptau directory (auto-selects appropriate file)
     let ck_primary =
       R1CSShape::commitment_key_from_ptau_dir(&[&r1cs_shape_primary], &[ck_hint1], ptau_dir)?;
 
-    // Initialize shape for the secondary and release ShapeCS before deriving
-    // its commitment key.
-    let r1cs_shape_secondary = {
-      let tc = TrivialCircuit::<E2::Scalar>::default();
-      let circuit_secondary: NovaAugmentedCircuit<'_, E1, _> =
-        NovaAugmentedCircuit::new(false, None, &tc, ro_consts_circuit_secondary.clone());
-      let mut cs: ShapeCS<E2> = ShapeCS::new();
-      let _ = circuit_secondary.synthesize(&mut cs)?;
-      cs.into_r1cs_shape()?
-    };
+    // Apply the same exact two-pass synthesis to the secondary circuit.
+    let tc = TrivialCircuit::<E2::Scalar>::default();
+    let r1cs_shape_secondary =
+      synthesize_augmented_shape::<E2, E1, _>(false, &tc, ro_consts_circuit_secondary.clone())?;
 
     // Generate ck for the secondary using standard method (non-pairing curve)
     let ck_secondary = R1CSShape::commitment_key(&[&r1cs_shape_secondary], &[ck_hint2])?;

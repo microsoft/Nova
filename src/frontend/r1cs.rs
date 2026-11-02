@@ -129,13 +129,16 @@ macro_rules! impl_nova_shape {
 impl_nova_shape!(ShapeCS);
 impl_nova_shape!(TestShapeCS);
 
-fn nonzero_terms<S: PrimeField>(lc: &LinearCombination<S>) -> usize {
+pub(super) fn nonzero_terms<S: PrimeField>(lc: &LinearCombination<S>) -> usize {
   lc.iter()
     .filter(|(_, coefficient)| **coefficient != S::ZERO)
     .count()
 }
 
-fn sparse_matrix_with_capacity<S: PrimeField>(rows: usize, terms: usize) -> SparseMatrix<S> {
+pub(super) fn sparse_matrix_with_capacity<S: PrimeField>(
+  rows: usize,
+  terms: usize,
+) -> SparseMatrix<S> {
   let mut indptr = Vec::with_capacity(rows + 1);
   indptr.push(0);
 
@@ -147,7 +150,7 @@ fn sparse_matrix_with_capacity<S: PrimeField>(rows: usize, terms: usize) -> Spar
   }
 }
 
-fn add_constraint<S: PrimeField>(
+pub(super) fn add_constraint<S: PrimeField>(
   X: &mut (
     &mut SparseMatrix<S>,
     &mut SparseMatrix<S>,
