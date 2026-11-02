@@ -388,8 +388,6 @@ pub fn batch_eval_reduce<E: Engine>(
   ),
   NovaError,
 > {
-  use polys::multilinear::MultilinearPolynomial;
-
   let num_claims = u_vec.len();
   assert_eq!(w_vec.len(), num_claims);
 
@@ -406,12 +404,9 @@ pub fn batch_eval_reduce<E: Engine>(
   let (claims, u_xs, comms): (Vec<_>, Vec<_>, Vec<_>) =
     u_vec.into_iter().map(|u| (u.e, u.x, u.c)).multiunzip();
 
-  let polys_P: Vec<MultilinearPolynomial<E::Scalar>> = w_vec
-    .iter()
-    .map(|w| MultilinearPolynomial::new(w.p.clone()))
-    .collect();
+  let polys_P: Vec<&[E::Scalar]> = w_vec.iter().map(|w| w.p.as_slice()).collect();
 
-  let (sc_proof_batch, r, claims_batch_left) = sumcheck::SumcheckProof::prove_batch_eval(
+  let (sc_proof_batch, r, claims_batch_left) = sumcheck::SumcheckProof::prove_batch_eval_borrowed(
     &claims,
     &num_rounds,
     polys_P,
