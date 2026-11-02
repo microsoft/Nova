@@ -70,6 +70,18 @@ where
     point: &[E::Scalar],
     eval: &E::Scalar,
   ) -> Result<Self::EvaluationArgument, NovaError> {
+    Self::prove_owned(ck, pk, transcript, comm, poly.to_vec(), point, eval)
+  }
+
+  fn prove_owned(
+    ck: &CommitmentKey<E>,
+    pk: &Self::ProverKey,
+    transcript: &mut E::TE,
+    comm: &Commitment<E>,
+    poly: Vec<E::Scalar>,
+    point: &[E::Scalar],
+    eval: &E::Scalar,
+  ) -> Result<Self::EvaluationArgument, NovaError> {
     let u = InnerProductInstance::new(comm, EqPolynomial::new(point.to_vec()).evals(), eval);
     let w = InnerProductWitness::new(poly);
 
@@ -145,10 +157,8 @@ struct InnerProductWitness<E: Engine> {
 }
 
 impl<E: Engine> InnerProductWitness<E> {
-  fn new(a_vec: &[E::Scalar]) -> Self {
-    InnerProductWitness {
-      a_vec: a_vec.to_vec(),
-    }
+  fn new(a_vec: Vec<E::Scalar>) -> Self {
+    InnerProductWitness { a_vec }
   }
 }
 
@@ -426,6 +436,17 @@ mod tests {
       &eval,
     )
     .unwrap();
+    let mut owned_transcript = Keccak256Transcript::new(b"IpaOwnedVectors");
+    let owned_proof = EvaluationEngine::<TestEngine>::prove_owned(
+      &ck,
+      &pk,
+      &mut owned_transcript,
+      &comm,
+      poly.clone(),
+      &point,
+      &eval,
+    )
+    .unwrap();
     let mut verifier_transcript = Keccak256Transcript::new(b"IpaOwnedVectors");
     EvaluationEngine::<TestEngine>::verify(
       &vk,
@@ -437,13 +458,12 @@ mod tests {
     )
     .unwrap();
 
-    let encoded = bincode::serde::encode_to_vec(
-      proof,
-      bincode::config::legacy()
-        .with_little_endian()
-        .with_fixed_int_encoding(),
-    )
-    .unwrap();
+    let config = bincode::config::legacy()
+      .with_little_endian()
+      .with_fixed_int_encoding();
+    let encoded = bincode::serde::encode_to_vec(proof, config).unwrap();
+    let owned_encoded = bincode::serde::encode_to_vec(owned_proof, config).unwrap();
+    assert_eq!(owned_encoded, encoded);
     assert_eq!(encoded.len(), 240);
     // Frozen before prover vectors were made move-only at this boundary.
     let digest: [u8; 32] = Sha256::digest(&encoded).into();

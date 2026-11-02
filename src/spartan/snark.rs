@@ -297,12 +297,12 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     let (batched_u, batched_w, _chal, sc_proof_batch, claims_batch_left) =
       super::batch_eval_reduce(u_vec, w_vec, &mut transcript)?;
 
-    let eval_arg = EE::prove(
+    let eval_arg = EE::prove_owned(
       ck,
       &pk.pk_ee,
       &mut transcript,
       &batched_u.c,
-      &batched_w.p,
+      batched_w.p,
       &batched_u.x,
       &batched_u.e,
     )?;
