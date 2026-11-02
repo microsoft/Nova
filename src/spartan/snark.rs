@@ -542,6 +542,9 @@ mod tests {
     let (pk, vk) = TestSnark::setup(&ck, &shape).expect("Spartan setup");
     let cached = pk.padded_shape.as_ref().expect("setup padding");
     assert!(Arc::ptr_eq(&cached.shape.0, &vk.S.0));
+    assert!(shape.A.data.shares_storage_with(&cached.shape.A.data));
+    assert!(shape.B.data.shares_storage_with(&cached.shape.B.data));
+    assert!(shape.C.data.shares_storage_with(&cached.shape.C.data));
 
     let legacy_pk = LegacyProverKey {
       pk_ee: &pk.pk_ee,

@@ -6,8 +6,67 @@
 use crate::constants::PARALLEL_THRESHOLD;
 use ff::PrimeField;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
+use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
+use std::{
+  marker::PhantomData,
+  ops::{Deref, DerefMut},
+  sync::Arc,
+};
+
+/// Immutable sparse-matrix coefficients with copy-on-write construction.
+///
+/// Padding changes matrix dimensions, column indices, and row pointers, but
+/// never coefficient order or values. Sharing this storage keeps the original
+/// Nova shape and its padded Spartan view from retaining duplicate field
+/// elements. Mutation remains available to shape builders and detaches a
+/// shared allocation before changing it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SparseCoefficients<F>(Arc<Vec<F>>);
+
+impl<F> SparseCoefficients<F> {
+  pub(crate) fn with_capacity(capacity: usize) -> Self {
+    Self(Arc::new(Vec::with_capacity(capacity)))
+  }
+
+  #[cfg(test)]
+  pub(crate) fn shares_storage_with(&self, other: &Self) -> bool {
+    Arc::ptr_eq(&self.0, &other.0)
+  }
+}
+
+impl<F> From<Vec<F>> for SparseCoefficients<F> {
+  fn from(coefficients: Vec<F>) -> Self {
+    Self(Arc::new(coefficients))
+  }
+}
+
+impl<F> Deref for SparseCoefficients<F> {
+  type Target = Vec<F>;
+
+  fn deref(&self) -> &Self::Target {
+    self.0.as_ref()
+  }
+}
+
+impl<F: Clone> DerefMut for SparseCoefficients<F> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    Arc::make_mut(&mut self.0)
+  }
+}
+
+// Serialize exactly as the historical Vec<F> field. The Arc and sharing
+// topology are process-local implementation details, not wire data.
+impl<F: Serialize> Serialize for SparseCoefficients<F> {
+  fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    self.0.as_ref().serialize(serializer)
+  }
+}
+
+impl<'de, F: Deserialize<'de>> Deserialize<'de> for SparseCoefficients<F> {
+  fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    Vec::<F>::deserialize(deserializer).map(Self::from)
+  }
+}
 
 /// Precomputed SpMV accelerator for a fixed sparse matrix.
 ///
@@ -186,7 +245,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SparseMatrix<F: PrimeField> {
   /// all non-zero values in the matrix
-  pub data: Vec<F>,
+  pub data: SparseCoefficients<F>,
   /// column indices
   pub indices: Vec<usize>,
   /// row information
@@ -199,7 +258,7 @@ impl<F: PrimeField> SparseMatrix<F> {
   /// 0x0 empty matrix
   pub fn empty() -> Self {
     SparseMatrix {
-      data: vec![],
+      data: Vec::new().into(),
       indices: vec![],
       indptr: vec![0],
       cols: 0,
@@ -232,7 +291,7 @@ impl<F: PrimeField> SparseMatrix<F> {
     }
 
     SparseMatrix {
-      data,
+      data: data.into(),
       indices,
       indptr,
       cols,
@@ -393,11 +452,54 @@ mod tests {
     let sparse_matrix = SparseMatrix::<Fr>::new(&matrix_data, 3, 3);
 
     assert_eq!(
-      sparse_matrix.data,
-      vec![Fr::from(2), Fr::from(3), Fr::from(4)]
+      sparse_matrix.data.as_slice(),
+      [Fr::from(2), Fr::from(3), Fr::from(4)]
     );
     assert_eq!(sparse_matrix.indices, vec![1, 2, 0]);
     assert_eq!(sparse_matrix.indptr, vec![0, 1, 2, 3]);
+  }
+
+  #[test]
+  fn shared_coefficients_detach_before_mutation() {
+    let matrix = SparseMatrix::<Fr>::new(&[(0, 0, Fr::from(2))], 1, 1);
+    let mut changed = matrix.clone();
+    assert!(matrix.data.shares_storage_with(&changed.data));
+
+    changed.data[0] = Fr::from(3);
+
+    assert!(!matrix.data.shares_storage_with(&changed.data));
+    assert_eq!(matrix.data[0], Fr::from(2));
+    assert_eq!(changed.data[0], Fr::from(3));
+  }
+
+  #[test]
+  fn shared_coefficients_preserve_vec_wire_encoding() {
+    #[derive(Serialize)]
+    struct LegacySparseMatrix<F> {
+      data: Vec<F>,
+      indices: Vec<usize>,
+      indptr: Vec<usize>,
+      cols: usize,
+    }
+
+    let matrix = SparseMatrix::<Fr>::new(&[(0, 0, Fr::from(2)), (1, 1, Fr::from(3))], 2, 2);
+    let legacy = LegacySparseMatrix {
+      data: matrix.data.as_slice().to_vec(),
+      indices: matrix.indices.clone(),
+      indptr: matrix.indptr.clone(),
+      cols: matrix.cols,
+    };
+    let config = bincode::config::legacy()
+      .with_little_endian()
+      .with_fixed_int_encoding();
+    let encoded = bincode::serde::encode_to_vec(&matrix, config).unwrap();
+    let legacy_encoded = bincode::serde::encode_to_vec(&legacy, config).unwrap();
+    assert_eq!(encoded, legacy_encoded);
+
+    let (decoded, consumed): (SparseMatrix<Fr>, usize) =
+      bincode::serde::decode_from_slice(&encoded, config).unwrap();
+    assert_eq!(consumed, encoded.len());
+    assert_eq!(decoded, matrix);
   }
 
   #[test]

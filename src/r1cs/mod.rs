@@ -24,7 +24,7 @@ use serde_with::serde_as;
 
 mod sparse;
 use sparse::PrecomputedSparseMatrix;
-pub use sparse::SparseMatrix;
+pub use sparse::{SparseCoefficients, SparseMatrix};
 
 /// A type that holds the shape of the R1CS matrices
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1358,7 +1358,7 @@ impl<E: Engine> AbsorbInROTrait<E> for RelaxedR1CSInstance<E> {
 
 #[cfg(test)]
 mod tests {
-  use ff::Field;
+  use ff::{Field, PrimeField};
 
   use super::*;
   use crate::{
@@ -1434,8 +1434,12 @@ mod tests {
   }
 
   fn test_pad_tiny_r1cs_with<E: Engine>() {
-    let padded_r1cs = tiny_r1cs::<E>(3).pad();
+    let source = tiny_r1cs::<E>(3);
+    let padded_r1cs = source.pad();
     assert!(padded_r1cs.is_regular_shape());
+    assert!(source.A.data.shares_storage_with(&padded_r1cs.A.data));
+    assert!(source.B.data.shares_storage_with(&padded_r1cs.B.data));
+    assert!(source.C.data.shares_storage_with(&padded_r1cs.C.data));
 
     let expected_r1cs = tiny_r1cs::<E>(4);
 
@@ -1449,6 +1453,52 @@ mod tests {
     test_pad_tiny_r1cs_with::<Secp256k1Engine>();
   }
 
+  #[test]
+  fn shared_coefficients_preserve_shape_digest() {
+    #[derive(Serialize)]
+    struct LegacySparseMatrix<F> {
+      data: Vec<F>,
+      indices: Vec<usize>,
+      indptr: Vec<usize>,
+      cols: usize,
+    }
+
+    #[derive(Serialize)]
+    struct LegacyR1CSShape<F> {
+      num_cons: usize,
+      num_vars: usize,
+      num_io: usize,
+      a: LegacySparseMatrix<F>,
+      b: LegacySparseMatrix<F>,
+      c: LegacySparseMatrix<F>,
+    }
+
+    impl<F: Serialize> SimpleDigestible for LegacyR1CSShape<F> {}
+
+    fn legacy_matrix<F: PrimeField>(matrix: &SparseMatrix<F>) -> LegacySparseMatrix<F> {
+      LegacySparseMatrix {
+        data: matrix.data.as_slice().to_vec(),
+        indices: matrix.indices.clone(),
+        indptr: matrix.indptr.clone(),
+        cols: matrix.cols,
+      }
+    }
+
+    let shape = tiny_r1cs::<PallasEngine>(3);
+    let legacy = LegacyR1CSShape {
+      num_cons: shape.num_cons,
+      num_vars: shape.num_vars,
+      num_io: shape.num_io,
+      a: legacy_matrix(&shape.A),
+      b: legacy_matrix(&shape.B),
+      c: legacy_matrix(&shape.C),
+    };
+    let legacy_digest = DigestComputer::<<PallasEngine as Engine>::Scalar, _>::new(&legacy)
+      .digest()
+      .unwrap();
+    assert_eq!(shape.digest(), legacy_digest);
+  }
+
   fn test_pad_nonsquare_with<E: Engine>() {
     // tiny_r1cs(8) has num_cons=4, num_vars=8, num_io=2
     // pad_nonsquare should keep num_cons=4 (already power of two)
@@ -1458,6 +1508,9 @@ mod tests {
     assert!(padded.is_regular_shape());
     assert_eq!(padded.num_cons, 4);
     assert_eq!(padded.num_vars, 8);
+    assert!(S.A.data.shares_storage_with(&padded.A.data));
+    assert!(S.B.data.shares_storage_with(&padded.B.data));
+    assert!(S.C.data.shares_storage_with(&padded.C.data));
 
     // tiny_r1cs(3) has num_cons=4, num_vars=3, num_io=2
     // pad_nonsquare should keep num_cons=4 and round num_vars up to 4
@@ -1466,6 +1519,9 @@ mod tests {
     assert!(padded2.is_regular_shape());
     assert_eq!(padded2.num_cons, 4);
     assert_eq!(padded2.num_vars, 4);
+    assert!(S2.A.data.shares_storage_with(&padded2.A.data));
+    assert!(S2.B.data.shares_storage_with(&padded2.B.data));
+    assert!(S2.C.data.shares_storage_with(&padded2.C.data));
 
     // Verify satisfiability is preserved through pad_nonsquare
     let ck = R1CSShape::commitment_key(&[&padded], &[&*default_ck_hint()]).unwrap();

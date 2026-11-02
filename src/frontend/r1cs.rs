@@ -140,7 +140,7 @@ fn sparse_matrix_with_capacity<S: PrimeField>(rows: usize, terms: usize) -> Spar
   indptr.push(0);
 
   SparseMatrix {
-    data: Vec::with_capacity(terms),
+    data: crate::r1cs::SparseCoefficients::with_capacity(terms),
     indices: Vec::with_capacity(terms),
     indptr,
     cols: 0,
