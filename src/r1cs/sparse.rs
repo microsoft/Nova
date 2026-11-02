@@ -99,7 +99,7 @@ impl<F: PrimeField> PrecomputedSparseMatrix<F> {
   }
 
   #[inline(always)]
-  fn compute_row_single(&self, matrix: &SparseMatrix<F>, row: usize, v: &[F]) -> F {
+  pub(super) fn compute_row_single(&self, matrix: &SparseMatrix<F>, row: usize, v: &[F]) -> F {
     let mut sum = F::ZERO;
     for entry in matrix.indptr[row]..matrix.indptr[row + 1] {
       sum += Self::product(
