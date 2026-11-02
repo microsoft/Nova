@@ -166,6 +166,16 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     U: &RelaxedR1CSInstance<E>,
     W: &RelaxedR1CSWitness<E>,
   ) -> Result<Self, NovaError> {
+    Self::prove_owned(ck, pk, S, U, W.clone())
+  }
+
+  fn prove_owned(
+    ck: &CommitmentKey<E>,
+    pk: &Self::ProverKey,
+    S: &R1CSShape<E>,
+    U: &RelaxedR1CSInstance<E>,
+    W: RelaxedR1CSWitness<E>,
+  ) -> Result<Self, NovaError> {
     // Setup-created keys share one padded shape with the verifier key. A
     // deserialized key deliberately does not cache the first caller-supplied
     // shape: its legacy bytes contain no expected source-shape digest, so
@@ -183,7 +193,7 @@ impl<E: Engine, EE: EvaluationEngineTrait<E>> RelaxedR1CSSNARKTrait<E> for Relax
     // sanity check that R1CSShape has all required size characteristics
     assert!(S.is_regular_shape());
 
-    let W = W.pad(S); // pad the witness
+    let W = W.into_padded(S);
     let mut transcript = E::TE::new(b"RelaxedR1CSSNARK");
 
     // append the digest of vk (which includes R1CS matrices) and the RelaxedR1CSInstance to the transcript
