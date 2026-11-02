@@ -28,6 +28,7 @@ use ff::Field;
 use once_cell::sync::OnceCell;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 mod circuit;
 pub mod nifs;
@@ -773,6 +774,72 @@ where
   _p: PhantomData<C>,
 }
 
+struct CompressionInput<'a, E1: Engine, E2: Engine> {
+  r_W_primary: Cow<'a, RelaxedR1CSWitness<E1>>,
+  r_U_primary: Cow<'a, RelaxedR1CSInstance<E1>>,
+  ri_primary: E1::Scalar,
+  r_W_secondary: Cow<'a, RelaxedR1CSWitness<E2>>,
+  r_U_secondary: Cow<'a, RelaxedR1CSInstance<E2>>,
+  ri_secondary: E2::Scalar,
+  l_w_secondary: Cow<'a, R1CSWitness<E2>>,
+  l_u_secondary: Cow<'a, R1CSInstance<E2>>,
+  zi: Cow<'a, [E1::Scalar]>,
+}
+
+impl<'a, E1, E2> CompressionInput<'a, E1, E2>
+where
+  E1: Engine<Base = <E2 as Engine>::Scalar>,
+  E2: Engine<Base = <E1 as Engine>::Scalar>,
+{
+  fn borrowed<C>(recursive: &'a RecursiveSNARK<E1, E2, C>) -> Self
+  where
+    C: StepCircuit<E1::Scalar>,
+  {
+    Self {
+      r_W_primary: Cow::Borrowed(&recursive.r_W_primary),
+      r_U_primary: Cow::Borrowed(&recursive.r_U_primary),
+      ri_primary: recursive.ri_primary,
+      r_W_secondary: Cow::Borrowed(&recursive.r_W_secondary),
+      r_U_secondary: Cow::Borrowed(&recursive.r_U_secondary),
+      ri_secondary: recursive.ri_secondary,
+      l_w_secondary: Cow::Borrowed(&recursive.l_w_secondary),
+      l_u_secondary: Cow::Borrowed(&recursive.l_u_secondary),
+      zi: Cow::Borrowed(&recursive.zi),
+    }
+  }
+
+  fn owned<C>(recursive: RecursiveSNARK<E1, E2, C>) -> Self
+  where
+    C: StepCircuit<E1::Scalar>,
+  {
+    let RecursiveSNARK {
+      z0: _,
+      r_W_primary,
+      r_U_primary,
+      ri_primary,
+      r_W_secondary,
+      r_U_secondary,
+      ri_secondary,
+      l_w_secondary,
+      l_u_secondary,
+      i: _,
+      zi,
+      _p: _,
+    } = recursive;
+    Self {
+      r_W_primary: Cow::Owned(r_W_primary),
+      r_U_primary: Cow::Owned(r_U_primary),
+      ri_primary,
+      r_W_secondary: Cow::Owned(r_W_secondary),
+      r_U_secondary: Cow::Owned(r_U_secondary),
+      ri_secondary,
+      l_w_secondary: Cow::Owned(l_w_secondary),
+      l_u_secondary: Cow::Owned(l_u_secondary),
+      zi: Cow::Owned(zi),
+    }
+  }
+}
+
 impl<E1, E2, C, S1, S2> CompressedSNARK<E1, E2, C, S1, S2>
 where
   E1: Engine<Base = <E2 as Engine>::Scalar>,
@@ -815,6 +882,23 @@ where
     pk: &ProverKey<E1, E2, C, S1, S2>,
     recursive_snark: &RecursiveSNARK<E1, E2, C>,
   ) -> Result<Self, NovaError> {
+    Self::prove_inner(pp, pk, CompressionInput::borrowed(recursive_snark))
+  }
+
+  /// Create a compressed proof while consuming the recursive witness.
+  pub fn prove_owned(
+    pp: &PublicParams<E1, E2, C>,
+    pk: &ProverKey<E1, E2, C, S1, S2>,
+    recursive_snark: RecursiveSNARK<E1, E2, C>,
+  ) -> Result<Self, NovaError> {
+    Self::prove_inner(pp, pk, CompressionInput::owned(recursive_snark))
+  }
+
+  fn prove_inner(
+    pp: &PublicParams<E1, E2, C>,
+    pk: &ProverKey<E1, E2, C, S1, S2>,
+    recursive_snark: CompressionInput<'_, E1, E2>,
+  ) -> Result<Self, NovaError> {
     // prove three foldings
 
     // fold secondary U/W with secondary u/w to get Uf/Wf
@@ -823,10 +907,10 @@ where
       &pp.ro_consts_secondary,
       &scalar_as_base::<E1>(pp.digest()),
       &pp.r1cs_shape_secondary,
-      &recursive_snark.r_U_secondary,
-      &recursive_snark.r_W_secondary,
-      &recursive_snark.l_u_secondary,
-      &recursive_snark.l_w_secondary,
+      recursive_snark.r_U_secondary.as_ref(),
+      recursive_snark.r_W_secondary.as_ref(),
+      recursive_snark.l_u_secondary.as_ref(),
+      recursive_snark.l_w_secondary.as_ref(),
     )?;
 
     // fold Uf/Wf with random inst/wit to get U1/W1
@@ -845,6 +929,7 @@ where
       &l_wr_secondary,
     )?;
     drop((r_Uf_secondary, r_Wf_secondary, l_wr_secondary));
+    drop((recursive_snark.r_W_secondary, recursive_snark.l_w_secondary));
 
     // fold primary U/W with random inst/wit to get U2/W2
     let (l_ur_primary, l_wr_primary) = pp
@@ -856,12 +941,13 @@ where
       &pp.ro_consts_primary,
       &pp.digest(),
       &pp.r1cs_shape_primary,
-      &recursive_snark.r_U_primary,
-      &recursive_snark.r_W_primary,
+      recursive_snark.r_U_primary.as_ref(),
+      recursive_snark.r_W_primary.as_ref(),
       &l_ur_primary,
       &l_wr_primary,
     )?;
     drop(l_wr_primary);
+    drop(recursive_snark.r_W_primary);
 
     // derandomize/unblind commitments
     let (derandom_r_Wn_primary, wit_blind_r_Wn_primary, err_blind_r_Wn_primary) =
@@ -903,18 +989,18 @@ where
     );
 
     Ok(Self {
-      r_U_secondary: recursive_snark.r_U_secondary.clone(),
+      r_U_secondary: recursive_snark.r_U_secondary.into_owned(),
       ri_secondary: recursive_snark.ri_secondary,
-      l_u_secondary: recursive_snark.l_u_secondary.clone(),
-      nifs_Uf_secondary: nifs_Uf_secondary.clone(),
+      l_u_secondary: recursive_snark.l_u_secondary.into_owned(),
+      nifs_Uf_secondary,
 
-      l_ur_secondary: l_ur_secondary.clone(),
-      nifs_Un_secondary: nifs_Un_secondary.clone(),
+      l_ur_secondary,
+      nifs_Un_secondary,
 
-      r_U_primary: recursive_snark.r_U_primary.clone(),
+      r_U_primary: recursive_snark.r_U_primary.into_owned(),
       ri_primary: recursive_snark.ri_primary,
-      l_ur_primary: l_ur_primary.clone(),
-      nifs_Un_primary: nifs_Un_primary.clone(),
+      l_ur_primary,
+      nifs_Un_primary,
 
       wit_blind_r_Wn_primary,
       err_blind_r_Wn_primary,
@@ -924,7 +1010,7 @@ where
       snark_primary: snark_primary?,
       snark_secondary: snark_secondary?,
 
-      zn: recursive_snark.zi.clone(),
+      zn: recursive_snark.zi.into_owned(),
 
       _p: Default::default(),
     })
@@ -1380,7 +1466,8 @@ mod tests {
     let (pk, vk) = CompressedSNARK::<_, _, _, S<E1, EE1>, S<E2, EE2>>::setup(&pp).unwrap();
 
     // produce a compressed SNARK
-    let res = CompressedSNARK::<_, _, _, S<E1, EE1>, S<E2, EE2>>::prove(&pp, &pk, &recursive_snark);
+    let res =
+      CompressedSNARK::<_, _, _, S<E1, EE1>, S<E2, EE2>>::prove_owned(&pp, &pk, recursive_snark);
     assert!(res.is_ok());
     let mut compressed_snark = res.unwrap();
 
