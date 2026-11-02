@@ -1143,6 +1143,15 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
     }
   }
 
+  /// Consumes and pads this witness without retaining an unpadded copy.
+  pub fn into_padded(mut self, S: &R1CSShape<E>) -> RelaxedR1CSWitness<E> {
+    assert!(self.W.len() <= S.num_vars, "witness exceeds padded shape");
+    assert!(self.E.len() <= S.num_cons, "error exceeds padded shape");
+    self.W.resize(S.num_vars, E::Scalar::ZERO);
+    self.E.resize(S.num_cons, E::Scalar::ZERO);
+    self
+  }
+
   /// Consumes self and returns owned W and E vectors (avoids re-cloning).
   pub fn into_W_E(self) -> (Vec<E::Scalar>, Vec<E::Scalar>) {
     (self.W, self.E)
@@ -1160,6 +1169,15 @@ impl<E: Engine> RelaxedR1CSWitness<E> {
       self.r_W,
       self.r_E,
     )
+  }
+
+  /// Consumes and derandomizes this witness without cloning its vectors.
+  pub fn into_derandomized(mut self) -> (Self, E::Scalar, E::Scalar) {
+    let r_W = self.r_W;
+    let r_E = self.r_E;
+    self.r_W = E::Scalar::ZERO;
+    self.r_E = E::Scalar::ZERO;
+    (self, r_W, r_E)
   }
 }
 
@@ -1679,5 +1697,35 @@ mod tests {
       .E
       .iter()
       .all(|e| *e == F::from(5) + r * F::from(23) + r * r * F::from(29)));
+  }
+
+  #[test]
+  fn owned_witness_transforms_reuse_vector_storage() {
+    type E = PallasEngine;
+    type F = <E as Engine>::Scalar;
+
+    let S = tiny_r1cs::<E>(4);
+    let mut W = Vec::with_capacity(S.num_vars);
+    W.extend([F::from(2), F::from(3)]);
+    let mut E_values = Vec::with_capacity(S.num_cons);
+    E_values.extend([F::from(5), F::from(7), F::from(11)]);
+    let witness = RelaxedR1CSWitness {
+      W,
+      r_W: F::from(13),
+      E: E_values,
+      r_E: F::from(17),
+    };
+    let expected = witness.derandomize().0.pad(&S);
+    let W_storage = witness.W.as_ptr();
+    let E_storage = witness.E.as_ptr();
+
+    let (owned, r_W, r_E) = witness.into_derandomized();
+    let owned = owned.into_padded(&S);
+
+    assert_eq!(r_W, F::from(13));
+    assert_eq!(r_E, F::from(17));
+    assert_eq!(owned, expected);
+    assert_eq!(owned.W.as_ptr(), W_storage);
+    assert_eq!(owned.E.as_ptr(), E_storage);
   }
 }
