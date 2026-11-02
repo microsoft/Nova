@@ -597,6 +597,9 @@ mod tests {
     let U = random_U.derandomize(&<TestEngine as Engine>::CE::derand_key(&ck), &r_W, &r_E);
     let proof = TestSnark::prove(&ck, &pk, &shape, &U, &W).expect("in-memory proof");
     proof.verify(&vk, &U).expect("in-memory proof verification");
+    let owned_proof =
+      TestSnark::prove_owned(&ck, &pk, &shape, &U, W.clone()).expect("owned witness proof");
+    assert_eq!(encode(&owned_proof), encode(&proof));
     let proof = TestSnark::prove(&ck, &decoded_pk, &shape, &U, &W).expect("proof");
     proof.verify(&decoded_vk, &U).expect("verification");
     assert!(decoded_pk.padded_shape.is_none());

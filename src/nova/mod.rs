@@ -844,6 +844,7 @@ where
       &l_ur_secondary,
       &l_wr_secondary,
     )?;
+    drop((r_Uf_secondary, r_Wf_secondary, l_wr_secondary));
 
     // fold primary U/W with random inst/wit to get U2/W2
     let (l_ur_primary, l_wr_primary) = pp
@@ -860,10 +861,11 @@ where
       &l_ur_primary,
       &l_wr_primary,
     )?;
+    drop(l_wr_primary);
 
     // derandomize/unblind commitments
     let (derandom_r_Wn_primary, wit_blind_r_Wn_primary, err_blind_r_Wn_primary) =
-      r_Wn_primary.derandomize();
+      r_Wn_primary.into_derandomized();
     let derandom_r_Un_primary = r_Un_primary.derandomize(
       &E1::CE::derand_key(&pp.ck_primary),
       &wit_blind_r_Wn_primary,
@@ -871,7 +873,7 @@ where
     );
 
     let (derandom_r_Wn_secondary, wit_blind_r_Wn_secondary, err_blind_r_Wn_secondary) =
-      r_Wn_secondary.derandomize();
+      r_Wn_secondary.into_derandomized();
     let derandom_r_Un_secondary = r_Un_secondary.derandomize(
       &E2::CE::derand_key(&pp.ck_secondary),
       &wit_blind_r_Wn_secondary,
@@ -881,21 +883,21 @@ where
     // create SNARKs proving the knowledge of Wn primary/secondary
     let (snark_primary, snark_secondary) = rayon::join(
       || {
-        S1::prove(
+        S1::prove_owned(
           &pp.ck_primary,
           &pk.pk_primary,
           &pp.r1cs_shape_primary,
           &derandom_r_Un_primary,
-          &derandom_r_Wn_primary,
+          derandom_r_Wn_primary,
         )
       },
       || {
-        S2::prove(
+        S2::prove_owned(
           &pp.ck_secondary,
           &pk.pk_secondary,
           &pp.r1cs_shape_secondary,
           &derandom_r_Un_secondary,
-          &derandom_r_Wn_secondary,
+          derandom_r_Wn_secondary,
         )
       },
     );
