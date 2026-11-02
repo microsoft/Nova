@@ -163,61 +163,25 @@ impl<E: Engine> PolyEvalWitness<E> {
   /// We allow the input polynomials to have different sizes, and interpret smaller ones as
   /// being padded with 0 to the maximum size of all polynomials.
   fn batch_diff_size(W: Vec<PolyEvalWitness<E>>, s: E::Scalar) -> PolyEvalWitness<E> {
-    let powers = powers::<E>(&s, W.len());
+    assert!(!W.is_empty());
+    let mut powers = powers::<E>(&s, W.len());
+    let mut W = W;
+    let size_max = W.iter().map(|witness| witness.p.len()).max().unwrap();
+    let largest = W
+      .iter()
+      .position(|witness| witness.p.len() == size_max)
+      .unwrap();
+    let mut p = W.remove(largest).p;
+    let base_power = powers.remove(largest);
+    if base_power != E::Scalar::ONE {
+      p.par_iter_mut().for_each(|value| *value *= base_power);
+    }
 
-    let size_max = W.iter().map(|w| w.p.len()).max().unwrap();
-    // Scale the input polynomials by the power of s
-    let num_chunks = rayon::current_num_threads().next_power_of_two();
-    let chunk_size = size_max / num_chunks;
-
-    let p = if chunk_size > 0 {
-      (0..num_chunks)
-        .into_par_iter()
-        .flat_map_iter(|chunk_index| {
-          let mut chunk = vec![E::Scalar::ZERO; chunk_size];
-          for (coeff, poly) in powers.iter().zip(W.iter()) {
-            for (rlc, poly_eval) in chunk
-              .iter_mut()
-              .zip(poly.p[chunk_index * chunk_size..].iter())
-            {
-              if *coeff == E::Scalar::ONE {
-                *rlc += *poly_eval;
-              } else {
-                *rlc += *coeff * poly_eval;
-              };
-            }
-          }
-          chunk
-        })
-        .collect::<Vec<_>>()
-    } else {
-      W.into_par_iter()
-        .zip_eq(powers.par_iter())
-        .map(|(mut w, s)| {
-          if *s != E::Scalar::ONE {
-            w.p.par_iter_mut().for_each(|e| *e *= s);
-          }
-          w.p
-        })
-        .reduce(
-          || vec![E::Scalar::ZERO; size_max],
-          |left, right| {
-            // Sum into the largest polynomial
-            let (mut big, small) = if left.len() > right.len() {
-              (left, right)
-            } else {
-              (right, left)
-            };
-
-            big
-              .par_iter_mut()
-              .zip(small.par_iter())
-              .for_each(|(b, s)| *b += s);
-
-            big
-          },
-        )
-    };
+    for (witness, power) in W.into_iter().zip(powers) {
+      p.par_iter_mut()
+        .zip(witness.p.par_iter())
+        .for_each(|(sum, value)| *sum += power * value);
+    }
 
     PolyEvalWitness { p }
   }
@@ -476,6 +440,36 @@ pub fn batch_eval_verify<E: Engine>(
   let u_joint = PolyEvalInstance::batch_diff_size(&comms, evals_batch, &num_rounds, r, c);
 
   Ok((u_joint, c))
+}
+
+#[cfg(test)]
+mod batch_witness_tests {
+  use super::*;
+  use crate::provider::PallasEngine;
+
+  type E = PallasEngine;
+  type F = <E as Engine>::Scalar;
+
+  #[test]
+  fn differently_sized_batch_reuses_the_largest_witness() {
+    let first = (1u64..=8).map(F::from).collect::<Vec<_>>();
+    let second = (11u64..=14).map(F::from).collect::<Vec<_>>();
+    let first_storage = first.as_ptr();
+    let challenge = F::from(7);
+    let expected = first
+      .iter()
+      .enumerate()
+      .map(|(index, value)| *value + second.get(index).copied().unwrap_or(F::ZERO) * challenge)
+      .collect::<Vec<_>>();
+
+    let batched = PolyEvalWitness::<E>::batch_diff_size(
+      vec![PolyEvalWitness { p: first }, PolyEvalWitness { p: second }],
+      challenge,
+    );
+
+    assert_eq!(batched.p, expected);
+    assert_eq!(batched.p.as_ptr(), first_storage);
+  }
 }
 
 /// Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials.
