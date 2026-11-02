@@ -247,49 +247,36 @@ macro_rules! impl_traits_no_dlog_ext {
       }
 
       fn from_label(label: &'static [u8], n: usize) -> Vec<Self::AffineGroupElement> {
+        const BATCH_SIZE: usize = 1 << 14;
+
         let mut shake = Shake256::default();
         shake.update(label);
         let mut reader = shake.finalize_xof();
-        let mut uniform_bytes_vec = Vec::new();
-        for _ in 0..n {
-          let mut uniform_bytes = [0u8; 32];
-          digest::XofReader::read(&mut reader, &mut uniform_bytes);
-          uniform_bytes_vec.push(uniform_bytes);
-        }
-        let gens_proj: Vec<$name_curve> = (0..n)
-          .into_par_iter()
-          .map(|i| {
-            let hash = $name_curve::hash_to_curve("from_uniform_bytes");
-            hash(&uniform_bytes_vec[i])
-          })
-          .collect();
+        let mut gens = Vec::with_capacity(n);
 
-        let num_threads = rayon::current_num_threads();
-        if gens_proj.len() > num_threads {
-          let chunk = (gens_proj.len() as f64 / num_threads as f64).ceil() as usize;
-          (0..num_threads)
-            .into_par_iter()
-            .flat_map(|i| {
-              let start = i * chunk;
-              let end = if i == num_threads - 1 {
-                gens_proj.len()
-              } else {
-                core::cmp::min((i + 1) * chunk, gens_proj.len())
-              };
-              if end > start {
-                let mut gens = vec![$name_curve_affine::identity(); end - start];
-                <Self as Curve>::batch_normalize(&gens_proj[start..end], &mut gens);
-                gens
-              } else {
-                vec![]
-              }
+        while gens.len() < n {
+          let batch_len = core::cmp::min(BATCH_SIZE, n - gens.len());
+          let uniform_bytes: Vec<[u8; 32]> = (0..batch_len)
+            .map(|_| {
+              let mut bytes = [0u8; 32];
+              digest::XofReader::read(&mut reader, &mut bytes);
+              bytes
             })
-            .collect()
-        } else {
-          let mut gens = vec![$name_curve_affine::identity(); n];
-          <Self as Curve>::batch_normalize(&gens_proj, &mut gens);
-          gens
+            .collect();
+          let gens_proj: Vec<$name_curve> = uniform_bytes
+            .par_iter()
+            .map(|bytes| {
+              let hash = $name_curve::hash_to_curve("from_uniform_bytes");
+              hash(bytes)
+            })
+            .collect();
+
+          let start = gens.len();
+          gens.resize(start + batch_len, $name_curve_affine::identity());
+          <Self as Curve>::batch_normalize(&gens_proj, &mut gens[start..]);
         }
+
+        gens
       }
 
       fn zero() -> Self {

@@ -246,14 +246,10 @@ where
   type DerandKey = DerandKey<E>;
 
   fn setup(label: &'static [u8], n: usize) -> Result<Self::CommitmentKey, NovaError> {
-    let gens = E::GE::from_label(label, n.next_power_of_two() + 1);
+    let mut ck = E::GE::from_label(label, n.next_power_of_two() + 1);
+    let h = ck.remove(0);
 
-    let (h, ck) = gens.split_first().unwrap();
-
-    Ok(Self::CommitmentKey {
-      ck: ck.to_vec(),
-      h: *h,
-    })
+    Ok(Self::CommitmentKey { ck, h })
   }
 
   fn derand_key(ck: &Self::CommitmentKey) -> Self::DerandKey {

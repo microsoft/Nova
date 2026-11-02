@@ -175,7 +175,7 @@ mod tests {
 
       let label = b"test_from_label";
       for n in [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 1021, 16385,
       ] {
         let ck_par = <$curve::Point as DlogGroup>::from_label(label, n);
         let ck_ser = from_label_serial(label, n);
