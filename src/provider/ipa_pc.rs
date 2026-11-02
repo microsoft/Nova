@@ -224,24 +224,10 @@ where
       let c_L = inner_product(&a_vec[0..n / 2], &b_vec[n / 2..n]);
       let c_R = inner_product(&a_vec[n / 2..n], &b_vec[0..n / 2]);
 
-      let L = CE::<E>::commit(
-        &ck_R.combine(&ck_c),
-        &a_vec[0..n / 2]
-          .iter()
-          .chain(iter::once(&c_L))
-          .copied()
-          .collect::<Vec<E::Scalar>>(),
-        &E::Scalar::ZERO,
-      );
-      let R = CE::<E>::commit(
-        &ck_L.combine(&ck_c),
-        &a_vec[n / 2..n]
-          .iter()
-          .chain(iter::once(&c_R))
-          .copied()
-          .collect::<Vec<E::Scalar>>(),
-        &E::Scalar::ZERO,
-      );
+      let L = CE::<E>::commit(&ck_R, &a_vec[0..n / 2], &E::Scalar::ZERO)
+        + CE::<E>::commit(&ck_c, &[c_L], &E::Scalar::ZERO);
+      let R = CE::<E>::commit(&ck_L, &a_vec[n / 2..n], &E::Scalar::ZERO)
+        + CE::<E>::commit(&ck_c, &[c_R], &E::Scalar::ZERO);
 
       transcript.absorb(b"L", &L);
       transcript.absorb(b"R", &R);
